@@ -408,7 +408,8 @@
 		000000000000000112000000 /* Release configuration for PBXNativeTarget "Shepherd" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Developer ID Application";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "$(SHEPHERD_APP_SIGN_IDENTITY)";
+				SHEPHERD_APP_SIGN_IDENTITY = "Developer ID Application";
 				CODE_SIGN_STYLE = Automatic;
 				"CODE_SIGN_STYLE[sdk=macosx*]" = Manual;
 				CURRENT_PROJECT_VERSION = 22;

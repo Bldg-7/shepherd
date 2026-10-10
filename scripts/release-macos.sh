@@ -126,7 +126,7 @@ xcodebuild archive -quiet \
     -archivePath "$ARCHIVE" -derivedDataPath "$DERIVED" \
     -clonedSourcePackagesDirPath "$ROOT/build/SourcePackages" \
     -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates -jobs 4 \
-    CODE_SIGN_IDENTITY="$SIGN_IDENTITY" MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
+    SHEPHERD_APP_SIGN_IDENTITY="$SIGN_IDENTITY" MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
 
 step "Exporting with Developer ID"
 cat > "$WORK/ExportOptions.plist" <<EOF
