@@ -28,8 +28,15 @@ fallback or persistent account switch. It does not pass its GitHub token to buil
 ## Build and verify without publication
 
 ```sh
+SHEPHERD_SIGN_IDENTITY=<approved-certificate-SHA1> \
 SHEPHERD_BUILD_NUMBER=22 SHEPHERD_SKIP_PUBLISH=1 scripts/release-macos.sh 0.2.0 notes/0.2.0.md
 ```
+
+Use `security find-identity -v -p codesigning` to identify the existing approved certificate.
+The script signs the owned CEF libraries/framework/helpers inside-out with that exact
+identity before Xcode validates embedded applications; the app uses the same identity.
+Existing pinned helper entitlements are retained, not expanded. No `--deep` signing or
+plugin-validation bypass is used.
 
 The script archives, exports/signs, notarizes, staples the app and DMG, runs Gatekeeper
 checks, and signs the Sparkle feed. Existing output is not deleted: preserve failed

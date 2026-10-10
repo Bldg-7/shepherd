@@ -27,6 +27,7 @@ NOTARY_PROFILE="${SHEPHERD_NOTARY_PROFILE:-shepherd-notary}"
 SKIP_NOTARIZE="${SHEPHERD_SKIP_NOTARIZE:-}"
 SKIP_PUBLISH="${SHEPHERD_SKIP_PUBLISH:-$SKIP_NOTARIZE}"
 TEAM_ID="SYZS4D43Z6"
+SIGN_IDENTITY="${SHEPHERD_SIGN_IDENTITY:?set SHEPHERD_SIGN_IDENTITY to the approved Developer ID certificate fingerprint}"
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="${SHEPHERD_RELEASE_WORK:-$ROOT/build/release/$VERSION}"
@@ -115,6 +116,8 @@ values += [int(e.get(version)) for e in tree.iter('enclosure') if e.get(version)
 assert values and int(sys.argv[2]) > max(values), 'Build number must exceed the prior appcast'
 PY
 fi
+step "Signing pinned CEF framework and helper inputs"
+python3 "$ROOT/scripts/sign-cef.py" --identity "$SIGN_IDENTITY"
 step "Archiving Shepherd $VERSION ($BUILD_NUMBER)"
 mkdir -p "$WORK"
 xcodebuild archive -quiet \
@@ -123,7 +126,7 @@ xcodebuild archive -quiet \
     -archivePath "$ARCHIVE" -derivedDataPath "$DERIVED" \
     -clonedSourcePackagesDirPath "$ROOT/build/SourcePackages" \
     -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates -jobs 4 \
-    MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
+    CODE_SIGN_IDENTITY="$SIGN_IDENTITY" MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
 
 step "Exporting with Developer ID"
 cat > "$WORK/ExportOptions.plist" <<EOF
@@ -138,7 +141,7 @@ cat > "$WORK/ExportOptions.plist" <<EOF
 	<key>signingStyle</key>
 	<string>manual</string>
 	<key>signingCertificate</key>
-	<string>Developer ID Application</string>
+	<string>$SIGN_IDENTITY</string>
 </dict>
 </plist>
 EOF
