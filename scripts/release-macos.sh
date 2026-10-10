@@ -47,7 +47,7 @@ DMG="Shepherd-$VERSION.dmg"
 DOWNLOAD_PREFIX="https://github.com/$REPO/releases/download/$TAG/"
 # The public source history differs from the earlier private history. Never
 # derive Sparkle's monotonic build number from the number of Git commits.
-BUILD_NUMBER="${SHEPHERD_BUILD_NUMBER:-22}"
+BUILD_NUMBER="${SHEPHERD_BUILD_NUMBER:-23}"
 [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]] || { echo 'Invalid build number' >&2; exit 1; }
 
 step() { printf '\n==> %s\n' "$*"; }

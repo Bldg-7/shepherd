@@ -36,4 +36,4 @@ open shepherd.xcodeproj
 
 CEF and `node_modules` are build inputs, not committed binaries. SwiftTerm 1.20.0's `SwiftTermBuildInfoPlugin` may require Xcode's explicit package-plugin approval; do not disable plugin validation globally. Debug builds have no Sparkle update feed. For unsigned local builds, use `CODE_SIGNING_ALLOWED=NO`.
 
-[Release procedure](docs/releasing-macos.md) · [0.2.0 release notes](notes/0.2.0.md)
+[Release procedure](docs/releasing-macos.md) · [0.2.1 release notes](notes/0.2.1.md)
