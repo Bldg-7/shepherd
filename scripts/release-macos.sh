@@ -109,7 +109,9 @@ fi
 if [[ -f "$UPDATES/appcast.xml" ]]; then
     python3 - "$UPDATES/appcast.xml" "$BUILD_NUMBER" <<'PY'
 import sys,xml.etree.ElementTree as ET
-values=[int(e.get('{http://www.andymatuschak.org/xml-namespaces/sparkle}version')) for e in ET.parse(sys.argv[1]).iter('enclosure')]
+tree=ET.parse(sys.argv[1]); version='{http://www.andymatuschak.org/xml-namespaces/sparkle}version'
+values=[int(e.text) for e in tree.iter(version)]
+values += [int(e.get(version)) for e in tree.iter('enclosure') if e.get(version) is not None]
 assert values and int(sys.argv[2]) > max(values), 'Build number must exceed the prior appcast'
 PY
 fi
