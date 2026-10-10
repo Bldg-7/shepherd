@@ -1,0 +1,582 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 90;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		9B506EAF306E7247005B40C9 /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = 9B506EAE306E7247005B40C9 /* Citadel */; };
+		9B506EB7306F4D21005B40C9 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 9B506EB6306F4D21005B40C9 /* SwiftTerm */; };
+		A63E1D0D20AA408AA2C0C024 /* Shepherd/Agents/AgentRuntime in Resources */ = {isa = PBXBuildFile; fileRef = 403320BAC8DC4590AAED06E2 /* Shepherd/Agents/AgentRuntime */; platformFilters = (macos, ); };
+		C0CB00000000000000000030 /* NIOSSL in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = C0CB00000000000000000040 /* NIOSSL */; };
+		C0CB00000000000000000031 /* X509 in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = C0CB00000000000000000041 /* X509 */; };
+		C0CD00000000000000000030 /* NIOCore in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = C0CD00000000000000000040 /* NIOCore */; };
+		C0CD00000000000000000031 /* NIOPosix in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = C0CD00000000000000000041 /* NIOPosix */; };
+		C0CD00000000000000000032 /* NIOHTTP1 in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = C0CD00000000000000000042 /* NIOHTTP1 */; };
+		C0CD00000000000000000033 /* NIOWebSocket in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = C0CD00000000000000000043 /* NIOWebSocket */; };
+		C0EF00000000000000000020 /* Chromium Embedded Framework.framework in Embed Browser Engine */ = {isa = PBXBuildFile; fileRef = C0EF00000000000000000010 /* Chromium Embedded Framework.framework */; platformFilters = (macos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		C0EF00000000000000000021 /* Shepherd Helper.app in Embed Browser Engine */ = {isa = PBXBuildFile; fileRef = C0EF00000000000000000011 /* Shepherd Helper.app */; platformFilters = (macos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		C0EF00000000000000000022 /* Shepherd Helper (Alerts).app in Embed Browser Engine */ = {isa = PBXBuildFile; fileRef = C0EF00000000000000000012 /* Shepherd Helper (Alerts).app */; platformFilters = (macos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		C0EF00000000000000000023 /* Shepherd Helper (GPU).app in Embed Browser Engine */ = {isa = PBXBuildFile; fileRef = C0EF00000000000000000013 /* Shepherd Helper (GPU).app */; platformFilters = (macos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		C0EF00000000000000000024 /* Shepherd Helper (Plugin).app in Embed Browser Engine */ = {isa = PBXBuildFile; fileRef = C0EF00000000000000000014 /* Shepherd Helper (Plugin).app */; platformFilters = (macos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		C0EF00000000000000000025 /* Shepherd Helper (Renderer).app in Embed Browser Engine */ = {isa = PBXBuildFile; fileRef = C0EF00000000000000000015 /* Shepherd Helper (Renderer).app */; platformFilters = (macos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		EB28238D51316AC7C2A3FB0D /* Sparkle in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = 50A33A9511F4A8743DB7A373 /* Sparkle */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		C0EF00000000000000000002 /* Embed Browser Engine */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = "";
+			dstSubfolder = Frameworks;
+			files = (
+				C0EF00000000000000000020 /* Chromium Embedded Framework.framework in Embed Browser Engine */,
+				C0EF00000000000000000021 /* Shepherd Helper.app in Embed Browser Engine */,
+				C0EF00000000000000000022 /* Shepherd Helper (Alerts).app in Embed Browser Engine */,
+				C0EF00000000000000000023 /* Shepherd Helper (GPU).app in Embed Browser Engine */,
+				C0EF00000000000000000024 /* Shepherd Helper (Plugin).app in Embed Browser Engine */,
+				C0EF00000000000000000025 /* Shepherd Helper (Renderer).app in Embed Browser Engine */,
+			);
+			name = "Embed Browser Engine";
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		000000000000000000000120 /* Shepherd.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Shepherd.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		403320BAC8DC4590AAED06E2 /* Shepherd/Agents/AgentRuntime */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Shepherd/Agents/AgentRuntime; sourceTree = SOURCE_ROOT; };
+		C0EF00000000000000000010 /* Chromium Embedded Framework.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = "Chromium Embedded Framework.framework"; sourceTree = "<group>"; };
+		C0EF00000000000000000011 /* Shepherd Helper.app */ = {isa = PBXFileReference; lastKnownFileType = wrapper.application; path = "Shepherd Helper.app"; sourceTree = "<group>"; };
+		C0EF00000000000000000012 /* Shepherd Helper (Alerts).app */ = {isa = PBXFileReference; lastKnownFileType = wrapper.application; path = "Shepherd Helper (Alerts).app"; sourceTree = "<group>"; };
+		C0EF00000000000000000013 /* Shepherd Helper (GPU).app */ = {isa = PBXFileReference; lastKnownFileType = wrapper.application; path = "Shepherd Helper (GPU).app"; sourceTree = "<group>"; };
+		C0EF00000000000000000014 /* Shepherd Helper (Plugin).app */ = {isa = PBXFileReference; lastKnownFileType = wrapper.application; path = "Shepherd Helper (Plugin).app"; sourceTree = "<group>"; };
+		C0EF00000000000000000015 /* Shepherd Helper (Renderer).app */ = {isa = PBXFileReference; lastKnownFileType = wrapper.application; path = "Shepherd Helper (Renderer).app"; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		84B3F27F6AF64DE9A97C862F /* Exceptions for "Shepherd" folder in "Shepherd" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Agents/AgentRuntime,
+			);
+			target = 000000000000000100000000 /* Shepherd */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		000000000000000000000010 /* Shepherd */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				84B3F27F6AF64DE9A97C862F /* Exceptions for "Shepherd" folder in "Shepherd" target */,
+			);
+			explicitFolders = (
+				Agents/AgentRuntime,
+			);
+			path = Shepherd;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		000000000000000130000000 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				C0CB00000000000000000030 /* NIOSSL in Frameworks */,
+				C0CB00000000000000000031 /* X509 in Frameworks */,
+				C0CD00000000000000000030 /* NIOCore in Frameworks */,
+				C0CD00000000000000000031 /* NIOPosix in Frameworks */,
+				C0CD00000000000000000032 /* NIOHTTP1 in Frameworks */,
+				C0CD00000000000000000033 /* NIOWebSocket in Frameworks */,
+				9B506EB7306F4D21005B40C9 /* SwiftTerm in Frameworks */,
+				9B506EAF306E7247005B40C9 /* Citadel in Frameworks */,
+				EB28238D51316AC7C2A3FB0D /* Sparkle in Frameworks */,
+			);
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		000000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				000000000000000000000010 /* Shepherd */,
+				403320BAC8DC4590AAED06E2 /* Shepherd/Agents/AgentRuntime */,
+				C0EF00000000000000000001 /* Browser Engine */,
+				9B506EAD306E7247005B40C9 /* Frameworks */,
+				000000000000000000000020 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		000000000000000000000020 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				000000000000000000000120 /* Shepherd.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		9B506EAD306E7247005B40C9 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		C0EF00000000000000000001 /* Browser Engine */ = {
+			isa = PBXGroup;
+			children = (
+				C0EF00000000000000000010 /* Chromium Embedded Framework.framework */,
+				C0EF00000000000000000011 /* Shepherd Helper.app */,
+				C0EF00000000000000000012 /* Shepherd Helper (Alerts).app */,
+				C0EF00000000000000000013 /* Shepherd Helper (GPU).app */,
+				C0EF00000000000000000014 /* Shepherd Helper (Plugin).app */,
+				C0EF00000000000000000015 /* Shepherd Helper (Renderer).app */,
+			);
+			name = "Browser Engine";
+			path = Vendor/CEF/out;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		000000000000000100000000 /* Shepherd */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 000000000000000110000000 /* Build configuration list for PBXNativeTarget "Shepherd" */;
+			buildPhases = (
+				000000000000000120000000 /* Sources */,
+				000000000000000130000000 /* Frameworks */,
+				000000000000000140000000 /* Resources */,
+				C0EF00000000000000000002 /* Embed Browser Engine */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				000000000000000000000010 /* Shepherd */,
+			);
+			name = Shepherd;
+			packageProductDependencies = (
+				C0CB00000000000000000040 /* NIOSSL */,
+				C0CB00000000000000000041 /* X509 */,
+				C0CD00000000000000000040 /* NIOCore */,
+				C0CD00000000000000000041 /* NIOPosix */,
+				C0CD00000000000000000042 /* NIOHTTP1 */,
+				C0CD00000000000000000043 /* NIOWebSocket */,
+				9B506EAE306E7247005B40C9 /* Citadel */,
+				9B506EB6306F4D21005B40C9 /* SwiftTerm */,
+				50A33A9511F4A8743DB7A373 /* Sparkle */,
+			);
+			productName = MyApp;
+			productReference = 000000000000000000000120 /* Shepherd.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		000000000000000000000000 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2630;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					000000000000000100000000 = {
+						CreatedOnToolsVersion = 26.3;
+					};
+				};
+			};
+			buildConfigurationList = 000000000000000010000000 /* Build configuration list for PBXProject "shepherd" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+				ko,
+				ja,
+			);
+			mainGroup = 000000000000000000000001;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				C0CB00000000000000000050 /* XCRemoteSwiftPackageReference "swift-nio-ssl" */,
+				C0CB00000000000000000051 /* XCRemoteSwiftPackageReference "swift-certificates" */,
+				C0CD00000000000000000050 /* XCRemoteSwiftPackageReference "swift-nio" */,
+				9B506EAC306E7049005B40C9 /* XCLocalSwiftPackageReference "Vendor/Citadel" */,
+				9B506EB5306F4D21005B40C9 /* XCRemoteSwiftPackageReference "SwiftTerm" */,
+				CB4A131C8950B74B444757D8 /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
+			preferredProjectObjectVersion = 90;
+			productRefGroup = 000000000000000000000020 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				000000000000000100000000 /* Shepherd */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		000000000000000140000000 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+				A63E1D0D20AA408AA2C0C024 /* Shepherd/Agents/AgentRuntime in Resources */,
+			);
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		000000000000000120000000 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		000000000000000011000000 /* Debug configuration for PBXProject "shepherd" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DRIVERKIT_DEPLOYMENT_TARGET = 27.0;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.6.2;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PROJECT_UNIQUE_VALUE = R3WSGG8W;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				TVOS_DEPLOYMENT_TARGET = 27.0;
+				WATCHOS_DEPLOYMENT_TARGET = 27.0;
+			};
+			name = Debug;
+		};
+		000000000000000012000000 /* Release configuration for PBXProject "shepherd" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DRIVERKIT_DEPLOYMENT_TARGET = 27.0;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.6.2;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PROJECT_UNIQUE_VALUE = R3WSGG8W;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				TVOS_DEPLOYMENT_TARGET = 27.0;
+				WATCHOS_DEPLOYMENT_TARGET = 27.0;
+			};
+			name = Release;
+		};
+		000000000000000111000000 /* Debug configuration for PBXNativeTarget "Shepherd" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 22;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
+				ENABLE_RESOURCE_ACCESS_USB = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				"HEADER_SEARCH_PATHS[sdk=macosx*]" = "$(SRCROOT)/Vendor/CEF/out";
+				"INFOPLIST_FILE[sdk=macosx*]" = "Config/Info-macOS.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Shepherd;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
+				MARKETING_VERSION = 0.2.0;
+				"OTHER_LDFLAGS[sdk=macosx*][arch=arm64]" = (
+					"$(inherited)",
+					"$(SRCROOT)/Vendor/CEF/out/lib/$(CONFIGURATION)/libcef_dll_wrapper.a",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.bldg-7.shepherd";
+				PRODUCT_NAME = Shepherd;
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = macosx;
+				SPARKLE_FEED_URL = "";
+				SPARKLE_PUBLIC_ED_KEY = "skarCPyq1WUb5+GXaPSGInNaV2UsVa7VVnG8vheDZ8U=";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "Shepherd/Shepherd-Bridging-Header.h";
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		000000000000000112000000 /* Release configuration for PBXNativeTarget "Shepherd" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Developer ID Application";
+				CODE_SIGN_STYLE = Automatic;
+				"CODE_SIGN_STYLE[sdk=macosx*]" = Manual;
+				CURRENT_PROJECT_VERSION = 22;
+				"DEVELOPMENT_TEAM[sdk=macosx*]" = SYZS4D43Z6;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
+				ENABLE_RESOURCE_ACCESS_USB = NO;
+				"GCC_PREPROCESSOR_DEFINITIONS[sdk=macosx*]" = (
+					"$(inherited)",
+					"NDEBUG=1",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				"HEADER_SEARCH_PATHS[sdk=macosx*]" = "$(SRCROOT)/Vendor/CEF/out";
+				"INFOPLIST_FILE[sdk=macosx*]" = "Config/Info-macOS.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Shepherd;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
+				MARKETING_VERSION = 0.2.0;
+				"OTHER_LDFLAGS[sdk=macosx*][arch=arm64]" = (
+					"$(inherited)",
+					"$(SRCROOT)/Vendor/CEF/out/lib/$(CONFIGURATION)/libcef_dll_wrapper.a",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.bldg-7.shepherd";
+				PRODUCT_NAME = Shepherd;
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = macosx;
+				SPARKLE_FEED_URL = "https://github.com/Bldg-7/shepherd/releases/latest/download/appcast.xml";
+				SPARKLE_PUBLIC_ED_KEY = "skarCPyq1WUb5+GXaPSGInNaV2UsVa7VVnG8vheDZ8U=";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "Shepherd/Shepherd-Bridging-Header.h";
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		000000000000000010000000 /* Build configuration list for PBXProject "shepherd" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				000000000000000011000000 /* Debug configuration for PBXProject "shepherd" */,
+				000000000000000012000000 /* Release configuration for PBXProject "shepherd" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		000000000000000110000000 /* Build configuration list for PBXNativeTarget "Shepherd" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				000000000000000111000000 /* Debug configuration for PBXNativeTarget "Shepherd" */,
+				000000000000000112000000 /* Release configuration for PBXNativeTarget "Shepherd" */,
+			);
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		9B506EAC306E7049005B40C9 /* XCLocalSwiftPackageReference "Vendor/Citadel" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Vendor/Citadel;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		9B506EB5306F4D21005B40C9 /* XCRemoteSwiftPackageReference "SwiftTerm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/migueldeicaza/SwiftTerm";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.5.0;
+			};
+		};
+		C0CB00000000000000000050 /* XCRemoteSwiftPackageReference "swift-nio-ssl" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-nio-ssl.git";
+			requirement = {
+				kind = revision;
+				revision = 173cc69a058623525a58ae6710e2f5727c663793;
+			};
+		};
+		C0CB00000000000000000051 /* XCRemoteSwiftPackageReference "swift-certificates" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-certificates.git";
+			requirement = {
+				kind = revision;
+				revision = f4cd9e78a1ec209b27e426a5f5c693675f95e75a;
+			};
+		};
+		C0CD00000000000000000050 /* XCRemoteSwiftPackageReference "swift-nio" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-nio.git";
+			requirement = {
+				kind = exactVersion;
+				version = 2.103.0;
+			};
+		};
+		CB4A131C8950B74B444757D8 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.10.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		50A33A9511F4A8743DB7A373 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CB4A131C8950B74B444757D8 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+		9B506EAE306E7247005B40C9 /* Citadel */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9B506EAC306E7049005B40C9 /* XCLocalSwiftPackageReference "Vendor/Citadel" */;
+			productName = Citadel;
+		};
+		9B506EB6306F4D21005B40C9 /* SwiftTerm */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9B506EB5306F4D21005B40C9 /* XCRemoteSwiftPackageReference "SwiftTerm" */;
+			productName = SwiftTerm;
+		};
+		C0CB00000000000000000040 /* NIOSSL */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C0CB00000000000000000050 /* XCRemoteSwiftPackageReference "swift-nio-ssl" */;
+			productName = NIOSSL;
+		};
+		C0CB00000000000000000041 /* X509 */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C0CB00000000000000000051 /* XCRemoteSwiftPackageReference "swift-certificates" */;
+			productName = X509;
+		};
+		C0CD00000000000000000040 /* NIOCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C0CD00000000000000000050 /* XCRemoteSwiftPackageReference "swift-nio" */;
+			productName = NIOCore;
+		};
+		C0CD00000000000000000041 /* NIOPosix */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C0CD00000000000000000050 /* XCRemoteSwiftPackageReference "swift-nio" */;
+			productName = NIOPosix;
+		};
+		C0CD00000000000000000042 /* NIOHTTP1 */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C0CD00000000000000000050 /* XCRemoteSwiftPackageReference "swift-nio" */;
+			productName = NIOHTTP1;
+		};
+		C0CD00000000000000000043 /* NIOWebSocket */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C0CD00000000000000000050 /* XCRemoteSwiftPackageReference "swift-nio" */;
+			productName = NIOWebSocket;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 000000000000000000000000 /* Project object */;
+}

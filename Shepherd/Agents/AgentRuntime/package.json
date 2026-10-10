@@ -1,0 +1,11 @@
+{
+  "name": "shepherd-agent-runtime",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=20"},
+  "dependencies": {
+    "@playwright/mcp": "0.0.83",
+    "@iarna/toml": "2.2.5"
+  }
+}

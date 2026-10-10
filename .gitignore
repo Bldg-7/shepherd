@@ -1,0 +1,22 @@
+# Xcode
+xcuserdata/
+*.xcuserstate
+DerivedData/
+
+# scripts/release-macos.sh: archives, exports and published updates
+build/
+
+# scripts/cef.sh: the CEF binary distribution and what is built from it
+Vendor/CEF/
+
+# Spikes/agent-browser-phase0: the CEF binary distribution and npm packages
+# it is run against, downloaded next to the sources
+Spikes/*/cef/
+node_modules/
+
+# Swift Package Manager build artifacts
+.build/
+.swiftpm/
+
+# macOS
+.DS_Store

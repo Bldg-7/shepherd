@@ -1,0 +1,6336 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Pi": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Pi"}}, "ja": {"stringUnit": {"state": "translated", "value": "Pi"}}, "ko": {"stringUnit": {"state": "translated", "value": "Pi"}}}},
+    "Pi package or version has not been qualified": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Pi package or version has not been qualified"}}, "ja": {"stringUnit": {"state": "translated", "value": "Pi のパッケージまたはバージョンは未検証です"}}, "ko": {"stringUnit": {"state": "translated", "value": "Pi 패키지 또는 버전이 검증되지 않았습니다"}}}},
+    "Pi requires Node 22.19 or newer": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Pi requires Node 22.19 or newer"}}, "ja": {"stringUnit": {"state": "translated", "value": "Pi には Node 22.19 以降が必要です"}}, "ko": {"stringUnit": {"state": "translated", "value": "Pi는 Node 22.19 이상이 필요합니다"}}}},
+    "Pi detected; managed browser launch is not enabled yet": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Pi detected; managed browser launch is not enabled yet"}}, "ja": {"stringUnit": {"state": "translated", "value": "Pi を検出しました。管理対象ブラウザでの起動はまだ有効ではありません"}}, "ko": {"stringUnit": {"state": "translated", "value": "Pi를 발견했습니다. 관리형 브라우저 실행은 아직 활성화되지 않았습니다"}}}},
+    "%@ wants to:" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ が次の許可を求めています:"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@에서 다음을 요청합니다:"
+          }
+        }
+      }
+    },
+    "%@; login unknown until launch" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@、起動までログイン状態は不明です"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@; 실행 전에는 로그인 상태를 알 수 없음"
+          }
+        }
+      }
+    },
+    "%lld panes" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld pane"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld panes"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 個の pane"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "pane %lld개"
+          }
+        }
+      }
+    },
+    "%lld tabs" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld tab"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld tabs"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 個の tab"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tab %lld개"
+          }
+        }
+      }
+    },
+    "1Password app" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1Password app"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1Password アプリ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1Password 앱"
+          }
+        }
+      }
+    },
+    "1Password needs desktop CLI integration enabled by you; vendor approval may appear. Bitwarden needs a previously signed-in CLI context. Complete login, SSO and 2FA externally first. Node is required only by CLI distributions that need it." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1Password needs desktop CLI integration enabled by you; vendor approval may appear. Bitwarden needs a previously signed-in CLI context. Complete login, SSO and 2FA externally first. Node is required only by CLI distributions that need it."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1Passwordは利用者によるデスクトップCLI連携の有効化が必要です。ベンダーの承認が表示される場合があります。Bitwardenはログイン済みCLI設定が必要です。ログイン、SSO、2FAは外部で先に完了してください。Nodeは必要なCLI配布版のみの前提です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1Password는 사용자가 데스크톱 CLI 연동을 활성화해야 하며 공급업체 승인이 표시될 수 있습니다. Bitwarden은 이미 로그인된 CLI 설정이 필요합니다. 로그인, SSO, 2FA는 먼저 외부에서 완료하세요. Node는 이를 요구하는 CLI 배포판에만 필요합니다."
+          }
+        }
+      }
+    },
+    "A session name starts with a letter or digit and uses only letters, digits, \".\", \"_\" and \"-\", up to 64 characters." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "セッション名は英字または数字で始め、英字、数字、「.」「_」「-」のみを使って64文字以内で入力してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "세션 이름은 영문자나 숫자로 시작해야 하며, 영문자, 숫자, \".\", \"_\", \"-\"만 사용해 64자까지 쓸 수 있습니다."
+          }
+        }
+      }
+    },
+    "About agent integration" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "About agent integration"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェント連携について"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "에이전트 연결 안내"
+          }
+        }
+      }
+    },
+    "About Shepherd Browser" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "About Shepherd Browser"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd Browser について"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd Browser 안내"
+          }
+        }
+      }
+    },
+    "Account ID" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Account ID"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アカウントID"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "계정 ID"
+          }
+        }
+      }
+    },
+    "Account or server mismatch. No connection was accepted." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Account or server mismatch. No connection was accepted."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アカウントまたはサーバーが一致しません。接続は受け入れられませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "계정 또는 서버가 일치하지 않습니다. 연결을 승인하지 않았습니다."
+          }
+        }
+      }
+    },
+    "Active" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アクティブ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "활성"
+          }
+        }
+      }
+    },
+    "Add a machine in Settings." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定でマシンを追加してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "설정에서 머신을 추가하십시오."
+          }
+        }
+      }
+    },
+    "Add Machine" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マシンを追加"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "머신 추가"
+          }
+        }
+      }
+    },
+    "Add Machine…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マシンを追加…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "머신 추가…"
+          }
+        }
+      }
+    },
+    "Advanced" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Advanced"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "詳細設定"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "고급 설정"
+          }
+        }
+      }
+    },
+    "Agent connected; user input is also allowed" : {
+
+    },
+    "Agent controlling this browser" : {
+
+    },
+    "Agent launch failed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェントの起動に失敗しました"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "에이전트 실행 실패"
+          }
+        }
+      }
+    },
+    "Agent ready; browser not connected" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェント準備完了、ブラウザー未接続"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "에이전트 준비됨; 브라우저 미연결"
+          }
+        }
+      }
+    },
+    "Agents" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent"
+          }
+        }
+      }
+    },
+    "Agents already running get the browser once they are restarted." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "すでに実行中の agent は、再起動するとブラウザを使えるようになります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이미 실행 중인 agent는 다시 시작해야 브라우저를 쓸 수 있습니다."
+          }
+        }
+      }
+    },
+    "All Workspaces" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "すべての workspace"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "모든 workspace"
+          }
+        }
+      }
+    },
+    "Allow" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "許可"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "허용"
+          }
+        }
+      }
+    },
+    "An existing global Shepherd registration must be removed explicitly before session-only integration can be prepared." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An existing global Shepherd registration must be removed explicitly before session-only integration can be prepared."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "セッション専用連携を準備する前に、既存のグローバルな Shepherd 登録を明示的に削除してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "세션 전용 연결을 준비하려면 기존 Shepherd 전역 등록을 명시적으로 제거해야 합니다."
+          }
+        }
+      }
+    },
+    "An in-app pane browser with experimental agent integration and existing-agent resume. Codex 0.160.1/0.154 SessionStart reporting is first-turn-deferred; immediate idle resume confirmation remains a known limitation." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An in-app pane browser with experimental agent integration and existing-agent resume. Codex 0.160.1/0.154 SessionStart reporting is first-turn-deferred; immediate idle resume confirmation remains a known limitation."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アプリ内のペインブラウザです。エージェント連携と既存エージェントの再開は実験的機能です。Codex 0.160.1/0.154 の SessionStart の報告は最初のターンまで遅延し、アイドル状態で再開した直後の確認には既知の制限があります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "앱 안의 pane 브라우저입니다. 에이전트 연동과 기존 에이전트 재개는 실험적 기능입니다. Codex 0.160.1/0.154의 SessionStart 보고는 첫 턴까지 지연되며, 유휴 상태에서 재개한 직후의 확인에는 알려진 제한이 있습니다."
+          }
+        }
+      }
+    },
+    "An in-app pane browser. Codex resume confirmation may wait until the first user turn; live agents are never restarted automatically." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An in-app pane browser. Codex resume confirmation may wait until the first user turn; live agents are never restarted automatically."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ペインに付属するアプリ内ブラウザです。Codex の再開確認は最初のユーザー入力まで遅れることがあります。実行中のエージェントを自動で再起動しません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "pane에 연결되는 앱 내 브라우저입니다. Codex 재개 확인은 첫 사용자 입력까지 늦어질 수 있으며, 실행 중인 에이전트를 자동으로 재시작하지 않습니다."
+          }
+        }
+      }
+    },
+    "Apply" : {
+      "comment" : "A button that applies changes to a browser port",
+      "isCommentAutoGenerated" : true
+    },
+    "Apply Injection Mode" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定方式を適用"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "설정 방식 적용"
+          }
+        }
+      }
+    },
+    "Approve one request" : {
+      "comment" : "A button that approves a single password request.",
+      "isCommentAutoGenerated" : true
+    },
+    "Approve this account/item password for this pane and exact URL only. One request within 2 minutes. No item listing is performed." : {
+      "comment" : "A description of the functionality of the approve button.",
+      "isCommentAutoGenerated" : true
+    },
+    "Authenticate with the 1Password app." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Authenticate with the 1Password app."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1Password アプリで認証します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1Password 앱으로 인증합니다."
+          }
+        }
+      }
+    },
+    "Authentication" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "認証"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "인증"
+          }
+        }
+      }
+    },
+    "Authentication method" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Authentication method"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "認証方法"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "인증 방식"
+          }
+        }
+      }
+    },
+    "Back" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "戻る"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "뒤로"
+          }
+        }
+      }
+    },
+    "Back to Machines" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マシン一覧に戻る"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "머신 목록으로 돌아가기"
+          }
+        }
+      }
+    },
+    "Bitwarden master password" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bitwarden master password"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bitwardenマスターパスワード"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bitwarden 마스터 비밀번호"
+          }
+        }
+      }
+    },
+    "Bitwarden server URL (HTTPS, exact status URL)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bitwarden server URL (HTTPS, exact status URL)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BitwardenサーバーURL（HTTPS、statusと完全一致）"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bitwarden 서버 URL (HTTPS, status URL과 정확히 일치)"
+          }
+        }
+      }
+    },
+    "Block other browser tools" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Block other browser tools"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "他のブラウザツールをブロック"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다른 브라우저 도구 차단"
+          }
+        }
+      }
+    },
+    "Blocked" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "応答待ち"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "응답 대기"
+          }
+        }
+      }
+    },
+    "Browser" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ブラウザ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "브라우저"
+          }
+        }
+      }
+    },
+    "Browser agent launching is unavailable here. Shell tabs remain available." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ここではブラウザーエージェントを起動できません。シェルタブは利用できます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "여기서는 브라우저 에이전트를 실행할 수 없습니다. 셸 탭은 사용할 수 있습니다."
+          }
+        }
+      }
+    },
+    "Browser Agents (Experimental)" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Browser Agents (Experimental)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ブラウザエージェント（実験的機能）"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "브라우저 에이전트 (실험적 기능)"
+          }
+        }
+      }
+    },
+    "Browser cleanup could not be confirmed. Quit was canceled to preserve browser data." : {
+      "comment" : "Alert message when browser cleanup fails.",
+      "isCommentAutoGenerated" : true
+    },
+    "Browser connected" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ブラウザー接続済み"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "브라우저 연결됨"
+          }
+        }
+      }
+    },
+    "Browser injected; not connected" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ブラウザー設定済み、未接続"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "브라우저 설정됨; 미연결"
+          }
+        }
+      }
+    },
+    "Browser injection" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ブラウザーの設定方式"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "브라우저 설정 방식"
+          }
+        }
+      }
+    },
+    "Browser injection missing" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ブラウザー設定がありません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "브라우저 설정이 누락됨"
+          }
+        }
+      }
+    },
+    "Browser MCP servers to block" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Browser MCP servers to block"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ブロックするブラウザ MCP サーバー"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "차단할 브라우저 MCP 서버"
+          }
+        }
+      }
+    },
+    "Browser status unknown" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ブラウザーの状態は不明です"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "브라우저 상태 알 수 없음"
+          }
+        }
+      }
+    },
+    "BrowserTab.Untitled" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Tab"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新規タブ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새 탭"
+          }
+        }
+      }
+    },
+    "Built-in Personal, Private, Employee and default Shared vaults cannot be granted to a Service Account. Use a separate vault. Shepherd does not create accounts or change provider permissions." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Built-in Personal, Private, Employee and default Shared vaults cannot be granted to a Service Account. Use a separate vault. Shepherd does not create accounts or change provider permissions."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "組み込みの Personal・Private・Employee および既定の Shared 保管庫は対象外です。別の保管庫を使用してください。Shepherd はアカウント作成や提供元の権限変更を行いません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "기본 Personal·Private·Employee 및 기본 Shared Vault는 대상이 아닙니다. 별도 Vault를 사용하세요. Shepherd는 계정을 만들거나 Provider 권한을 변경하지 않습니다."
+          }
+        }
+      }
+    },
+    "Cancel" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "キャンセル"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "취소"
+          }
+        }
+      }
+    },
+    "Cancel Connection" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel Connection"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続をキャンセル"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결 취소"
+          }
+        }
+      }
+    },
+    "Change shared host agent configuration?" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共有ホストのエージェント設定を変更しますか？"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "공유 호스트의 에이전트 설정을 바꿀까요?"
+          }
+        }
+      }
+    },
+    "Changes you made may not be saved." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "加えた変更は保存されない可能性があります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "변경한 내용이 저장되지 않을 수 있습니다."
+          }
+        }
+      }
+    },
+    "Check for updates automatically" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アップデートを自動的に確認"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "자동으로 업데이트 확인"
+          }
+        }
+      }
+    },
+    "Check for Updates…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アップデートを確認…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "업데이트 확인…"
+          }
+        }
+      }
+    },
+    "Check Now" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今すぐ確認"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "지금 확인"
+          }
+        }
+      }
+    },
+    "Check Prerequisites Again" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "必要条件を再確認"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "필수 조건 다시 확인"
+          }
+        }
+      }
+    },
+    "Checking %@…" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ を確認中…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 확인 중…"
+          }
+        }
+      }
+    },
+    "Checking the explicit account context…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Checking the explicit account context…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "指定されたアカウント設定を確認中…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "명시적 계정 설정 확인 중…"
+          }
+        }
+      }
+    },
+    "Checking…" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "確認中…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "확인 중…"
+          }
+        }
+      }
+    },
+    "Choose a Password Manager" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose a Password Manager"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "パスワードマネージャーを選択"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "비밀번호 관리자 선택"
+          }
+        }
+      }
+    },
+    "Choose your official CLI and its configuration explicitly. No installation, login or vendor trust-setting changes are performed." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose your official CLI and its configuration explicitly. No installation, login or vendor trust-setting changes are performed."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "公式 CLI とその設定を明示的に指定してください。インストール・ログイン・提供元の信頼設定の変更は行いません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "공식 CLI와 설정 위치를 직접 지정하세요. 설치·로그인·Provider 신뢰 설정 변경은 수행하지 않습니다."
+          }
+        }
+      }
+    },
+    "Choose your official CLI and its existing authenticated configuration explicitly. No installation, login, account discovery, or vendor trust-setting changes are performed." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose your official CLI and its existing authenticated configuration explicitly. No installation, login, account discovery, or vendor trust-setting changes are performed."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "公式CLIと認証済みの既存設定を明示的に選択してください。インストール、ログイン、アカウント検索、ベンダー信頼設定の変更は行いません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "공식 CLI와 기존 인증된 설정을 명시적으로 선택하세요. 설치, 로그인, 계정 검색 또는 공급업체 신뢰 설정 변경을 수행하지 않습니다."
+          }
+        }
+      }
+    },
+    "Choose…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選択…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "선택…"
+          }
+        }
+      }
+    },
+    "Claude Code" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Claude Code"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Claude Code"
+          }
+        }
+      }
+    },
+    "Claude uses a session-local skill plugin. Codex uses session-local MCP and instructions; this is not native skill registration." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Claude uses a session-local skill plugin. Codex uses session-local MCP and instructions; this is not native skill registration."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Claude はセッション専用のスキルプラグインを使用します。Codex はセッション専用の MCP と指示を使用し、ネイティブのスキル登録ではありません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Claude는 세션 전용 스킬 플러그인을 사용합니다. Codex는 세션 전용 MCP와 지침을 사용하며, 네이티브 스킬 등록은 아닙니다."
+          }
+        }
+      }
+    },
+    "Clear" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "消去"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "지우기"
+          }
+        }
+      }
+    },
+    "CLI capability unsupported; update the CLI" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CLIの機能が未対応です。CLIを更新してください"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CLI 기능 미지원; CLI를 갱신하세요"
+          }
+        }
+      }
+    },
+    "CLI missing; install it on This Mac" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CLIがありません。このMacにインストールしてください"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CLI 없음; 이 Mac에 설치하세요"
+          }
+        }
+      }
+    },
+    "CLI targets: op 2.32.0 / bw 2025.11.0. Installed CLI availability is a prerequisite, not vendor E2E qualification." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CLI targets: op 2.32.0 / bw 2025.11.0. Installed CLI availability is a prerequisite, not vendor E2E qualification."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CLI対象: op 2.32.0 / bw 2025.11.0。CLIの存在は前提条件であり、ベンダーE2E検証ではありません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CLI 대상: op 2.32.0 / bw 2025.11.0. CLI 설치 여부는 사전 조건이며 공급업체 E2E 검증이 아닙니다."
+          }
+        }
+      }
+    },
+    "Close “%@”?" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」を閉じますか?"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "‘%@’을(를) 닫겠습니까?"
+          }
+        }
+      }
+    },
+    "Close Browser" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ブラウザを閉じる"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "브라우저 닫기"
+          }
+        }
+      }
+    },
+    "Close Browser Tab" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "タブを閉じる"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "탭 닫기"
+          }
+        }
+      }
+    },
+    "Close Pane" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "pane を閉じる"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "pane 닫기"
+          }
+        }
+      }
+    },
+    "Close Tab" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tab を閉じる"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tab 닫기"
+          }
+        }
+      }
+    },
+    "Codex" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Codex"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Codex"
+          }
+        }
+      }
+    },
+    "Collapsed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "折りたたみ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "접힘"
+          }
+        }
+      }
+    },
+    "Comma-separated names from your agent's MCP configuration. This does not rename Shepherd's MCP server." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comma-separated names from your agent's MCP configuration. This does not rename Shepherd's MCP server."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェントの MCP 設定にある名前をコンマで区切って指定します。Shepherd の MCP サーバー名を変更するものではありません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "에이전트의 MCP 설정에 있는 이름을 쉼표로 구분해 입력합니다. Shepherd MCP 서버의 이름을 바꾸는 설정이 아닙니다."
+          }
+        }
+      }
+    },
+    "Competing browser suppression is off by default. Changes affect future preparation; running agents are not restarted." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "他のブラウザーツールはデフォルトでは無効にしません。変更は次回の準備から適用され、実行中のエージェントは再起動しません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다른 브라우저 도구는 기본적으로 끄지 않습니다. 변경 사항은 다음 준비부터 적용되며 실행 중인 에이전트는 재시작하지 않습니다."
+          }
+        }
+      }
+    },
+    "Competing MCP server names (comma separated)" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "他のMCPサーバー名（カンマ区切り）"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다른 MCP 서버 이름 (쉼표로 구분)"
+          }
+        }
+      }
+    },
+    "Connect Explicitly" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connect Explicitly"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "明示的に接続"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "명시적으로 연결"
+          }
+        }
+      }
+    },
+    "Connect saves only these paths and account/server metadata in private settings. Password and session stay transient; the chosen vendor context may be read or written by its CLI." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connect saves only these paths and account/server metadata in private settings. Password and session stay transient; the chosen vendor context may be read or written by its CLI."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続時はパスとアカウント・サーバー情報のみを非公開設定に保存します。パスワードとセッションは一時的です。選択したベンダー設定はCLIにより読み書きされる場合があります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결 시 경로와 계정/서버 메타데이터만 비공개 설정에 저장됩니다. 비밀번호와 세션은 일시적으로만 유지되며 선택한 공급업체 설정은 CLI가 읽거나 쓸 수 있습니다."
+          }
+        }
+      }
+    },
+    "Connect…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connect…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결…"
+          }
+        }
+      }
+    },
+    "Connected agents will lose browser access. Their terminal processes will keep running." : {
+      "comment" : "Alert message when the user is about to quit while there are browser agents connected.",
+      "isCommentAutoGenerated" : true
+    },
+    "Connected to the explicit account. This does not verify item access or browser fill." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connected to the explicit account. This does not verify item access or browser fill."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "指定されたアカウントに接続しました。アイテムアクセスやブラウザー入力の検証ではありません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "명시된 계정에 연결되었습니다. 항목 접근이나 브라우저 입력을 검증한 것은 아닙니다."
+          }
+        }
+      }
+    },
+    "Connecting…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続中…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결 중…"
+          }
+        }
+      }
+    },
+    "Connection closed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続が閉じられました"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결이 닫힘"
+          }
+        }
+      }
+    },
+    "Connection Failed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続できませんでした"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결 실패"
+          }
+        }
+      }
+    },
+    "Connection failed. Sensitive command output is not displayed. Retry only after checking the official vendor setup." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connection failed. Sensitive command output is not displayed. Retry only after checking the official vendor setup."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続に失敗しました。機密コマンド出力は表示しません。公式ベンダー設定を確認してから再試行してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결에 실패했습니다. 민감한 명령 출력은 표시하지 않습니다. 공식 공급업체 설정을 확인한 후에만 다시 시도하세요."
+          }
+        }
+      }
+    },
+    "Connection refused" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続が拒否されました"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결이 거부됨"
+          }
+        }
+      }
+    },
+    "Connection reset" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続がリセットされました"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결이 재설정됨"
+          }
+        }
+      }
+    },
+    "Connection setup is not implemented yet. 1Password requires a user-configured official op CLI and desktop integration; Bitwarden requires a user-configured official bw CLI. Node is an external prerequisite only for CLI distributions that require it. Nothing is installed or signed in automatically." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connection setup is not implemented yet. 1Password requires a user-configured official op CLI and desktop integration; Bitwarden requires a user-configured official bw CLI. Node is an external prerequisite only for CLI distributions that require it. Nothing is installed or signed in automatically."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続設定はまだ実装されていません。1Passwordにはユーザーが設定した公式op CLIとデスクトップ連携、Bitwardenにはユーザーが設定した公式bw CLIが必要です。Nodeは必要とするCLI配布形態でのみ外部の前提条件です。自動インストールやログインは行いません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결 설정은 아직 구현되지 않았습니다. 1Password에는 사용자가 설정한 공식 op CLI와 데스크톱 연동이, Bitwarden에는 사용자가 설정한 공식 bw CLI가 필요합니다. Node는 이를 요구하는 CLI 배포판에만 외부 사전 요건입니다. 자동 설치나 로그인은 하지 않습니다."
+          }
+        }
+      }
+    },
+    "Connection setup is open in another window." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connection setup is open in another window."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続設定は別のウインドウで開いています。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다른 창에서 연결 설정이 열려 있습니다."
+          }
+        }
+      }
+    },
+    "Continue" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Continue"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "続ける"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "계속"
+          }
+        }
+      }
+    },
+    "Copied" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "コピーしました"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "복사됨"
+          }
+        }
+      }
+    },
+    "Copy Command" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "コマンドをコピー"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "명령어 복사"
+          }
+        }
+      }
+    },
+    "Could not inspect" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "確認できませんでした"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "확인할 수 없음"
+          }
+        }
+      }
+    },
+    "Could not quit safely" : {
+      "comment" : "Alert title when the app fails to quit cleanly.",
+      "isCommentAutoGenerated" : true
+    },
+    "Could not resume agent" : {
+      "comment" : "Title of an alert that appears when an error occurs while resuming an agent.",
+      "isCommentAutoGenerated" : true
+    },
+    "Couldn't check %@: %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ を確認できませんでした: %2$@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@을(를) 확인할 수 없습니다: %2$@"
+          }
+        }
+      }
+    },
+    "Couldn't Close" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "閉じられませんでした"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "닫을 수 없음"
+          }
+        }
+      }
+    },
+    "Couldn't connect to %@: %@." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ に接続できませんでした: %2$@。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@에 연결할 수 없습니다: %2$@."
+          }
+        }
+      }
+    },
+    "Couldn't connect to %@." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ に接続できませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@에 연결할 수 없습니다."
+          }
+        }
+      }
+    },
+    "Couldn't find %@: the name doesn't resolve." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ が見つかりません。名前を解決できません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 호스트를 찾을 수 없습니다. 이름을 조회할 수 없습니다."
+          }
+        }
+      }
+    },
+    "Couldn't reach herdr.sock: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr.sock に接続できません: %@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr.sock에 연결할 수 없습니다: %@"
+          }
+        }
+      }
+    },
+    "Couldn't register the browser tools" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ブラウザツールを登録できませんでした"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "브라우저 도구를 등록할 수 없음"
+          }
+        }
+      }
+    },
+    "Couldn't Rename" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "名前を変更できませんでした"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이름을 변경할 수 없음"
+          }
+        }
+      }
+    },
+    "Couldn't Save Machine" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マシンを保存できませんでした"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "머신을 저장할 수 없음"
+          }
+        }
+      }
+    },
+    "Couldn't set up: %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "セットアップできませんでした: %@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "설정할 수 없습니다: %@"
+          }
+        }
+      }
+    },
+    "Create a Service Account with the required Vault permissions in 1Password. Use read-only permissions where possible. The token stays in memory and must be entered again after disconnect or restart." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create a Service Account with the required Vault permissions in 1Password. Use read-only permissions where possible. The token stays in memory and must be entered again after disconnect or restart."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1Password で必要な保管庫の権限を持つ Service Account を作成してください。可能な限り読み取り専用にします。トークンはメモリにのみ保持し、切断・再起動後は再入力が必要です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1Password에서 필요한 Vault 권한을 가진 Service Account를 만드세요. 가능한 한 읽기 전용 권한을 사용하세요. 토큰은 메모리에만 유지하며 연결 해제·재시작 후 다시 입력해야 합니다."
+          }
+        }
+      }
+    },
+    "Credential approval" : {
+      "comment" : "A heading for a credential approval screen.",
+      "isCommentAutoGenerated" : true
+    },
+    "Credential broker unavailable. Connection is not browser authorization." : {
+      "comment" : "A message displayed when a connection is not browser-based.",
+      "isCommentAutoGenerated" : true
+    },
+    "Diagnostics" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diagnostics"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "診断"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "문제 진단"
+          }
+        }
+      }
+    },
+    "Disable competing browser tools for Shepherd launches" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherdで起動する際に他のブラウザーツールを無効にする"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd로 실행할 때 다른 브라우저 도구 끄기"
+          }
+        }
+      }
+    },
+    "Disconnect browser agents and quit?" : {
+      "comment" : "Alert message when quitting with browser agents connected.",
+      "isCommentAutoGenerated" : true
+    },
+    "Don't Allow" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "許可しない"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "허용 안 함"
+          }
+        }
+      }
+    },
+    "Done" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完了"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "완료"
+          }
+        }
+      }
+    },
+    "Download multiple files" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "複数ファイルのダウンロード"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "여러 파일 다운로드"
+          }
+        }
+      }
+    },
+    "Each pane can have a browser of its own, which stays with the pane." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "pane ごとに専用のブラウザを開けます。ブラウザは pane を閉じるまで保たれます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "pane마다 브라우저를 따로 열 수 있고, 그 브라우저는 pane이 닫힐 때까지 유지됩니다."
+          }
+        }
+      }
+    },
+    "Edit files on this Mac" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この Mac のファイルの編集"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Mac의 파일 편집"
+          }
+        }
+      }
+    },
+    "Enable desktop CLI integration yourself. Vendor approval may appear. This method uses your account permissions." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable desktop CLI integration yourself. Vendor approval may appear. This method uses your account permissions."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "デスクトップアプリの CLI 連携を有効にしてください。提供元の承認画面が表示される場合があります。この方法はアカウントの権限を使用します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "데스크톱 앱의 CLI 연동을 직접 활성화하세요. Provider 승인 화면이 나타날 수 있으며, 이 방식은 계정에 부여된 권한을 사용합니다."
+          }
+        }
+      }
+    },
+    "Enter a valid Service Account token. No other authentication method will be tried." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enter a valid Service Account token. No other authentication method will be tried."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有効な Service Account トークンを入力してください。他の認証方法には切り替えません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "유효한 Service Account 토큰을 입력하세요. 다른 인증 방식으로 전환하지 않습니다."
+          }
+        }
+      }
+    },
+    "Enter valid absolute paths, runtime PATH, account ID and the required HTTPS Bitwarden server URL." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enter valid absolute paths, runtime PATH, account ID and the required HTTPS Bitwarden server URL."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有効な絶対パス、実行用PATH、アカウントIDと必須のHTTPS BitwardenサーバーURLを入力してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "유효한 절대 경로, 런타임 PATH, 계정 ID 및 필수 HTTPS Bitwarden 서버 URL을 입력하세요."
+          }
+        }
+      }
+    },
+    "Every pane in the tab is closed, and whatever runs in them — agents included — is ended." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tab 内のすべての pane が閉じられ、その中で実行中のものは agent も含めてすべて終了します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tab 안의 모든 pane이 닫히고, 그 안에서 실행 중인 것은 agent를 포함해 모두 종료됩니다."
+          }
+        }
+      }
+    },
+    "Exact HTTPS POST URL" : {
+      "comment" : "A label for the exact URL of the website to which the password is to be posted.",
+      "isCommentAutoGenerated" : true
+    },
+    "Expanded" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "展開"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "펼쳐짐"
+          }
+        }
+      }
+    },
+    "Experimental Features" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Experimental Features"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "実験的機能"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "실험적 기능"
+          }
+        }
+      }
+    },
+    "Explicit HOME directory" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Explicit HOME directory"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "明示的なHOMEディレクトリ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "명시적 HOME 디렉터리"
+          }
+        }
+      }
+    },
+    "Filter" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "フィルタ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "필터"
+          }
+        }
+      }
+    },
+    "Filter by Workspace" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "workspace で絞り込む"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "workspace로 필터"
+          }
+        }
+      }
+    },
+    "Form field name" : {
+      "comment" : "A label for the form field name.",
+      "isCommentAutoGenerated" : true
+    },
+    "Forward" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "進む"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "앞으로"
+          }
+        }
+      }
+    },
+    "Generate New Key" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新しい鍵を生成"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새 키 생성"
+          }
+        }
+      }
+    },
+    "Global CLI settings and skill folders are not modified. Running agents are not restarted automatically." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Global CLI settings and skill folders are not modified. Running agents are not restarted automatically."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "グローバルな CLI 設定やスキルフォルダは変更しません。実行中のエージェントを自動で再起動することもありません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "전역 CLI 설정과 스킬 폴더는 변경하지 않습니다. 실행 중인 에이전트를 자동으로 재시작하지 않습니다."
+          }
+        }
+      }
+    },
+    "Global registration (explicit alternative)" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "グローバル登録（明示的な代替方式）"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "전역 등록 (명시적 대안)"
+          }
+        }
+      }
+    },
+    "Global registrations need an explicit update before launching." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "起動する前にグローバル登録を明示的に更新してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "실행하기 전에 전역 등록을 명시적으로 갱신해야 합니다."
+          }
+        }
+      }
+    },
+    "Group by Tab" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tab ごとにまとめる"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tab별로 묶기"
+          }
+        }
+      }
+    },
+    "herdr exited with status %lld." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr がステータス %lld で終了しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr가 상태 %lld(으)로 종료되었습니다."
+          }
+        }
+      }
+    },
+    "herdr.sock closed the connection without responding" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr.sock が応答せずに接続を閉じました"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr.sock이 응답 없이 연결을 닫았습니다"
+          }
+        }
+      }
+    },
+    "herdr.sock's path is too long for a Unix domain socket" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr.sock のパスが Unix ドメインソケットには長すぎます"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr.sock 경로가 Unix 도메인 소켓에 쓰기에는 너무 깁니다"
+          }
+        }
+      }
+    },
+    "herdr's answer didn't name the new tab." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr の応答に新しい tab が含まれていませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr의 응답에 새 tab이 없습니다."
+          }
+        }
+      }
+    },
+    "Hide Browser" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ブラウザを隠す"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "브라우저 숨기기"
+          }
+        }
+      }
+    },
+    "Hide Browser (⌥⌘B)" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ブラウザを隠す (⌥⌘B)"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "브라우저 숨기기 (⌥⌘B)"
+          }
+        }
+      }
+    },
+    "Host unreachable" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストに到達できません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "호스트에 연결할 수 없음"
+          }
+        }
+      }
+    },
+    "Hostname" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホスト名"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "호스트 이름"
+          }
+        }
+      }
+    },
+    "Idle" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "待機中"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "대기 중"
+          }
+        }
+      }
+    },
+    "Install Bundled Runtime" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "同梱のランタイムをインストール"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "앱에 포함된 런타임 설치"
+          }
+        }
+      }
+    },
+    "Installed (offline)" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "インストール済み（オフライン）"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "설치됨 (오프라인)"
+          }
+        }
+      }
+    },
+    "Installed on %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ にインストール済み"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@에 설치됨"
+          }
+        }
+      }
+    },
+    "Installs the shepherd-browser skill from Bldg-7/shepherd on GitHub on the active machine, and registers its browser tools with Claude Code and Codex there. Agents started after that can use the browser Shepherd shows beside their pane." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub の Bldg-7/shepherd から shepherd-browser スキルをアクティブなマシンにインストールし、そのマシンの Claude Code と Codex にブラウザツールを登録します。その後に起動した agent は、Shepherd が pane の横に表示するブラウザを使えます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub의 Bldg-7/shepherd에서 shepherd-browser 스킬을 받아 활성 머신에 설치하고, 그 머신의 Claude Code와 Codex에 브라우저 도구를 등록합니다. 그 뒤에 시작한 agent는 Shepherd가 pane 옆에 표시하는 브라우저를 쓸 수 있습니다."
+          }
+        }
+      }
+    },
+    "Item ID" : {
+      "comment" : "A label for the item ID of a password.",
+      "isCommentAutoGenerated" : true
+    },
+    "Its SSH key or password is deleted from the Keychain. A key Shepherd generated can't be recovered: adding the machine again means authorizing a new key on it." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このマシンの SSH 鍵またはパスワードはキーチェーンから削除されます。Shepherd が生成した鍵は復元できないため、マシンを再度追加するにはそのマシンに新しい鍵を登録する必要があります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "키체인에서 이 머신의 SSH 키나 암호가 삭제됩니다. Shepherd가 생성한 키는 복구할 수 없으므로, 머신을 다시 추가하려면 해당 머신에 새 키를 등록해야 합니다."
+          }
+        }
+      }
+    },
+    "Key" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "鍵"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "키"
+          }
+        }
+      }
+    },
+    "Key files with more than one key aren't supported" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "複数の鍵を含む鍵ファイルには対応していません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "키가 두 개 이상 들어 있는 키 파일은 지원하지 않습니다"
+          }
+        }
+      }
+    },
+    "Key Source" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "鍵の用意"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "키 출처"
+          }
+        }
+      }
+    },
+    "Keychain error %d" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "キーチェーンエラー %d"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "키체인 오류 %d"
+          }
+        }
+      }
+    },
+    "Keychain error %d: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "キーチェーンエラー %1$d: %2$@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "키체인 오류 %1$d: %2$@"
+          }
+        }
+      }
+    },
+    "Know when you're using this Mac" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この Mac を使用中かどうかの確認"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Mac을 사용 중인지 확인"
+          }
+        }
+      }
+    },
+    "Know your location" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "位置情報の取得"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "위치 확인"
+          }
+        }
+      }
+    },
+    "Launch" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "起動"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "실행"
+          }
+        }
+      }
+    },
+    "Leave" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移動する"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "나가기"
+          }
+        }
+      }
+    },
+    "Leave it empty to call the pane by its title again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空欄にすると、pane は元のタイトルで表示されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "비워 두면 pane을 다시 원래 제목으로 표시합니다."
+          }
+        }
+      }
+    },
+    "Leave this page?" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このページから移動しますか?"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 페이지에서 나갈까요?"
+          }
+        }
+      }
+    },
+    "Listening on loopback port %lld. Authentication required." : {
+      "comment" : "A label at the bottom of the browser agent settings, showing the port on which the browser is listening.",
+      "isCommentAutoGenerated" : true
+    },
+    "Loading panes…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "pane を読み込み中…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "pane 불러오는 중…"
+          }
+        }
+      }
+    },
+    "Loading…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み込み中…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "불러오는 중…"
+          }
+        }
+      }
+    },
+    "Logged in, but the machine wouldn't open a channel to herdr." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ログインしましたが、マシンが herdr へのチャンネルを開きませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "로그인했지만 머신이 herdr로 가는 채널을 열어 주지 않았습니다."
+          }
+        }
+      }
+    },
+    "Loopback port" : {
+
+    },
+    "Machine" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マシン"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "머신"
+          }
+        }
+      }
+    },
+    "Machines" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マシン"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "머신"
+          }
+        }
+      }
+    },
+    "Make Active" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アクティブにする"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "활성화"
+          }
+        }
+      }
+    },
+    "Manage windows on all your displays" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "すべてのディスプレイのウインドウの管理"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "모든 디스플레이의 창 관리"
+          }
+        }
+      }
+    },
+    "Method" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "方式"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "방식"
+          }
+        }
+      }
+    },
+    "Mode changes require fresh inspection of every local session, with no pending or running agents or browser MCPs." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定方式を変更するには、すべてのローカルセッションを直近に確認し、待機中または実行中のエージェントやブラウザーMCPがないことが必要です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "설정 방식을 바꾸려면 모든 로컬 세션을 최근에 확인해야 하며, 대기 중이거나 실행 중인 에이전트 및 브라우저 MCP가 없어야 합니다."
+          }
+        }
+      }
+    },
+    "Name" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "名前"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이름"
+          }
+        }
+      }
+    },
+    "Name the new workspace and press Return. Left empty, herdr names it. It starts in the home folder of the machine." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新しい workspace の名前を入力して Return キーを押してください。空欄のままにすると herdr が名前を付けます。マシンのホームフォルダで開始します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새 workspace의 이름을 입력하고 Return 키를 누르십시오. 비워 두면 herdr가 이름을 붙입니다. 머신의 홈 폴더에서 시작합니다."
+          }
+        }
+      }
+    },
+    "Name the tab and press Return to open it. Left empty, herdr numbers it." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tab の名前を入力し、Return キーを押して開いてください。空欄のままにすると herdr が番号を付けます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tab 이름을 입력하고 Return 키를 눌러 여십시오. 비워 두면 herdr가 번호를 붙입니다."
+          }
+        }
+      }
+    },
+    "Network unreachable" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ネットワークに到達できません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "네트워크에 연결할 수 없음"
+          }
+        }
+      }
+    },
+    "New Browser Tab" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新規タブ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새 탭"
+          }
+        }
+      }
+    },
+    "New Tab" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新しい tab"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새 tab"
+          }
+        }
+      }
+    },
+    "New Tab (⌘T)" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新しい tab (⌘T)"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새 tab (⌘T)"
+          }
+        }
+      }
+    },
+    "New Tab…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新しい tab…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새 tab…"
+          }
+        }
+      }
+    },
+    "New Workspace" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新しい workspace"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새 workspace"
+          }
+        }
+      }
+    },
+    "New Workspace “%@”" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新しい workspace「%@」"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새 workspace ‘%@’"
+          }
+        }
+      }
+    },
+    "New Workspace…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新しい workspace…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새 workspace…"
+          }
+        }
+      }
+    },
+    "No Active Machine" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アクティブなマシンなし"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "활성 머신 없음"
+          }
+        }
+      }
+    },
+    "No answer from the setup script" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "セットアップスクリプトから応答がありません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "설정 스크립트에서 응답이 없음"
+          }
+        }
+      }
+    },
+    "No authenticated connection. Sign in using the official vendor tools in the selected configuration, then retry explicitly." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No authenticated connection. Sign in using the official vendor tools in the selected configuration, then retry explicitly."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "認証済み接続はありません。選択した設定で公式ツールを使用してログインし、明示的に再試行してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "인증된 연결이 없습니다. 선택한 설정에서 공식 공급업체 도구로 로그인한 후 명시적으로 다시 시도하세요."
+          }
+        }
+      }
+    },
+    "No Browser" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ブラウザなし"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "브라우저 없음"
+          }
+        }
+      }
+    },
+    "No Matches" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一致する項目なし"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "일치하는 항목 없음"
+          }
+        }
+      }
+    },
+    "No Pane Selected" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "pane が選択されていません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "선택한 pane 없음"
+          }
+        }
+      }
+    },
+    "No Panes" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "pane がありません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "pane 없음"
+          }
+        }
+      }
+    },
+    "No Selection" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選択項目なし"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "선택 항목 없음"
+          }
+        }
+      }
+    },
+    "No such file or directory" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ファイルまたはディレクトリがありません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "해당 파일이나 디렉터리가 없음"
+          }
+        }
+      }
+    },
+    "Node 20 or newer is required on This Mac. CLI capability checks do not verify login. Complete login in the CLI if agent readiness fails." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このMacにNode 20以降が必要です。CLIの機能確認ではログイン状態は確認しません。エージェントが準備できない場合はCLIでログインしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Mac에 Node 20 이상이 필요합니다. CLI 기능 확인으로는 로그인 여부를 알 수 없습니다. 에이전트가 준비되지 않으면 CLI에서 로그인하세요."
+          }
+        }
+      }
+    },
+    "Node 20 or newer required" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Node 20以降が必要です"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Node 20 이상 필요"
+          }
+        }
+      }
+    },
+    "Node.js was not found in the app's PATH or supported install locations. Node 20 or newer is required." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Node.js was not found in the app's PATH or supported install locations. Node 20 or newer is required."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アプリの PATH または対応するインストール先に Node.js が見つかりません。Node 20 以降が必要です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "앱의 PATH 또는 지원하는 설치 위치에서 Node.js를 찾지 못했습니다. Node 20 이상이 필요합니다."
+          }
+        }
+      }
+    },
+    "None" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "None"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "なし"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "없음"
+          }
+        }
+      }
+    },
+    "Not an OpenSSH PEM private key (expected -----BEGIN OPENSSH PRIVATE KEY-----)" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenSSH PEM 形式の秘密鍵ではありません(-----BEGIN OPENSSH PRIVATE KEY----- で始まる必要があります)"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenSSH PEM 개인 키가 아닙니다(-----BEGIN OPENSSH PRIVATE KEY-----로 시작해야 함)"
+          }
+        }
+      }
+    },
+    "Not checked" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not checked"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未確認"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "확인 전"
+          }
+        }
+      }
+    },
+    "Not configured. Selecting a manager does not connect or unlock it." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not configured. Selecting a manager does not connect or unlock it."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未設定です。選択しても接続やロック解除は行われません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "설정되지 않음. 관리자를 선택해도 연결하거나 잠금을 해제하지 않습니다."
+          }
+        }
+      }
+    },
+    "Not connected to herdr yet" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "まだ herdr に接続されていません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "아직 herdr에 연결되지 않았습니다"
+          }
+        }
+      }
+    },
+    "Not installed" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未インストール"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "설치되지 않음"
+          }
+        }
+      }
+    },
+    "Not installed on %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ にインストールされていません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@에 설치되지 않음"
+          }
+        }
+      }
+    },
+    "Not installed on this machine" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このマシンにはインストールされていません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 머신에 설치되어 있지 않음"
+          }
+        }
+      }
+    },
+    "Not trying again until you press Retry." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「再試行」を押すまで再接続しません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다시 시도를 누를 때까지 재시도하지 않습니다."
+          }
+        }
+      }
+    },
+    "Off" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Off"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オフ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "꺼짐"
+          }
+        }
+      }
+    },
+    "Official CLI executable" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Official CLI executable"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "公式CLI実行ファイル"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "공식 CLI 실행 파일"
+          }
+        }
+      }
+    },
+    "OK" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OK"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "확인"
+          }
+        }
+      }
+    },
+    "Only affects future Shepherd launches. Keeps agents from using competing browser tools; does not change global CLI settings." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Only affects future Shepherd launches. Keeps agents from using competing browser tools; does not change global CLI settings."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今後 Shepherd から起動するセッションだけに適用します。他のブラウザツールの使用を抑止し、グローバルな CLI 設定は変更しません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "앞으로 Shepherd에서 실행할 세션에만 적용합니다. 다른 브라우저 도구 사용을 막으며 전역 CLI 설정은 변경하지 않습니다."
+          }
+        }
+      }
+    },
+    "Only authentication method, paths and account/server metadata are saved. Passwords, tokens and sessions stay transient; the selected vendor context may be read or written by its CLI." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Only authentication method, paths and account/server metadata are saved. Passwords, tokens and sessions stay transient; the selected vendor context may be read or written by its CLI."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "認証方法・パス・アカウント／サーバー情報だけを保存します。パスワード・トークン・セッションは一時保持のみです。選択した設定は提供元の CLI が読み書きする場合があります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "인증 방식·경로·계정/서버 정보만 저장합니다. 비밀번호·토큰·세션은 일시적으로만 유지하며, 선택한 설정은 Provider CLI가 읽거나 쓸 수 있습니다."
+          }
+        }
+      }
+    },
+    "Open Browser" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ブラウザを開く"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "브라우저 열기"
+          }
+        }
+      }
+    },
+    "Open Settings" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定を開く"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "설정 열기"
+          }
+        }
+      }
+    },
+    "Packaged browser runtime" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "同梱のブラウザーランタイム"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "앱에 포함된 브라우저 런타임"
+          }
+        }
+      }
+    },
+    "Passphrase-encrypted keys aren't supported yet — use an unencrypted key" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "パスフレーズで暗号化された鍵にはまだ対応していません。暗号化されていない鍵を使用してください"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "암호문으로 암호화된 키는 아직 지원하지 않습니다. 암호화되지 않은 키를 사용하십시오"
+          }
+        }
+      }
+    },
+    "Password" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "パスワード"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "암호"
+          }
+        }
+      }
+    },
+    "Password Manager" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Password Manager"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "パスワードマネージャー"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "비밀번호 관리자"
+          }
+        }
+      }
+    },
+    "Paste an OpenSSH private key (PEM). It's stored in the Keychain, never in plain app storage." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenSSH の秘密鍵(PEM)を貼り付けてください。鍵は通常のアプリの保存領域ではなく、キーチェーンに保存されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenSSH 개인 키(PEM)를 붙여넣으십시오. 키는 일반 앱 저장소가 아닌 키체인에 저장됩니다."
+          }
+        }
+      }
+    },
+    "Paste Existing Key" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "既存の鍵を貼り付け"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "기존 키 붙여넣기"
+          }
+        }
+      }
+    },
+    "Per-session plugin (default)" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "セッションごとのプラグイン（デフォルト）"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "세션별 플러그인 (기본값)"
+          }
+        }
+      }
+    },
+    "Permission denied" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アクセス権がありません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "권한 없음"
+          }
+        }
+      }
+    },
+    "Port" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ポート"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "포트"
+          }
+        }
+      }
+    },
+    "Port must be between 1 and 65535." : {
+
+    },
+    "Port used only for authenticated browser connections on this Mac." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Port used only for authenticated browser connections on this Mac."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この Mac 内の認証済みブラウザ接続にのみ使うポートです。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Mac 내부의 인증된 브라우저 연결에만 사용하는 포트입니다."
+          }
+        }
+      }
+    },
+    "Preparation" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparation"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "準備状況"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "준비 상태"
+          }
+        }
+      }
+    },
+    "Preparation failed" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparation failed"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "準備に失敗しました"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "준비 실패"
+          }
+        }
+      }
+    },
+    "Prepared automatically for Shepherd sessions. Claude uses a session skill plugin; Codex receives MCP and instructions; Pi uses a session-only TUI extension and skill. Requires Node 20+ (Pi: 22.19+). Preparation does not verify login." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prepared automatically for Shepherd sessions. Claude uses a session skill plugin; Codex receives MCP and instructions; Pi uses a session-only TUI extension and skill. Requires Node 20+ (Pi: 22.19+). Preparation does not verify login."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd セッション用に自動準備します。Claude はスキルプラグイン、Codex は MCP と指示、Pi はセッション限定の TUI 拡張とスキルを使用します。Node 20 以降（Pi は 22.19 以降）が必要です。準備完了はログイン確認を意味しません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd 세션용으로 자동 준비합니다. Claude는 스킬 플러그인, Codex는 MCP와 지침, Pi는 세션 전용 TUI 확장과 스킬을 사용합니다. Node 20 이상(Pi는 22.19 이상)이 필요하며, 준비 완료는 로그인 확인을 의미하지 않습니다."
+          }
+        }
+      }
+    },
+    "Prepared automatically while Shepherd Browser is on. Only agents launched or explicitly resumed by Shepherd receive this integration." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prepared automatically while Shepherd Browser is on. Only agents launched or explicitly resumed by Shepherd receive this integration."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd Browser がオンの間に自動準備します。Shepherd から起動または明示的に再開したエージェントだけに連携を追加します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd Browser가 켜져 있으면 자동으로 준비합니다. Shepherd에서 실행하거나 명시적으로 재개한 에이전트에만 연결합니다."
+          }
+        }
+      }
+    },
+    "Preparing browser agent…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ブラウザーエージェントを準備中…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "브라우저 에이전트 준비 중…"
+          }
+        }
+      }
+    },
+    "Preparing…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparing…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "準備中…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "준비 중…"
+          }
+        }
+      }
+    },
+    "Profile" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プロファイル"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "프로필"
+          }
+        }
+      }
+    },
+    "Provider configuration directory" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Provider configuration directory"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プロバイダー設定ディレクトリ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "공급업체 설정 디렉터리"
+          }
+        }
+      }
+    },
+    "Quit" : {
+      "comment" : "Button title for quitting the app.",
+      "isCommentAutoGenerated" : true
+    },
+    "Read access confirmed; other permissions are not audited." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Read access confirmed; other permissions are not audited."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み取りアクセスを確認しました。他の権限は検証していません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "읽기 접근을 확인했습니다. 다른 권한은 검증하지 않았습니다."
+          }
+        }
+      }
+    },
+    "read failed: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み取りに失敗しました: %@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "읽기 실패: %@"
+          }
+        }
+      }
+    },
+    "Readable vaults" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Readable vaults"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み取り可能な保管庫"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "읽기 가능한 Vault"
+          }
+        }
+      }
+    },
+    "Refresh status" : {
+      "comment" : "A button that refreshes the status of a credential approval.",
+      "isCommentAutoGenerated" : true
+    },
+    "Registered" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登録済み"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "등록됨"
+          }
+        }
+      }
+    },
+    "Reload" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再読み込み"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새로고침"
+          }
+        }
+      }
+    },
+    "Remote browser agents are unavailable. Shell tabs remain available." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リモートのブラウザーエージェントはまだ利用できません。シェルタブは利用できます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "원격 브라우저 에이전트는 아직 사용할 수 없습니다. 셸 탭은 사용할 수 있습니다."
+          }
+        }
+      }
+    },
+    "Remote browser agents unavailable" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リモートのブラウザーエージェントは利用できません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "원격 브라우저 에이전트 사용 불가"
+          }
+        }
+      }
+    },
+    "Remove" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "削除"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "제거"
+          }
+        }
+      }
+    },
+    "Remove “%@”?" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」を削除しますか?"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "‘%@’을(를) 제거하겠습니까?"
+          }
+        }
+      }
+    },
+    "Remove %@…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ を削除…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 제거…"
+          }
+        }
+      }
+    },
+    "Remove…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "削除…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "제거…"
+          }
+        }
+      }
+    },
+    "Rename" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "名前を変更"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이름 변경"
+          }
+        }
+      }
+    },
+    "Rename Pane" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "pane の名前を変更"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "pane 이름 변경"
+          }
+        }
+      }
+    },
+    "Rename Pane…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "pane の名前を変更…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "pane 이름 변경…"
+          }
+        }
+      }
+    },
+    "Rename Tab" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tab の名前を変更"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tab 이름 변경"
+          }
+        }
+      }
+    },
+    "Rename Tab…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tab の名前を変更…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tab 이름 변경…"
+          }
+        }
+      }
+    },
+    "Required" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "必須"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "필수"
+          }
+        }
+      }
+    },
+    "Resources ready" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Resources ready"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リソース準備完了"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "리소스 준비 완료"
+          }
+        }
+      }
+    },
+    "Resume requires a fresh idle, interactive agent with a compatible session ID." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再開には、互換性のあるセッションIDを持ち、直近に確認した対話型エージェントが待機状態であることが必要です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "세션을 이어가려면 호환되는 세션 ID가 있는 대화형 에이전트가 최근 확인된 유휴 상태여야 합니다."
+          }
+        }
+      }
+    },
+    "Resume with Shepherd Browser (Experimental)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Resume with Shepherd Browser (Experimental)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd Browser で再開（実験的機能）"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd Browser로 재개 (실험적 기능)"
+          }
+        }
+      }
+    },
+    "Resume with Shepherd Browser is unavailable" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherdブラウザーでのセッション再開は利用できません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd 브라우저로 세션 이어가기를 사용할 수 없습니다"
+          }
+        }
+      }
+    },
+    "Retry" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再試行"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다시 시도"
+          }
+        }
+      }
+    },
+    "Retry Preparation" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retry Preparation"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "準備を再試行"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "준비 다시 시도"
+          }
+        }
+      }
+    },
+    "Review Advanced Settings" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Review Advanced Settings"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "詳細設定を確認"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "고급 설정 확인"
+          }
+        }
+      }
+    },
+    "Revoke approval" : {
+      "comment" : "A button that revokes approval of a credential.",
+      "isCommentAutoGenerated" : true
+    },
+    "Runtime PATH (absolute directories separated by colon)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Runtime PATH (absolute directories separated by colon)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "実行用PATH（絶対ディレクトリをコロンで区切る）"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "런타임 PATH (콜론으로 구분한 절대 디렉터리)"
+          }
+        }
+      }
+    },
+    "Runtime version: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ランタイムのバージョン: %@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "런타임 버전: %@"
+          }
+        }
+      }
+    },
+    "Safe idle-to-shell resume is unavailable with this herdr integration. Keep this session and launch a new browser agent explicitly." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このherdr連携では、待機状態からシェルへ安全に移行して再開できません。このセッションを保持し、新しいブラウザーエージェントを明示的に起動してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 herdr 연동에서는 유휴 상태에서 셸로 안전하게 전환해 세션을 이어갈 수 없습니다. 이 세션을 유지하고 새 브라우저 에이전트를 명시적으로 실행하세요."
+          }
+        }
+      }
+    },
+    "Save" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "저장"
+          }
+        }
+      }
+    },
+    "Search or enter address" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "検索またはアドレスを入力"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "검색어 또는 주소 입력"
+          }
+        }
+      }
+    },
+    "See what you copy to the clipboard" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "クリップボードにコピーした内容の読み取り"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "클립보드에 복사한 내용 보기"
+          }
+        }
+      }
+    },
+    "Select a pane to see its browser." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "pane を選択すると、その pane のブラウザが表示されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "pane을 선택하면 그 pane의 브라우저가 보입니다."
+          }
+        }
+      }
+    },
+    "Select a tab from the sidebar." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サイドバーから tab を選択してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사이드바에서 tab을 선택하십시오."
+          }
+        }
+      }
+    },
+    "Select an agent or a pane from the sidebar." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サイドバーから agent または pane を選択してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사이드바에서 agent나 pane을 선택하십시오."
+          }
+        }
+      }
+    },
+    "Selecting a manager does not connect or unlock it." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selecting a manager does not connect or unlock it."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選択だけでは接続やロック解除は行われません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "관리자 선택만으로 연결하거나 잠금을 해제하지 않습니다."
+          }
+        }
+      }
+    },
+    "Service Account token" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Service Account token"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Service Account トークン"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Service Account 토큰"
+          }
+        }
+      }
+    },
+    "Session" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "セッション"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "세션"
+          }
+        }
+      }
+    },
+    "Set Up" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "セットアップ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "설정"
+          }
+        }
+      }
+    },
+    "Set Up Again" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再セットアップ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다시 설정"
+          }
+        }
+      }
+    },
+    "Set Up Codex Plugin" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Codexプラグインを設定"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Codex 플러그인 설정"
+          }
+        }
+      }
+    },
+    "Settings" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "설정"
+          }
+        }
+      }
+    },
+    "Settings (⌘,)" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定(⌘,)"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "설정(⌘,)"
+          }
+        }
+      }
+    },
+    "Settings…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "설정…"
+          }
+        }
+      }
+    },
+    "Share a profile with other panes?" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ほかの pane とプロファイルを共有しますか?"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다른 pane과 프로필을 함께 쓸까요?"
+          }
+        }
+      }
+    },
+    "Shared with Other Panes" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ほかの pane と共有"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다른 pane과 공유"
+          }
+        }
+      }
+    },
+    "Shell" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "シェル"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "셸"
+          }
+        }
+      }
+    },
+    "Shepherd Browser (Experimental)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd Browser (Experimental)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd Browser（実験的機能）"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd Browser (실험적 기능)"
+          }
+        }
+      }
+    },
+    "Shepherd Browser cannot be disabled while an agent, browser connection, or launch is active, or activity cannot be confirmed. Wait until all local sessions are inactive and try again." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd Browser cannot be disabled while an agent, browser connection, or launch is active, or activity cannot be confirmed. Wait until all local sessions are inactive and try again."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェント、ブラウザ接続、起動処理が動作中の場合、または動作状況を確認できない場合は、Shepherd Browser をオフにできません。すべてのローカルセッションが非アクティブになるまで待ってから、もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "에이전트, 브라우저 연결, 실행 작업이 활성 상태이거나 활동 여부를 확인할 수 없으면 Shepherd Browser를 끌 수 없습니다. 모든 로컬 세션이 비활성 상태가 된 뒤 다시 시도하세요."
+          }
+        }
+      }
+    },
+    "Shepherd browser skill" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd ブラウザスキル"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd 브라우저 스킬"
+          }
+        }
+      }
+    },
+    "Shepherd generated a key on this device. Run this on %@ to authorize it:" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd がこのデバイスで鍵を生成しました。%@ で次のコマンドを実行して鍵を登録してください:"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd가 이 기기에서 키를 생성했습니다. %@에서 다음 명령어를 실행해 키를 등록하십시오:"
+          }
+        }
+      }
+    },
+    "Shepherd generated a key on this device. Run this on the machine to authorize it:" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd がこのデバイスで鍵を生成しました。そのマシンで次のコマンドを実行して鍵を登録してください:"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd가 이 기기에서 키를 생성했습니다. 해당 머신에서 다음 명령어를 실행해 키를 등록하십시오:"
+          }
+        }
+      }
+    },
+    "Shepherd session resources" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd session resources"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd セッション用リソース"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd 세션용 리소스"
+          }
+        }
+      }
+    },
+    "Show Browser" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ブラウザを表示"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "브라우저 보기"
+          }
+        }
+      }
+    },
+    "Show Browser (⌥⌘B)" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ブラウザを表示 (⌥⌘B)"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "브라우저 보기 (⌥⌘B)"
+          }
+        }
+      }
+    },
+    "Show Created Pane" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "作成したpaneを表示"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "생성한 pane 보기"
+          }
+        }
+      }
+    },
+    "Show Created Shell" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "作成したシェルを表示"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "생성한 셸 보기"
+          }
+        }
+      }
+    },
+    "Show each tab as one row, and all of its panes at once when it is selected." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tab を1行で表示し、選択するとその tab のすべての pane を一度に表示します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tab을 한 줄로 표시하고, 선택하면 그 tab의 pane을 모두 한 화면에 보여줍니다."
+          }
+        }
+      }
+    },
+    "Show Here" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ここに表示"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "여기에 표시"
+          }
+        }
+      }
+    },
+    "Show notifications" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知の表示"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "알림 표시"
+          }
+        }
+      }
+    },
+    "Shown in Another Window" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "別のウインドウで表示中"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다른 창에서 표시 중"
+          }
+        }
+      }
+    },
+    "Sign In" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サインイン"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "로그인"
+          }
+        }
+      }
+    },
+    "Sign in to %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ にサインイン"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@에 로그인"
+          }
+        }
+      }
+    },
+    "Sign in to the proxy server %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プロキシサーバ %@ にサインイン"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "프록시 서버 %@에 로그인"
+          }
+        }
+      }
+    },
+    "Skip" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skip"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スキップ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "건너뛰기"
+          }
+        }
+      }
+    },
+    "Stay" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "とどまる"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "머무르기"
+          }
+        }
+      }
+    },
+    "Stop" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "中止"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "중단"
+          }
+        }
+      }
+    },
+    "Stopping…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stopping…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停止中…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "종료 중…"
+          }
+        }
+      }
+    },
+    "Stored in the Keychain, never in plain app storage. Many hardened servers disable password login entirely — prefer Key when that's an option." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "パスワードは通常のアプリの保存領域ではなく、キーチェーンに保存されます。セキュリティを強化したサーバではパスワードによるログインが無効なことが多いため、可能であれば鍵を使用してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "암호는 일반 앱 저장소가 아닌 키체인에 저장됩니다. 보안이 강화된 서버는 암호 로그인을 아예 막아 두는 경우가 많으므로, 가능하면 키를 사용하십시오."
+          }
+        }
+      }
+    },
+    "Tab Name" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tab の名前"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tab 이름"
+          }
+        }
+      }
+    },
+    "Terminal session hasn't started yet" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ターミナルセッションはまだ開始されていません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "터미널 세션이 아직 시작되지 않았습니다"
+          }
+        }
+      }
+    },
+    "Terminal session was already started" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ターミナルセッションはすでに開始されています"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "터미널 세션이 이미 시작되었습니다"
+          }
+        }
+      }
+    },
+    "The active machine's panes and agents are listed in the main window." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アクティブなマシンの pane と agent はメインウインドウに表示されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "활성 머신의 pane과 agent는 메인 윈도우에 표시됩니다."
+          }
+        }
+      }
+    },
+    "The browser engine couldn't be loaded." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ブラウザエンジンを読み込めませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "브라우저 엔진을 불러오지 못했습니다."
+          }
+        }
+      }
+    },
+    "The browser engine didn't start. Another copy of Shepherd may be using the browser." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ブラウザエンジンを起動できませんでした。別の Shepherd がブラウザを使用している可能性があります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "브라우저 엔진이 시작되지 않았습니다. 다른 Shepherd가 브라우저를 쓰고 있을 수 있습니다."
+          }
+        }
+      }
+    },
+    "The browser needs a Mac with Apple silicon." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ブラウザは Apple シリコン搭載の Mac でのみ使えます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "브라우저는 Apple 실리콘 Mac에서만 쓸 수 있습니다."
+          }
+        }
+      }
+    },
+    "The command exited with status %lld." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "コマンドがステータス %lld で終了しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "명령이 상태 %lld(으)로 종료되었습니다."
+          }
+        }
+      }
+    },
+    "The connection closed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続が終了しました"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결이 종료되었습니다"
+          }
+        }
+      }
+    },
+    "The connection to the machine closed unexpectedly." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マシンとの接続が予期せず切断されました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "머신과의 연결이 예기치 않게 끊어졌습니다."
+          }
+        }
+      }
+    },
+    "The created pane was kept and selected. %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "作成したpaneを保持して選択しました。%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "생성한 pane을 유지하고 선택했습니다. %@"
+          }
+        }
+      }
+    },
+    "The created shell was kept and selected. %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "作成したシェルを保持して選択しました。%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "생성한 셸을 유지하고 선택했습니다. %@"
+          }
+        }
+      }
+    },
+    "The host command exceeded its deadline; the operation did not complete successfully." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストのコマンドが制限時間を超えました。操作は正常に完了していません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "호스트 명령이 제한 시간을 초과했습니다. 작업이 정상 완료되지 않았습니다."
+          }
+        }
+      }
+    },
+    "The key data is malformed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "鍵のデータが不正です"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "키 데이터의 형식이 잘못되었습니다"
+          }
+        }
+      }
+    },
+    "The machine didn't answer in time." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マシンから時間内に応答がありませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "머신이 제시간에 응답하지 않았습니다."
+          }
+        }
+      }
+    },
+    "The machine doesn't accept key logins." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このマシンは鍵によるログインを受け付けていません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 머신은 키 로그인을 허용하지 않습니다."
+          }
+        }
+      }
+    },
+    "The machine doesn't accept password logins. Set the machine up with a key instead." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このマシンはパスワードによるログインを受け付けていません。代わりに鍵を使うように設定してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 머신은 암호 로그인을 허용하지 않습니다. 대신 키를 사용하도록 머신을 설정하십시오."
+          }
+        }
+      }
+    },
+    "The machine doesn't accept this kind of login." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このマシンはこの方式のログインを受け付けていません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 머신은 이 방식의 로그인을 허용하지 않습니다."
+          }
+        }
+      }
+    },
+    "The machine turned the login down: the password is wrong, or the key isn't in that account's ~/.ssh/authorized_keys." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マシンがログインを拒否しました。パスワードが間違っているか、鍵がそのアカウントの ~/.ssh/authorized_keys に登録されていません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "머신이 로그인을 거부했습니다. 암호가 틀렸거나, 키가 해당 계정의 ~/.ssh/authorized_keys에 등록되어 있지 않습니다."
+          }
+        }
+      }
+    },
+    "The machine wasn't added because its credential couldn't be stored. %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "認証情報を保存できなかったため、マシンを追加できませんでした。%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "자격 증명을 저장할 수 없어 머신을 추가하지 못했습니다. %@"
+          }
+        }
+      }
+    },
+    "The page says:" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ページからのメッセージ:"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "페이지 메시지:"
+          }
+        }
+      }
+    },
+    "The panes open in herdr on this machine, and the agents in them, appear here." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このマシンの herdr で開いている pane と、その中の agent がここに表示されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 머신의 herdr에 열려 있는 pane과 그 안의 agent가 여기에 표시됩니다."
+          }
+        }
+      }
+    },
+    "The selected CLI is unavailable. Install and configure it yourself; nothing is installed automatically." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The selected CLI is unavailable. Install and configure it yourself; nothing is installed automatically."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選択したCLIは利用できません。利用者がインストール・設定してください。自動インストールは行いません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "선택한 CLI를 사용할 수 없습니다. 직접 설치하고 설정하세요. 자동으로 설치하지 않습니다."
+          }
+        }
+      }
+    },
+    "The Service Account identity or readable vaults changed. Existing approvals were revoked. Reconnect explicitly." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The Service Account identity or readable vaults changed. Existing approvals were revoked. Reconnect explicitly."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Service Account または読み取り可能な保管庫が変わりました。既存の承認を失効しました。再接続してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Service Account 또는 읽기 가능한 Vault가 변경되었습니다. 기존 승인을 폐기했습니다. 직접 다시 연결하세요."
+          }
+        }
+      }
+    },
+    "The Service Account's readable vaults could not be verified. No connection was accepted." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The Service Account's readable vaults could not be verified. No connection was accepted."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Service Account の読み取り可能な保管庫を確認できませんでした。接続は受け付けていません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Service Account가 읽을 수 있는 Vault를 확인하지 못했습니다. 연결을 승인하지 않았습니다."
+          }
+        }
+      }
+    },
+    "The token did not authenticate an active Service Account." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The token did not authenticate an active Service Account."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有効な Service Account として認証できませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "활성 Service Account로 인증되지 않았습니다."
+          }
+        }
+      }
+    },
+    "These vaults were reported as readable by the Service Account. This does not prove that write, share or vault-creation permissions are absent. Configure least privilege in 1Password." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "These vaults were reported as readable by the Service Account. This does not prove that write, share or vault-creation permissions are absent. Configure least privilege in 1Password."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Service Account が読み取り可能と報告した保管庫です。書き込み・共有・保管庫作成の権限がないことまでは証明しません。1Password 側で最小限の権限を設定してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Service Account가 읽을 수 있다고 보고한 Vault입니다. 쓰기·공유·Vault 생성 권한이 없다는 뜻은 아닙니다. 1Password에서 최소 권한을 설정하세요."
+          }
+        }
+      }
+    },
+    "This explicitly updates only Shepherd-owned registrations and skill links on This Mac. Plugin and global injection cannot be combined. Other settings are preserved." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このMacでShepherdが所有する登録とスキルリンクだけを明示的に更新します。プラグイン方式とグローバル方式は併用できません。他の設定は保持されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Mac에서 Shepherd가 소유한 등록 및 스킬 링크만 명시적으로 갱신합니다. 플러그인 방식과 전역 방식을 함께 사용할 수 없습니다. 다른 설정은 유지됩니다."
+          }
+        }
+      }
+    },
+    "This host's SSH key doesn't match the one we pinned on first connect (expected %@, got %@). This usually means the server was reinstalled — but it's also exactly what a man-in-the-middle attack looks like, so this connection was refused rather than silently trusting it." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このホストの SSH 鍵が、最初の接続時に固定した鍵と一致しません(期待値: %1$@、実際: %2$@)。通常はサーバの再インストールが原因ですが、中間者攻撃もまったく同じように見えるため、黙って信頼せずに接続を拒否しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 호스트의 SSH 키가 처음 연결할 때 고정한 키와 일치하지 않습니다(예상: %1$@, 실제: %2$@). 보통은 서버를 다시 설치해서 생기는 일이지만, 중간자 공격도 정확히 이렇게 보이므로 그대로 신뢰하지 않고 연결을 거부했습니다."
+          }
+        }
+      }
+    },
+    "This Mac" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このMac"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Mac"
+          }
+        }
+      }
+    },
+    "This Mac's own herdr session" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このMacの herdr セッション"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Mac의 herdr 세션"
+          }
+        }
+      }
+    },
+    "This machine's herdr is too old to list its workspaces." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このマシンの herdr は古いため、workspace の一覧を取得できません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 머신의 herdr는 버전이 낮아 workspace 목록을 가져올 수 없습니다."
+          }
+        }
+      }
+    },
+    "This Page Stopped Working" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ページが動作を停止しました"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "페이지가 멈췄습니다"
+          }
+        }
+      }
+    },
+    "This pane has a browser" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この pane にはブラウザがあります"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 pane에는 브라우저가 있습니다"
+          }
+        }
+      }
+    },
+    "This Pane Only" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この pane 専用"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 pane 전용"
+          }
+        }
+      }
+    },
+    "This pane's browser is open in another window." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この pane のブラウザは別のウインドウで開いています。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 pane의 브라우저가 다른 창에 열려 있습니다."
+          }
+        }
+      }
+    },
+    "This pane's own sign-ins and site data will be deleted." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この pane だけのサインイン情報とサイトデータは削除されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 pane에만 있던 로그인 정보와 사이트 데이터가 삭제됩니다."
+          }
+        }
+      }
+    },
+    "This session has no verified saved conversation in its current CLI configuration and folder. Send a message and wait for it to finish, then try Resume again. The original agent was not stopped." : {
+      "comment" : "Error message displayed when a saved conversation cannot be verified.",
+      "isCommentAutoGenerated" : true
+    },
+    "Timed out" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "タイムアウトしました"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "시간 초과"
+          }
+        }
+      }
+    },
+    "Too many open files" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開いているファイルが多すぎます"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "열린 파일이 너무 많음"
+          }
+        }
+      }
+    },
+    "Trying again automatically." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自動的に再接続します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "자동으로 다시 시도합니다."
+          }
+        }
+      }
+    },
+    "Turning this off preserves saved tabs, profiles, cookies, and runtime settings. An already initialized idle browser engine may remain resident until quit." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turning this off preserves saved tabs, profiles, cookies, and runtime settings. An already initialized idle browser engine may remain resident until quit."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オフにしても保存済みのタブ、プロファイル、Cookie、ランタイム設定は保持されます。初期化済みのアイドル状態のブラウザエンジンは、アプリを終了するまでメモリに残る場合があります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "꺼도 저장된 탭, 프로필, 쿠키, 런타임 설정은 보존됩니다. 이미 초기화된 유휴 브라우저 엔진은 앱을 종료할 때까지 메모리에 남아 있을 수 있습니다."
+          }
+        }
+      }
+    },
+    "Unknown" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不明"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "알 수 없음"
+          }
+        }
+      }
+    },
+    "Unlock failed or the context is locked. No vendor-global lock or signout was performed." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unlock failed or the context is locked. No vendor-global lock or signout was performed."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ロック解除に失敗したか設定がロック中です。ベンダー全体のロックやサインアウトは行っていません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "잠금 해제에 실패했거나 설정이 잠겨 있습니다. 공급업체 전체 잠금이나 로그아웃을 수행하지 않았습니다."
+          }
+        }
+      }
+    },
+    "Unsupported CLI version. Targets are op 2.32.0 and bw 2025.11.0; real vendor compatibility has not been verified." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unsupported CLI version. Targets are op 2.32.0 and bw 2025.11.0; real vendor compatibility has not been verified."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未対応のCLIバージョンです。対象はop 2.32.0とbw 2025.11.0です。実際のベンダー互換性は未検証です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "지원하지 않는 CLI 버전입니다. 대상은 op 2.32.0과 bw 2025.11.0이며 실제 공급업체 호환성은 검증하지 않았습니다."
+          }
+        }
+      }
+    },
+    "Unsupported key type '%@'" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "対応していない鍵の種類 '%@'"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "지원하지 않는 키 유형 '%@'"
+          }
+        }
+      }
+    },
+    "Update Global Registration" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "グローバル登録を更新"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "전역 등록 갱신"
+          }
+        }
+      }
+    },
+    "Updates" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アップデート"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "업데이트"
+          }
+        }
+      }
+    },
+    "Use a previously signed-in Bitwarden CLI context. Complete login, SSO and 2FA externally first." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use a previously signed-in Bitwarden CLI context. Complete login, SSO and 2FA externally first."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サインイン済みの Bitwarden CLI 設定を使用してください。ログイン・SSO・2FA は事前に外部で完了してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이미 로그인한 Bitwarden CLI 설정을 사용하세요. 로그인·SSO·2FA는 먼저 외부에서 완료하세요."
+          }
+        }
+      }
+    },
+    "Use its cookies and site data on this site" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このサイトで自身の Cookie とサイトデータを使用"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 사이트에서 자기 쿠키와 사이트 데이터 사용"
+          }
+        }
+      }
+    },
+    "Use other features" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "その他の機能の使用"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "기타 기능 사용"
+          }
+        }
+      }
+    },
+    "Use Shared Profile" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共有プロファイルを使う"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "공유 프로필 사용"
+          }
+        }
+      }
+    },
+    "Use the fonts on this Mac" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この Mac のフォントの使用"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Mac의 서체 사용"
+          }
+        }
+      }
+    },
+    "Use your camera" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カメラの使用"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "카메라 사용"
+          }
+        }
+      }
+    },
+    "Use your microphone" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マイクの使用"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "마이크 사용"
+          }
+        }
+      }
+    },
+    "Use your MIDI devices" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MIDI デバイスの使用"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MIDI 기기 사용"
+          }
+        }
+      }
+    },
+    "User Name" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ユーザ名"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사용자 이름"
+          }
+        }
+      }
+    },
+    "Username" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ユーザ名"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사용자 이름"
+          }
+        }
+      }
+    },
+    "Vault ID" : {
+      "comment" : "A label for the vault ID.",
+      "isCommentAutoGenerated" : true
+    },
+    "Vault permissions are configured in 1Password, not here." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vault permissions are configured in 1Password, not here."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保管庫の権限は、この画面ではなく 1Password で設定します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vault 권한은 이 화면이 아닌 1Password에서 설정합니다."
+          }
+        }
+      }
+    },
+    "Version %@ (%@)" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "バージョン %1$@ (%2$@)"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "버전 %1$@ (%2$@)"
+          }
+        }
+      }
+    },
+    "Waiting for agent readiness…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェントの準備を待機中…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "에이전트 준비 대기 중…"
+          }
+        }
+      }
+    },
+    "Waiting for This Mac" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Waiting for This Mac"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この Mac の準備を待っています"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Mac 정보 대기 중"
+          }
+        }
+      }
+    },
+    "Whatever runs in the pane — an agent included — is ended." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "pane 内で実行中のものは agent も含めてすべて終了します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "pane 안에서 실행 중인 것은 agent를 포함해 모두 종료됩니다."
+          }
+        }
+      }
+    },
+    "Which of that machine's named herdr sessions to use. Leave blank for \"default\"." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用する herdr セッションの名前です。「default」セッションを使う場合は空欄のままにしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사용할 herdr 세션의 이름입니다. \"default\" 세션을 쓰려면 비워 두십시오."
+          }
+        }
+      }
+    },
+    "Working" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "作業中"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "작업 중"
+          }
+        }
+      }
+    },
+    "Workspace" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "workspace"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "workspace"
+          }
+        }
+      }
+    },
+    "Workspace Name" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "workspace の名前"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "workspace 이름"
+          }
+        }
+      }
+    },
+    "write failed: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "書き込みに失敗しました: %@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "쓰기 실패: %@"
+          }
+        }
+      }
+    },
+    "You can skip and keep the browser enabled. Change your manager later in Settings." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You can skip and keep the browser enabled. Change your manager later in Settings."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スキップしてブラウザーを有効のまま使えます。後で設定から変更できます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "건너뛰어도 브라우저는 켜진 상태로 유지됩니다. 나중에 설정에서 관리자를 변경할 수 있습니다."
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.1"
+}
