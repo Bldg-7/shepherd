@@ -6,9 +6,8 @@
 #
 # Usage: scripts/release-macos.sh <version> [release-notes.md]
 #
-#   SHEPHERD_SKIP_PUBLISH=1   stop before anything leaves this Mac: the
-#                             update is built, notarized and in the appcast,
-#                             but not uploaded
+#   SHEPHERD_SKIP_PUBLISH=1   build, notarize with Apple and create the appcast,
+#                             but do not upload to GitHub
 #   SHEPHERD_SKIP_NOTARIZE=1  don't notarize either (a build to try out
 #                             locally; Gatekeeper rejects it on other Macs).
 #                             Implies SHEPHERD_SKIP_PUBLISH.
@@ -38,7 +37,7 @@ WORK="${SHEPHERD_RELEASE_WORK:-$ROOT/build/release/$VERSION}"
 UPDATES="$ROOT/build/updates"
 STAGE="$WORK/updates"
 DERIVED="$ROOT/build/DerivedData"
-SPARKLE_BIN="$DERIVED/SourcePackages/artifacts/sparkle/Sparkle/bin"
+SPARKLE_BIN="$ROOT/build/SourcePackages/artifacts/sparkle/Sparkle/bin"
 ARCHIVE="$WORK/Shepherd.xcarchive"
 APP="$WORK/export/Shepherd.app"
 TAG="v$VERSION"
@@ -52,6 +51,9 @@ BUILD_NUMBER="${SHEPHERD_BUILD_NUMBER:-22}"
 
 step() { printf '\n==> %s\n' "$*"; }
 fail() { printf 'error: %s\n' "$*" >&2; exit 1; }
+# Signed builds use the operator's existing approved Xcode/Keychain context;
+# DerivedData and package/build outputs remain inside this release tree.
+# Do not copy credentials, auto-approve plugins or bypass validation.
 # notarytool keeps the profile in the part of the Keychain that is closed
 # while the screen is locked.
 notary_ready() { xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1; }

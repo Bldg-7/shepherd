@@ -1,6 +1,6 @@
 # Shepherd for macOS
 
-A native macOS workspace for [Herdr](https://github.com/ImGeorge/herdr) terminals and coding agents.
+A native macOS workspace for Herdr terminals and coding agents.
 
 [Download Shepherd](https://github.com/Bldg-7/shepherd/releases/latest/download/Shepherd.dmg) · [Website](https://bldg-7.github.io/shepherd/) · [Releases](https://github.com/Bldg-7/shepherd/releases)
 
