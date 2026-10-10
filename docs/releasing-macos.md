@@ -20,7 +20,7 @@ fallback or persistent account switch. It does not pass its GitHub token to buil
 2. Approve only the exact SwiftTerm 1.20.0 build plugin if Xcode requires approval.
 3. Update the marketing version and numeric build number. **Do not use Git commit count:**
    this public history differs from the earlier private source history. 0.1 used build 21;
-   0.2.0 used build 22; 0.2.1 used build 23; **0.3.0 uses build 24**. Future builds must exceed the latest published appcast.
+   0.2.0 used build 22; 0.2.1 used build 23; 0.3.0 used build 24; **0.3.1 uses build 25**. Future builds must exceed the latest published appcast.
 4. Retain the prior published `build/updates` directory for delta generation, or download
    the prior release archives and appcast. These are ignored build inputs, not Git sources.
 5. Commit the exact source before making the release candidate. Do not force-push history.
@@ -29,7 +29,7 @@ fallback or persistent account switch. It does not pass its GitHub token to buil
 
 ```sh
 SHEPHERD_SIGN_IDENTITY=<approved-certificate-SHA1> \
-SHEPHERD_BUILD_NUMBER=24 SHEPHERD_SKIP_PUBLISH=1 scripts/release-macos.sh 0.3.0 notes/0.3.0.md
+SHEPHERD_BUILD_NUMBER=25 SHEPHERD_SKIP_PUBLISH=1 scripts/release-macos.sh 0.3.1 notes/0.3.1.md
 ```
 
 Use `security find-identity -v -p codesigning` to identify the existing approved certificate.
@@ -51,11 +51,11 @@ any runtime smoke tests. Do not restart or operate a user's running app.
 
 ## Publish
 
-Push the reviewed source and an annotated `v0.3.0` tag pointing to the exact built commit.
+Push the reviewed source and an annotated `v0.3.1` tag pointing to the exact built commit.
 Upload a **draft** release with these assets:
 
-- `Shepherd-0.3.0.zip` (Sparkle update archive)
-- `Shepherd-0.3.0.dmg` and `Shepherd.dmg` (installation image)
+- `Shepherd-0.3.1.zip` (Sparkle update archive)
+- `Shepherd-0.3.1.dmg` and `Shepherd.dmg` (installation image)
 - `appcast.xml` and any delta files it references
 
 The script's publishing path creates a draft only, targets the exact already-pushed source
@@ -68,6 +68,6 @@ same release tag. Only then publish the draft and explicitly mark it Latest. Ver
 public feed and downloads again. After success, copy the verified updates directory into
 `build/updates` without removing older archives needed for future deltas.
 
-The repository's Pages workflow/site are independent and are preserved. Historical 0.1, 0.2.0 and 0.2.1
+The repository's Pages workflow/site are independent and are preserved. Historical 0.1, 0.2.0, 0.2.1 and 0.3.0
 assets remain available. Source publication and application release are separate operations;
 a successful push does not mean deployment succeeded.

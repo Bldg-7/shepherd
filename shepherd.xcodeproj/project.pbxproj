@@ -367,7 +367,7 @@
 			buildSettings = {
 				"ASSETCATALOG_COMPILER_APPICON_NAME[sdk=macosx*]" = Shepherd;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 25;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
@@ -388,7 +388,7 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				MARKETING_VERSION = 0.3.0;
+				MARKETING_VERSION = 0.3.1;
 				"OTHER_LDFLAGS[sdk=macosx*][arch=arm64]" = (
 					"$(inherited)",
 					"$(SRCROOT)/Vendor/CEF/out/lib/$(CONFIGURATION)/libcef_dll_wrapper.a",
@@ -418,7 +418,7 @@
 				SHEPHERD_APP_SIGN_IDENTITY = "Developer ID Application";
 				CODE_SIGN_STYLE = Automatic;
 				"CODE_SIGN_STYLE[sdk=macosx*]" = Manual;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 25;
 				"DEVELOPMENT_TEAM[sdk=macosx*]" = SYZS4D43Z6;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -444,7 +444,7 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				MARKETING_VERSION = 0.3.0;
+				MARKETING_VERSION = 0.3.1;
 				"OTHER_LDFLAGS[sdk=macosx*][arch=arm64]" = (
 					"$(inherited)",
 					"$(SRCROOT)/Vendor/CEF/out/lib/$(CONFIGURATION)/libcef_dll_wrapper.a",

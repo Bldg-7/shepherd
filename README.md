@@ -1,4 +1,4 @@
-# Shepherd for macOS
+# Shepherd for herdr
 
 A native macOS workspace for Herdr terminals and coding agents.
 
@@ -30,7 +30,7 @@ Edit registered machines in Settings → Machines. Existing SSH credentials stay
 
 Command-click a file path, `file://` URL or OSC8 file link to open the read-only preview beside the terminal. Code wraps automatically and uses basic native syntax highlighting; Markdown has rendered/source modes. Remote files are read over SFTP on the clicked machine, not opened by a remote editor or resolved against the Mac. File gestures are kept local; ordinary clicks still belong to the TUI. Nested Herdr-machine file routing is not supported.
 
-The preview and experimental browser share the side-panel slot; switching visibility preserves browser tabs/profiles. The preview has a circular Liquid Glass close button and no header refresh button. Browser integration uses pane-scoped status icons; Group by Tab hides unknown captions and pane counts. Pi automatic title prefixes are hidden for display only.
+The preview and experimental browser share the side-panel slot; switching visibility preserves browser tabs/profiles. The preview has a circular Liquid Glass close button and no header refresh button. Browser integration uses pane-scoped status icons; Group by Tab hides unknown/unavailable captions and pane counts. Pi automatic title prefixes are hidden for display only.
 
 See [0.3.0 release notes](notes/0.3.0.md) for limits and validation scope.
 
@@ -46,4 +46,4 @@ open shepherd.xcodeproj
 
 CEF and `node_modules` are build inputs, not committed binaries. SwiftTerm 1.20.0's `SwiftTermBuildInfoPlugin` may require Xcode's explicit package-plugin approval; do not disable plugin validation globally. Debug builds have no Sparkle update feed. For unsigned local builds, use `CODE_SIGNING_ALLOWED=NO`.
 
-[Release procedure](docs/releasing-macos.md) · [0.3.0 release notes](notes/0.3.0.md)
+[Release procedure](docs/releasing-macos.md) · [0.3.1 release notes](notes/0.3.1.md) · [0.3.0 feature notes](notes/0.3.0.md)

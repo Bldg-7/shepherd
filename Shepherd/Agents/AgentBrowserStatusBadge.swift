@@ -18,13 +18,16 @@ nonisolated enum AgentBrowserStatusDisplay {
 
     static func tabTitle(for status: AgentBrowserStatus) -> LocalizedStringResource? {
         switch status {
-        case .unknown, .shell: nil
+        case .unknown, .shell, .remoteUnavailable: nil
         default: status.title
         }
     }
 
     static func tooltip(for status: AgentBrowserStatus) -> LocalizedStringResource {
-        status == .unknown ? "Browser" : status.title
+        switch status {
+        case .unknown, .remoteUnavailable: "Browser"
+        default: status.title
+        }
     }
 }
 

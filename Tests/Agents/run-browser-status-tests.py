@@ -23,4 +23,4 @@ tab=board[board.index('    private func row(for tab:'):board.index('    /// A st
 pane=board[board.index('    private func row(for agent:'):board.index('    /// A tab\'s row')]
 assert 'tab.panes.count' not in tab and 'AgentBrowserStatusDisplay.tabTitle' in tab
 assert 'AgentBrowserStatusBadge(status:' in pane and 'Text(AgentLaunchService.shared.status' not in pane
-(out/'validation.json').write_text(json.dumps({'passed':True,'stages':2,'tabPaneCountRemoved':True,'tabUnknownHidden':True,'paneGlobeAndColor':True,'backendAuthorityUnmodified':True},indent=2))
+(out/'validation.json').write_text(json.dumps({'passed':True,'stages':2,'tabPaneCountRemoved':True,'tabUnknownHidden':True,'tabRemoteUnavailableHidden':True,'remoteTooltipGeneric':True,'paneGlobeAndColor':True,'backendAuthorityUnmodified':True},indent=2))
