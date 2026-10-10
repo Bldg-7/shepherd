@@ -17,6 +17,7 @@ struct TabTerminalView: View {
     /// browser of the pane last used, which clicking into the browser itself
     /// mustn't change (plan item A2 in docs/agent-browser-plan.md).
     var onPaneActivated: ((String) -> Void)?
+    var onOpenFile: ((FilePreviewRequest) -> Void)? = nil
 
     /// The pane the keyboard is in, which its border marks. On macOS that
     /// starts as the pane herdr has focused in the tab, which is given the
@@ -27,26 +28,22 @@ struct TabTerminalView: View {
         TabPaneLayout {
             ForEach(tab.panes) { pane in
                 if let placement = tab.placement(of: pane.paneID) {
-                    PaneTerminalView(
-                        machine: machine,
-                        pane: pane,
-                        machineStore: machineStore,
-                        focusesWhenShown: pane.paneID == tab.focusedPaneID,
-                        onFocusChange: { focused in
-                            if focused {
-                                focusedPaneID = pane.paneID
-                                onPaneActivated?(pane.paneID)
-                            } else if focusedPaneID == pane.paneID {
-                                focusedPaneID = nil
-                            }
-                        }
-                    )
-                    .overlay {
-                        if focusedPaneID == pane.paneID {
-                            Rectangle()
-                                .strokeBorder(Color.accentColor, lineWidth: 2)
-                                .allowsHitTesting(false)
-                        }
+                    TerminalPaneFrame(isFocused: focusedPaneID == pane.paneID) {
+                        PaneTerminalView(
+                            machine: machine,
+                            pane: pane,
+                            machineStore: machineStore,
+                            focusesWhenShown: pane.paneID == tab.focusedPaneID,
+                            onFocusChange: { focused in
+                                if focused {
+                                    focusedPaneID = pane.paneID
+                                    onPaneActivated?(pane.paneID)
+                                } else if focusedPaneID == pane.paneID {
+                                    focusedPaneID = nil
+                                }
+                            },
+                            onOpenFile: onOpenFile
+                        )
                     }
                     #if os(macOS)
                     .overlay(alignment: .topTrailing) {
@@ -69,7 +66,7 @@ struct TabTerminalView: View {
             }
         }
         .background(Color(white: 0.3))
-        .navigationTitle(tab.label)
+        .navigationTitle(tab.title)
     }
 }
 

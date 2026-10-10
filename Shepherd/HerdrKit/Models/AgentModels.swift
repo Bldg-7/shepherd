@@ -91,7 +91,10 @@ nonisolated struct AgentSummary: Identifiable, Equatable, Sendable {
 
     /// What the pane is called on screen: the name it was given, else the
     /// title of what runs in it.
-    var title: String { label ?? terminalTitle ?? agentName ?? paneID }
+    var automaticTitle: String {
+        terminalTitle.map { AgentTitleDisplay.terminal($0, agentName: agentName) } ?? agentName ?? paneID
+    }
+    var title: String { label ?? automaticTitle }
 
     init?(json: JSONValue, on herdrMachine: HerdrMachine? = nil) {
         guard let paneID = json["pane_id"]?.stringValue, !paneID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -147,7 +150,7 @@ nonisolated struct AgentSummary: Identifiable, Equatable, Sendable {
         source: "herdr:claude",
         agentName: "claude",
         terminalTitle: "DEMO-1781",
-        workingDirectory: "/Users/developer/Projects/demo",
+        workingDirectory: "/Users/example/Projects/demo",
         state: .working,
         revision: 1
     )

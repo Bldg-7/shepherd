@@ -5,9 +5,10 @@ struct AgentTerminalView: View {
     let machine: Machine
     let agent: AgentSummary
     let machineStore: MachineStore
+    var onOpenFile: ((FilePreviewRequest) -> Void)? = nil
 
     var body: some View {
-        PaneTerminalView(machine: machine, pane: agent, machineStore: machineStore)
+        PaneTerminalView(machine: machine, pane: agent, machineStore: machineStore, onOpenFile: onOpenFile)
             .navigationTitle(agent.title)
     }
 }
@@ -27,6 +28,7 @@ struct PaneTerminalView: View {
     @State private var attempt = 0
     private let focusesWhenShown: Bool
     private let onFocusChange: ((Bool) -> Void)?
+    private let onOpenLink: (String) -> Void
 
     /// `focusesWhenShown` and `onFocusChange` are `TerminalHostView`'s.
     init(
@@ -34,24 +36,30 @@ struct PaneTerminalView: View {
         pane: AgentSummary,
         machineStore: MachineStore,
         focusesWhenShown: Bool = false,
-        onFocusChange: ((Bool) -> Void)? = nil
+        onFocusChange: ((Bool) -> Void)? = nil,
+        onOpenFile: ((FilePreviewRequest) -> Void)? = nil
     ) {
         self.focusesWhenShown = focusesWhenShown
         self.onFocusChange = onFocusChange
+        self.onOpenLink = { link in
+            guard machineStore.isCurrentConnection(machine) else { return }
+            let raw = link.lowercased().hasPrefix("file:") ? link : link.trimmingCharacters(in: .whitespaces)
+            do {
+                _ = try FilePreviewLink.resolve(raw, directory: pane.workingDirectory, hostname: machine.hostname,
+                    additionalHosts: machine.isLocal ? FilePreviewLink.localHostAliases : [])
+            }
+            catch FilePreviewError.unsupportedLink { return }
+            catch { /* Show file-path errors in the preview, without reading. */ }
+            onOpenFile?(FilePreviewRequest(machine: machine, pane: pane, link: raw))
+        }
 
-        let isLocal = machine.isLocal
-        let authMethod = machine.authMethod
-        let sessionName = machine.sessionName
-        let pinnedFingerprint = machine.pinnedHostKeyFingerprint
-        let hostname = machine.hostname
-        let port = machine.port
-        let username = machine.username
         let terminalID = pane.terminalID
         let herdrMachine = pane.herdrMachine
 
         _viewModel = State(wrappedValue: AgentTerminalViewModel(makeSession: {
+            let current = try machineStore.currentMachine(matching: machine)
             #if os(macOS)
-            if isLocal {
+            if current.isLocal {
                 return LocalTerminalSession(terminalID: terminalID, on: herdrMachine)
             }
             #endif
@@ -60,22 +68,23 @@ struct PaneTerminalView: View {
             // its parent's body does, and all but the first of those runs
             // build a view model that `@State` throws away. Here the
             // Keychain is only read when a session is about to be started.
-            if let secret = try? machineStore.secret(for: machine) {
+            if let secret = try machineStore.secret(for: current) {
                 return TerminalSession(
-                    host: hostname,
-                    port: port,
-                    username: username,
-                    credential: HostCredential(authMethod: authMethod, secretData: secret),
-                    sessionName: sessionName,
-                    pinnedFingerprint: pinnedFingerprint,
+                    host: current.hostname,
+                    port: current.port,
+                    username: current.username,
+                    credential: HostCredential(authMethod: current.authMethod, secretData: secret),
+                    sessionName: current.sessionName,
+                    pinnedFingerprint: current.pinnedHostKeyFingerprint,
                     terminalID: terminalID,
                     on: herdrMachine
                 )
             }
-            #endif
-            // No Citadel yet, or no credential on file for this machine — fall
-            // back to canned output so the UI flow stays testable either way.
+            throw MachineStore.EditError.missingCredential
+            #else
+            // The stub is only for builds without the SSH implementation.
             return StubTerminalSession()
+            #endif
         }))
     }
 
@@ -85,7 +94,8 @@ struct PaneTerminalView: View {
             onInput: { data in viewModel.send(data) },
             onResize: { columns, rows in viewModel.resize(columns: columns, rows: rows) },
             onFocusChange: onFocusChange,
-            focusesWhenShown: focusesWhenShown
+            focusesWhenShown: focusesWhenShown,
+            onOpenLink: onOpenLink
         )
         .overlay {
             Group {

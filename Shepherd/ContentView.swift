@@ -18,7 +18,7 @@ struct ContentView: View {
     /// machine's pane, not even for the moment it takes the sidebar to catch
     /// up with a machine switch.
     private struct MachineSelection {
-        let machineID: UUID
+        let connection: Machine.ConnectionIdentity
         let item: BoardItem
     }
 
@@ -29,7 +29,7 @@ struct ContentView: View {
     /// identity to this value gives every (machine, pane or tab) its own view,
     /// and tears the previous one down along with its sessions.
     private nonisolated struct TerminalIdentity: Hashable {
-        let machineID: UUID
+        let connection: Machine.ConnectionIdentity
         /// `BoardItem.id`: the pane or tab, qualified by its herdr machine.
         let itemID: String
     }
@@ -56,10 +56,12 @@ struct ContentView: View {
     @State private var justCreatedID: String?
     /// Goes up to have the board fetch everything again at once.
     @State private var boardRefreshRequests = 0
+    @State private var filePreview: FilePreviewRequest?
     #if os(macOS)
     @State private var passwordManagerWindowID = UUID()
     /// Whether the window shows the browser column beside the terminal.
     @SceneStorage("ContentView.showsBrowser") private var showsBrowser = false
+    @State private var showsFilePreview = false
     /// For each tab shown in this window (by `TerminalIdentity`), the pane in
     /// it the browser column follows: the one last given the keyboard.
     @State private var activatedPanes: [TerminalIdentity: String] = [:]
@@ -81,7 +83,7 @@ struct ContentView: View {
                         launchTargets: $launchTargets,
                         refreshRequests: boardRefreshRequests
                     )
-                        .id(machine.id)
+                        .id(machine.connectionIdentity)
                 } else {
                     noActiveMachinePlaceholder
                 }
@@ -118,7 +120,10 @@ struct ContentView: View {
             HSplitView {
                 terminalColumn(on: machine)
                     .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
-                if ShepherdBrowserFeature.shared.isEnabled && showsBrowser {
+                if showsFilePreview, let filePreview {
+                    previewPanel(filePreview)
+                        .frame(minWidth: 320, idealWidth: 560, maxWidth: .infinity, maxHeight: .infinity)
+                } else if ShepherdBrowserFeature.shared.isEnabled && showsBrowser {
                     BrowserColumn(target: browserTarget(on: machine))
                         .frame(minWidth: 360, idealWidth: 640, maxWidth: .infinity, maxHeight: .infinity)
                 }
@@ -127,6 +132,7 @@ struct ContentView: View {
                 if ShepherdBrowserFeature.shared.isEnabled {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
+                        if !showsBrowser { showsFilePreview = false }
                         showsBrowser.toggle()
                     } label: {
                         Label(showsBrowser ? "Hide Browser" : "Show Browser", systemImage: "globe")
@@ -135,16 +141,42 @@ struct ContentView: View {
                     .help(showsBrowser ? "Hide Browser (⌥⌘B)" : "Show Browser (⌥⌘B)")
                 }
                 }
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        if !showsFilePreview { showsBrowser = false }
+                        showsFilePreview.toggle()
+                    } label: {
+                        Label(showsFilePreview ? "Hide Preview" : "Show Preview", systemImage: "doc.text")
+                    }
+                    .disabled(filePreview == nil)
+                    .help("File Preview")
+                }
             }
         }
-        .onChange(of: machine?.id) { _, activeMachineID in
-            // A selection made on another machine already reads as nothing
-            // selected; forget it as well, so that switching back to that
-            // machine later starts with nothing selected instead of
-            // re-attaching to a pane nobody picked this time around.
-            if selection?.machineID != activeMachineID {
-                selection = nil
+        .onChange(of: machine?.connectionIdentity) { _, connection in
+            // A reused machine UUID is not the same endpoint or credential.
+            // Never attach an old pane ID to the newly edited connection.
+            if selection?.connection != connection { selection = nil }
+            launchTargets = []
+            justCreatedID = nil
+            isShowingLauncher = false
+            filePreview = nil
+            #if os(macOS)
+            showsFilePreview = false
+            activatedPanes = [:]
+            #endif
+        }
+        .onChange(of: filePreview.map(previewBelongsToSelection) ?? true) { _, valid in
+            if !valid {
+                filePreview = nil
+                showsFilePreview = false
             }
+        }
+        .onChange(of: selection?.item.id) { _, _ in
+            filePreview = nil
+            #if os(macOS)
+            showsFilePreview = false
+            #endif
         }
         .onChange(of: showsTabs) {
             // The board now lists the other kind of row, and what was
@@ -162,9 +194,6 @@ struct ContentView: View {
                     onClose: { isShowingLauncher = false }
                 )
             }
-        }
-        .onChange(of: machine?.id) {
-            isShowingLauncher = false
         }
         .sheet(isPresented: $isShowingSettings) {
             MachinesSettingsView(machineStore: machineStore, passwordManagerWindowID: passwordManagerWindowID)
@@ -206,15 +235,14 @@ struct ContentView: View {
         ZStack {
             if let machine, let item = selection(on: machine).wrappedValue {
                 if isDetailColumnVisible {
-                    let identity = TerminalIdentity(machineID: machine.id, itemID: item.id)
+                    let identity = TerminalIdentity(connection: machine.connectionIdentity, itemID: item.id)
                     Group {
                         switch item {
                         case .pane(let agent):
-                            AgentTerminalView(machine: machine, agent: agent, machineStore: machineStore)
+                            AgentTerminalView(machine: machine, agent: agent, machineStore: machineStore, onOpenFile: openFile)
                         case .tab(let tab):
-                            TabTerminalView(machine: machine, tab: tab, machineStore: machineStore) { paneID in
-                                activatedPanes[identity] = paneID
-                            }
+                            TabTerminalView(machine: machine, tab: tab, machineStore: machineStore,
+                                onPaneActivated: { paneID in activatedPanes[identity] = paneID }, onOpenFile: openFile)
                         }
                     }
                     .id(identity)
@@ -229,6 +257,34 @@ struct ContentView: View {
         .onDisappear { isDetailColumnVisible = false }
     }
 
+    private func previewBelongsToSelection(_ request: FilePreviewRequest) -> Bool {
+        guard machineStore.isCurrentConnection(request.machine),
+              let selected = selection, selected.connection == request.machine.connectionIdentity else { return false }
+        let panes: [AgentSummary]
+        switch selected.item {
+        case .pane(let pane): panes = [pane]
+        case .tab(let tab): panes = tab.panes
+        }
+        return panes.contains { $0.paneID == request.paneID && $0.terminalID == request.terminalID }
+    }
+
+    private func openFile(_ request: FilePreviewRequest) {
+        guard previewBelongsToSelection(request) else { return }
+        filePreview = request
+        #if os(macOS)
+        // Presentation only: don't disable the feature, discard a browser,
+        // revoke agent authority, or delete profiles when switching columns.
+        showsBrowser = false
+        showsFilePreview = true
+        #endif
+    }
+
+    private func previewPanel(_ request: FilePreviewRequest) -> some View {
+        FilePreviewPanel(request: request, machineStore: machineStore, onClose: {
+            showsFilePreview = false
+        }, onFileLink: openFile)
+    }
+
     #if os(macOS)
     /// The pane whose browser the browser column shows: the selected pane,
     /// or in a selected tab the pane last given the keyboard — until one
@@ -240,7 +296,7 @@ struct ContentView: View {
         case .pane(let agent):
             pane = agent
         case .tab(let tab):
-            let identity = TerminalIdentity(machineID: machine.id, itemID: item.id)
+            let identity = TerminalIdentity(connection: machine.connectionIdentity, itemID: item.id)
             let paneID = activatedPanes[identity] ?? tab.focusedPaneID
             pane = tab.panes.first { $0.paneID == paneID } ?? tab.panes.first
         }
@@ -265,16 +321,24 @@ struct ContentView: View {
     /// and selects it at once — before the board has listed it, which it is
     /// asked to do straight away (see `AgentBoardView.justCreatedID`).
     private func openTab(_ request: LaunchRequest, on machine: Machine) async throws {
+        func requireCurrentConnection() throws {
+            try Task.checkCancellation()
+            guard machineStore.isCurrentConnection(machine) else { throw MachineStore.EditError.settingsChanged }
+        }
+        try requireCurrentConnection()
         let client = HerdrClient(transport: try machineStore.makeHerdrTransport(for: machine))
         var retained: HerdrClient.CreatedTab?
         func select(_ created: HerdrClient.CreatedTab) {
             retained = created
+            guard machineStore.isCurrentConnection(machine),
+                  machineStore.activeMachine?.connectionIdentity == machine.connectionIdentity else { return }
             let item: BoardItem = showsTabs && AgentBoardView.offersTabs ? .tab(created.tab) : .pane(created.pane)
             justCreatedID = item.id
-            selection = MachineSelection(machineID: machine.id, item: item)
+            selection = MachineSelection(connection: machine.connectionIdentity, item: item)
             boardRefreshRequests += 1
         }
         func create(_ environment: [String: String]) async throws -> HerdrClient.CreatedTab {
+            try requireCurrentConnection()
             switch request.workspace {
             case .existing(let workspace):
                 return try await client.createTab(inWorkspace: workspace.workspaceID, label: request.tabName, on: request.herdrMachine, environment: environment)
@@ -284,6 +348,7 @@ struct ContentView: View {
         }
         do {
             try await client.connect()
+            try requireCurrentConnection()
             let created: HerdrClient.CreatedTab
             if let kind = request.program.agentKind {
                 guard request.herdrMachine == nil else { throw AgentRuntimeError.remoteUnavailable }
@@ -292,6 +357,7 @@ struct ContentView: View {
                 created = try await create([:])
                 select(created)
             }
+            try requireCurrentConnection()
             if case .new = request.workspace, let tabName = request.tabName {
                 try await client.renameTab(created.tab.tabID, to: tabName, on: request.herdrMachine)
             }
@@ -299,7 +365,10 @@ struct ContentView: View {
         } catch {
             await client.disconnect()
             boardRefreshRequests += 1
-            if retained != nil { throw CreatedPaneLaunchError(reason: connectionFailureDescription(error)) }
+            if retained != nil, machineStore.isCurrentConnection(machine),
+               machineStore.activeMachine?.connectionIdentity == machine.connectionIdentity {
+                throw CreatedPaneLaunchError(reason: connectionFailureDescription(error))
+            }
             throw error
         }
     }
@@ -349,16 +418,19 @@ struct ContentView: View {
     /// board can only clear a selection that is its own — a board that is
     /// being replaced can't reach into its successor's.
     private func selection(on machine: Machine) -> Binding<BoardItem?> {
-        let machineID = machine.id
+        let connection = machine.connectionIdentity
         return Binding(
             get: {
-                guard let selection, selection.machineID == machineID else { return nil }
+                guard machineStore.isCurrentConnection(machine),
+                      let selection, selection.connection == connection else { return nil }
                 return selection.item
             },
             set: { item in
+                guard machineStore.isCurrentConnection(machine),
+                      machineStore.activeMachine?.connectionIdentity == connection else { return }
                 if let item {
-                    selection = MachineSelection(machineID: machineID, item: item)
-                } else if selection?.machineID == machineID {
+                    selection = MachineSelection(connection: connection, item: item)
+                } else if selection?.connection == connection {
                     selection = nil
                 }
             }

@@ -58,6 +58,27 @@ struct Machine: Identifiable, Codable, Hashable, Sendable {
         self.pinnedHostKeyFingerprint = nil
     }
 
+    /// A connection's scope, not the row's display identity. A saved credential
+    /// replacement gets a fresh Keychain tag, so even replacing a password with
+    /// another password retires the old connection. TOFU pinning and renaming do
+    /// not restart an otherwise unchanged connection.
+    nonisolated struct ConnectionIdentity: Hashable, Sendable {
+        let machineID: UUID
+        let hostname: String
+        let port: Int
+        let username: String
+        let sessionName: String
+        let authMethod: AuthMethod
+        let keychainTag: String
+        let isLocal: Bool
+    }
+
+    var connectionIdentity: ConnectionIdentity {
+        ConnectionIdentity(machineID: id, hostname: hostname, port: port,
+                           username: username, sessionName: sessionName,
+                           authMethod: authMethod, keychainTag: keychainTag, isLocal: isLocal)
+    }
+
     /// `authMethod`/`sessionName`/`isLocal` default when decoding Machines
     /// saved before they existed, so older stored data keeps working
     /// instead of failing to load.

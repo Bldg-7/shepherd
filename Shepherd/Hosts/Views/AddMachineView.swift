@@ -10,6 +10,19 @@ struct AddMachineView: View {
     /// environment's `dismiss` would close that whole sheet instead of
     /// going back to the list.
     var onClose: (() -> Void)? = nil
+    let editingMachine: Machine?
+
+    init(machineStore: MachineStore, editingMachine: Machine? = nil, onClose: (() -> Void)? = nil) {
+        self.machineStore = machineStore
+        self.editingMachine = editingMachine
+        self.onClose = onClose
+        _displayName = State(initialValue: editingMachine?.displayName ?? "")
+        _hostname = State(initialValue: editingMachine?.hostname ?? "")
+        _port = State(initialValue: editingMachine.map { String($0.port) } ?? "22")
+        _username = State(initialValue: editingMachine?.username ?? "")
+        _sessionName = State(initialValue: editingMachine?.sessionName ?? "")
+        _authMethod = State(initialValue: editingMachine?.authMethod ?? .key)
+    }
 
     @Environment(\.dismiss) private var dismiss
     @State private var displayName = ""
@@ -21,6 +34,14 @@ struct AddMachineView: View {
     @State private var privateKeyText = ""
     @State private var password = ""
     @State private var errorMessage: String?
+    @State private var replacesCredential = false
+
+    private var needsCredential: Bool { editingMachine == nil || replacesCredential }
+    private var title: LocalizedStringKey { editingMachine == nil ? "Add Machine" : "Edit Machine" }
+    private var saveTitle: LocalizedStringKey { editingMachine == nil ? "Add Machine" : "Save" }
+    private var keptCredentialTitle: LocalizedStringKey {
+        editingMachine?.authMethod == .password ? "Saved password will be kept" : "Saved SSH key will be kept"
+    }
 
     #if canImport(Citadel)
     private enum KeySource: CaseIterable, Identifiable {
@@ -71,7 +92,7 @@ struct AddMachineView: View {
                 .help("Back to Machines")
                 Divider()
                     .frame(height: 14)
-                Text("Add Machine")
+                Text(title)
                     .font(.headline)
                 Spacer()
             }
@@ -84,7 +105,7 @@ struct AddMachineView: View {
                 Spacer()
                 Button("Cancel", role: .cancel) { close() }
                     .keyboardShortcut(.cancelAction)
-                Button("Add Machine") { save() }
+                Button(saveTitle) { save() }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!canSave)
             }
@@ -95,13 +116,25 @@ struct AddMachineView: View {
 
     private var form: some View {
         Form {
-            Section("Machine") {
+            Section {
                 TextField("Name", text: $displayName, prompt: requiredPrompt)
                 TextField("Hostname", text: $hostname, prompt: requiredPrompt)
                     .autocorrectionDisabled()
+                    #if os(macOS)
+                    .help("Enter the SSH hostname or IP address, without a username, scheme or port.")
+                    #endif
                 TextField("Port", text: $port, prompt: requiredPrompt)
                 TextField("Username", text: $username, prompt: requiredPrompt)
                     .autocorrectionDisabled()
+            } header: {
+                Text("Machine")
+            } footer: {
+                if let editingMachine {
+                    Text("Changing connection settings reconnects the machine. Select a pane again afterwards. Renaming alone keeps the connection.")
+                    if trimmed(hostname) != editingMachine.hostname || portNumber != editingMachine.port {
+                        Text("Changing the hostname or port clears the saved host key. The new server will be trusted on first connection.")
+                    }
+                }
             }
             Section {
                 // Above the field, not below it: on iPhone the keyboard
@@ -121,24 +154,44 @@ struct AddMachineView: View {
                 // field shows only "default", so the header names it.
             } footer: {
                 Text("Which of that machine's named herdr sessions to use. Leave blank for \"default\".")
+                if let editingMachine, let normalizedSessionName, normalizedSessionName != editingMachine.sessionName {
+                    Text("Changing the session removes its old pane browsers and their isolated profiles.")
+                }
             }
             Section {
-                Picker("Method", selection: $authMethod) {
-                    Text("Key").tag(Machine.AuthMethod.key)
-                    Text("Password").tag(Machine.AuthMethod.password)
+                if editingMachine != nil {
+                    Toggle("Change Authentication", isOn: $replacesCredential)
+                        .onChange(of: replacesCredential) { _, replacing in
+                            if !replacing {
+                                password = ""
+                                privateKeyText = ""
+                                authMethod = editingMachine?.authMethod ?? .key
+                            }
+                        }
                 }
-                .pickerStyle(.segmented)
+                if needsCredential {
+                    Picker("Method", selection: $authMethod) {
+                        Text("Key").tag(Machine.AuthMethod.key)
+                        Text("Password").tag(Machine.AuthMethod.password)
+                    }
+                    .pickerStyle(.segmented)
 
-                switch authMethod {
-                case .key:
-                    keyAuthSection
-                case .password:
-                    SecureField("Password", text: $password, prompt: requiredPrompt)
+                    switch authMethod {
+                    case .key:
+                        keyAuthSection
+                    case .password:
+                        SecureField("Password", text: $password, prompt: requiredPrompt)
+                    }
+                } else {
+                    Label(keptCredentialTitle, systemImage: "lock.shield")
+                        .foregroundStyle(.secondary)
                 }
             } header: {
                 Text("Authentication")
             } footer: {
-                if let authenticationFooter {
+                if !needsCredential {
+                    Text("Your saved credential is not displayed or changed unless you turn on Change Authentication.")
+                } else if let authenticationFooter {
                     Text(authenticationFooter)
                 }
             }
@@ -166,6 +219,8 @@ struct AddMachineView: View {
     }
 
     private func close() {
+        password = ""
+        privateKeyText = ""
         if let onClose {
             onClose()
         } else {
@@ -342,6 +397,7 @@ struct AddMachineView: View {
     private var canSave: Bool {
         guard !trimmed(displayName).isEmpty, !trimmed(hostname).isEmpty, !trimmed(username).isEmpty, portNumber != nil else { return false }
         guard normalizedSessionName != nil else { return false }
+        if !needsCredential { return true }
         switch authMethod {
         case .password:
             return !password.isEmpty
@@ -353,40 +409,36 @@ struct AddMachineView: View {
         }
     }
 
-    private func save() {
-        guard let portNumber, let normalizedSessionName else { return }
-        let machine = Machine(
-            displayName: trimmed(displayName),
-            hostname: trimmed(hostname),
-            port: portNumber,
-            username: trimmed(username),
-            authMethod: authMethod,
-            sessionName: normalizedSessionName
-        )
+    private var credentialData: Data {
+        if authMethod == .password { return Data(password.utf8) }
+        #if canImport(Citadel)
+        if keySource == .generate { return generatedKey.privateKeyPEM(comment: deviceKeyComment) }
+        #endif
+        return Data(privateKeyText.utf8)
+    }
 
+    private func save() {
+        guard canSave, let portNumber, let normalizedSessionName else { return }
+        var machine = editingMachine ?? Machine(displayName: "", hostname: "", username: "")
+        machine.displayName = trimmed(displayName)
+        machine.hostname = trimmed(hostname)
+        machine.port = portNumber
+        machine.username = trimmed(username)
+        machine.sessionName = normalizedSessionName
+        // Keeping authentication never depends on a pending UI onChange callback.
+        machine.authMethod = needsCredential ? authMethod : (editingMachine?.authMethod ?? authMethod)
         do {
-            switch authMethod {
-            case .password:
+            if let editingMachine {
+                try machineStore.updateMachine(machine, replacing: editingMachine,
+                                               replacementSecret: needsCredential ? credentialData : nil)
+            } else if authMethod == .password {
                 try machineStore.addMachine(machine, password: password)
-            case .key:
-                let keyData: Data
-                #if canImport(Citadel)
-                switch keySource {
-                case .generate:
-                    keyData = generatedKey.privateKeyPEM(comment: deviceKeyComment)
-                case .paste:
-                    guard let pasted = privateKeyText.data(using: .utf8) else { return }
-                    keyData = pasted
-                }
-                #else
-                guard let pasted = privateKeyText.data(using: .utf8) else { return }
-                keyData = pasted
-                #endif
-                try machineStore.addMachine(machine, privateKey: keyData)
+            } else {
+                try machineStore.addMachine(machine, privateKey: credentialData)
             }
             close()
         } catch {
-            errorMessage = String(localized: "The machine wasn't added because its credential couldn't be stored. \(error.localizedDescription)")
+            errorMessage = String(localized: "The machine couldn't be saved. \(error.localizedDescription)")
         }
     }
 }

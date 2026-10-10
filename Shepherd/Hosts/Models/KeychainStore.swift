@@ -4,7 +4,13 @@ import Security
 /// Thin wrapper around a generic-password Keychain item per machine, used to
 /// store that machine's SSH credential — a private key or a password,
 /// depending on `Machine.authMethod`.
-struct KeychainStore {
+protocol MachineSecretStore {
+    func saveSecret(_ data: Data, tag: String) throws
+    func loadSecret(tag: String) throws -> Data?
+    func deleteSecret(tag: String) throws
+}
+
+struct KeychainStore: MachineSecretStore {
     enum KeychainError: LocalizedError {
         case unexpectedStatus(OSStatus)
 

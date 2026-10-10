@@ -296,6 +296,8 @@ struct AgentBoardView: View {
             Text(failure.message)
         }
         .onChange(of: launchTargetsNow, initial: true) { _, targets in
+            guard machineStore.isCurrentConnection(machine),
+                  machineStore.activeMachine?.connectionIdentity == machine.connectionIdentity else { return }
             launchTargets = targets
         }
         .onChange(of: refreshRequests) {
@@ -507,7 +509,7 @@ struct AgentBoardView: View {
 
     /// What a tab's row shows, and what the rows of the panes in it would.
     private func searchTexts(for tab: TabSummary) -> [String] {
-        [tab.label]
+        [tab.title]
             + (tab.mostUrgentState.map { [String(localized: $0.title)] } ?? [])
             + tab.panes.flatMap(searchTexts(for:))
     }
@@ -688,17 +690,21 @@ struct AgentBoardView: View {
         HStack {
             statusIndicator(agent.hasAgent ? agent.state : nil)
             VStack(alignment: .leading) {
-                Text(agent.title).font(.body)
+                HStack(spacing: 6) {
+                    Text(agent.title).font(.body)
+                    #if os(macOS)
+                    if ShepherdBrowserFeature.shared.isEnabled {
+                        let browserStatus = AgentLaunchService.shared.status(for: agent, on: machine)
+                        if agent.hasAgent || agent.launchPending == true || browserStatus != .shell {
+                            AgentBrowserStatusBadge(status: browserStatus,
+                                failure: AgentLaunchService.shared.failure(for: agent, on: machine))
+                        }
+                    }
+                    #endif
+                }
                 Text(subtitle(for: agent))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                #if os(macOS)
-                if ShepherdBrowserFeature.shared.isEnabled && (agent.hasAgent || agent.launchPending == true || AgentLaunchService.shared.status(for: agent, on: machine) != .shell) {
-                    Text(AgentLaunchService.shared.status(for: agent, on: machine).title)
-                        .font(.caption).foregroundStyle(.secondary)
-                        .help(AgentLaunchService.shared.failure(for: agent, on: machine) ?? "")
-                }
-                #endif
             }
             Spacer()
             if agent.hasAgent {
@@ -731,22 +737,20 @@ struct AgentBoardView: View {
         }
     }
 
-    /// A tab's row: its name as herdr has it, how many panes it holds, and —
-    /// with an agent among them — the status of the one that most needs the
-    /// person, the way a pane's row shows its own.
+    /// A tab's row: name and actionable browser statuses only, without pane
+    /// counts or repeated unknown browser captions. Agent urgency stays intact.
     private func row(for tab: TabSummary) -> some View {
         HStack {
             statusIndicator(tab.mostUrgentState)
             VStack(alignment: .leading) {
-                Text(tab.label).font(.body)
-                Text("\(tab.panes.count) panes")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text(tab.title).font(.body)
                 #if os(macOS)
                 if ShepherdBrowserFeature.shared.isEnabled {
-                    ForEach(tab.panes.filter { $0.hasAgent || $0.launchPending == true || AgentLaunchService.shared.status(for: $0, on: machine) != .shell }) { pane in
-                        Text(AgentLaunchService.shared.status(for: pane, on: machine).title)
-                            .font(.caption).foregroundStyle(.secondary).help(pane.title)
+                    ForEach(tab.panes) { pane in
+                        let browserStatus = AgentLaunchService.shared.status(for: pane, on: machine)
+                        if let title = AgentBrowserStatusDisplay.tabTitle(for: browserStatus) {
+                            Text(title).font(.caption).foregroundStyle(.secondary).help(pane.title)
+                        }
                     }
                 }
                 #endif
@@ -947,8 +951,8 @@ struct AgentBoardView: View {
 
     private func renamePrompt(for item: BoardItem) -> String {
         switch item {
-        case .tab(let tab): tab.label
-        case .pane(let pane): pane.terminalTitle ?? pane.agentName ?? pane.paneID
+        case .tab(let tab): tab.title
+        case .pane(let pane): pane.automaticTitle
         }
     }
 
@@ -986,7 +990,7 @@ struct AgentBoardView: View {
 
     private var closeTitle: Text {
         switch closing {
-        case .tab(let tab): Text("Close \u{201C}\(tab.label)\u{201D}?")
+        case .tab(let tab): Text("Close \u{201C}\(tab.title)\u{201D}?")
         case .pane(let pane): Text("Close \u{201C}\(pane.title)\u{201D}?")
         case nil: Text(verbatim: "")
         }
@@ -1000,10 +1004,11 @@ struct AgentBoardView: View {
     private func perform(failureTitle: String, _ change: @escaping (HerdrClient) async throws -> Void) {
         Task {
             do {
-                guard let current = machineStore.allMachines.first(where: { $0.id == machine.id }) else { return }
+                let current = try machineStore.currentMachine(matching: machine)
                 let client = HerdrClient(transport: try machineStore.makeHerdrTransport(for: current))
                 do {
                     try await client.connect()
+                    guard machineStore.isCurrentConnection(machine) else { throw MachineStore.EditError.settingsChanged }
                     try await change(client)
                 } catch {
                     await client.disconnect()
@@ -1058,6 +1063,7 @@ struct AgentBoardView: View {
     /// machine — is gone. Not while its machine can't be reached, though:
     /// that says nothing about whether the pane or tab is still there.
     private func showHerdrMachines(_ groups: [HerdrMachineGroup]) {
+        guard machineStore.isCurrentConnection(machine) else { return }
         if groups != herdrMachineGroups {
             herdrMachineGroups = groups
         }
@@ -1088,6 +1094,7 @@ struct AgentBoardView: View {
     /// A list on screen also means the connection works, so whatever error
     /// an earlier attempt left behind no longer applies.
     private func show(_ snapshot: HerdrSnapshot) {
+        guard machineStore.isCurrentConnection(machine) else { return }
         if loadError != nil {
             loadError = nil
         }
@@ -1188,8 +1195,9 @@ struct AgentBoardView: View {
         guard !Task.isCancelled else { return }
         await Self.keepHerdrMachinesUpToDate(
             makeClient: {
-                // As in `connectAndLoad`: the machine as the store has it now.
-                guard let current = machineStore.allMachines.first(where: { $0.id == machine.id }) else { return nil }
+                // Do not let an old board reconnect to a newly edited endpoint.
+                guard machineStore.isCurrentConnection(machine) else { return nil }
+                let current = try machineStore.currentMachine(matching: machine)
                 return HerdrClient(transport: try machineStore.makeHerdrTransport(for: current))
             },
             show: showHerdrMachines
@@ -1318,9 +1326,9 @@ struct AgentBoardView: View {
                 // earlier connection is recorded in the store's copy only,
                 // and a transport built from the captured one — nothing
                 // pinned — would trust whichever key it is shown all over
-                // again. A machine the store no longer has was removed, and
-                // there is nothing left to connect to.
-                guard let current = machineStore.allMachines.first(where: { $0.id == machine.id }) else { return nil }
+                // again. A removed or edited connection ends this board's run.
+                guard machineStore.isCurrentConnection(machine) else { return nil }
+                let current = try machineStore.currentMachine(matching: machine)
                 return HerdrClient(transport: try machineStore.makeHerdrTransport(for: current))
             },
             pinHostKey: { fingerprint in

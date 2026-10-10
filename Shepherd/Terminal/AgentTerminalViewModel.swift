@@ -28,7 +28,7 @@ final class AgentTerminalViewModel {
 
     private(set) var connectionState: ConnectionState = .connecting
 
-    private let makeSession: () -> any TerminalSessionProviding
+    private let makeSession: () throws -> any TerminalSessionProviding
     /// The session owned by the current generation, from the moment it is
     /// created (so before it has finished connecting) until it is retired.
     ///
@@ -54,7 +54,7 @@ final class AgentTerminalViewModel {
     /// attaching while the session it had a moment ago is still attached.
     @ObservationIgnored private var teardown: Task<Void, Never>?
 
-    init(makeSession: @escaping () -> any TerminalSessionProviding) {
+    init(makeSession: @escaping () throws -> any TerminalSessionProviding) {
         self.makeSession = makeSession
     }
 
@@ -97,10 +97,12 @@ final class AgentTerminalViewModel {
         await teardown?.value
         guard isCurrent(generation) else { return }
 
-        let session = makeSession()
-        self.session = session
         let size: (columns: Int, rows: Int) = pendingSize ?? (80, 24)
+        var createdSession: (any TerminalSessionProviding)?
         do {
+            let session = try makeSession()
+            createdSession = session
+            self.session = session
             // The cancellation handler covers the case where the task is
             // cancelled but no `stop()` follows: without it the session
             // would connect and take the pane over before the check below
@@ -125,7 +127,7 @@ final class AgentTerminalViewModel {
             // so the first paint (including in #Preview snapshots) doesn't
             // race a separately-scheduled reader task for an empty screen.
             var iterator = output.makeAsyncIterator()
-            let firstBuffer = await iterator.next()
+            let firstBuffer = await iterator.next(isolation: MainActor.shared)
             guard isCurrent(generation) else {
                 abandon(session)
                 return
@@ -139,7 +141,7 @@ final class AgentTerminalViewModel {
             // session ended, and `deinit` — whose job is to end it — would
             // never get to run.
             readerTask = Task { [weak self] in
-                while let buffer = await iterator.next() {
+                while let buffer = await iterator.next(isolation: MainActor.shared) {
                     guard let self, self.generation == generation else { return }
                     self.feed(buffer)
                 }
@@ -149,10 +151,10 @@ final class AgentTerminalViewModel {
                 self.connectionState = .failed(String(localized: "The connection closed"))
             }
         } catch {
-            guard isCurrent(generation) else {
-                abandon(session)
-                return
-            }
+            // A factory may fail before a session exists. A late start failure
+            // must retire only this invocation's session, never its successor.
+            if let createdSession { abandon(createdSession) }
+            guard isCurrent(generation) else { return }
             connectionState = .failed(connectionFailureDescription(error))
         }
     }

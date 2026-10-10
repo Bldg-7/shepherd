@@ -26,7 +26,21 @@ final class MachineStore {
     /// Holds a copy of a stored list that `load()` couldn't decode.
     private let unreadableDefaultsKey = "herdr-client.machines.unreadable"
     private let activeDefaultsKey = "herdr-client.active-machine-id"
-    private let keychain = KeychainStore()
+    private let keychain: any MachineSecretStore
+
+    enum EditError: LocalizedError {
+        case notEditable, settingsChanged, invalidFields, credentialRequired, missingCredential
+
+        var errorDescription: String? {
+            switch self {
+            case .notEditable: String(localized: "This machine cannot be edited or was removed.")
+            case .settingsChanged: String(localized: "The machine settings changed. Reopen the machine and try again.")
+            case .invalidFields: String(localized: "Check the name, hostname, username, port and session.")
+            case .credentialRequired: String(localized: "Enter a new credential when changing authentication.")
+            case .missingCredential: String(localized: "No saved SSH credential was found. Edit the machine to set up authentication.")
+            }
+        }
+    }
 
     #if os(macOS)
     /// Synthetic, never persisted via `addMachine`/Keychain — a fixed
@@ -47,7 +61,9 @@ final class MachineStore {
     )
     #endif
 
-    init(defaults: UserDefaults = .standard, localMachine: Machine? = nil, localSocketPath: String? = nil) {
+    init(defaults: UserDefaults = .standard, localMachine: Machine? = nil, localSocketPath: String? = nil,
+         keychain: any MachineSecretStore = KeychainStore()) {
+        self.keychain = keychain
         self.defaults = defaults
         self.suppliedLocalMachine = localMachine
         self.localSocketPath = localSocketPath
@@ -82,9 +98,69 @@ final class MachineStore {
         register(machine)
     }
 
+    /// Update metadata without reading the saved secret. When explicitly replacing
+    /// a credential, write a fresh tag before committing metadata: a failed write
+    /// must not delete or overwrite the only copy of the existing SSH key.
+    func updateMachine(_ replacement: Machine, replacing original: Machine,
+                       replacementSecret: Data? = nil) throws {
+        guard !original.isLocal, !replacement.isLocal, replacement.id == original.id,
+              let index = machines.firstIndex(where: { $0.id == original.id }),
+              !machines[index].isLocal else { throw EditError.notEditable }
+        let current = machines[index]
+        guard current.connectionIdentity == original.connectionIdentity,
+              current.displayName == original.displayName else { throw EditError.settingsChanged }
+        func trimmed(_ value: String) -> String { value.trimmingCharacters(in: .whitespacesAndNewlines) }
+        let name = trimmed(replacement.displayName), host = trimmed(replacement.hostname), user = trimmed(replacement.username)
+        guard !name.isEmpty, !host.isEmpty, !user.isEmpty, (1...65535).contains(replacement.port),
+              let session = Machine.normalizedSessionName(replacement.sessionName) else { throw EditError.invalidFields }
+        if let replacementSecret {
+            guard !replacementSecret.isEmpty else { throw EditError.credentialRequired }
+        } else if replacement.authMethod != current.authMethod {
+            throw EditError.credentialRequired
+        }
+        var updated = current
+        updated.displayName = name
+        updated.hostname = host
+        updated.port = replacement.port
+        updated.username = user
+        updated.sessionName = session
+        updated.authMethod = replacement.authMethod
+        // A pin identifies the SSH server, not its username, password or session.
+        if host != current.hostname || replacement.port != current.port {
+            updated.pinnedHostKeyFingerprint = nil
+        }
+        if replacementSecret != nil {
+            updated.keychainTag = "herdr-client.private-key.\(current.id.uuidString).\(UUID().uuidString)"
+        }
+        var next = machines
+        next[index] = updated
+        let encoded = try JSONEncoder().encode(next)
+        if let replacementSecret { try keychain.saveSecret(replacementSecret, tag: updated.keychainTag) }
+        defaults.set(encoded, forKey: defaultsKey)
+        machines = next
+        // Cleanup is after the successful commit, never before the new secret is
+        // saved. A cleanup failure must not roll back the now-current credential.
+        if updated.keychainTag != current.keychainTag { try? keychain.deleteSecret(tag: current.keychainTag) }
+    }
+
+    func isCurrentConnection(_ machine: Machine) -> Bool {
+        allMachines.contains { $0.connectionIdentity == machine.connectionIdentity }
+    }
+
+    /// Keep the connection scope but refresh metadata, especially a TOFU pin
+    /// learned after a view captured its Machine value.
+    func currentMachine(matching machine: Machine) throws -> Machine {
+        guard let current = allMachines.first(where: { $0.connectionIdentity == machine.connectionIdentity }) else {
+            throw EditError.settingsChanged
+        }
+        return current
+    }
+
     func removeMachine(_ machine: Machine) {
-        guard !machine.isLocal else { return } // the built-in entry isn't registered, so there's nothing to remove
-        try? keychain.deleteSecret(tag: machine.keychainTag)
+        guard !machine.isLocal,
+              let current = machines.first(where: { $0.id == machine.id }), !current.isLocal else { return }
+        // A removal confirmation may predate an edit in another window.
+        try? keychain.deleteSecret(tag: current.keychainTag)
         machines.removeAll { $0.id == machine.id }
         if activeMachineID == machine.id {
             activeMachineID = allMachines.first?.id
@@ -97,11 +173,14 @@ final class MachineStore {
     /// authentication method (which requires Citadel) wrap this in
     /// `HostCredential`.
     func secret(for machine: Machine) throws -> Data? {
-        try keychain.loadSecret(tag: machine.keychainTag)
+        guard isCurrentConnection(machine) else { throw EditError.settingsChanged }
+        return try keychain.loadSecret(tag: machine.keychainTag)
     }
 
     func pinHostKeyFingerprint(_ fingerprint: String, for machine: Machine) {
-        guard let index = machines.firstIndex(where: { $0.id == machine.id }) else { return }
+        guard let index = machines.firstIndex(where: { $0.id == machine.id }),
+              machines[index].connectionIdentity == machine.connectionIdentity,
+              machines[index].pinnedHostKeyFingerprint == nil || machines[index].pinnedHostKeyFingerprint == fingerprint else { return }
         machines[index].pinnedHostKeyFingerprint = fingerprint
         save()
     }

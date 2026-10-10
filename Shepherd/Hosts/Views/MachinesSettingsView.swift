@@ -8,6 +8,7 @@ struct MachinesSettingsView: View {
     let machineStore: MachineStore
 
     @State private var isAddingMachine = false
+    @State private var machineBeingEdited: Machine?
     #if os(macOS)
     @State private var showsExperimentalFeatures = false
     @State private var passwordManagerWindowID: UUID
@@ -31,7 +32,13 @@ struct MachinesSettingsView: View {
         // Detail pages stay inside this sheet, using the same navigation
         // treatment as Add Machine rather than stacking another sheet.
         ZStack {
-            if isAddingMachine {
+            if let machine = machineBeingEdited {
+                AddMachineView(machineStore: machineStore, editingMachine: machine) {
+                    withAnimation(Self.pageAnimation) { machineBeingEdited = nil }
+                }
+                .id(machine.id)
+                .transition(.move(edge: .trailing))
+            } else if isAddingMachine {
                 AddMachineView(machineStore: machineStore) {
                     withAnimation(Self.pageAnimation) { isAddingMachine = false }
                 }
@@ -60,6 +67,7 @@ struct MachinesSettingsView: View {
             if ShepherdBrowserFeature.shared.isEnabled,
                ShepherdBrowserFeature.shared.passwordManagers.presentationOwner == passwordManagerWindowID {
                 isAddingMachine = false
+                machineBeingEdited = nil
                 showsExperimentalFeatures = true
             }
         }
@@ -181,6 +189,18 @@ struct MachinesSettingsView: View {
                     machineStore.activeMachineID = machine.id
                 }
             }
+            Button {
+                withAnimation(Self.pageAnimation) { machineBeingEdited = machine }
+            } label: {
+                Image(systemName: "pencil")
+            }
+            .buttonStyle(.borderless)
+            .help("Edit Machine")
+            .accessibilityLabel("Edit Machine")
+            .accessibilityIdentifier("settings.machine.edit.\(machine.id.uuidString)")
+            .opacity(machine.isLocal ? 0 : 1)
+            .disabled(machine.isLocal)
+            .accessibilityHidden(machine.isLocal)
             // Every row keeps this slot, the built-in entry included (it
             // can't be removed), so the buttons before it line up down the
             // list.
@@ -198,6 +218,9 @@ struct MachinesSettingsView: View {
         .padding(.vertical, 2)
         .contextMenu {
             if !machine.isLocal {
+                Button("Edit Machine", systemImage: "pencil") {
+                    withAnimation(Self.pageAnimation) { machineBeingEdited = machine }
+                }
                 Button("Remove…", role: .destructive) {
                     machinePendingRemoval = machine
                 }

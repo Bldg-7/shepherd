@@ -16,14 +16,17 @@ struct TerminalHostView {
     /// macOS only: on iOS that would also bring the on-screen keyboard up
     /// over it unasked.
     var focusesWhenShown = false
+    var onOpenLink: ((String) -> Void)? = nil
 
     final class Coordinator: NSObject, TerminalViewDelegate {
         let onInput: (ArraySlice<UInt8>) -> Void
         let onResize: (Int, Int) -> Void
+        var onOpenLink: ((String) -> Void)?
 
-        init(onInput: @escaping (ArraySlice<UInt8>) -> Void, onResize: @escaping (Int, Int) -> Void) {
+        init(onInput: @escaping (ArraySlice<UInt8>) -> Void, onResize: @escaping (Int, Int) -> Void, onOpenLink: ((String) -> Void)?) {
             self.onInput = onInput
             self.onResize = onResize
+            self.onOpenLink = onOpenLink
         }
 
         func send(source: TerminalView, data: ArraySlice<UInt8>) {
@@ -37,12 +40,12 @@ struct TerminalHostView {
         func setTerminalTitle(source: TerminalView, title: String) {}
         func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
         func scrolled(source: TerminalView, position: Double) {}
-        func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {}
+        func requestOpenLink(source: TerminalView, link: String, params: [String: String]) { onOpenLink?(link) }
         func rangeChanged(source: TerminalView, startY: Int, endY: Int) {}
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onInput: onInput, onResize: onResize)
+        Coordinator(onInput: onInput, onResize: onResize, onOpenLink: onOpenLink)
     }
 }
 
@@ -60,6 +63,57 @@ struct TerminalHostView {
 final class FocusReportingTerminalView: TerminalView {
     var onFocusChange: ((Bool) -> Void)?
     var focusesWhenShown = false
+    var onOpenFileGesture: ((String) -> Void)?
+    private var fileGesture = TerminalFileGesture()
+    private var capturedFileHandler: ((String) -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        fileGesture.cancel()
+        capturedFileHandler = nil
+        let point = convert(event.locationInWindow, from: nil)
+        if event.modifierFlags.contains(.command),
+           fileGesture.begin(link: TerminalFileHit.link(in: self, point: point), at: point) {
+            capturedFileHandler = onOpenFileGesture // owner at press, not release
+            return // no remote press, including explicit OSC8/file URI targets
+        }
+        super.mouseDown(with: event)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        if fileGesture.ownsPointer {
+            fileGesture.move(to: convert(event.locationInWindow, from: nil))
+            return
+        }
+        super.mouseDragged(with: event)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if fileGesture.ownsPointer {
+            let handler = capturedFileHandler
+            capturedFileHandler = nil
+            if let link = fileGesture.end(at: convert(event.locationInWindow, from: nil)) {
+                handler?(link)
+            }
+            return // failure/drag never replays this gesture to the remote TUI
+        }
+        // An ordinary click belongs to the TUI, not BOTH the TUI on press
+        // and Shepherd on release. Keep mouse reporting/selection enabled.
+        // linkReporting controls hover discovery, NOT OSC8 activation in
+        // SwiftTerm. Gate activation explicitly for this one release. The
+        // Command bit is local link intent (not an SGR mouse modifier).
+        let release: NSEvent
+        if event.modifierFlags.contains(.command) {
+            guard let copy = NSEvent.mouseEvent(with: event.type, location: event.locationInWindow,
+                modifierFlags: event.modifierFlags.subtracting(.command), timestamp: event.timestamp,
+                windowNumber: event.windowNumber, context: nil, eventNumber: event.eventNumber,
+                clickCount: event.clickCount, pressure: event.pressure) else { return }
+            release = copy
+        } else { release = event }
+        let highlighting = linkHighlightMode
+        linkHighlightMode = .alwaysWithModifier
+        defer { linkHighlightMode = highlighting }
+        super.mouseUp(with: release)
+    }
 
     override var hasFocus: Bool {
         get { super.hasFocus }
@@ -90,11 +144,15 @@ extension TerminalHostView: NSViewRepresentable {
         view.terminalDelegate = context.coordinator
         view.onFocusChange = onFocusChange
         view.focusesWhenShown = focusesWhenShown
+        view.onOpenFileGesture = onOpenLink
         onCreate(view)
         return view
     }
 
-    func updateNSView(_ nsView: TerminalView, context: Context) {}
+    func updateNSView(_ nsView: TerminalView, context: Context) {
+        context.coordinator.onOpenLink = onOpenLink
+        (nsView as? FocusReportingTerminalView)?.onOpenFileGesture = onOpenLink
+    }
 }
 
 #Preview {

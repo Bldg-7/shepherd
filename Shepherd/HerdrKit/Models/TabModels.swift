@@ -36,6 +36,14 @@ nonisolated struct TabSummary: Identifiable, Equatable, Sendable {
     /// The tab ID, qualified by the herdr machine it is on.
     var id: String { herdrMachine.map { "\($0.id)/\(tabID)" } ?? tabID }
 
+    /// Strip a Pi-generated caption only when this tab label is an exact
+    /// copy of a Pi pane's automatic terminal title. Unrelated/user names
+    /// remain untouched; the raw label is still used for rename operations.
+    var title: String {
+        guard let pane = panes.first(where: { $0.agentName == "pi" && $0.label == nil && $0.terminalTitle == label }) else { return label }
+        return pane.automaticTitle
+    }
+
     /// The state of the agent in the tab that most needs the person, for
     /// a tab with any agent in it.
     var mostUrgentState: AgentState? {
