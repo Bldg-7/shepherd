@@ -28,7 +28,10 @@ input. Real `TerminalViewDelegate.sizeChanged` requests are mirrored to this own
 PTY via `TIOCSWINSZ` and verified with `TIOCGWINSZ`.
 
 At 800×480, 520×330 and 1040×600 points:
-- The native terminal is inset 3pt on every edge, outside the 2pt stroke band.
+- The native terminal is inset 7pt on every edge, outside the 2pt stroke band,
+  with Group by Tab ON or OFF. Standalone uses the actual AgentTerminalView
+  wrapper with a session-only test seam; tab mode uses the same production
+  frame, with its parent wiring audited. The inner pane does not double-pad.
 - Actual native row/column counts and resize callback/kernel-PTY dimensions agree.
 - Focus changes retain the same native view, bounds, grid and resize count.
 - The bottom-left first cell of owned status text remains intact.

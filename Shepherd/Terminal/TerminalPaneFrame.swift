@@ -1,7 +1,7 @@
 import SwiftUI
 
 nonisolated enum TerminalPaneFrameMetrics {
-    static let inset: CGFloat = 3
+    static let inset: CGFloat = 7
     static let borderWidth: CGFloat = 2
 }
 

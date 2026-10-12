@@ -8,8 +8,10 @@ struct AgentTerminalView: View {
     var onOpenFile: ((FilePreviewRequest) -> Void)? = nil
 
     var body: some View {
-        PaneTerminalView(machine: machine, pane: agent, machineStore: machineStore, onOpenFile: onOpenFile)
-            .navigationTitle(agent.title)
+        TerminalPaneFrame(isFocused: false) {
+            PaneTerminalView(machine: machine, pane: agent, machineStore: machineStore, onOpenFile: onOpenFile)
+        }
+        .navigationTitle(agent.title)
     }
 }
 
