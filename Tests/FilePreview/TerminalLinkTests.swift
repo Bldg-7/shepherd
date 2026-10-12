@@ -18,7 +18,7 @@ import SwiftTerm
         precondition(hit(0, 26) == "docs/guide.md")
         precondition(hit(0, 1) == nil, "not a file token")
         precondition(hit(1, 8) == "docs/wide.md", "wide Korean cells must not shift the click")
-        precondition(hit(2, 8) == nil, "native web link detection owns URL clicks")
+        precondition(hit(2, 8) == "https://example.invalid/a.md", "web links must be claimed before TUI input")
         precondition(hit(3, 2) == "file:///owned/explicit.md", "OSC8 file clicks must be claimed before TUI input")
         precondition(view.getTerminal().link(at: .screen(Position(col: 2, row: 3)), mode: .explicitOnly) == "file:///owned/explicit.md")
         precondition(TerminalFileHit.link(in: view, point: CGPoint(x: -1, y: 0)) == nil)

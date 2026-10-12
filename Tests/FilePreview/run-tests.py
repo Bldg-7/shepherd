@@ -34,7 +34,7 @@ if args.swiftterm_products:
  products=args.swiftterm_products.resolve()
  bundle=products/'SwiftTerm_SwiftTerm.bundle'
  if bundle.exists():shutil.copytree(bundle,out/bundle.name)
- native=['Shepherd/FilePreview/FilePreviewLink.swift','Shepherd/FilePreview/TerminalFileHit.swift','Shepherd/Terminal/TerminalFileGesture.swift','Shepherd/Terminal/TerminalHostView.swift','Tests/FilePreview/TerminalLinkTests.swift']
+ native=['Shepherd/FilePreview/FilePreviewLink.swift','Shepherd/FilePreview/TerminalFileHit.swift','Shepherd/Terminal/TerminalFileGesture.swift','Shepherd/Terminal/TerminalWebLink.swift','Shepherd/Terminal/TerminalHostView.swift','Tests/FilePreview/TerminalLinkTests.swift']
  stage('terminal-link-build',90,['xcrun','swiftc','-target',platform.machine()+'-apple-macos26.6.2','-swift-version','6','-default-isolation','MainActor','-parse-as-library','-I',str(products),*native,str(products/'SwiftTerm.o'),'-framework','AppKit','-framework','QuartzCore','-framework','CoreText','-o',str(out/'terminal-link-tests')])
  stage('terminal-link-tests',20,[str(out/'terminal-link-tests')])
  (out/'native-source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in native},indent=2))

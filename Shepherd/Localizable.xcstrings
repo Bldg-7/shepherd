@@ -1,6 +1,30 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Go to Agent or Pane…" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "agent または pane へ移動…" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "agent 또는 pane으로 이동…" } }
+      }
+    },
+    "Go to Agent or Pane… (⌘P)" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "agent または pane へ移動… (⌘P)" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "agent 또는 pane으로 이동… (⌘P)" } }
+      }
+    },
+    "Expand Preview" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "プレビューを拡大" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "미리보기 확대" } }
+      }
+    },
+    "Restore Preview Size" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "プレビューのサイズを戻す" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "미리보기 크기 복원" } }
+      }
+    },
     "Frontmatter" : {
       "localizations" : {
         "ja" : { "stringUnit" : { "state" : "translated", "value" : "フロントマター" } },
@@ -17,6 +41,36 @@
       "localizations" : {
         "ja" : { "stringUnit" : { "state" : "translated", "value" : "未チェック" } },
         "ko" : { "stringUnit" : { "state" : "translated", "value" : "선택 안 됨" } }
+      }
+    },
+    "Hide Sidebar" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "サイドバーを非表示" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "사이드바 가리기" } }
+      }
+    },
+    "Show Sidebar" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "サイドバーを表示" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "사이드바 보기" } }
+      }
+    },
+    "Could Not Open Link" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "リンクを開けませんでした" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "링크를 열 수 없습니다" } }
+      }
+    },
+    "Enable Experimental Browser in Settings to open web links." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ウェブリンクを開くには、設定で実験的ブラウザを有効にしてください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "웹 링크를 열려면 설정에서 실험적 브라우저를 켜 주세요." } }
+      }
+    },
+    "Only valid HTTP and HTTPS links without embedded credentials can be opened." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "認証情報を含まない、有効な HTTP または HTTPS リンクのみ開けます。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "인증 정보가 포함되지 않은 유효한 HTTP 또는 HTTPS 링크만 열 수 있습니다." } }
       }
     },
     "File Preview": {"localizations":{"ko":{"stringUnit":{"state":"translated","value":"파일 미리보기"}},"ja":{"stringUnit":{"state":"translated","value":"ファイルプレビュー"}}}},

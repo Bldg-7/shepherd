@@ -30,7 +30,7 @@ import Darwin
         view.terminalDelegate = coordinator
         view.onOpenFileGesture = { opened.append($0) }
         func populate() {
-            view.feed(text: "\u{1b}[2J\u{1b}[HREADME.md:42\r\ndocs/guide.md\r\nfile:///remote/uri.md#L9\r\n\u{1b}]8;;file://owned.invalid/remote/osc.md\u{7}explicit\u{1b}]8;;\u{7}\r\n\u{1b}]8;;/remote/no-extension\u{7}relative\u{1b}]8;;\u{7}\r\n\u{1b}]8;;https://example.invalid/index\u{7}web\u{1b}]8;;\u{7}\r\nnormal control\r\nfile://foreign.invalid/remote/wrong.md\r\n\u{1b}[?1003h\u{1b}[?1006h")
+            view.feed(text: "\u{1b}[2J\u{1b}[HREADME.md:42\r\ndocs/guide.md\r\nfile:///remote/uri.md#L9\r\n\u{1b}]8;;file://owned.invalid/remote/osc.md\u{7}explicit\u{1b}]8;;\u{7}\r\n\u{1b}]8;;/remote/no-extension\u{7}relative\u{1b}]8;;\u{7}\r\n\u{1b}]8;;https://example.invalid/index\u{7}web\u{1b}]8;;\u{7}\r\nnormal control\r\nfile://foreign.invalid/remote/wrong.md\r\nhttps://example.invalid/query?q=one%20two#fragment\r\n\u{1b}]8;;https://user:synthetic@example.invalid/\u{7}invalid-web\u{1b}]8;;\u{7}\r\n\u{1b}]8;;ssh://example.invalid/\u{7}unsupported\u{1b}]8;;\u{7}\r\n\u{1b}[?1003h\u{1b}[?1006h")
         }
         populate()
         let cell = view.caretFrame.size
@@ -53,7 +53,7 @@ import Darwin
             view.mouseDown(with: event(.leftMouseDown, p, command: command))
             view.mouseUp(with: event(.leftMouseUp, p, command: command))
         }
-        let expected = ["README.md:42", "docs/guide.md", "file:///remote/uri.md#L9", "file://owned.invalid/remote/osc.md", "/remote/no-extension"]
+        let expected = ["README.md:42", "docs/guide.md", "file:///remote/uri.md#L9", "file://owned.invalid/remote/osc.md", "/remote/no-extension", "https://example.invalid/index"]
         for command in [false, true] {
             for row in 0..<expected.count {
                 sent = []; opened = []; _ = received()
@@ -68,16 +68,17 @@ import Darwin
         }
         // Ordinary NON-file clicks still reach the remote mouse TUI. Their
         // releases must not ALSO open a local file preview.
-        for row in [5, 6] {
+        for row in [6, 10] {
             sent = []; opened = []; _ = received()
             click(row, command: false)
             check(!sent.isEmpty && received() == sent, "normal press/release must still reach the owned PTY")
             check(opened.isEmpty, "ordinary TUI click must not also open preview on release")
             check(String(decoding: sent, as: UTF8.self).hasSuffix("m"), "normal TUI gesture must include release")
         }
-        sent = []; opened = []; _ = received()
-        click(5, command: true)
-        check(!sent.isEmpty && received() == sent && opened.isEmpty, "unclaimed web Cmd-click keeps complete TUI input without file preview")
+        for command in [false, true] {
+            sent = []; opened = []; _ = received(); click(8, command: command)
+            check(opened == ["https://example.invalid/query?q=one%20two#fragment"] && sent.isEmpty && received().isEmpty, "implicit HTTP(S) link opens locally once with zero PTY input")
+        }
         let start = point(0), moved = CGPoint(x: start.x + 40, y: start.y)
         for command in [false, true] {
             // Drag-out/modifier changes never replay a claimed file gesture.
@@ -98,10 +99,12 @@ import Darwin
             let before = failures
             sent = []; opened = []; _ = received(); click(7, command: command)
             check(failures == before + 1 && sent.isEmpty && received().isEmpty && opened.isEmpty, "preview/host-validation failure must not fall back to remote file opener")
+            sent = []; opened = []; _ = received(); click(9, command: command)
+            check(failures == before + 2 && sent.isEmpty && received().isEmpty, "invalid web URL failure stays local, never invokes remote opener")
             // Even no preview callback must not cause a remote-file fallback.
             view.onOpenFileGesture = nil
-            sent = []; opened = []; _ = received(); click(0, command: command)
-            check(sent.isEmpty && received().isEmpty && opened.isEmpty, "missing callback must still consume the recognized file gesture")
+            sent = []; opened = []; _ = received(); click(0, command: command); click(5, command: command)
+            check(sent.isEmpty && received().isEmpty && opened.isEmpty, "missing callback must still consume file and web gestures")
         }
         // Shared iOS gesture state: begins ownership immediately, cancel/move
         // remains owned until end, and never substitutes a moved-to link.

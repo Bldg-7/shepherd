@@ -7,8 +7,11 @@ SwiftTerm and uses a raw owned kernel PTY plus a never-shown AppKit window.
 Recognized file paths/URIs/OSC8 targets are claimed on plain or Cmd mouse-down:
 zero remote input bytes, one local preview on release. Drag cancellation, invalid
 host/read failure and missing callbacks stay local. Callback ownership is captured
-at press; modifier or pane changes cannot redirect a release. Non-file/web clicks
-retain the complete remote TUI press/release gesture. No user GUI or SSH server is
+at press; modifier or pane changes cannot redirect a release. HTTP(S) URLs (implicit text or OSC8) are claimed the same way and dispatched to
+the clicked pane's Shepherd browser, not a remote opener. Browser OFF/unavailable,
+invalid URLs and stale ownership never fall back or auto-enable browsing. URL
+validation rejects credentials, control characters and unsupported schemes.
+Non-link clicks retain the complete remote TUI press/release gesture. No user GUI or SSH server is
 operated. Live remote acceptance remains separate.
 
 ## Focus frame

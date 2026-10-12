@@ -57,19 +57,25 @@ struct ContentView: View {
     /// Goes up to have the board fetch everything again at once.
     @State private var boardRefreshRequests = 0
     @State private var filePreview: FilePreviewRequest?
+    @State private var webLinkFailure: TerminalWebLinkError?
+    @State private var isShowingPaneSwitcher = false
+    @State private var paneDestinations: [PaneDestination] = []
+    @State private var switcherConnection: Machine.ConnectionIdentity?
+    @State private var pendingPaneDestination: PaneDestination?
+    @State private var terminalPaneFocus: TerminalPaneFocus?
     #if os(macOS)
     @State private var passwordManagerWindowID = UUID()
     /// Whether the window shows the browser column beside the terminal.
     @SceneStorage("ContentView.showsBrowser") private var showsBrowser = false
     @State private var showsFilePreview = false
+    @State private var expandsFilePreview = false
     /// For each tab shown in this window (by `TerminalIdentity`), the pane in
     /// it the browser column follows: the one last given the keyboard.
     @State private var activatedPanes: [TerminalIdentity: String] = [:]
     #endif
 
-    var body: some View {
-        let machine = machineStore.activeMachine
-        NavigationSplitView {
+    private func workspace(on machine: Machine?) -> some View {
+        WorkspaceNavigationSplitView {
             Group {
                 if let machine {
                     // One board per machine: its pane list, connection and
@@ -81,7 +87,12 @@ struct ContentView: View {
                         selection: selection(on: machine),
                         justCreatedID: $justCreatedID,
                         launchTargets: $launchTargets,
-                        refreshRequests: boardRefreshRequests
+                        refreshRequests: boardRefreshRequests,
+                        onNavigationDestinations: { destinations in
+                            guard machineStore.isCurrentConnection(machine),
+                                  machineStore.activeMachine?.connectionIdentity == machine.connectionIdentity else { return }
+                            paneDestinations = destinations
+                        }
                     )
                         .id(machine.connectionIdentity)
                 } else {
@@ -93,7 +104,7 @@ struct ContentView: View {
             // Capped as well: with no maximum, its divider can be dragged
             // across the whole window, and a row has nothing to fill that
             // width with but the gap between its title and its status.
-            .navigationSplitViewColumnWidth(min: 220, ideal: 280, max: 360)
+            .navigationSplitViewColumnWidth(min: WorkspaceSidebarMetrics.minimum, ideal: WorkspaceSidebarMetrics.preferred, max: WorkspaceSidebarMetrics.maximum)
             // Attached to the sidebar column's content, not to the split
             // view: on iOS a toolbar only renders in the navigation bar of the
             // column whose content declares it, and on macOS this puts the
@@ -111,28 +122,42 @@ struct ContentView: View {
                     newTabButton
                         .help("New Tab (⌘T)")
                 }
+                ToolbarItem { paneSwitcherButton }
             }
         } detail: {
             // The browser column sits beside the terminal, outside of the
             // terminal's identity: the terminal view is made anew for each
             // pane or tab, the browser column only switches which pane's
             // browser it shows (plan item A1).
-            HSplitView {
+            WorkspaceDetailSplitView(
+                showsPanel: (showsFilePreview && filePreview != nil) || (!showsFilePreview && ShepherdBrowserFeature.shared.isEnabled && showsBrowser),
+                panelMinimum: showsFilePreview ? 320 : 360,
+                panelIdeal: showsFilePreview ? 560 : 640,
+                panelCoversTerminal: showsFilePreview && expandsFilePreview
+            ) {
                 terminalColumn(on: machine)
+                    .accessibilityHidden(showsFilePreview && expandsFilePreview)
                     .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
+                    .modifier(WorkspaceSidebarDetailLayout())
+            } panel: {
                 if showsFilePreview, let filePreview {
                     previewPanel(filePreview)
                         .frame(minWidth: 320, idealWidth: 560, maxWidth: .infinity, maxHeight: .infinity)
+                        .modifier(WorkspaceSidebarDetailLayout())
                 } else if ShepherdBrowserFeature.shared.isEnabled && showsBrowser {
                     BrowserColumn(target: browserTarget(on: machine))
                         .frame(minWidth: 360, idealWidth: 640, maxWidth: .infinity, maxHeight: .infinity)
+                        .modifier(WorkspaceSidebarDetailLayout())
                 }
             }
+            // Native hosting isolates sidebar insets; project the selected
+            // terminal title here so it still reaches the window's toolbar.
+            .navigationTitle(detailNavigationTitle(on: machine))
             .toolbar {
                 if ShepherdBrowserFeature.shared.isEnabled {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
-                        if !showsBrowser { showsFilePreview = false }
+                        if !showsBrowser { showsFilePreview = false; expandsFilePreview = false }
                         showsBrowser.toggle()
                     } label: {
                         Label(showsBrowser ? "Hide Browser" : "Show Browser", systemImage: "globe")
@@ -145,6 +170,7 @@ struct ContentView: View {
                     Button {
                         if !showsFilePreview { showsBrowser = false }
                         showsFilePreview.toggle()
+                        if !showsFilePreview { expandsFilePreview = false }
                     } label: {
                         Label(showsFilePreview ? "Hide Preview" : "Show Preview", systemImage: "doc.text")
                     }
@@ -153,11 +179,19 @@ struct ContentView: View {
                 }
             }
         }
+    }
+
+    private func workspaceWithLifecycle(on machine: Machine?) -> some View {
+        workspace(on: machine)
         .onChange(of: machine?.connectionIdentity) { _, connection in
             // A reused machine UUID is not the same endpoint or credential.
             // Never attach an old pane ID to the newly edited connection.
             if selection?.connection != connection { selection = nil }
             launchTargets = []
+            paneDestinations = []
+            pendingPaneDestination = nil
+            terminalPaneFocus = nil
+            isShowingPaneSwitcher = false
             justCreatedID = nil
             isShowingLauncher = false
             filePreview = nil
@@ -169,7 +203,9 @@ struct ContentView: View {
         .onChange(of: filePreview.map(previewBelongsToSelection) ?? true) { _, valid in
             if !valid {
                 filePreview = nil
+                #if os(macOS)
                 showsFilePreview = false
+                #endif
             }
         }
         .onChange(of: selection?.item.id) { _, _ in
@@ -178,11 +214,35 @@ struct ContentView: View {
             showsFilePreview = false
             #endif
         }
+        #if os(macOS)
+        .onChange(of: showsFilePreview) { _, visible in
+            if !visible { expandsFilePreview = false }
+        }
+        #endif
+        .environment(\.terminalPaneFocus, terminalPaneFocus)
+        .onChange(of: isShowingPaneSwitcher) { _, visible in
+            if visible {
+                switcherConnection = machine?.connectionIdentity
+                pendingPaneDestination = nil
+                isShowingLauncher = false
+            }
+        }
+        .sheet(isPresented: $isShowingPaneSwitcher, onDismiss: navigateToPendingPane) {
+            PaneSwitcher(destinations: paneDestinations, onSelect: { destination in
+                pendingPaneDestination = destination
+                isShowingPaneSwitcher = false
+            }, onClose: { pendingPaneDestination = nil; isShowingPaneSwitcher = false })
+        }
         .onChange(of: showsTabs) {
             // The board now lists the other kind of row, and what was
             // selected is no longer on it.
             selection = nil
         }
+    }
+
+    var body: some View {
+        let machine = machineStore.activeMachine
+        workspaceWithLifecycle(on: machine)
         // Over the whole window, sidebar and detail alike, as Spotlight is
         // over the screen.
         .overlay {
@@ -194,6 +254,13 @@ struct ContentView: View {
                     onClose: { isShowingLauncher = false }
                 )
             }
+        }
+        .alert("Could Not Open Link", isPresented: Binding<Bool>(
+            get: { webLinkFailure != nil }, set: { if !$0 { webLinkFailure = nil } }
+        )) {
+            Button("OK") { webLinkFailure = nil }
+        } message: {
+            Text(webLinkFailure?.localizedDescription ?? "")
         }
         .sheet(isPresented: $isShowingSettings) {
             MachinesSettingsView(machineStore: machineStore, passwordManagerWindowID: passwordManagerWindowID)
@@ -224,9 +291,20 @@ struct ContentView: View {
         // through: the window it acts on is whichever one is in front.
         .focusedSceneValue(\.isShowingSettings, $isShowingSettings)
         // And the File menu's New Tab… (⌘T), the launcher.
-        .focusedSceneValue(\.isShowingLauncher, machine == nil ? nil : $isShowingLauncher)
+        .focusedSceneValue(\.isShowingLauncher, machine == nil || isShowingPaneSwitcher || isShowingSettings ? nil : $isShowingLauncher)
+        .focusedSceneValue(\.isShowingPaneSwitcher, machine == nil || isShowingSettings || isShowingLauncher ? nil : $isShowingPaneSwitcher)
         #endif
     }
+
+    #if os(macOS)
+    private func detailNavigationTitle(on machine: Machine?) -> String {
+        guard let machine, let item = selection(on: machine).wrappedValue else { return "" }
+        switch item {
+        case .pane(let pane): return pane.title
+        case .tab(let tab): return tab.title
+        }
+    }
+    #endif
 
     /// The selected pane's terminal, or every terminal of the selected tab.
     /// The ZStack is the column's one constant view: its appearance and
@@ -239,10 +317,10 @@ struct ContentView: View {
                     Group {
                         switch item {
                         case .pane(let agent):
-                            AgentTerminalView(machine: machine, agent: agent, machineStore: machineStore, onOpenFile: openFile)
+                            AgentTerminalView(machine: machine, agent: agent, machineStore: machineStore, onOpenFile: openFile, onOpenWeb: openWeb)
                         case .tab(let tab):
                             TabTerminalView(machine: machine, tab: tab, machineStore: machineStore,
-                                onPaneActivated: { paneID in activatedPanes[identity] = paneID }, onOpenFile: openFile)
+                                onPaneActivated: { paneID in activatedPanes[identity] = paneID }, onOpenFile: openFile, onOpenWeb: openWeb)
                         }
                     }
                     .id(identity)
@@ -279,10 +357,54 @@ struct ContentView: View {
         #endif
     }
 
+    private func openWeb(_ request: TerminalWebLinkRequest) {
+        guard machineStore.isCurrentConnection(request.machine), let selected = selection,
+              selected.connection == request.machine.connectionIdentity else { return }
+        let panes: [AgentSummary]
+        switch selected.item {
+        case .pane(let pane): panes = [pane]
+        case .tab(let tab): panes = tab.panes
+        }
+        guard let pane = request.pane(in: panes, on: request.machine) else { return }
+        do {
+            guard let url = try TerminalWebLink.urlToOpen(request.rawURL, contextMatches: true,
+                browserEnabled: ShepherdBrowserFeature.shared.isEnabled, engineAvailable: BrowserEngine.isAvailable) else { return }
+            BrowserStore.shared.openBrowser(for: BrowserKey(machine: request.machine, pane: pane), terminalID: pane.terminalID, url: url)
+            if case .tab = selected.item {
+                let identity = TerminalIdentity(connection: selected.connection, itemID: selected.item.id)
+                activatedPanes[identity] = pane.paneID
+            }
+            // Only switch presentation. Existing profiles/tabs and agent grants
+            // stay intact; opening a human URL does not register an agent.
+            showsFilePreview = false
+            expandsFilePreview = false
+            showsBrowser = true
+        } catch let failure as TerminalWebLinkError { webLinkFailure = failure }
+        catch { webLinkFailure = .invalidURL }
+    }
+
     private func previewPanel(_ request: FilePreviewRequest) -> some View {
         FilePreviewPanel(request: request, machineStore: machineStore, onClose: {
             showsFilePreview = false
         }, onFileLink: openFile)
+        #if os(macOS)
+        .previewExpansion(isExpanded: expandsFilePreview, onToggle: { expandsFilePreview.toggle() })
+        #endif
+    }
+
+    /// Resolve again after native sheet dismissal, never route a stale item
+    /// from another endpoint, nested herdr, or reused terminal ID.
+    private func navigateToPendingPane() {
+        defer { pendingPaneDestination = nil }
+        guard let requested = pendingPaneDestination, let machine = machineStore.activeMachine,
+              let current = PaneDestination.resolve(requested, in: paneDestinations,
+                contextMatches: switcherConnection == machine.connectionIdentity && machineStore.isCurrentConnection(machine)) else { return }
+        #if os(macOS)
+        expandsFilePreview = false
+        #endif
+        justCreatedID = nil
+        selection = MachineSelection(connection: machine.connectionIdentity, item: current.item)
+        terminalPaneFocus = TerminalPaneFocus(paneID: current.pane.id)
     }
 
     #if os(macOS)
@@ -306,6 +428,14 @@ struct ContentView: View {
 
     private func allowsBrowserAgents(on machine: Machine) -> Bool {
         ShepherdBrowserFeature.shared.isEnabled && machine.isLocal && BrowserEngine.isAvailable
+    }
+
+    private var paneSwitcherButton: some View {
+        Button { isShowingPaneSwitcher = true } label: {
+            Label("Go to Agent or Pane…", systemImage: "magnifyingglass")
+        }
+        .disabled(machineStore.activeMachine == nil || isShowingSettings || isShowingLauncher)
+        .help("Go to Agent or Pane… (⌘P)")
     }
 
     private var newTabButton: some View {

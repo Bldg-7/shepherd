@@ -78,6 +78,17 @@ final class AgentTerminalViewModel {
         self.terminalView = terminalView
     }
 
+    /// Presentation-only focus; never restart/recreate the attach to move
+    /// between panes already mounted in a tab.
+    func requestKeyboardFocus() {
+        #if os(macOS)
+        DispatchQueue.main.async { [weak self] in
+            guard let view = self?.terminalView, let window = view.window else { return }
+            window.makeFirstResponder(view)
+        }
+        #endif
+    }
+
     /// Attaches with a fresh session and returns once output is flowing (or
     /// the attempt failed, or was superseded). Safe to call again after
     /// `stop()`, and after a previous `start()` — the earlier session is

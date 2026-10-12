@@ -27,9 +27,9 @@ nio=out/'TestNIO.swift';nio.write_text('''public struct ByteBuffer: Sendable {
  public mutating func writeString(_ s: String) { readableBytesView += Array(s.utf8) }
  public mutating func writeBytes<S: Sequence>(_ bytes: S) where S.Element == UInt8 { readableBytesView += Array(bytes) }
 }\n''')
-term=out/'TestSwiftTerm.swift';term.write_text('''@MainActor public final class TerminalView {
+term=out/'TestSwiftTerm.swift';term.write_text('''import AppKit
+@MainActor public final class TerminalView: NSView {
  public private(set) var bytes: [UInt8] = []
- public init() {}
  public func feed(byteArray: ArraySlice<UInt8>) { bytes += Array(byteArray) }
 }\n''')
 for module,file in [('NIOCore',nio),('SwiftTerm',term)]:

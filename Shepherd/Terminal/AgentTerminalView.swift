@@ -6,10 +6,11 @@ struct AgentTerminalView: View {
     let agent: AgentSummary
     let machineStore: MachineStore
     var onOpenFile: ((FilePreviewRequest) -> Void)? = nil
+    var onOpenWeb: ((TerminalWebLinkRequest) -> Void)? = nil
 
     var body: some View {
         TerminalPaneFrame(isFocused: false) {
-            PaneTerminalView(machine: machine, pane: agent, machineStore: machineStore, onOpenFile: onOpenFile)
+            PaneTerminalView(machine: machine, pane: agent, machineStore: machineStore, onOpenFile: onOpenFile, onOpenWeb: onOpenWeb)
         }
         .navigationTitle(agent.title)
     }
@@ -28,6 +29,8 @@ struct PaneTerminalView: View {
     /// taking the pane over for a view that is no longer there. SwiftUI
     /// cancels a view's task; nothing would cancel the button's.
     @State private var attempt = 0
+    @Environment(\.terminalPaneFocus) private var paneFocus
+    private let paneID: String
     private let focusesWhenShown: Bool
     private let onFocusChange: ((Bool) -> Void)?
     private let onOpenLink: (String) -> Void
@@ -39,13 +42,19 @@ struct PaneTerminalView: View {
         machineStore: MachineStore,
         focusesWhenShown: Bool = false,
         onFocusChange: ((Bool) -> Void)? = nil,
-        onOpenFile: ((FilePreviewRequest) -> Void)? = nil
+        onOpenFile: ((FilePreviewRequest) -> Void)? = nil,
+        onOpenWeb: ((TerminalWebLinkRequest) -> Void)? = nil
     ) {
+        self.paneID = pane.id
         self.focusesWhenShown = focusesWhenShown
         self.onFocusChange = onFocusChange
         self.onOpenLink = { link in
             guard machineStore.isCurrentConnection(machine) else { return }
             let raw = link.lowercased().hasPrefix("file:") ? link : link.trimmingCharacters(in: .whitespaces)
+            if TerminalWebLink.isWebLink(raw) {
+                onOpenWeb?(TerminalWebLinkRequest(machine: machine, pane: pane, url: raw))
+                return
+            }
             do {
                 _ = try FilePreviewLink.resolve(raw, directory: pane.workingDirectory, hostname: machine.hostname,
                     additionalHosts: machine.isLocal ? FilePreviewLink.localHostAliases : [])
@@ -92,7 +101,10 @@ struct PaneTerminalView: View {
 
     var body: some View {
         TerminalHostView(
-            onCreate: { view in viewModel.attach(terminalView: view) },
+            onCreate: { view in
+                viewModel.attach(terminalView: view)
+                if paneFocus?.paneID == paneID { viewModel.requestKeyboardFocus() }
+            },
             onInput: { data in viewModel.send(data) },
             onResize: { columns, rows in viewModel.resize(columns: columns, rows: rows) },
             onFocusChange: onFocusChange,
@@ -124,6 +136,9 @@ struct PaneTerminalView: View {
             // whatever the system appearance: in the ambient scheme a light
             // appearance would put black and dark grey labels on it.
             .environment(\.colorScheme, .dark)
+        }
+        .onChange(of: paneFocus) { _, request in
+            if request?.paneID == paneID { viewModel.requestKeyboardFocus() }
         }
         .task(id: attempt) { await viewModel.start() }
         .onDisappear { viewModel.stop() }

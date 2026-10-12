@@ -45,6 +45,7 @@ struct AgentBoardView: View {
     @Binding var launchTargets: [LaunchTarget]
     /// Goes up each time the board is to fetch everything again at once.
     let refreshRequests: Int
+    var onNavigationDestinations: ([PaneDestination]) -> Void
 
     @State private var agents: [AgentSummary] = []
     /// The host's tabs, or nil while its herdr hasn't reported any — before
@@ -104,7 +105,8 @@ struct AgentBoardView: View {
         selection: Binding<BoardItem?>,
         justCreatedID: Binding<String?>,
         launchTargets: Binding<[LaunchTarget]>,
-        refreshRequests: Int
+        refreshRequests: Int,
+        onNavigationDestinations: @escaping ([PaneDestination]) -> Void = { _ in }
     ) {
         self.machine = machine
         self.machineStore = machineStore
@@ -112,6 +114,7 @@ struct AgentBoardView: View {
         self._justCreatedID = justCreatedID
         self._launchTargets = launchTargets
         self.refreshRequests = refreshRequests
+        self.onNavigationDestinations = onNavigationDestinations
         self._collapsedGroupIDs = AppStorage(wrappedValue: "", "AgentBoardView.collapsedGroups.\(machine.id.uuidString)")
     }
 
@@ -300,9 +303,27 @@ struct AgentBoardView: View {
                   machineStore.activeMachine?.connectionIdentity == machine.connectionIdentity else { return }
             launchTargets = targets
         }
+        .onChange(of: navigationDestinationsNow, initial: true) { _, destinations in
+            guard machineStore.isCurrentConnection(machine),
+                  machineStore.activeMachine?.connectionIdentity == machine.connectionIdentity else { return }
+            onNavigationDestinations(destinations)
+        }
         .onChange(of: refreshRequests) {
             refreshCount += 1
         }
+    }
+
+    private var navigationDestinationsNow: [PaneDestination] {
+        func destinations(_ panes: [AgentSummary], _ tabs: [TabSummary]?, _ workspaces: [WorkspaceSummary]?, label: String, available: Bool) -> [PaneDestination] {
+            panes.map { pane in
+                let tab = showsTabRows ? tabs?.first(where: { $0.panes.contains(where: { $0.id == pane.id && $0.terminalID == pane.terminalID }) }) : nil
+                let workspace = workspaces?.first { $0.workspaceID == pane.workspaceID }?.label
+                return PaneDestination(pane: pane, item: tab.map(BoardItem.tab) ?? .pane(pane),
+                    location: ([label] + [workspace, tab?.title].compactMap { $0 }).joined(separator: " · "), isAvailable: available)
+            }
+        }
+        return destinations(agents, tabs, workspaces, label: machine.displayName, available: hasLoadedAgents && loadError == nil)
+            + herdrMachineGroups.flatMap { destinations($0.agents, $0.tabs, $0.workspaces, label: $0.machine.label, available: $0.hasLoaded && $0.error == nil) }
     }
 
     /// The failure, in the little room there is above a list that is still

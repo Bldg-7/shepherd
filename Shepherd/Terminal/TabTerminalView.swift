@@ -18,11 +18,20 @@ struct TabTerminalView: View {
     /// mustn't change (plan item A2 in docs/agent-browser-plan.md).
     var onPaneActivated: ((String) -> Void)?
     var onOpenFile: ((FilePreviewRequest) -> Void)? = nil
+    var onOpenWeb: ((TerminalWebLinkRequest) -> Void)? = nil
 
     /// The pane the keyboard is in, which its border marks. On macOS that
     /// starts as the pane herdr has focused in the tab, which is given the
     /// keyboard as the tab comes up; clicking another pane moves it there.
     @State private var focusedPaneID: String?
+    @Environment(\.terminalPaneFocus) private var paneFocus
+
+    private func shouldInitiallyFocus(_ pane: AgentSummary) -> Bool {
+        if let request = paneFocus, tab.panes.contains(where: { $0.id == request.paneID }) {
+            return pane.id == request.paneID
+        }
+        return pane.paneID == tab.focusedPaneID
+    }
 
     var body: some View {
         TabPaneLayout {
@@ -33,7 +42,7 @@ struct TabTerminalView: View {
                             machine: machine,
                             pane: pane,
                             machineStore: machineStore,
-                            focusesWhenShown: pane.paneID == tab.focusedPaneID,
+                            focusesWhenShown: shouldInitiallyFocus(pane),
                             onFocusChange: { focused in
                                 if focused {
                                     focusedPaneID = pane.paneID
@@ -42,7 +51,8 @@ struct TabTerminalView: View {
                                     focusedPaneID = nil
                                 }
                             },
-                            onOpenFile: onOpenFile
+                            onOpenFile: onOpenFile,
+                            onOpenWeb: onOpenWeb
                         )
                     }
                     #if os(macOS)

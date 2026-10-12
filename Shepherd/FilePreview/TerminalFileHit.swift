@@ -5,7 +5,7 @@ import AppKit
 
 /// Uses the terminal emulator's final cells, not raw output bytes. OSC8 and
 /// URL detection uses SwiftTerm's public cells/link API. File OSC8/URIs and
-/// plain paths are claimed before native mouse reporting can reach a TUI.
+/// plain paths and HTTP(S) links are claimed before mouse reporting reaches a TUI.
 @MainActor enum TerminalFileHit {
     static func link(in view: TerminalView, point: CGPoint) -> String? {
         let terminal = view.getTerminal()
@@ -22,13 +22,13 @@ import AppKit
             }
         }
         if let explicit = terminal.link(at: position, mode: .explicitOnly) {
-            return FilePreviewLink.isFileGestureLink(explicit) ? explicit : nil
+            return (TerminalWebLink.isWebLink(explicit) || FilePreviewLink.isFileGestureLink(explicit)) ? explicit : nil
         }
         if let native = terminal.link(at: position, mode: .explicitAndImplicit) {
             // The implicit matcher can include padding; OSC8 payloads above
             // remain exact (including escaped filenames and source locations).
             let candidate = native.trimmingCharacters(in: .whitespaces)
-            return FilePreviewLink.isFileGestureLink(candidate) ? candidate : nil
+            return (TerminalWebLink.isWebLink(candidate) || FilePreviewLink.isFileGestureLink(candidate)) ? candidate : nil
         }
         var start = row, end = row
         while start > 0, row - start < 4, terminal.getLine(row: start)?.isWrapped == true { start -= 1 }
@@ -48,6 +48,6 @@ import AppKit
             }
         }
         guard let offset else { return nil }
-        return FilePreviewLink.token(in: text, characterOffset: offset)
+        return TerminalWebLink.token(in: text, characterOffset: offset) ?? FilePreviewLink.token(in: text, characterOffset: offset)
     }
 }

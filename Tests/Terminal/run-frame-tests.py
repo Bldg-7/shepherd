@@ -8,7 +8,7 @@ for name in ['home','tmp','cache']:(out/name).mkdir(mode=0o700)
 env=dict(os.environ,DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer',HOME=str(out/'home'),CFFIXED_USER_HOME=str(out/'home'),TMPDIR=str(out/'tmp'),CLANG_MODULE_CACHE_PATH=str(out/'cache'))
 products=args.swiftterm_products.resolve();bundle=products/'SwiftTerm_SwiftTerm.bundle'
 if bundle.exists():shutil.copytree(bundle,out/bundle.name)
-sources=['Shepherd/Terminal/TerminalPaneFrame.swift','Shepherd/Terminal/TerminalFileGesture.swift','Shepherd/Terminal/TerminalHostView.swift','Shepherd/FilePreview/TerminalFileHit.swift','Shepherd/FilePreview/FilePreviewLink.swift','Tests/Terminal/TerminalPaneFrameTests.swift']
+sources=['Shepherd/Terminal/TerminalPaneFrame.swift','Shepherd/Terminal/TerminalFileGesture.swift','Shepherd/Terminal/TerminalWebLink.swift','Shepherd/Terminal/TerminalHostView.swift','Shepherd/FilePreview/TerminalFileHit.swift','Shepherd/FilePreview/FilePreviewLink.swift','Tests/Terminal/TerminalPaneFrameTests.swift']
 definition=(ROOT/'Shepherd/Terminal/AgentTerminalView.swift').read_text()
 wrapper=definition[:definition.index("/// One pane's live terminal:")]
 projected=out/'AgentTerminalWrapper.swift';projected.write_text(wrapper)

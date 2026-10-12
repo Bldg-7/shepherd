@@ -43,6 +43,7 @@ import SwiftUI
             CheckForUpdatesCommands(updater: softwareUpdater)
             SettingsCommands()
             NewTabCommands()
+            PaneSwitcherCommands()
         }
         #endif
     }
@@ -134,6 +135,7 @@ extension FocusedValues {
     /// Whether the front window has its new tab launcher up — see
     /// `NewTabCommands`. Nil while there is no machine to open a tab on.
     @Entry var isShowingLauncher: Binding<Bool>?
+    @Entry var isShowingPaneSwitcher: Binding<Bool>?
 }
 
 /// The File menu's New Tab… (⌘T), which brings up the front window's new
@@ -148,6 +150,18 @@ private struct NewTabCommands: Commands {
             }
             .keyboardShortcut("t")
             .disabled(isShowingLauncher == nil)
+        }
+    }
+}
+
+private struct PaneSwitcherCommands: Commands {
+    @FocusedValue(\.isShowingPaneSwitcher) private var isShowingPaneSwitcher
+    var body: some Commands {
+        CommandGroup(replacing: .printItem) {}
+        CommandGroup(after: .newItem) {
+            Button("Go to Agent or Pane…") { isShowingPaneSwitcher?.wrappedValue = true }
+                .keyboardShortcut("p", modifiers: .command)
+                .disabled(isShowingPaneSwitcher == nil)
         }
     }
 }

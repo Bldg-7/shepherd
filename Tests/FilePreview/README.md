@@ -28,7 +28,11 @@ Coverage:
 
 Recognized Mac file paths, file URIs and file OSC8 links use plain click or
 Cmd-click for Shepherd preview. File intent is claimed at mouse-down before any
-remote input. Non-file clicks remain TUI input, not a second preview on release.
+remote input. HTTP(S) links are also claimed and routed to the clicked pane's
+Shepherd browser; non-link clicks remain TUI input, not a second preview on release.
+Browser OFF/unavailable and invalid web URLs show a local error, without remote,
+external-app or automatic-enable fallback. Localhost URLs resolve on this Mac;
+opening a URL does not create an SSH tunnel or remote browser-agent grant.
 iOS recognizes file touches at began and owns the full gesture before native TUI
 recognizers can emit a tap/drag. Non-file gestures remain native TUI behavior. Markdown file links stay in the same preview and
 resolve against the displayed file's parent directory. Relative terminal links

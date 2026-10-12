@@ -19,12 +19,14 @@ import Darwin
 struct Machine {}
 struct AgentSummary { let title = "Owned" }
 struct FilePreviewRequest {}
+struct TerminalWebLinkRequest {}
 struct MachineStore { let probe: FrameProbe }
 struct PaneTerminalView: View {
     let machine: Machine
     let pane: AgentSummary
     let machineStore: MachineStore
     var onOpenFile: ((FilePreviewRequest) -> Void)?
+    var onOpenWeb: ((TerminalWebLinkRequest) -> Void)?
     var body: some View { FrameTerminal(probe: machineStore.probe) }
 }
 

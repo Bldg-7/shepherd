@@ -6,12 +6,26 @@ struct FilePreviewPanel: View {
     let machineStore: MachineStore
     var onClose: () -> Void
     var onFileLink: (FilePreviewRequest) -> Void
+    var isExpanded = false
+    var onToggleExpanded: (() -> Void)? = nil
     @State private var model = FilePreviewModel()
     @State private var reload = 0
     @State private var showsSource = false
+    #if os(macOS)
+    @FocusState private var panelFocused: Bool
+    #endif
     // Both raw text and Markdown have a bounded render budget independent
     // of the transport limit. The source file is never modified.
     private let renderCharacters = 120_000
+
+    #if os(macOS)
+    func previewExpansion(isExpanded: Bool, onToggle: @escaping () -> Void) -> Self {
+        var panel = self
+        panel.isExpanded = isExpanded
+        panel.onToggleExpanded = onToggle
+        return panel
+    }
+    #endif
 
     private var title: String {
         ((model.link?.path ?? request.rawLink) as NSString).lastPathComponent
@@ -26,6 +40,17 @@ struct FilePreviewPanel: View {
                 if case .loaded(let document) = model.state, case .text(_, let markdown) = document.content, markdown {
                     Toggle("Source", isOn: $showsSource).toggleStyle(.button)
                 }
+                #if os(macOS)
+                if let onToggleExpanded {
+                    Button(action: onToggleExpanded) {
+                        Label(isExpanded ? "Restore Preview Size" : "Expand Preview", systemImage: isExpanded ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                            .labelStyle(.iconOnly)
+                    }
+                    .buttonStyle(.borderless)
+                    .help(isExpanded ? "Restore Preview Size" : "Expand Preview")
+                    .accessibilityIdentifier("preview.expand")
+                }
+                #endif
                 Button(action: onClose) {
                     Label("Close Preview", systemImage: "xmark")
                         .labelStyle(.iconOnly)
@@ -57,6 +82,15 @@ struct FilePreviewPanel: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(.background)
         .navigationTitle(title)
+        #if os(macOS)
+        .focusable(isExpanded)
+        .focusEffectDisabled()
+        .focused($panelFocused)
+        .onChange(of: isExpanded, initial: true) { _, expanded in panelFocused = expanded }
+        .onExitCommand {
+            if isExpanded { onToggleExpanded?() } else { onClose() }
+        }
+        #endif
         .task(id: "\(request.id)-\(reload)") {
             showsSource = false
             await model.load(request, store: machineStore)
