@@ -28,7 +28,7 @@ Password-manager connection does not imply credential-fill authorization. Native
 
 Edit registered machines in Settings → Machines. Existing SSH credentials stay unchanged unless Change Authentication is explicitly enabled.
 
-Command-click a file path, `file://` URL or OSC8 file link to open the read-only preview beside the terminal. Code wraps automatically and uses basic native syntax highlighting; Markdown has rendered/source modes. Remote files are read over SFTP on the clicked machine, not opened by a remote editor or resolved against the Mac. File gestures are kept local; ordinary clicks still belong to the TUI. Nested Herdr-machine file routing is not supported.
+Click a recognized file path, `file://` URL or OSC8 file link to open the read-only preview beside the terminal; Command-click also works. Code wraps automatically and uses basic native syntax highlighting; Markdown has rendered/source modes. Remote files are read over SFTP on the clicked machine, not opened by a remote editor or resolved against the Mac. File gestures are claimed before terminal mouse reporting and kept local, with or without Command; non-file clicks still belong to the TUI. Nested Herdr-machine file routing is not supported.
 
 The preview and experimental browser share the side-panel slot; switching visibility preserves browser tabs/profiles. The preview has a circular Liquid Glass close button and no header refresh button. Browser integration uses pane-scoped status icons; Group by Tab hides unknown/unavailable captions and pane counts. Pi automatic title prefixes are hidden for display only.
 

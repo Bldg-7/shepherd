@@ -16,4 +16,4 @@ def stage(name,seconds,args):
  v=json.loads(log.with_suffix('.stage.json').read_text());assert code==0 and v['naturalExitConfirmed'] and not v['signalsSent'] and v['cleanupVerified'],name
 stage('pointer-build',90,['xcrun','swiftc','-target',platform.machine()+'-apple-macos26.6.2','-swift-version','6','-default-isolation','MainActor','-parse-as-library','-I',str(products),*sources,str(products/'SwiftTerm.o'),'-framework','AppKit','-framework','QuartzCore','-framework','CoreText','-o',str(out/'pointer-tests')])
 stage('pointer-tests',30,[str(out/'pointer-tests')])
-(out/'validation.json').write_text(json.dumps({'passed':True,'actualSwiftTerm':True,'ownedKernelPTY':True,'ownedUnshownWindow':True,'userGUIInput':False,'realSSH':False,'stages':2},indent=2))
+(out/'validation.json').write_text(json.dumps({'passed':True,'actualSwiftTerm':True,'ownedKernelPTY':True,'ownedUnshownWindow':True,'userGUIInput':False,'realSSH':False,'plainAndCommandFileClicksLocal':True,'nonFileClicksKeepRemoteInput':True,'stages':2},indent=2))

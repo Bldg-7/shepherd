@@ -26,8 +26,9 @@ Coverage:
 
 ## Product behavior
 
-Mac file paths, file URIs and file OSC8 links all use Cmd-click for Shepherd
-preview. Ordinary clicks remain TUI input, not a second local preview on release.
+Recognized Mac file paths, file URIs and file OSC8 links use plain click or
+Cmd-click for Shepherd preview. File intent is claimed at mouse-down before any
+remote input. Non-file clicks remain TUI input, not a second preview on release.
 iOS recognizes file touches at began and owns the full gesture before native TUI
 recognizers can emit a tap/drag. Non-file gestures remain native TUI behavior. Markdown file links stay in the same preview and
 resolve against the displayed file's parent directory. Relative terminal links
@@ -103,8 +104,9 @@ language grammar; templates/raw literals/preprocessor semantics may be approxima
 
 `Tests/Terminal/run-pointer-tests.py` uses the real SwiftTerm view with mouse
 reporting/SGR enabled and a raw owned kernel PTY. Captured file press/drag/release
-must deliver zero PTY bytes; ordinary clicks must deliver a complete mouse gesture.
-OSC8, implicit file URIs, source locations, drag cancellation, preview failure and
+must deliver zero PTY bytes with or without Cmd; non-file clicks must deliver a
+complete mouse gesture. OSC8, implicit file URIs, source locations, missing preview
+callbacks, drag cancellation, preview failure and
 owner-callback capture at press are covered. No user window or SSH server is used.
 The iOS recognition adapter is separately compiled by the full iOS app build;
 live iOS touch competition remains an interactive acceptance check.

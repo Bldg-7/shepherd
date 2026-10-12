@@ -71,8 +71,7 @@ final class FocusReportingTerminalView: TerminalView {
         fileGesture.cancel()
         capturedFileHandler = nil
         let point = convert(event.locationInWindow, from: nil)
-        if event.modifierFlags.contains(.command),
-           fileGesture.begin(link: TerminalFileHit.link(in: self, point: point), at: point) {
+        if fileGesture.begin(link: TerminalFileHit.link(in: self, point: point), at: point) {
             capturedFileHandler = onOpenFileGesture // owner at press, not release
             return // no remote press, including explicit OSC8/file URI targets
         }
@@ -96,11 +95,12 @@ final class FocusReportingTerminalView: TerminalView {
             }
             return // failure/drag never replays this gesture to the remote TUI
         }
-        // An ordinary click belongs to the TUI, not BOTH the TUI on press
-        // and Shepherd on release. Keep mouse reporting/selection enabled.
+        // An unclaimed NON-file click belongs to the TUI, not BOTH the TUI
+        // on press and Shepherd on release. Keep reporting/selection enabled.
         // linkReporting controls hover discovery, NOT OSC8 activation in
         // SwiftTerm. Gate activation explicitly for this one release. The
-        // Command bit is local link intent (not an SGR mouse modifier).
+        // Command is not an SGR mouse modifier; recognized file links above
+        // are already claimed regardless of the modifier.
         let release: NSEvent
         if event.modifierFlags.contains(.command) {
             guard let copy = NSEvent.mouseEvent(with: event.type, location: event.locationInWindow,

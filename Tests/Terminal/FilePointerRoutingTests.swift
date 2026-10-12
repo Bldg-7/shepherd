@@ -54,16 +54,21 @@ import Darwin
             view.mouseUp(with: event(.leftMouseUp, p, command: command))
         }
         let expected = ["README.md:42", "docs/guide.md", "file:///remote/uri.md#L9", "file://owned.invalid/remote/osc.md", "/remote/no-extension"]
-        for row in 0..<expected.count {
-            sent = []; opened = []; _ = received()
-            click(row, command: true)
-            check(opened == [expected[row]], "Cmd-click opens exactly one app preview")
-            check(sent.isEmpty && received().isEmpty, "file gesture must send zero input bytes to actual owned PTY")
-            check(view.linkReporting == .implicit, "temporary routing must restore native link reporting")
+        for command in [false, true] {
+            for row in 0..<expected.count {
+                sent = []; opened = []; _ = received()
+                let p = point(row)
+                view.mouseDown(with: event(.leftMouseDown, p, command: command))
+                check(opened.isEmpty && sent.isEmpty && received().isEmpty, "file press must be claimed before any remote input, with or without Cmd")
+                view.mouseUp(with: event(.leftMouseUp, p, command: command))
+                check(opened == [expected[row]], "plain/Cmd file click opens exactly one app preview")
+                check(sent.isEmpty && received().isEmpty, "file gesture must send zero input bytes to actual owned PTY")
+                check(view.linkReporting == .implicit, "routing must preserve native link reporting")
+            }
         }
-        // An ordinary click still reaches the remote mouse TUI, including an
-        // OSC8 cell. Its release must not ALSO open a local preview.
-        for row in [1, 3, 6] {
+        // Ordinary NON-file clicks still reach the remote mouse TUI. Their
+        // releases must not ALSO open a local file preview.
+        for row in [5, 6] {
             sent = []; opened = []; _ = received()
             click(row, command: false)
             check(!sent.isEmpty && received() == sent, "normal press/release must still reach the owned PTY")
@@ -73,25 +78,31 @@ import Darwin
         sent = []; opened = []; _ = received()
         click(5, command: true)
         check(!sent.isEmpty && received() == sent && opened.isEmpty, "unclaimed web Cmd-click keeps complete TUI input without file preview")
-        // Drag-out and modifier release don't turn a claimed file gesture
-        // back into a remote motion/release or open the wrong target.
-        sent = []; opened = []; _ = received()
         let start = point(0), moved = CGPoint(x: start.x + 40, y: start.y)
-        view.mouseDown(with: event(.leftMouseDown, start, command: true))
-        view.mouseDragged(with: event(.leftMouseDragged, moved, command: false))
-        view.mouseUp(with: event(.leftMouseUp, moved, command: false))
-        check(sent.isEmpty && received().isEmpty && opened.isEmpty, "claimed drag-out must neither replay to TUI nor open a file")
-        // Capture the owner callback at press, even if a pane/context changes
-        // before release; production's old callback rejects retired ownership.
-        sent = []; opened = []; _ = received()
-        view.onOpenFileGesture = { opened.append("old:" + $0) }
-        view.mouseDown(with: event(.leftMouseDown, start, command: true))
-        view.onOpenFileGesture = { opened.append("new:" + $0) }
-        view.mouseUp(with: event(.leftMouseUp, start, command: false))
-        check(opened == ["old:README.md:42"] && sent.isEmpty && received().isEmpty, "owner at press must be preserved through release")
-        view.onOpenFileGesture = { _ in failures += 1 } // simulate read/host-validation failure
-        sent = []; _ = received(); click(7, command: true)
-        check(failures == 1 && sent.isEmpty && received().isEmpty, "preview failure must not fall back to remote file opener")
+        for command in [false, true] {
+            // Drag-out/modifier changes never replay a claimed file gesture.
+            view.onOpenFileGesture = { opened.append($0) }
+            sent = []; opened = []; _ = received()
+            view.mouseDown(with: event(.leftMouseDown, start, command: command))
+            view.mouseDragged(with: event(.leftMouseDragged, moved, command: !command))
+            view.mouseUp(with: event(.leftMouseUp, moved, command: !command))
+            check(sent.isEmpty && received().isEmpty && opened.isEmpty, "plain/Cmd claimed drag-out must neither replay to TUI nor open a file")
+            // Capture the callback at press, not the replacement pane's callback.
+            sent = []; opened = []; _ = received()
+            view.onOpenFileGesture = { opened.append("old:" + $0) }
+            view.mouseDown(with: event(.leftMouseDown, start, command: command))
+            view.onOpenFileGesture = { opened.append("new:" + $0) }
+            view.mouseUp(with: event(.leftMouseUp, start, command: !command))
+            check(opened == ["old:README.md:42"] && sent.isEmpty && received().isEmpty, "owner at plain/Cmd press must be preserved through release")
+            view.onOpenFileGesture = { _ in failures += 1 }
+            let before = failures
+            sent = []; opened = []; _ = received(); click(7, command: command)
+            check(failures == before + 1 && sent.isEmpty && received().isEmpty && opened.isEmpty, "preview/host-validation failure must not fall back to remote file opener")
+            // Even no preview callback must not cause a remote-file fallback.
+            view.onOpenFileGesture = nil
+            sent = []; opened = []; _ = received(); click(0, command: command)
+            check(sent.isEmpty && received().isEmpty && opened.isEmpty, "missing callback must still consume the recognized file gesture")
+        }
         // Shared iOS gesture state: begins ownership immediately, cancel/move
         // remains owned until end, and never substitutes a moved-to link.
         var gesture = TerminalFileGesture()
