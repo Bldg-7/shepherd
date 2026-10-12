@@ -49,7 +49,8 @@ struct ContentView: View {
     /// appearance and one disappearance per visit.
     @State private var isDetailColumnVisible = false
     @State private var isShowingSettings = false
-    @State private var isShowingLauncher = false
+    /// How the new tab launcher came up, or nil while it isn't up.
+    @State private var launcherStart: LauncherStart?
     /// What the new tab launcher offers, as the board last reported it.
     @State private var launchTargets: [LaunchTarget] = []
     /// See `AgentBoardView.justCreatedID`.
@@ -120,7 +121,7 @@ struct ContentView: View {
                 }
                 ToolbarItem {
                     newTabButton
-                        .help("New Tab (⌘T)")
+                        .help("New Tab (⌘N)")
                 }
                 ToolbarItem { paneSwitcherButton }
             }
@@ -193,7 +194,7 @@ struct ContentView: View {
             terminalPaneFocus = nil
             isShowingPaneSwitcher = false
             justCreatedID = nil
-            isShowingLauncher = false
+            launcherStart = nil
             filePreview = nil
             #if os(macOS)
             showsFilePreview = false
@@ -224,7 +225,7 @@ struct ContentView: View {
             if visible {
                 switcherConnection = machine?.connectionIdentity
                 pendingPaneDestination = nil
-                isShowingLauncher = false
+                launcherStart = nil
             }
         }
         .sheet(isPresented: $isShowingPaneSwitcher, onDismiss: navigateToPendingPane) {
@@ -246,12 +247,13 @@ struct ContentView: View {
         // Over the whole window, sidebar and detail alike, as Spotlight is
         // over the screen.
         .overlay {
-            if isShowingLauncher, let machine {
+            if let launcherStart, let machine {
                 NewTabLauncher(
                     targets: launchTargets,
+                    preset: launcherPreset(launcherStart, on: machine),
                     allowsBrowserAgents: allowsBrowserAgents(on: machine),
                     create: { request in try await openTab(request, on: machine) },
-                    onClose: { isShowingLauncher = false }
+                    onClose: { self.launcherStart = nil }
                 )
             }
         }
@@ -288,11 +290,12 @@ struct ContentView: View {
             #endif
         }
         // What the app menu's Settings… item (and ⌘,) opens Settings
-        // through: the window it acts on is whichever one is in front.
+        // through.
         .focusedSceneValue(\.isShowingSettings, $isShowingSettings)
-        // And the File menu's New Tab… (⌘T), the launcher.
-        .focusedSceneValue(\.isShowingLauncher, machine == nil || isShowingPaneSwitcher || isShowingSettings ? nil : $isShowingLauncher)
-        .focusedSceneValue(\.isShowingPaneSwitcher, machine == nil || isShowingSettings || isShowingLauncher ? nil : $isShowingPaneSwitcher)
+        // And the File menu's New Tab… (⌘N) and New Tab in Current
+        // Workspace… (⌘T), the launcher.
+        .focusedSceneValue(\.launcherStart, machine == nil || isShowingPaneSwitcher || isShowingSettings ? nil : $launcherStart)
+        .focusedSceneValue(\.isShowingPaneSwitcher, machine == nil || isShowingSettings || launcherStart != nil ? nil : $isShowingPaneSwitcher)
         #endif
     }
 
@@ -434,17 +437,28 @@ struct ContentView: View {
         Button { isShowingPaneSwitcher = true } label: {
             Label("Go to Agent or Pane…", systemImage: "magnifyingglass")
         }
-        .disabled(machineStore.activeMachine == nil || isShowingSettings || isShowingLauncher)
+        .disabled(machineStore.activeMachine == nil || isShowingSettings || launcherStart != nil)
         .help("Go to Agent or Pane… (⌘P)")
     }
 
     private var newTabButton: some View {
         Button {
-            isShowingLauncher.toggle()
+            launcherStart = launcherStart == nil ? .blank : nil
         } label: {
             Label("New Tab", systemImage: "plus")
         }
         .disabled(machineStore.activeMachine == nil)
+    }
+
+    /// What the launcher comes up with already picked: nothing, or — for
+    /// New Tab in Current Workspace… — the herdr and the workspace of the
+    /// selected pane or tab. The launcher takes this as it comes up, and
+    /// doesn't follow the selection after that.
+    private func launcherPreset(_ start: LauncherStart, on machine: Machine) -> LaunchPreset? {
+        switch start {
+        case .blank: nil
+        case .currentWorkspace: LaunchPreset.current(for: selection(on: machine).wrappedValue, in: launchTargets)
+        }
     }
 
     /// Opens the tab the launcher asked for, over a connection of its own,

@@ -22,7 +22,9 @@ import SwiftUI
     }
 
     var body: some Scene {
-        WindowGroup {
+        // The app has one window. A `Window` rather than a `WindowGroup`:
+        // there is no New Window to make another with, and no window tabs.
+        Window(Text(verbatim: "Shepherd"), id: "main") {
             #if DEBUG && os(macOS)
             if ProcessInfo.processInfo.environment["SHEPHERD_BROWSER_FEATURE_FIXTURE"] != nil ||
                 ProcessInfo.processInfo.environment["SHEPHERD_AGENT_LAUNCH_FIXTURE"] != nil ||
@@ -102,6 +104,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #endif
     }
 
+    /// Closing the window is not quitting, which is what an app whose one
+    /// scene is a `Window` does unless told otherwise. The app stays up
+    /// without it — the browsers keep running in their holder window — and
+    /// a click on the Dock icon brings the window back.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
     /// The browser's pages are closed and its engine shut down before the
     /// app goes, so that cookies and the rest reach the disk (plan item F8
     /// in docs/agent-browser-plan.md). It has to happen in here, before
@@ -136,28 +146,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 extension FocusedValues {
-    /// Whether the front window has its Settings sheet up — see
+    /// Whether the window has its Settings sheet up — see
     /// `SettingsCommands`.
     @Entry var isShowingSettings: Binding<Bool>?
-    /// Whether the front window has its new tab launcher up — see
-    /// `NewTabCommands`. Nil while there is no machine to open a tab on.
-    @Entry var isShowingLauncher: Binding<Bool>?
+    /// How the window's new tab launcher came up, with nil in it while the
+    /// launcher isn't up — see `NewTabCommands`, which set it. The binding
+    /// itself is nil while there is no machine to open a tab on.
+    @Entry var launcherStart: Binding<LauncherStart?>?
     @Entry var isShowingPaneSwitcher: Binding<Bool>?
 }
 
-/// The File menu's New Tab… (⌘T), which brings up the front window's new
-/// tab launcher — what the plus over the sidebar does.
+/// The File menu's New Tab… (⌘N), which brings up the window's new tab
+/// launcher — what the plus over the sidebar does — and New Tab in Current
+/// Workspace… (⌘T), which brings it up with the machine and the workspace
+/// of the selected pane or tab already picked. They take the place of New
+/// Window, and its ⌘N: the app has the one window.
 private struct NewTabCommands: Commands {
-    @FocusedValue(\.isShowingLauncher) private var isShowingLauncher
+    @FocusedValue(\.launcherStart) private var launcherStart
 
     var body: some Commands {
-        CommandGroup(after: .newItem) {
+        CommandGroup(replacing: .newItem) {
             Button("New Tab…") {
-                isShowingLauncher?.wrappedValue = true
+                show(.blank)
+            }
+            .keyboardShortcut("n")
+            .disabled(launcherStart == nil)
+            Button("New Tab in Current Workspace…") {
+                show(.currentWorkspace)
             }
             .keyboardShortcut("t")
-            .disabled(isShowingLauncher == nil)
+            .disabled(launcherStart == nil)
         }
+    }
+
+    /// With the launcher already up there is nothing to do: what it has
+    /// been told so far stays.
+    private func show(_ start: LauncherStart) {
+        guard let launcherStart, launcherStart.wrappedValue == nil else { return }
+        launcherStart.wrappedValue = start
     }
 }
 
@@ -175,8 +201,8 @@ private struct PaneSwitcherCommands: Commands {
 
 /// The app menu's Settings… item, in the place and with the ⌘, the menu
 /// keeps for it. Settings is a sheet over the main window rather than a
-/// window of its own (a `Settings` scene), so the item opens it over
-/// whichever main window is in front, and is unavailable with none.
+/// window of its own (a `Settings` scene), so the item opens it over the
+/// main window, and is unavailable while that is closed.
 private struct SettingsCommands: Commands {
     @FocusedValue(\.isShowingSettings) private var isShowingSettings
 

@@ -13,7 +13,14 @@ controller, SwiftTerm and shared terminal frame.
 - Machines: edit/delete slots stay in place but are visible/enabled only during
   row hover; local machine stays protected; context-menu alternatives and delete
   confirmation remain. Active/Make Active comes last, right aligned.
-- Cmd-P: front-window focused-scene menu replaces Print. Search uses existing
+- Single window: the app's scene is one `Window`, with no New Window command;
+  closing it leaves the app running. Cmd-N opens the new tab launcher with
+  nothing picked, Cmd-T with the herdr and workspace of the selected pane or tab
+  picked. The preset comes from existing board snapshots: a nested herdr's
+  workspace is never taken for the host's of the same raw ID, a workspace no
+  longer listed leaves only the machine picked, and nothing selected or a herdr
+  no tab can be opened on falls back to asking from the start.
+- Cmd-P: the window's focused-scene menu replaces Print. Search uses existing
   board snapshots, independent of sidebar filters/folded groups. Arrow keys,
   Return, Escape/cancel. Each word matches title/agent/paneID/cwd/location.
   Disconnected rows cannot be selected. On native sheet dismissal revalidate

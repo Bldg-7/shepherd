@@ -25,6 +25,14 @@ enum BoardItem: Equatable {
         case .tab(let tab): tab.herdrMachine
         }
     }
+
+    /// The workspace the item is in. Nil only from a herdr that doesn't say.
+    var workspaceID: String? {
+        switch self {
+        case .pane(let pane): pane.workspaceID
+        case .tab(let tab): tab.workspaceID
+        }
+    }
 }
 
 /// The sidebar content of `ContentView`'s `NavigationSplitView` — the panes,

@@ -27,6 +27,35 @@ struct LaunchWorkspace: Identifiable, Equatable {
     var id: String { workspace.id }
 }
 
+/// How the launcher is asked to come up.
+enum LauncherStart {
+    /// With nothing picked but what there is no choice of.
+    case blank
+    /// With the herdr and the workspace of the selected pane or tab picked
+    /// — see `LaunchPreset.current`.
+    case currentWorkspace
+}
+
+/// What the launcher comes up with already picked: a target and, where
+/// there is one to pick, a workspace on it.
+struct LaunchPreset: Equatable {
+    /// `LaunchTarget.id`.
+    let targetID: String
+    let workspace: WorkspaceSummary?
+
+    /// The herdr and the workspace `item` — the selected pane or tab — is
+    /// in. Nil with nothing selected, or on a herdr no tab can be opened on
+    /// right now: the launcher then asks from the start. The workspace is
+    /// left to ask for when the target doesn't list the item's any more.
+    static func current(for item: BoardItem?, in targets: [LaunchTarget]) -> LaunchPreset? {
+        guard let item,
+              let target = targets.first(where: { $0.herdrMachine?.id == item.herdrMachine?.id }),
+              target.unavailableReason == nil else { return nil }
+        let workspace = target.workspaces.first { $0.id == item.workspaceID }?.workspace
+        return LaunchPreset(targetID: target.id, workspace: workspace)
+    }
+}
+
 nonisolated enum LaunchProgram: String, CaseIterable, Sendable {
     case shell, claude, codex, pi
     var agentKind: AgentKind? { AgentKind(rawValue: rawValue) }
@@ -67,6 +96,10 @@ struct LaunchRequest {
 /// With one machine only, that one is picked from the start, and its chip
 /// can't be taken back. The workspace list always ends with a way to make a
 /// new workspace — the only way forward on a herdr that has none.
+///
+/// Given a `preset`, it comes up with that machine and workspace picked, as
+/// if they had been answered here: their chips are in the field, and can be
+/// taken back the same way.
 struct NewTabLauncher: View {
     let targets: [LaunchTarget]
     let allowsBrowserAgents: Bool
@@ -112,12 +145,13 @@ struct NewTabLauncher: View {
     @Environment(\.controlActiveState) private var controlActiveState
     @State private var outsideClicks = OutsideClickWatcher()
 
-    init(targets: [LaunchTarget], allowsBrowserAgents: Bool = false, create: @escaping (LaunchRequest) async throws -> Void, onClose: @escaping () -> Void) {
+    init(targets: [LaunchTarget], preset: LaunchPreset? = nil, allowsBrowserAgents: Bool = false, create: @escaping (LaunchRequest) async throws -> Void, onClose: @escaping () -> Void) {
         self.targets = targets
         self.allowsBrowserAgents = allowsBrowserAgents
         self.create = create
         self.onClose = onClose
-        _targetID = State(initialValue: targets.count == 1 ? targets.first?.id : nil)
+        _targetID = State(initialValue: preset?.targetID ?? (targets.count == 1 ? targets.first?.id : nil))
+        _workspace = State(initialValue: preset?.workspace.map { LaunchRequest.Workspace.existing($0) })
     }
 
     /// The picked target as the board knows it now: it is fetched again

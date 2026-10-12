@@ -3160,18 +3160,34 @@
         }
       }
     },
-    "New Tab (⌘T)" : {
+    "New Tab (⌘N)" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新しい tab (⌘T)"
+            "value" : "新しい tab (⌘N)"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "새 tab (⌘T)"
+            "value" : "새 tab (⌘N)"
+          }
+        }
+      }
+    },
+    "New Tab in Current Workspace…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現在の workspace に新しい tab…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "현재 workspace에 새 tab…"
           }
         }
       }
