@@ -11,6 +11,7 @@ struct MachinesSettingsView: View {
     @State private var machineBeingEdited: Machine?
     #if os(macOS)
     @State private var showsExperimentalFeatures = false
+    @State private var hoveredMachineID: UUID?
     @State private var passwordManagerWindowID: UUID
 
     init(machineStore: MachineStore, passwordManagerWindowID: UUID = UUID()) {
@@ -180,15 +181,6 @@ struct MachinesSettingsView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            if isActive {
-                Label("Active", systemImage: "checkmark.circle.fill")
-                    .labelStyle(.titleAndIcon)
-                    .foregroundStyle(.tint)
-            } else {
-                Button("Make Active") {
-                    machineStore.activeMachineID = machine.id
-                }
-            }
             Button {
                 withAnimation(Self.pageAnimation) { machineBeingEdited = machine }
             } label: {
@@ -198,9 +190,9 @@ struct MachinesSettingsView: View {
             .help("Edit Machine")
             .accessibilityLabel("Edit Machine")
             .accessibilityIdentifier("settings.machine.edit.\(machine.id.uuidString)")
-            .opacity(machine.isLocal ? 0 : 1)
-            .disabled(machine.isLocal)
-            .accessibilityHidden(machine.isLocal)
+            .opacity(!machine.isLocal && hoveredMachineID == machine.id ? 1 : 0)
+            .disabled(machine.isLocal || hoveredMachineID != machine.id)
+            .accessibilityHidden(machine.isLocal || hoveredMachineID != machine.id)
             // Every row keeps this slot, the built-in entry included (it
             // can't be removed), so the buttons before it line up down the
             // list.
@@ -211,11 +203,26 @@ struct MachinesSettingsView: View {
             }
             .buttonStyle(.borderless)
             .help("Remove \(machine.displayName)…")
-            .opacity(machine.isLocal ? 0 : 1)
-            .disabled(machine.isLocal)
-            .accessibilityHidden(machine.isLocal)
+            .opacity(!machine.isLocal && hoveredMachineID == machine.id ? 1 : 0)
+            .disabled(machine.isLocal || hoveredMachineID != machine.id)
+            .accessibilityHidden(machine.isLocal || hoveredMachineID != machine.id)
+            Group {
+                if isActive {
+                    Label("Active", systemImage: "checkmark.circle.fill")
+                        .labelStyle(.titleAndIcon)
+                        .foregroundStyle(.tint)
+                } else {
+                    Button("Make Active") { machineStore.activeMachineID = machine.id }
+                }
+            }
+            .frame(minWidth: 100, alignment: .trailing)
         }
         .padding(.vertical, 2)
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            if hovering { hoveredMachineID = machine.id }
+            else if hoveredMachineID == machine.id { hoveredMachineID = nil }
+        }
         .contextMenu {
             if !machine.isLocal {
                 Button("Edit Machine", systemImage: "pencil") {
