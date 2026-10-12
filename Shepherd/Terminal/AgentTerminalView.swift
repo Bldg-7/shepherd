@@ -148,7 +148,7 @@ struct PaneTerminalView: View {
 #Preview {
     NavigationStack {
         AgentTerminalView(
-            machine: Machine(displayName: "Preview Machine", hostname: "localhost", username: "snark"),
+            machine: Machine(displayName: "Preview Machine", hostname: "localhost", username: "example"),
             agent: AgentSummary.preview,
             machineStore: MachineStore()
         )
