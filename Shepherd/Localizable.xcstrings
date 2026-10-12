@@ -1,6 +1,24 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Frontmatter" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "フロントマター" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "프런트매터" } }
+      }
+    },
+    "Checked" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "チェック済み" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "선택됨" } }
+      }
+    },
+    "Unchecked" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "未チェック" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "선택 안 됨" } }
+      }
+    },
     "File Preview": {"localizations":{"ko":{"stringUnit":{"state":"translated","value":"파일 미리보기"}},"ja":{"stringUnit":{"state":"translated","value":"ファイルプレビュー"}}}},
     "Show Preview": {"localizations":{"ko":{"stringUnit":{"state":"translated","value":"미리보기 표시"}},"ja":{"stringUnit":{"state":"translated","value":"プレビューを表示"}}}},
     "Hide Preview": {"localizations":{"ko":{"stringUnit":{"state":"translated","value":"미리보기 숨기기"}},"ja":{"stringUnit":{"state":"translated","value":"プレビューを隠す"}}}},
