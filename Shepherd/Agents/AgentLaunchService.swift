@@ -263,7 +263,9 @@ final class AgentLaunchService {
             // and foreground shell before sending the destructive start RPC.
             _ = try await waitForShell(created.pane, on: machine, client: client)
             preparingPanes.remove(createdIdentity); launchingPanes.insert(createdIdentity)
-            let result = try await client.agentStart(name: kind.rawValue, kind: kind, paneID: resolved.key.paneID, arguments: plan.arguments)
+            // herdr refuses a name a live agent already holds, so the bare kind
+            // would allow only one launch of each kind per session.
+            let result = try await client.agentStart(name: kind.rawValue + "-" + String(reservation.reservationID.prefix(8)), kind: kind, paneID: resolved.key.paneID, arguments: plan.arguments)
             guard result.agent.terminalID == pane.terminalID else { throw AgentRuntimeError.rejected("started-terminal-identity-changed") }
             try await waitForAgent(kind: kind, pane: pane, on: machine, client: client)
             // Snapshot + process inspection remain authority for subsequent state.
@@ -451,7 +453,7 @@ final class AgentLaunchService {
             _ = try await waitForShell(agent, on: machine, client: client)
             try Task.checkCancellation()
             plans[identity] = plan
-            let started = try await client.agentStart(name: kind.rawValue, kind: kind, paneID: agent.paneID, arguments: plan.arguments)
+            let started = try await client.agentStart(name: kind.rawValue + "-" + operation.uuidString.prefix(8).lowercased(), kind: kind, paneID: agent.paneID, arguments: plan.arguments)
             guard started.agent.terminalID == agent.terminalID else { throw AgentRuntimeError.rejected("resume-terminal-changed") }
             let qualified = AgentResumeConfirmation.Identity(ownerID: "local:\(identity.machineID):\(identity.session)",
                 paneID: identity.paneID, terminalID: identity.terminalID)
