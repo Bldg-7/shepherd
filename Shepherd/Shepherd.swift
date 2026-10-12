@@ -52,6 +52,13 @@ import SwiftUI
 #if os(macOS)
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
+        // macOS 26 AppKit draws large `draw(_:)`-backed view layers (the
+        // terminal) through QuartzCore's in-process Metal renderer by default.
+        // That renderer's glyph path issues a draw call Metal API Validation
+        // rejects, which aborts debug runs. Opting out keeps view drawing on
+        // the CoreGraphics path. AppKit reads this once, on the first layer
+        // display, and only honors a real Bool.
+        UserDefaults.standard.register(defaults: ["NSViewCanUseGPUAcceleration": false])
         if ShepherdBrowserFeature.shared.isEnabled { BrowserEngine.prepare() }
         #if DEBUG
         if ProcessInfo.processInfo.environment["SHEPHERD_BROWSER_FEATURE_FIXTURE"] != nil {
