@@ -41,7 +41,7 @@ not pass its GitHub token, or the keys the workflow gives it, to build plugins.
 2. Choose the version (the marketing version, like 0.3.2) and the numeric build number.
    **Do not use Git commit count:** this public history differs from the earlier private
    source history. 0.1 used build 21; 0.2.0 used build 22; 0.2.1 used build 23; 0.3.0 used
-   build 24; **0.3.1 uses build 25**. A new build number must be higher than the one in the
+   build 24; 0.3.1 used build 25; **0.3.2 uses build 26**. A new build number must be higher than the one in the
    published appcast.
 3. Write the release notes as `notes/<version>.md`. They are embedded in the appcast.
 
