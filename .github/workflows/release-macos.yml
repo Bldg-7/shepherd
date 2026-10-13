@@ -109,6 +109,17 @@ jobs:
             done
           ls -l build/updates
 
+      # Xcode leaves its Metal compiler to be downloaded, and the runner's
+      # image comes without it; SwiftTerm's shaders are compiled with it. The
+      # one asked for is the one made for this Xcode's build.
+      - name: Get the Metal toolchain
+        run: |
+          build="$(xcodebuild -version | sed -n 's/^Build version //p')"
+          xcodebuild -downloadComponent MetalToolchain -buildVersion "$build"
+          component="$(xcodebuild -showComponent MetalToolchain)"
+          echo "$component"
+          [[ "$component" == *"Status: installed"* ]]
+
       - name: Get CEF
         run: scripts/cef.sh
 

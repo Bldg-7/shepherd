@@ -116,6 +116,8 @@ need the version's release notes to exist yet.
 - It downloads the published appcast and the full update archives of the five latest
   releases into `build/updates`. The script checks the build number against that appcast and
   makes the delta updates from those archives.
+- It downloads Xcode's Metal toolchain, which the runner's image comes without and a Mac
+  that builds the app already has.
 - It approves the SwiftTerm build plugin without a prompt, by writing the record that Xcode
   writes when the plugin is approved by hand. The record names one revision of SwiftTerm,
   the one pinned in `Package.resolved`. Plugin validation is not turned off. After a
