@@ -1,0 +1,219 @@
+# Builds Shepherd for macOS on a GitHub-hosted runner, signs it with Developer
+# ID, has Apple notarize it and uploads a draft release — what
+# scripts/release-macos.sh does on a Mac, with the keys taken from the
+# "release" environment's secrets instead of a Keychain.
+#
+# It stops at the draft. Checking the draft's files, publishing it and marking
+# it Latest — which is what changes the update feed for installed copies —
+# stay steps done by hand. docs/releasing-macos.md has those, and the secrets
+# this expects.
+name: Release (macOS)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release, like 0.3.2. Its notes are notes/<version>.md.
+        required: true
+        type: string
+      build_number:
+        description: Build number, higher than the last published one.
+        required: true
+        type: string
+      upload_draft:
+        description: Upload a draft release. Without it the build is only kept as a workflow artifact.
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+# One release at a time, and a second one doesn't cancel the first.
+concurrency:
+  group: release-macos
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # The image with Xcode 27, which the project needs; macos-26 stops at
+    # Xcode 26.
+    runs-on: xcode-27
+    timeout-minutes: 120
+    environment: release
+    permissions:
+      contents: write
+    # Named, so that a failure anywhere in a pipeline fails the step.
+    defaults:
+      run:
+        shell: bash
+    env:
+      # The Xcode the releases so far were built with, whichever one the
+      # image makes its default later.
+      DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
+      VERSION: ${{ inputs.version }}
+      BUILD_NUMBER: ${{ inputs.build_number }}
+    steps:
+      # Actions are pinned to a commit: this job holds the signing keys. The
+      # token isn't left in .git/config, where the build could read it.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the inputs and the secrets
+        env:
+          UPLOAD_DRAFT: ${{ inputs.upload_draft }}
+          DEVELOPER_ID_P12_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
+          DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_APP_PASSWORD: ${{ secrets.NOTARY_APP_PASSWORD }}
+          NOTARY_API_KEY: ${{ secrets.NOTARY_API_KEY }}
+          NOTARY_API_KEY_ID: ${{ secrets.NOTARY_API_KEY_ID }}
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          problems=0
+          problem() { echo "::error::$*"; problems=1; }
+          [[ "$VERSION" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]] || problem "The version should look like 1.2 or 1.2.3, not $VERSION"
+          [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]] || problem "The build number should be a whole number, not $BUILD_NUMBER"
+          # A build that isn't uploaded can do without notes: a run to try the
+          # workflow or the secrets, before the next version's are written.
+          [[ -f "notes/$VERSION.md" || "$UPLOAD_DRAFT" != true ]] || problem "There are no release notes at notes/$VERSION.md"
+          # Apple notarizes for an Apple ID with an app-specific password, or
+          # for an App Store Connect API key: one of the two pairs.
+          notary=()
+          if [[ -n "$NOTARY_APPLE_ID$NOTARY_APP_PASSWORD" && -n "$NOTARY_API_KEY$NOTARY_API_KEY_ID" ]]; then
+            problem "The release environment has both NOTARY_APPLE_ID/NOTARY_APP_PASSWORD and NOTARY_API_KEY/NOTARY_API_KEY_ID; keep one pair (docs/releasing-macos.md)"
+          elif [[ -n "$NOTARY_API_KEY$NOTARY_API_KEY_ID" ]]; then
+            notary=(NOTARY_API_KEY NOTARY_API_KEY_ID)
+          else
+            notary=(NOTARY_APPLE_ID NOTARY_APP_PASSWORD)
+          fi
+          for secret in DEVELOPER_ID_P12_BASE64 DEVELOPER_ID_P12_PASSWORD "${notary[@]}" SPARKLE_ED_PRIVATE_KEY; do
+            [[ -n "${!secret}" ]] || problem "The release environment has no secret $secret (docs/releasing-macos.md)"
+          done
+          exit "$problems"
+
+      # scripts/release-macos.sh makes the appcast from the one last
+      # published, checks the build number against it, and offers the new
+      # version as a delta from each earlier archive it finds — five at most,
+      # which is as many as generate_appcast makes.
+      - name: Get the published updates
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p build/updates
+          gh release download --repo "$GITHUB_REPOSITORY" --pattern appcast.xml --dir build/updates
+          gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases \
+              --limit 5 --json tagName --jq '.[].tagName' |
+            while IFS= read -r tag; do
+              gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern 'Shepherd-*.zip' --dir build/updates
+            done
+          ls -l build/updates
+
+      - name: Get CEF
+        run: scripts/cef.sh
+
+      - name: Get the browser runtime's Node packages
+        run: npm ci --prefix Shepherd/Agents/AgentRuntime --ignore-scripts --no-audit --no-fund
+
+      # What Xcode records when "Trust & Enable" is clicked for this plugin:
+      # the revision SwiftTerm 1.20.0 is pinned to in Package.resolved. Plugin
+      # validation stays on, so any other plugin, or this one at another
+      # revision, still stops the build; a SwiftTerm update needs its new
+      # revision approved here.
+      - name: Approve the pinned SwiftTerm build plugin
+        run: |
+          mkdir -p ~/Library/org.swift.swiftpm/security
+          cat > ~/Library/org.swift.swiftpm/security/plugins.json <<'JSON'
+          [
+            {
+              "fingerprint" : "5d14406844143538cd8f8851d2d8a67c1fe443e5",
+              "packageIdentity" : "swiftterm",
+              "targetName" : "SwiftTermBuildInfoPlugin"
+            }
+          ]
+          JSON
+
+      - name: Get the Swift packages
+        run: |
+          xcodebuild -resolvePackageDependencies \
+              -project shepherd.xcodeproj -scheme Shepherd \
+              -derivedDataPath build/DerivedData \
+              -clonedSourcePackagesDirPath build/SourcePackages \
+              -onlyUsePackageVersionsFromResolvedFile
+
+      # A keychain of this run's own, with the Developer ID certificate and
+      # its key in it and codesign allowed to use them without asking. The
+      # release script is told which certificate by its fingerprint.
+      - name: Make the signing keychain
+        env:
+          P12_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/release.keychain-db"
+          certificate="$RUNNER_TEMP/developer-id.p12"
+          trap 'rm -f "$certificate"' EXIT
+          password="$(openssl rand -base64 24)"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          printf '%s' "$P12_BASE64" | base64 --decode > "$certificate"
+          security import "$certificate" -k "$keychain" -f pkcs12 -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain" > /dev/null
+
+          # codesign looks through the keychains on the search list.
+          others=()
+          while IFS= read -r other; do
+            others+=("$other")
+          done < <(security list-keychains -d user | sed -e 's/^ *"//' -e 's/"$//')
+          security list-keychains -d user -s "$keychain" "${others[@]}"
+
+          fingerprint="$(security find-identity -v -p codesigning "$keychain" |
+            sed -n 's/^ *[0-9]*) \([0-9A-F]\{40\}\) "Developer ID Application: .*"$/\1/p')"
+          if [[ ! "$fingerprint" =~ ^[0-9A-F]{40}$ ]]; then
+            security find-identity -p codesigning "$keychain" || true
+            echo "::error::DEVELOPER_ID_P12_BASE64 should hold exactly one Developer ID Application certificate, with its private key, that this Mac finds valid"
+            exit 1
+          fi
+          echo "Signing with the certificate $fingerprint"
+          echo "SHEPHERD_SIGN_IDENTITY=$fingerprint" >> "$GITHUB_ENV"
+
+      # The script takes the keys out of its environment before it builds,
+      # and the token too when it is going to upload.
+      - name: Run the release script
+        id: release
+        env:
+          SHEPHERD_RELEASES_REPO: ${{ github.repository }}
+          SHEPHERD_BUILD_NUMBER: ${{ inputs.build_number }}
+          SHEPHERD_SKIP_PUBLISH: ${{ !inputs.upload_draft && '1' || '' }}
+          GH_TOKEN: ${{ inputs.upload_draft && github.token || '' }}
+          SHEPHERD_NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          SHEPHERD_NOTARY_PASSWORD: ${{ secrets.NOTARY_APP_PASSWORD }}
+          SHEPHERD_NOTARY_KEY: ${{ secrets.NOTARY_API_KEY }}
+          SHEPHERD_NOTARY_KEY_ID: ${{ secrets.NOTARY_API_KEY_ID }}
+          SHEPHERD_NOTARY_ISSUER: ${{ secrets.NOTARY_API_ISSUER_ID }}
+          SHEPHERD_SPARKLE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          notes="notes/$VERSION.md"
+          [[ -f "$notes" ]] || notes=""
+          scripts/release-macos.sh "$VERSION" "$notes"
+
+      # Also when the script failed partway, for what it got to and Apple's
+      # answers. The archives are compressed already.
+      - name: Keep what was built
+        if: ${{ !cancelled() && steps.release.conclusion != 'skipped' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Shepherd-${{ inputs.version }}-${{ inputs.build_number }}
+          path: |
+            build/release/${{ inputs.version }}/Shepherd-${{ inputs.version }}.dmg
+            build/release/${{ inputs.version }}/updates/appcast.xml
+            build/release/${{ inputs.version }}/updates/Shepherd-${{ inputs.version }}.zip
+            build/release/${{ inputs.version }}/updates/*.delta
+            build/release/${{ inputs.version }}/notarize-*.json
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 14
+
+      - name: Remove the signing keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/release.keychain-db" 2>/dev/null || true

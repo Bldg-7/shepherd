@@ -16,6 +16,21 @@
 #                             for this script only, whichever account gh
 #                             has active
 #   SHEPHERD_NOTARY_PROFILE   notarytool keychain profile (shepherd-notary)
+#
+# Where there is no Keychain holding the notarytool profile and Sparkle's key
+# — the release workflow, .github/workflows/release-macos.yml — they are
+# given in the environment instead:
+#
+#   SHEPHERD_NOTARY_KEY       an App Store Connect API key, the text of its
+#                             .p8 file, used in place of the profile
+#   SHEPHERD_NOTARY_KEY_ID    that key's ID
+#   SHEPHERD_NOTARY_ISSUER    its issuer ID (a team key has one; an
+#                             individual key doesn't)
+#   SHEPHERD_NOTARY_APPLE_ID  or, in place of an API key, the Apple ID of a
+#                             member of the team
+#   SHEPHERD_NOTARY_PASSWORD  with an app-specific password of that Apple ID
+#   SHEPHERD_SPARKLE_KEY     Sparkle's private EdDSA key, as generate_keys -x
+#                             writes it
 
 set -euo pipefail
 
@@ -50,24 +65,75 @@ DOWNLOAD_PREFIX="https://github.com/$REPO/releases/download/$TAG/"
 BUILD_NUMBER="${SHEPHERD_BUILD_NUMBER:-25}"
 [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]] || { echo 'Invalid build number' >&2; exit 1; }
 
+# The keys given in the environment are taken out of it here, so that nothing
+# this script runs — the build and its package plugin among them — is handed
+# them. Each goes only to the tool that signs with it.
+NOTARY_KEY="${SHEPHERD_NOTARY_KEY:-}"
+NOTARY_KEY_ID="${SHEPHERD_NOTARY_KEY_ID:-}"
+NOTARY_ISSUER="${SHEPHERD_NOTARY_ISSUER:-}"
+NOTARY_APPLE_ID="${SHEPHERD_NOTARY_APPLE_ID:-}"
+NOTARY_PASSWORD="${SHEPHERD_NOTARY_PASSWORD:-}"
+SPARKLE_KEY="${SHEPHERD_SPARKLE_KEY:-}"
+unset SHEPHERD_NOTARY_KEY SHEPHERD_NOTARY_KEY_ID SHEPHERD_NOTARY_ISSUER SHEPHERD_SPARKLE_KEY
+unset SHEPHERD_NOTARY_APPLE_ID SHEPHERD_NOTARY_PASSWORD
+# What notarytool signs in with: the profile in the operator's Keychain,
+# unless the environment gave an API key or an Apple ID.
+NOTARY_AUTH=profile
+if [[ -n "$NOTARY_KEY" ]]; then
+    [[ -n "$NOTARY_KEY_ID" ]] || { echo 'SHEPHERD_NOTARY_KEY needs SHEPHERD_NOTARY_KEY_ID' >&2; exit 1; }
+    [[ -z "$NOTARY_APPLE_ID$NOTARY_PASSWORD" ]] || { echo 'Give an API key or an Apple ID for notarization, not both' >&2; exit 1; }
+    NOTARY_AUTH=key
+elif [[ -n "$NOTARY_APPLE_ID$NOTARY_PASSWORD" ]]; then
+    [[ -n "$NOTARY_APPLE_ID" && -n "$NOTARY_PASSWORD" ]] || { echo 'SHEPHERD_NOTARY_APPLE_ID and SHEPHERD_NOTARY_PASSWORD go together' >&2; exit 1; }
+    NOTARY_AUTH=apple-id
+fi
+
 step() { printf '\n==> %s\n' "$*"; }
 fail() { printf 'error: %s\n' "$*" >&2; exit 1; }
-# Signed builds use the operator's existing approved Xcode/Keychain context;
-# DerivedData and package/build outputs remain inside this release tree.
-# Do not copy credentials, auto-approve plugins or bypass validation.
+# Signed builds use the operator's existing approved Xcode/Keychain context,
+# or the keychain the release workflow makes for its one run from the
+# repository's secrets; DerivedData and package/build outputs remain inside
+# this release tree. Do not put credentials anywhere else, approve a plugin
+# other than the pinned one or bypass validation.
+# Runs notarytool signed in: with the operator's profile, or with what the
+# environment gave. An API key is on disk only while notarytool reads it. An
+# app-specific password can only go on notarytool's command line, where
+# other processes of this machine can read it; notarytool runs before the
+# build starts and after it has ended, never beside it.
+notary() {
+    case "$NOTARY_AUTH" in
+        profile)
+            xcrun notarytool "$@" --keychain-profile "$NOTARY_PROFILE"
+            ;;
+        apple-id)
+            xcrun notarytool "$@" --apple-id "$NOTARY_APPLE_ID" --team-id "$TEAM_ID" --password "$NOTARY_PASSWORD"
+            ;;
+        key)
+            local key status=0
+            key="$(mktemp "${TMPDIR:-/tmp}/shepherd-notary.XXXXXX")"
+            printf '%s\n' "$NOTARY_KEY" > "$key"
+            local auth=(--key "$key" --key-id "$NOTARY_KEY_ID")
+            [[ -z "$NOTARY_ISSUER" ]] || auth+=(--issuer "$NOTARY_ISSUER")
+            xcrun notarytool "$@" "${auth[@]}" || status=$?
+            rm -f "$key"
+            return "$status"
+            ;;
+    esac
+}
 # notarytool keeps the profile in the part of the Keychain that is closed
 # while the screen is locked.
-notary_ready() { xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1; }
+notary_ready() { notary history >/dev/null 2>&1; }
 # Has Apple notarize a file and waits for the verdict. The profile was there
 # at the start; if it isn't now, stop rather than hiding a Keychain prompt.
+# What the environment gave isn't behind the screen lock, so with that there
+# is nothing to check first.
 notarize() {
     local file="$1" result="$WORK/notarize-$(basename "$1").json" status
-    notary_ready || fail "Unlock the Mac before retrying notarization; existing output is preserved"
-    xcrun notarytool submit "$file" --keychain-profile "$NOTARY_PROFILE" \
-        --wait --timeout 15m --output-format json > "$result"
+    [[ "$NOTARY_AUTH" != profile ]] || notary_ready || fail "Unlock the Mac before retrying notarization; existing output is preserved"
+    notary submit "$file" --wait --timeout 15m --output-format json > "$result"
     status="$(plutil -extract status raw "$result")"
     if [[ "$status" != "Accepted" ]]; then
-        xcrun notarytool log "$(plutil -extract id raw "$result")" --keychain-profile "$NOTARY_PROFILE" || true
+        notary log "$(plutil -extract id raw "$result")" || true
         fail "notarization of $(basename "$file") ended as $status"
     fi
 }
@@ -91,13 +157,18 @@ if [[ -z "$SKIP_PUBLISH" ]]; then
     gh() { GH_TOKEN="$release_token" command gh "$@"; }
     [[ "$(gh api "repos/$REPO/commits/$(git -C "$ROOT" rev-parse HEAD)" --jq .sha)" == "$(git -C "$ROOT" rev-parse HEAD)" ]] \
         || fail "Push the exact reviewed source commit before publishing"
-    [[ "$(gh api "repos/$REPO" --jq .permissions.push 2>/dev/null)" == "true" ]] \
+    # GitHub doesn't report what a workflow's own token may do to the
+    # repository; that is what the workflow file asks for (contents: write).
+    [[ -n "${GITHUB_ACTIONS:-}" || "$(gh api "repos/$REPO" --jq .permissions.push 2>/dev/null)" == "true" ]] \
         || fail "neither $GITHUB_USER nor gh's active account can publish to $REPO"
     if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
         fail "$REPO already has a release $TAG"
     fi
 fi
-if [[ -z "$SKIP_NOTARIZE" ]]; then
+if [[ -z "$SKIP_NOTARIZE" && "$NOTARY_AUTH" != profile ]]; then
+    # Asked once more on failure, this time showing Apple's answer.
+    notary_ready || { notary history >&2 || true; fail "notarytool can't sign in with the $([[ "$NOTARY_AUTH" == key ]] && echo 'App Store Connect API key' || echo 'Apple ID and app-specific password') it was given"; }
+elif [[ -z "$SKIP_NOTARIZE" ]]; then
     notary_ready || fail "notarytool can't use the profile $NOTARY_PROFILE: register it (docs/releasing-macos.md, 2-4), or unlock the screen if it is locked"
     # An idle Mac would lock its screen, and with it the profile, while the
     # archive is being built.
@@ -191,11 +262,12 @@ fi
 # one download prefix covers them all — the new archive, and the deltas
 # from earlier versions to it. An app older than the one before still
 # updates; it just downloads the whole archive.
-"$SPARKLE_BIN/generate_appcast" \
-    --download-url-prefix "$DOWNLOAD_PREFIX" \
-    --maximum-versions 1 \
-    --embed-release-notes \
-    "$STAGE"
+appcast_options=(--download-url-prefix "$DOWNLOAD_PREFIX" --maximum-versions 1 --embed-release-notes)
+if [[ -n "$SPARKLE_KEY" ]]; then
+    printf '%s\n' "$SPARKLE_KEY" | "$SPARKLE_BIN/generate_appcast" --ed-key-file - "${appcast_options[@]}" "$STAGE"
+else
+    "$SPARKLE_BIN/generate_appcast" "${appcast_options[@]}" "$STAGE"
+fi
 
 # What the appcast points into this release, by file name.
 uploads=()
@@ -203,6 +275,15 @@ while IFS= read -r url; do
     uploads+=("$STAGE/${url#"$DOWNLOAD_PREFIX"}")
 done < <(grep -o "${DOWNLOAD_PREFIX}[^\"]*" "$STAGE/appcast.xml" | sort -u)
 [[ ${#uploads[@]} -gt 0 && " ${uploads[*]} " == *" $STAGE/$ZIP "* ]] || fail "the appcast doesn't offer $ZIP"
+# generate_appcast only warns when the key it has isn't the one the app was
+# built to trust, and leaves the update unsigned; installed copies would then
+# refuse it.
+python3 - "$STAGE/appcast.xml" "$DOWNLOAD_PREFIX$ZIP" <<'PY'
+import sys,xml.etree.ElementTree as ET
+signature='{http://www.andymatuschak.org/xml-namespaces/sparkle}edSignature'
+signed=[e for e in ET.parse(sys.argv[1]).iter('enclosure') if e.get('url')==sys.argv[2] and e.get(signature)]
+assert signed, "The update isn't signed: Sparkle's key doesn't match the app's SUPublicEDKey"
+PY
 
 if [[ -n "$SKIP_PUBLISH" ]]; then
     step "Stopped before publishing"
