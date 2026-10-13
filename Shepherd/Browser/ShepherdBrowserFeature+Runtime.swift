@@ -15,10 +15,10 @@ import Foundation
                 } else {
                     MachineBrowserService.shared.resume()
                 }
-                let port = OwnedOperatorFixture.configuration == nil ? UserDefaults.standard.object(forKey: "browserAgentPort") as? Int ?? 9333 : 0
+                let port = OwnedOperatorFixture.configuration == nil ? UserDefaults.standard.object(forKey: "browserAgentPort") as? Int ?? CDPProxy.defaultPort : 0
                 #else
                 MachineBrowserService.shared.resume()
-                let port = UserDefaults.standard.object(forKey: "browserAgentPort") as? Int ?? 9333
+                let port = UserDefaults.standard.object(forKey: "browserAgentPort") as? Int ?? CDPProxy.defaultPort
                 #endif
                 await CDPProxy.shared.start(port: port)
             } else {

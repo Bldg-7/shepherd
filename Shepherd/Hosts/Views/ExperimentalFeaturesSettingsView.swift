@@ -7,7 +7,7 @@ struct ExperimentalFeaturesSettingsView: View {
     let machineStore: MachineStore
     let passwordManagerWindowID: UUID
     let onBack: () -> Void
-    @State private var browserPort = UserDefaults.standard.object(forKey: "browserAgentPort") as? Int ?? 9333
+    @State private var browserPort = UserDefaults.standard.object(forKey: "browserAgentPort") as? Int ?? CDPProxy.defaultPort
     @State private var browserPortFailure: String?
     @State private var agentFailure: String?
     @State private var advancedExpanded = false

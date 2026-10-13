@@ -23,6 +23,14 @@ nonisolated struct BrowserEndpoint: Sendable {
 @MainActor @Observable
 final class CDPProxy {
     static let shared = CDPProxy(store: .shared)
+    /// The loopback port the listener asks for until Settings has saved
+    /// another. A development build has its own, so that it and a released
+    /// Shepherd running at the same time don't ask for the same one.
+    #if DEBUG
+    nonisolated static let defaultPort = 9334
+    #else
+    nonisolated static let defaultPort = 9333
+    #endif
     private let store: BrowserStore
     private(set) var port: Int?
     private(set) var error: String?
@@ -59,7 +67,7 @@ final class CDPProxy {
 
     init(store: BrowserStore) { self.store = store }
 
-    func start(port requestedPort: Int = 9333) async {
+    func start(port requestedPort: Int = defaultPort) async {
         guard ShepherdBrowserFeature.shared.isEnabled, listener == nil, !starting, BrowserEngine.isAvailable else { return }
         starting = true
         defer { starting = false }
