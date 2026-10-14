@@ -35,6 +35,31 @@ enum BoardItem: Equatable {
     }
 }
 
+/// What the File menu's Close item — ⌘W — closes. Never the window: the
+/// selected tab while the board shows tabs, or the selected pane, after the
+/// confirmation the sidebar's Close Tab and Close Pane ask for.
+struct CloseCommandTarget: Equatable {
+    /// Whether the item reads Close Tab rather than Close Pane. It goes by
+    /// the selection — a herdr too old to report tabs lists panes in the tab
+    /// mode too — and by the mode while nothing is selected.
+    let closesTab: Bool
+    /// The tab or pane to close, or nil — the item disabled — with nothing
+    /// selected, or while something covers the terminal: the new tab
+    /// launcher, Settings, the pane switcher, a preview expanded over it, an
+    /// alert. The board's own dialogs it leaves to the board (see
+    /// `AgentBoardView.closeRequests`).
+    let item: BoardItem?
+
+    init(selection: BoardItem?, showsTabs: Bool, coversTerminal: Bool) {
+        switch selection {
+        case .tab: closesTab = true
+        case .pane: closesTab = false
+        case nil: closesTab = showsTabs
+        }
+        item = coversTerminal ? nil : selection
+    }
+}
+
 /// The sidebar content of `ContentView`'s `NavigationSplitView` — the panes,
 /// or the tabs, of whichever Machine is currently active, with `selection`
 /// driving the detail column.
@@ -53,6 +78,10 @@ struct AgentBoardView: View {
     @Binding var launchTargets: [LaunchTarget]
     /// Goes up each time the board is to fetch everything again at once.
     let refreshRequests: Int
+    /// Goes up each time the File menu's Close Tab or Close Pane (⌘W) is
+    /// chosen, to close the selection as its row's context menu would — but
+    /// not over a rename, a confirmation or a failure the board still shows.
+    let closeRequests: Int
     var onNavigationDestinations: ([PaneDestination]) -> Void
 
     @State private var agents: [AgentSummary] = []
@@ -114,6 +143,7 @@ struct AgentBoardView: View {
         justCreatedID: Binding<String?>,
         launchTargets: Binding<[LaunchTarget]>,
         refreshRequests: Int,
+        closeRequests: Int,
         onNavigationDestinations: @escaping ([PaneDestination]) -> Void = { _ in }
     ) {
         self.machine = machine
@@ -122,6 +152,7 @@ struct AgentBoardView: View {
         self._justCreatedID = justCreatedID
         self._launchTargets = launchTargets
         self.refreshRequests = refreshRequests
+        self.closeRequests = closeRequests
         self.onNavigationDestinations = onNavigationDestinations
         self._collapsedGroupIDs = AppStorage(wrappedValue: "", "AgentBoardView.collapsedGroups.\(machine.id.uuidString)")
     }
@@ -318,6 +349,10 @@ struct AgentBoardView: View {
         }
         .onChange(of: refreshRequests) {
             refreshCount += 1
+        }
+        .onChange(of: closeRequests) {
+            guard renaming == nil, closing == nil, actionFailure == nil else { return }
+            closing = selection
         }
     }
 

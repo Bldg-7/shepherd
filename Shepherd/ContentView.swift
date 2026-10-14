@@ -57,6 +57,9 @@ struct ContentView: View {
     @State private var justCreatedID: String?
     /// Goes up to have the board fetch everything again at once.
     @State private var boardRefreshRequests = 0
+    /// Goes up to have the board close the selection (see
+    /// `AgentBoardView.closeRequests`).
+    @State private var closeRequests = 0
     @State private var filePreview: FilePreviewRequest?
     @State private var webLinkFailure: TerminalWebLinkError?
     @State private var isShowingPaneSwitcher = false
@@ -89,6 +92,7 @@ struct ContentView: View {
                         justCreatedID: $justCreatedID,
                         launchTargets: $launchTargets,
                         refreshRequests: boardRefreshRequests,
+                        closeRequests: closeRequests,
                         onNavigationDestinations: { destinations in
                             guard machineStore.isCurrentConnection(machine),
                                   machineStore.activeMachine?.connectionIdentity == machine.connectionIdentity else { return }
@@ -296,6 +300,8 @@ struct ContentView: View {
         // Workspace… (⌘T), the launcher.
         .focusedSceneValue(\.launcherStart, machine == nil || isShowingPaneSwitcher || isShowingSettings ? nil : $launcherStart)
         .focusedSceneValue(\.isShowingPaneSwitcher, machine == nil || isShowingSettings || launcherStart != nil ? nil : $isShowingPaneSwitcher)
+        // And its Close Tab or Close Pane (⌘W), the board's close.
+        .focusedSceneValue(\.closeCommand, CloseCommand(target: closeCommandTarget(on: machine), requests: $closeRequests))
         #endif
     }
 
@@ -306,6 +312,15 @@ struct ContentView: View {
         case .pane(let pane): return pane.title
         case .tab(let tab): return tab.title
         }
+    }
+
+    private func closeCommandTarget(on machine: Machine?) -> CloseCommandTarget {
+        CloseCommandTarget(
+            selection: machine.flatMap { selection(on: $0).wrappedValue },
+            showsTabs: showsTabs && AgentBoardView.offersTabs,
+            coversTerminal: launcherStart != nil || isShowingSettings || isShowingPaneSwitcher
+                || (showsFilePreview && expandsFilePreview) || webLinkFailure != nil
+        )
     }
     #endif
 

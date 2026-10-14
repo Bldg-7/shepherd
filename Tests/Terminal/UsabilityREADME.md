@@ -20,6 +20,12 @@ controller, SwiftTerm and shared terminal frame.
   workspace is never taken for the host's of the same raw ID, a workspace no
   longer listed leaves only the machine picked, and nothing selected or a herdr
   no tab can be opened on falls back to asking from the start.
+- Cmd-W: the File menu's Close is replaced and never closes the window. Cmd-W
+  closes the selected tab (Group by Tab on) or pane (off, or a herdr too old to
+  report tabs) after the sidebar's confirmation; Close Window stays, without a
+  shortcut. Nothing selected disables it; the launcher, Settings, the pane
+  switcher, an alert or an expanded preview over the terminal make it close
+  nothing, and the board ignores it over its own rename/close/failure dialogs.
 - Cmd-P: the window's focused-scene menu replaces Print. Search uses existing
   board snapshots, independent of sidebar filters/folded groups. Arrow keys,
   Return, Escape/cancel. Each word matches title/agent/paneID/cwd/location.

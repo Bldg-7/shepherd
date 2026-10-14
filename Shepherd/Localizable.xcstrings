@@ -1495,6 +1495,22 @@
         }
       }
     },
+    "Close Window" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ウインドウを閉じる"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "창 닫기"
+          }
+        }
+      }
+    },
     "Codex" : {
       "localizations" : {
         "ja" : {

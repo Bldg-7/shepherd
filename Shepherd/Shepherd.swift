@@ -46,6 +46,7 @@ import SwiftUI
             SettingsCommands()
             NewTabCommands()
             PaneSwitcherCommands()
+            CloseCommands()
         }
         #endif
     }
@@ -154,6 +155,39 @@ extension FocusedValues {
     /// itself is nil while there is no machine to open a tab on.
     @Entry var launcherStart: Binding<LauncherStart?>?
     @Entry var isShowingPaneSwitcher: Binding<Bool>?
+    /// What the window's Close Tab or Close Pane would close — see
+    /// `CloseCommands`. Nil only while there is no window.
+    @Entry var closeCommand: CloseCommand?
+}
+
+/// The window's side of `CloseCommands`: what ⌘W would close, and the
+/// count that has the board close it when it goes up.
+struct CloseCommand {
+    let target: CloseCommandTarget
+    let requests: Binding<Int>
+}
+
+/// The File menu's Close Tab or Close Pane (⌘W), which closes the selected
+/// tab or pane after the sidebar's confirmation. It takes the place of
+/// Close, whose ⌘W closed the window — the app's one, and every terminal in
+/// it with it. Close Window stays, without a shortcut.
+private struct CloseCommands: Commands {
+    @FocusedValue(\.closeCommand) private var closeCommand
+
+    var body: some Commands {
+        CommandGroup(replacing: .saveItem) {
+            Button("Close Window") {
+                // What the Close it replaces sent, to the same responders.
+                NSApp.sendAction(#selector(NSWindow.performClose(_:)), to: nil, from: nil)
+            }
+            .disabled(closeCommand == nil)
+            Button(closeCommand?.target.closesTab == true ? "Close Tab" : "Close Pane") {
+                closeCommand?.requests.wrappedValue += 1
+            }
+            .keyboardShortcut("w")
+            .disabled(closeCommand?.target.item == nil)
+        }
+    }
 }
 
 /// The File menu's New Tab… (⌘N), which brings up the window's new tab
