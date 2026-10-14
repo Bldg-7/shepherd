@@ -79,6 +79,8 @@ final class AgentLaunchService {
     private var unsafeForeground: [UUID: Bool] = [:]
     private var activityInspectionFailed: Set<UUID> = []
     private var plans: [AgentPaneIdentity: PreparedAgentLaunch] = [:]
+    /// Direct-agent argv whose argv-only prepare was quietly rejected.
+    private var rejectedPreparations: [AgentPaneIdentity: [String]] = [:]
     private var piLaunches: [AgentPaneIdentity: PiLaunchCoordinator] = [:]
     private var registered: Set<AgentPaneIdentity> = []
     private var disappeared: Set<AgentPaneIdentity> = []
@@ -545,11 +547,13 @@ final class AgentLaunchService {
         // Terminal moves retain plans and output, but use the newest qualified key.
         for pane in panes {
             let current = AgentPaneIdentity(key: BrowserKey(machine: machine, pane: pane), terminalID: pane.terminalID)
-            for old in Array(plans.keys) where old.machineID == current.machineID && old.session == current.session && old.terminalID == current.terminalID && old != current {
+            let moved = { (old: AgentPaneIdentity) in old.machineID == current.machineID && old.session == current.session && old.terminalID == current.terminalID && old != current }
+            for old in Array(plans.keys) where moved(old) {
                 plans[current] = plans.removeValue(forKey: old)
                 failures[current] = failures.removeValue(forKey: old)
                 registered.remove(old)
             }
+            for old in Array(rejectedPreparations.keys) where moved(old) { rejectedPreparations[current] = rejectedPreparations.removeValue(forKey: old) }
         }
         scheduleConsumer()
     }
@@ -614,14 +618,18 @@ final class AgentLaunchService {
                     registered.insert(identity)
                 }
                 // Direct agents are checked with their actual argv/config. Unsafe or
-                // already injected registrations remain unknown, never called missing.
+                // already injected registrations remain unknown, never called missing,
+                // and are prepared again only once the pane runs different argv.
                 if pending.isEmpty, !modeOperation, plans[identity] == nil, let kind = observed.agentName.flatMap(AgentKind.init(herdrName:)),
-                   kind.supportsLegacySessionInspection, let argv = process.agentArguments(for: kind), !argv.isEmpty, installed.mode == .plugin {
+                   kind.supportsLegacySessionInspection, let argv = process.agentArguments(for: kind), !argv.isEmpty, installed.mode == .plugin,
+                   AgentDirectPreparation.shouldPrepare(argv, rejected: rejectedPreparations[identity]) {
                     do {
                         plans[identity] = try await runtime.prepare(kind: kind, executable: kind.rawValue, pane: identity,
                             endpoint: AgentBrowserEndpoint(endpoint), preferences: currentPreferences, arguments: Array(argv.dropFirst()),
                             codexHome: host.codexHome, claudeSettingsFile: host.claudeSettings, on: .thisMac)
-                    } catch { reconciliationError = connectionFailureDescription(error) }
+                        rejectedPreparations[identity] = nil
+                    } catch let error where AgentDirectPreparation.isQuiet(error) { rejectedPreparations[identity] = argv }
+                    catch { reconciliationError = connectionFailureDescription(error) }
                 }
             }
             for identity in Array(disappeared) where identity.machineID == snapshot.machine.id.uuidString && identity.session == BrowserKey.session(named: snapshot.machine.sessionName) {
@@ -635,7 +643,7 @@ final class AgentLaunchService {
                 do {
                     try await runtime.cleanup(pane: identity, on: .thisMac)
                     disappeared.remove(identity); registered.remove(identity); plans[identity] = nil
-                    inspections[identity] = nil; failures[identity] = nil
+                    inspections[identity] = nil; failures[identity] = nil; rejectedPreparations[identity] = nil
                 } catch { reconciliationError = connectionFailureDescription(error) }
             }
             await client.disconnect()

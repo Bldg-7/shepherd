@@ -75,6 +75,17 @@ actor LaunchTransport: HerdrTransport {
         check(AgentBrowserStatus.inspect(agent: agent, process: process, prepared: plan, socketConnected: false, mode: .global, fresh: true) == .unknown, "global argv is not proof of missing injection")
         check(AgentBrowserStatus.inspect(agent: agent, process: nullInfo, prepared: nil, socketConnected: true, mode: .global, fresh: true) == .connected, "global live socket is actual connection authority")
         check(AgentBrowserStatus.inspect(agent: agent, process: process, prepared: plan, socketConnected: true, mode: .plugin, fresh: false) == .unknown, "stale inspection is never healthy")
+        // A pre-restart Shepherd launch: its argv already carries Shepherd's own registration.
+        let injectedArgv = ["claude", "--plugin-dir", "/owned/reservations/r1/plugin"]
+        for code in ["duplicate-registration", "uninspectable-claude-registration"] {
+            check(AgentDirectPreparation.isQuiet(AgentRuntimeError.rejected(code)), "\(code) remembered without a diagnostic")
+        }
+        check(AgentDirectPreparation.shouldPrepare(injectedArgv, rejected: nil), "unremembered direct argv is prepared")
+        check(!AgentDirectPreparation.shouldPrepare(injectedArgv, rejected: injectedArgv), "same rejected argv is not prepared again")
+        check(AgentDirectPreparation.shouldPrepare(["claude"], rejected: injectedArgv), "different argv in the pane is prepared again")
+        for error: Error in [AgentRuntimeError.rejected("cli-missing"), AgentRuntimeError.rejected("setup-busy"), AgentRuntimeError.rejected("duplicate-registration-other"), AgentRuntimeError.nodeUnavailable, HostScriptError(status: 1, message: "transport")] {
+            check(!AgentDirectPreparation.isQuiet(error), "\(error) reported and retried")
+        }
         check(AgentResumeEligibility.sessionID(agent: agent, process: process, status: .missingInjection, fresh: true) == "actual-id", "idle compatible ID eligibility")
         check(AgentResumeEligibility.sessionID(agent: agent, process: process, status: .missingInjection, fresh: false) == nil, "stale idle resume denied")
         check(AgentResumeEligibility.unchanged(agent, agent), "same fresh idle identity retains eligibility")

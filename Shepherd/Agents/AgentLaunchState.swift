@@ -49,3 +49,17 @@ nonisolated enum AgentResumeEligibility {
         current.agentName == expected.agentName && current.state.isQuiescent && current.interactiveReady == true && current.launchPending != true && current.screenDetectionSkipped != true
     }
 }
+
+/// Argv-only preparation of a directly-run agent. Shepherd's own registration
+/// in that argv (a launch from before an app restart), or one whose folder is
+/// gone, holds for as long as the same process runs: stay unknown, report
+/// nothing, and prepare again only for different argv in the pane.
+nonisolated enum AgentDirectPreparation {
+    static func shouldPrepare(_ argv: [String], rejected: [String]?) -> Bool { argv != rejected }
+
+    /// Any other failure is reported and retried on the next reconcile.
+    static func isQuiet(_ error: Error) -> Bool {
+        guard case AgentRuntimeError.rejected(let code) = error else { return false }
+        return code == "duplicate-registration" || code == "uninspectable-claude-registration"
+    }
+}
