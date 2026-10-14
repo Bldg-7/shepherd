@@ -17,6 +17,9 @@ nonisolated enum LocalCommand {
         var arguments: [String] = []
         var environment: [String: String]? = nil
         var currentDirectory: URL? = nil
+        /// A descriptor the command reads as its standard input, instead of
+        /// /dev/null. It stays the caller's to close, once the command ends.
+        var standardInput: Int32? = nil
     }
 
     enum CommandError: Error, LocalizedError {
@@ -119,7 +122,11 @@ nonisolated enum LocalCommand {
             sigdelset(&defaults, SIGKILL); sigdelset(&defaults, SIGSTOP)
             try checked(posix_spawnattr_setsigmask(&attributes, &mask))
             try checked(posix_spawnattr_setsigdefault(&attributes, &defaults))
-            try checked(posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0))
+            if let input = command.standardInput {
+                try checked(posix_spawn_file_actions_adddup2(&actions, input, STDIN_FILENO))
+            } else {
+                try checked(posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0))
+            }
             try checked(posix_spawn_file_actions_adddup2(&actions, stdout.fileHandleForWriting.fileDescriptor, STDOUT_FILENO))
             try checked(posix_spawn_file_actions_adddup2(&actions, stderr.fileHandleForWriting.fileDescriptor, STDERR_FILENO))
             if let directory = command.currentDirectory {

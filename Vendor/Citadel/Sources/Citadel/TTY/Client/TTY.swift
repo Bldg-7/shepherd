@@ -81,6 +81,12 @@ public struct TTYStdinWriter {
         try await channel.writeAndFlush(SSHChannelData(type: .channel, data: .byteBuffer(buffer)))
     }
 
+    /// Ends the standard input: sends EOF, so the command reads end-of-file.
+    /// The channel stays open for the command's output and exit status.
+    public func finish() async throws {
+        try await channel.close(mode: .output)
+    }
+
     public func changeSize(cols: Int, rows: Int, pixelWidth:Int, pixelHeight:Int) async throws {
         try await channel.triggerUserOutboundEvent(
             SSHChannelRequestEvent.WindowChangeRequest(
