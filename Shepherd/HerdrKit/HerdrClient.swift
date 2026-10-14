@@ -114,6 +114,14 @@ actor HerdrClient {
         try await request(method: "pane.close", params: ["pane_id": .string(paneID)], cli: ["pane", "close", paneID], on: machine)
     }
 
+    /// Makes a tab herdr's current one, which herdr takes for the tab having
+    /// been looked at: every finished agent in it goes from done to idle.
+    /// herdr's own view moves to the tab too, with the same pane in it
+    /// focused as before, and stays in whatever mode it was in.
+    func focusTab(_ tabID: String, on machine: HerdrMachine?) async throws {
+        try await request(method: "tab.focus", params: ["tab_id": .string(tabID)], cli: ["tab", "focus", tabID], on: machine)
+    }
+
     /// A tab just made, and the one pane it starts out with.
     nonisolated struct CreatedTab: Sendable {
         let tab: TabSummary

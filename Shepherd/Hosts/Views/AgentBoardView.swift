@@ -135,6 +135,9 @@ struct AgentBoardView: View {
     /// `workspaceFilterKey`; empty for all of them. See
     /// `activeWorkspaceFilter` for the ones that still count.
     @State private var workspaceFilter: Set<String> = []
+    /// The window's state, which has to be key for the agent selected in it
+    /// to count as seen (see `seenRequestNow`).
+    @Environment(\.controlActiveState) private var controlActiveState
 
     init(
         machine: Machine,
@@ -241,6 +244,12 @@ struct AgentBoardView: View {
     /// machine returns; anyone who doesn't want to wait has the Retry button.
     private static let maximumReconnectDelay: Duration = .seconds(60)
 
+    /// How long a selection has to stay on a finished agent before herdr is
+    /// told it has been seen (see `markSeen`). The rows the arrow keys pass
+    /// over on the way to another don't count, and herdr's own view, which
+    /// follows each request, moves once instead of with every one of them.
+    private static let seenDelay: Duration = .milliseconds(500)
+
     var body: some View {
         agentList
         // A list of its own for each mode. Switching between tab rows and
@@ -305,6 +314,14 @@ struct AgentBoardView: View {
         }
         .task(id: ConnectionRun(machineID: machine.id, retryCount: retryCount, refreshCount: refreshCount)) {
             await loadHerdrMachines()
+        }
+        // Started over only when the request changes — the selection moving
+        // to another tab, its agent finishing or being seen, the window
+        // becoming key or ceasing to be. A refresh that leaves it as it was
+        // leaves the task alone, so a request is sent once, and one that
+        // changes before it is sent is never sent.
+        .task(id: seenRequestNow) { [request = seenRequestNow] in
+            await markSeen(request)
         }
         .alert(renameTitle, isPresented: isRenaming, presenting: renaming) { item in
             TextField(renamePrompt(for: item), text: $newName)
@@ -1083,6 +1100,49 @@ struct AgentBoardView: View {
             } catch {
                 actionFailure = ActionFailure(title: failureTitle, message: connectionFailureDescription(error))
             }
+        }
+    }
+
+    /// The tab herdr is to be told has been seen, given what is selected
+    /// and whether the window is key — nil for none (see `SeenMarking`).
+    /// The selection is kept in step with every refresh (see `reselect`), so
+    /// this changes when the selected agent finishes, as well as when the
+    /// selection does.
+    private var seenRequestNow: SeenRequest? {
+        let windowIsKey = controlActiveState == .key
+        switch selection {
+        case .pane(let pane): return SeenMarking.request(forPane: pane, windowIsKey: windowIsKey)
+        case .tab(let tab): return SeenMarking.request(forTab: tab, windowIsKey: windowIsKey)
+        case nil: return nil
+        }
+    }
+
+    /// Tells herdr the tab in `request` has been seen, once it has stayed
+    /// the request for `seenDelay`, over a connection of its own like
+    /// `perform`'s changes. Unlike those, a failure is dropped without a
+    /// word: the row stays Done, as it did before there was this. Nor does
+    /// the board fetch everything again after it, which would start its
+    /// connections over; the next round of its own shows the agent idle.
+    private func markSeen(_ request: SeenRequest?) async {
+        guard let request, (try? await Task.sleep(for: Self.seenDelay)) != nil,
+              machineStore.isCurrentConnection(machine),
+              let current = try? machineStore.currentMachine(matching: machine),
+              let transport = try? machineStore.makeHerdrTransport(for: current) else { return }
+        let client = HerdrClient(transport: transport)
+        // As in `keepUpToDate`: closing the connection is what ends an await
+        // the cancellation doesn't reach, and a connection still being made
+        // when the task is cancelled is closed once it is made.
+        await withTaskCancellationHandler {
+            do {
+                try await client.connect()
+                try Task.checkCancellation()
+                if machineStore.isCurrentConnection(machine) {
+                    try await client.focusTab(request.tabID, on: request.herdrMachine)
+                }
+            } catch {}
+            await client.disconnect()
+        } onCancel: {
+            Task { await client.disconnect() }
         }
     }
 
