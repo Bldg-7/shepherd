@@ -128,16 +128,40 @@ final class CDPListener {
                 }
                 return channel.pipeline.addHandler(socket)
             })
+        let descriptor = try Self.loopbackSocket(port: port)
         server = try await ServerBootstrap(group: group)
-            .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
             .childChannelOption(ChannelOptions.autoRead, value: true)
             .childChannelInitializer { channel in
                 channel.pipeline.configureHTTPServerPipeline(withServerUpgrade: (
                     upgraders: [upgrader], completionHandler: { context in
                         context.pipeline.removeHandler(name: "reject", promise: nil)
                     })).flatMap { channel.pipeline.addHandler(CDPHTTPRejection(), name: "reject") }
-            }.bind(host: "127.0.0.1", port: port).get()
+            }.withBoundSocket(descriptor).get()
         return server!.localAddress!.port!
+    }
+
+    /// Not left to NIO, which doesn't make it close-on-exec on Darwin: a copy
+    /// in a terminal attach the app forks would hold the port after `stop()`
+    /// and fail the next start on it. NIO owns it from `withBoundSocket` on.
+    private static func loopbackSocket(port: Int) throws -> CInt {
+        guard let port = in_port_t(exactly: port) else { throw IOError(errnoCode: EINVAL, reason: "bind") }
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { throw IOError(errnoCode: errno, reason: "socket") }
+        func check(_ result: CInt, _ call: String) throws {
+            guard result == 0 else { let code = errno; close(fd); throw IOError(errnoCode: code, reason: call) }
+        }
+        var reuse: CInt = 1
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = port.bigEndian
+        address.sin_addr.s_addr = INADDR_LOOPBACK.bigEndian
+        try check(fcntl(fd, F_SETFD, FD_CLOEXEC), "fcntl")
+        try check(setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, socklen_t(MemoryLayout<CInt>.size)), "setsockopt")
+        try check(withUnsafePointer(to: &address) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+            bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+        } }, "bind")
+        return fd
     }
 
     func stop() async {
