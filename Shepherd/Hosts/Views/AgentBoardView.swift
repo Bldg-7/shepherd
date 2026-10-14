@@ -602,7 +602,7 @@ struct AgentBoardView: View {
         showsTabs && Self.offersTabs
     }
 
-    /// One herdr's rows: its tabs, in herdr's order, or its panes, by status
+    /// One herdr's rows: its tabs or its panes, by status (see `BoardOrder`)
     /// — listed workspace by workspace, under each one's name, when herdr
     /// reports its workspaces.
     @ViewBuilder
@@ -637,11 +637,11 @@ struct AgentBoardView: View {
     @ViewBuilder
     private func rowsOfOneWorkspace(panes: [AgentSummary], tabs: [TabSummary]?) -> some View {
         if showsTabRows, let tabs {
-            ForEach(tabs) { tab in
+            ForEach(BoardOrder.tabs(tabs)) { tab in
                 row(for: tab)
             }
         } else {
-            ForEach(panes.sorted(by: Self.statusPriority)) { agent in
+            ForEach(BoardOrder.panes(panes)) { agent in
                 row(for: agent)
             }
         }
@@ -1725,16 +1725,5 @@ struct AgentBoardView: View {
         case .done: .green
         case .unknown: .secondary
         }
-    }
-
-    /// Agents by how much they need the person, then the panes with no
-    /// agent in them, which never do. Within each rank the order is the one
-    /// herdr listed them in (Swift's sort is stable), so rows don't trade
-    /// places from one refresh to the next.
-    private nonisolated static func statusPriority(_ lhs: AgentSummary, _ rhs: AgentSummary) -> Bool {
-        func rank(_ pane: AgentSummary) -> Int {
-            pane.hasAgent ? pane.state.urgency : AgentState.unknown.urgency + 1
-        }
-        return rank(lhs) < rank(rhs)
     }
 }

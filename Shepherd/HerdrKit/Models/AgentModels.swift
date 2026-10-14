@@ -66,6 +66,9 @@ nonisolated struct AgentSummary: Identifiable, Equatable, Sendable {
     let interactiveReady: Bool?
     let launchPending: Bool?
     let screenDetectionSkipped: Bool?
+    /// herdr's number for the agent's last change of status. It counts
+    /// changes across the whole herdr server, so of two panes on one herdr
+    /// the higher came to its status later. Nil when herdr doesn't say.
     let stateChangeSequence: Int?
     /// The agent herdr recognises in the pane, or nil for a pane it has
     /// recognised none in.
@@ -96,7 +99,11 @@ nonisolated struct AgentSummary: Identifiable, Equatable, Sendable {
     }
     var title: String { label ?? automaticTitle }
 
-    init?(json: JSONValue, on herdrMachine: HerdrMachine? = nil) {
+    /// `stateChangeSequence` stands in for a `state_change_seq` that `json`
+    /// doesn't have — a pane in `session.snapshot`'s `panes` hasn't, and the
+    /// snapshot gives it in the agent's entry in `agents` instead (see
+    /// `HerdrSnapshot`).
+    init?(json: JSONValue, on herdrMachine: HerdrMachine? = nil, stateChangeSequence: Int? = nil) {
         guard let paneID = json["pane_id"]?.stringValue, !paneID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               let terminalID = json["terminal_id"]?.stringValue, !terminalID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         self.paneID = paneID
@@ -110,7 +117,7 @@ nonisolated struct AgentSummary: Identifiable, Equatable, Sendable {
         if case .bool(let ready) = json["interactive_ready"] { self.interactiveReady = ready } else { self.interactiveReady = nil }
         if case .bool(let pending) = json["launch_pending"] { self.launchPending = pending } else { self.launchPending = nil }
         if case .bool(let skipped) = json["screen_detection_skipped"] { self.screenDetectionSkipped = skipped } else { self.screenDetectionSkipped = nil }
-        self.stateChangeSequence = json["state_change_seq"]?.intValue
+        self.stateChangeSequence = json["state_change_seq"]?.intValue ?? stateChangeSequence
         self.agentName = json["agent"]?.stringValue
         self.terminalTitle = json["terminal_title_stripped"]?.stringValue
         self.label = json["label"]?.stringValue

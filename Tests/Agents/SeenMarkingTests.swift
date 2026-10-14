@@ -47,8 +47,8 @@ nonisolated enum AgentKind: String, Sendable {
         check(seen(remoteDone) != seen(done), "the same IDs on the host and on a herdr machine: different requests")
 
         check(seen(tab([done])) == hostTab, "Group by Tab: a tab with a Done pane")
-        let mixed = tab([pane("w1:p1", status: "working"), pane("w1:p2"), pane("w1:p3", status: "unknown", agent: nil)])
-        check(mixed.mostUrgentState == .working && seen(mixed) == hostTab, "a tab with one Done pane among others, whatever state its row shows")
+        let mixed = tab([pane("w1:p1", status: "blocked"), pane("w1:p2"), pane("w1:p3", status: "unknown", agent: nil)])
+        check(mixed.mostUrgentState == .blocked && seen(mixed) == hostTab, "a tab with one Done pane among others, whatever state its row shows")
         check(seen(tab([pane("w1:p1", status: "idle"), pane("w1:p2", status: "blocked")])) == nil, "a tab with no Done pane: nothing sent")
         check(seen(tab([pane("w1:p1", status: "done", agent: nil)])) == nil, "a tab with only a shell: nothing sent")
         check(seen(tab([])) == nil, "a tab with no panes listed: nothing sent")

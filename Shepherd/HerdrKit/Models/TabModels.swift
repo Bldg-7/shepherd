@@ -144,7 +144,18 @@ nonisolated struct HerdrSnapshot: Equatable, Sendable {
 
     /// `snapshot` is the `snapshot` object of a `session.snapshot` result.
     init(snapshot: JSONValue, on herdrMachine: HerdrMachine? = nil) {
-        let panes = (snapshot["panes"]?.arrayValue ?? []).compactMap { AgentSummary(json: $0, on: herdrMachine) }
+        // A pane doesn't say when its agent's status last changed; the
+        // snapshot's `agents`, each with the pane it is in, do.
+        let stateChanges = Dictionary(
+            (snapshot["agents"]?.arrayValue ?? []).compactMap { agent -> (String, Int)? in
+                guard let paneID = agent["pane_id"]?.stringValue, let sequence = agent["state_change_seq"]?.intValue else { return nil }
+                return (paneID, sequence)
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let panes = (snapshot["panes"]?.arrayValue ?? []).compactMap { pane in
+            AgentSummary(json: pane, on: herdrMachine, stateChangeSequence: pane["pane_id"]?.stringValue.flatMap { stateChanges[$0] })
+        }
         let panesByID = Dictionary(panes.map { ($0.paneID, $0) }, uniquingKeysWith: { first, _ in first })
         let layouts = snapshot["layouts"]?.arrayValue ?? []
         self.panes = panes
@@ -159,13 +170,14 @@ nonisolated struct HerdrSnapshot: Equatable, Sendable {
 
 extension AgentState {
     /// How much a pane in this state needs the person — lower is more.
-    /// A blocked agent is waiting on them; one that is working may soon be.
+    /// A blocked agent is waiting on them; a done one has finished, and
+    /// hasn't been looked at since; one that is working may soon need them.
     nonisolated var urgency: Int {
         switch self {
         case .blocked: 0
-        case .working: 1
-        case .idle: 2
-        case .done: 3
+        case .done: 1
+        case .working: 2
+        case .idle: 3
         case .unknown: 4
         }
     }
