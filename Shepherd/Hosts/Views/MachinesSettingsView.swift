@@ -132,6 +132,7 @@ struct MachinesSettingsView: View {
                 if let softwareUpdater, softwareUpdater.isAvailable {
                     updatesSection(softwareUpdater)
                 }
+                versionSection
             }
             .formStyle(.grouped)
             Divider()
@@ -146,19 +147,31 @@ struct MachinesSettingsView: View {
     }
 
     /// Shepherd's own updates: whether Sparkle checks on its own, and a way
-    /// to check right away, next to the version there is now.
+    /// to check right away. The version running has its own section, under
+    /// this one.
     private func updatesSection(_ updater: SoftwareUpdater) -> some View {
         @Bindable var updater = updater
         return Section("Updates") {
             Toggle("Check for updates automatically", isOn: $updater.automaticallyChecksForUpdates)
             HStack {
-                Text(SoftwareUpdater.currentVersion)
-                    .foregroundStyle(.secondary)
                 Spacer()
                 Button("Check Now") {
                     updater.checkForUpdates()
                 }
                 .disabled(!updater.canCheckForUpdates)
+            }
+        }
+    }
+
+    /// The version and build running, in every build: a debug build has no
+    /// Updates section, and its version says it is one, so a build from
+    /// Xcode can be told from a release. Selectable, to copy into a report.
+    private var versionSection: some View {
+        Section {
+            LabeledContent("Version") {
+                Text(verbatim: AppVersion.current.displayString)
+                    .textSelection(.enabled)
+                    .accessibilityIdentifier("settings.version")
             }
         }
     }

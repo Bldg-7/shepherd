@@ -58,14 +58,6 @@ final class SoftwareUpdater {
     func checkForUpdates() {
         controller?.checkForUpdates(nil)
     }
-
-    /// The version the person is running, as About Shepherd shows it.
-    static var currentVersion: String {
-        let info = Bundle.main.infoDictionary
-        let version = info?["CFBundleShortVersionString"] as? String ?? "?"
-        let build = info?["CFBundleVersion"] as? String ?? "?"
-        return String(localized: "Version \(version) (\(build))")
-    }
 }
 
 /// The app menu's Check for Updates…, under About Shepherd, where Mac apps

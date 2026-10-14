@@ -6298,6 +6298,22 @@
         }
       }
     },
+    "Version" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "バージョン"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "버전"
+          }
+        }
+      }
+    },
     "Version %@ (%@)" : {
       "localizations" : {
         "ja" : {
