@@ -128,6 +128,37 @@ public actor FakeSSH {
     func add(_ channel: FakeChannel) { channels.append(channel) }
 }
 
+/// A process's exit status, for anyone waiting on it. From the process's
+/// termination handler: `waitUntilExit()` on a dispatch worker thread can miss
+/// the exit and wait for good.
+final class ExitStatus: @unchecked Sendable {
+    private let lock = NSLock()
+    private var status: Int32?
+    private var waiters: [CheckedContinuation<Int32, Never>] = []
+
+    func record(_ value: Int32) {
+        let waiting = lock.withLock { () -> [CheckedContinuation<Int32, Never>] in
+            status = value
+            defer { waiters = [] }
+            return waiters
+        }
+        for waiter in waiting { waiter.resume(returning: value) }
+    }
+
+    var value: Int32? { lock.withLock { status } }
+
+    func wait() async -> Int32 {
+        await withCheckedContinuation { continuation in
+            let ready = lock.withLock { () -> Int32? in
+                if let status { return status }
+                waiters.append(continuation)
+                return nil
+            }
+            if let ready { continuation.resume(returning: ready) }
+        }
+    }
+}
+
 public final class SSHClient: @unchecked Sendable {
     public struct CommandFailed: Error { public let exitCode: Int }
     private let lock = NSLock()
@@ -153,12 +184,18 @@ public final class SSHClient: @unchecked Sendable {
         let input = Pipe(), output = Pipe(), errors = Pipe()
         process.standardInput = input; process.standardOutput = output; process.standardError = errors
         let (stream, continuation) = AsyncThrowingStream<ExecCommandOutput, Error>.makeStream()
+        // Both outputs read to their end, and the exit: what the channel
+        // delivers before it closes.
+        let exit = ExitStatus()
+        let readers = DispatchGroup()
+        readers.enter()
+        process.terminationHandler = { ended in
+            exit.record(ended.terminationStatus)
+            readers.leave()
+        }
         try process.run()
         let channel = FakeChannel(input: input.fileHandleForWriting)
         await FakeSSH.shared.add(channel)
-        // Both outputs read to their end, then the exit status: what the
-        // channel delivers before it closes.
-        let readers = DispatchGroup()
         for (handle, isError) in [(output.fileHandleForReading, false), (errors.fileHandleForReading, true)] {
             readers.enter()
             DispatchQueue.global().async {
@@ -172,18 +209,17 @@ public final class SSHClient: @unchecked Sendable {
             }
         }
         readers.notify(queue: .global()) {
-            process.waitUntilExit()
-            let status = Int(process.terminationStatus)
+            let status = Int(exit.value ?? -1)
             if status == 0 { continuation.finish() } else { continuation.finish(throwing: CommandFailed(exitCode: status)) }
         }
         do {
             try await perform(TTYOutput(stream: stream), TTYStdinWriter(channel: channel))
         } catch {
             await channel.close()
-            while process.isRunning { try? await Task.sleep(for: .milliseconds(10)) }
+            _ = await exit.wait()
             throw error
         }
-        while process.isRunning { try? await Task.sleep(for: .milliseconds(10)) }
+        _ = await exit.wait()
         // As Citadel's `withExec` does: closing a channel the far end has
         // already closed fails.
         throw FakeChannelError.alreadyClosed
