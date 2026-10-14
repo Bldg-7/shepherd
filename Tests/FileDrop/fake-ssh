@@ -1,0 +1,29 @@
+#!/bin/sh
+# TEST ONLY: stands in for OpenSSH on PATH. No network. It records its
+# arguments, refuses anything but -T and -o pairs before `--`, and runs the
+# command it is given with /bin/sh under the test machine's HOME, the way the
+# machine's login shell would run what ssh joined with spaces.
+dir=$(cd "$(dirname "$0")" && pwd)
+{ for argument in "$@"; do printf '%s\n' "$argument"; done; printf '%s\n' '----'; } >> "$dir/ssh-arguments.log"
+while [ $# -gt 0 ]; do
+  case $1 in
+    --) shift; break ;;
+    -o) shift 2 ;;
+    -T) shift ;;
+    *) echo "fake ssh: unexpected argument before --: $1" >&2; exit 254 ;;
+  esac
+done
+[ $# -ge 2 ] || { echo "fake ssh: no target or command" >&2; exit 254; }
+target=$1
+shift
+printf '%s\n' "$target" >> "$dir/ssh-targets.log"
+if [ -e "$dir/hold" ]; then
+  # Stands for a connection that doesn't get anywhere; ended by the test's
+  # cancellation, which signals this whole process group.
+  sleep 30
+fi
+if [ -e "$dir/unreachable" ]; then
+  echo "ssh: connect to host $target port 22: Connection refused" >&2
+  exit 255
+fi
+HOME=$(cat "$dir/machine-home") exec /bin/sh -c "$*"

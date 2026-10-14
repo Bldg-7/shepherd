@@ -12,6 +12,7 @@ struct ExperimentalFeaturesSettingsView: View {
     @State private var agentFailure: String?
     @State private var advancedExpanded = false
     @State private var checkingPrerequisites = false
+    @AppStorage(TerminalFileDropFeature.preferenceKey) private var terminalFileDropEnabled = false
     @Environment(\.dismiss) private var dismiss
 
     private var feature: ShepherdBrowserFeature { .shared }
@@ -99,6 +100,21 @@ struct ExperimentalFeaturesSettingsView: View {
                     AgentSkillSection(machine: activeMachine).id(activeMachine.id)
                 }
                 advancedSettings
+            }
+            // Independent of the browser, and with nothing to set up or tear
+            // down: terminals read it at each drop.
+            Section {
+                Toggle(isOn: $terminalFileDropEnabled) {
+                    HStack {
+                        Text("Terminal File Drop (Experimental)")
+                        Image(systemName: "info.circle")
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel("About Terminal File Drop")
+                            .help("Drop files from Finder onto a terminal pane to paste their paths. For panes on another machine, PNG, JPEG, GIF, and WebP images are first uploaded to ~/.cache/shepherd/drops on that machine.")
+                    }
+                }
+                .help("Uploaded images are removed after 24 hours, the next time you drop files on that machine.")
+                .accessibilityIdentifier("settings.experimental-features.terminal-file-drop")
             }
             if showsDiagnostics { diagnosticsSection }
         }

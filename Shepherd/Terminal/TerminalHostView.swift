@@ -17,6 +17,10 @@ struct TerminalHostView {
     /// over it unasked.
     var focusesWhenShown = false
     var onOpenLink: ((String) -> Void)? = nil
+    /// Told the files dropped from Finder on the terminal. While this is
+    /// nil the terminal takes no drops at all, and a drag over it goes back
+    /// where it came from, as it always did.
+    var onDropFiles: (([URL]) -> Void)? = nil
 
     final class Coordinator: NSObject, TerminalViewDelegate {
         let onInput: (ArraySlice<UInt8>) -> Void
@@ -64,8 +68,60 @@ final class FocusReportingTerminalView: TerminalView {
     var onFocusChange: ((Bool) -> Void)?
     var focusesWhenShown = false
     var onOpenFileGesture: ((String) -> Void)?
+    /// See `TerminalHostView.onDropFiles`. Setting it registers the view
+    /// for file drags, or stops it taking them.
+    var onDropFiles: (([URL]) -> Void)? {
+        didSet {
+            if onDropFiles == nil {
+                if !registeredDraggedTypes.isEmpty { unregisterDraggedTypes() }
+            } else if !registeredDraggedTypes.contains(.fileURL) {
+                registerForDraggedTypes([.fileURL])
+            }
+        }
+    }
     private var fileGesture = TerminalFileGesture()
     private var capturedFileHandler: ((String) -> Void)?
+
+    /// Sends `text` to the program as a paste, the way other terminals send
+    /// a drop: in one piece, and between the bracketed-paste markers when
+    /// the program has asked for them (mode 2004), so that it knows the
+    /// text for a paste rather than typing — Claude Code only looks for
+    /// image paths in a paste.
+    func sendPaste(_ text: String) {
+        var bytes = Array(text.utf8)
+        if getTerminal().bracketedPasteMode {
+            bytes = Self.pasteStart + bytes + Self.pasteEnd
+        }
+        send(data: bytes[...])
+    }
+
+    /// SwiftTerm's `EscapeSequences.bracketedPasteStart`/`End`, which it
+    /// declares as mutable statics.
+    private static let pasteStart = Array("\u{1b}[200~".utf8)
+    private static let pasteEnd = Array("\u{1b}[201~".utf8)
+
+    override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        dropOperation(for: sender)
+    }
+
+    override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        dropOperation(for: sender)
+    }
+
+    override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        let urls = droppedFiles(in: sender)
+        guard let onDropFiles, !urls.isEmpty else { return false }
+        onDropFiles(urls)
+        return true
+    }
+
+    private func dropOperation(for sender: any NSDraggingInfo) -> NSDragOperation {
+        onDropFiles != nil && !droppedFiles(in: sender).isEmpty ? .copy : []
+    }
+
+    private func droppedFiles(in sender: any NSDraggingInfo) -> [URL] {
+        sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+    }
 
     override func mouseDown(with event: NSEvent) {
         fileGesture.cancel()
@@ -145,6 +201,7 @@ extension TerminalHostView: NSViewRepresentable {
         view.onFocusChange = onFocusChange
         view.focusesWhenShown = focusesWhenShown
         view.onOpenFileGesture = onOpenLink
+        view.onDropFiles = onDropFiles
         onCreate(view)
         return view
     }
@@ -152,6 +209,7 @@ extension TerminalHostView: NSViewRepresentable {
     func updateNSView(_ nsView: TerminalView, context: Context) {
         context.coordinator.onOpenLink = onOpenLink
         (nsView as? FocusReportingTerminalView)?.onOpenFileGesture = onOpenLink
+        (nsView as? FocusReportingTerminalView)?.onDropFiles = onDropFiles
     }
 }
 

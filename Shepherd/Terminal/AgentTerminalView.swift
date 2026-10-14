@@ -29,6 +29,8 @@ struct PaneTerminalView: View {
     /// taking the pane over for a view that is no longer there. SwiftUI
     /// cancels a view's task; nothing would cancel the button's.
     @State private var attempt = 0
+    @State private var dropController: TerminalDropController
+    @AppStorage(TerminalFileDropFeature.preferenceKey) private var takesFileDrops = false
     @Environment(\.terminalPaneFocus) private var paneFocus
     private let paneID: String
     private let focusesWhenShown: Bool
@@ -97,20 +99,66 @@ struct PaneTerminalView: View {
             return StubTerminalSession()
             #endif
         }))
+
+        // Resolved at each drop, like the session at each attach: against
+        // the machine as it is then, and only reading the Keychain once a
+        // drop has an image to upload.
+        _dropController = State(wrappedValue: TerminalDropController(isEnabled: { TerminalFileDropFeature.isEnabled }, destination: {
+            let current = try machineStore.currentMachine(matching: machine)
+            switch TerminalDropRoute(isLocal: current.isLocal, herdrMachine: herdrMachine) {
+            case .thisMac:
+                return .thisMac
+            case .thisMacMachine(let target):
+                #if os(macOS)
+                return .elsewhere { LocalSSHDropUploader(machine: target) }
+                #else
+                throw TerminalDropError.unusableTarget
+                #endif
+            case .host, .hostMachine:
+                #if canImport(Citadel)
+                return .elsewhere {
+                    // Nothing goes to a host whose key the terminal's own
+                    // connect hasn't pinned (see `FilePreviewReader`).
+                    guard let pin = current.pinnedHostKeyFingerprint else { throw TerminalDropError.needsHostKey }
+                    guard let secret = try machineStore.secret(for: current) else { throw MachineStore.EditError.missingCredential }
+                    return RemoteExecDropUploader(
+                        host: current.hostname,
+                        port: current.port,
+                        username: current.username,
+                        credential: HostCredential(authMethod: current.authMethod, secretData: secret),
+                        pinnedFingerprint: pin,
+                        on: herdrMachine
+                    )
+                }
+                #else
+                throw TerminalDropError.unusableTarget
+                #endif
+            }
+        }))
     }
 
     var body: some View {
         TerminalHostView(
             onCreate: { view in
                 viewModel.attach(terminalView: view)
+                dropController.paste = { [weak view] text in
+                    (view as? FocusReportingTerminalView)?.sendPaste(text)
+                }
                 if paneFocus?.paneID == paneID { viewModel.requestKeyboardFocus() }
             },
             onInput: { data in viewModel.send(data) },
             onResize: { columns, rows in viewModel.resize(columns: columns, rows: rows) },
             onFocusChange: onFocusChange,
             focusesWhenShown: focusesWhenShown,
-            onOpenLink: onOpenLink
+            onOpenLink: onOpenLink,
+            // Only into a live attach, and one drop at a time.
+            onDropFiles: takesFileDrops && viewModel.connectionState == .connected && !dropController.isUploading
+                ? { urls in dropController.drop(urls) } : nil
         )
+        .overlay(alignment: .bottom) {
+            TerminalDropBanner(controller: dropController)
+                .environment(\.colorScheme, .dark)
+        }
         .overlay {
             Group {
                 switch viewModel.connectionState {
@@ -141,7 +189,10 @@ struct PaneTerminalView: View {
             if request?.paneID == paneID { viewModel.requestKeyboardFocus() }
         }
         .task(id: attempt) { await viewModel.start() }
-        .onDisappear { viewModel.stop() }
+        .onDisappear {
+            viewModel.stop()
+            dropController.cancel()
+        }
     }
 }
 
