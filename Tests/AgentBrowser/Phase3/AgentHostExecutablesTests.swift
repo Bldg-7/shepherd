@@ -37,7 +37,7 @@ nonisolated private func expect(_ value: Bool) { precondition(value) }
 
         // Real filesystem/shell test with only synthetic executables. No shell
         // rc files, actual agent CLIs or vendor accounts are accessed.
-        let root = URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("home with 'quotes'")
+        let root = URL(fileURLWithPath: CommandLine.arguments[1]).resolvingSymlinksInPath().appendingPathComponent("home with 'quotes'")
         let nodeRoot = root.appendingPathComponent(".local/share/fnm/node-versions/v26.1.0/installation")
         let node = nodeRoot.appendingPathComponent("bin/node")
         let alias = root.appendingPathComponent(".local/share/fnm/aliases/default")
