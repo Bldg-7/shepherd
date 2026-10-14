@@ -194,6 +194,7 @@ nonisolated struct CommandFailure: Error {
             let daemonStart = Date()
             _ = try await run(fixture([mode, daemonRootFile.path, daemonFile.path]), timeout: 0.2)
             precondition(Date().timeIntervalSince(daemonStart) < 0.5)
+            for _ in 0..<500 where !FileManager.default.fileExists(atPath: daemonFile.path) { try await Task.sleep(for: .milliseconds(2)) }  // the daemon writes its snapshot after closing stdio
             let daemon = try identity(daemonFile), daemonRoot = try identity(daemonRootFile)
             precondition(live(daemon))
             precondition((daemon[4] == daemonRoot[4]) == (mode == "daemon-root-same"))
