@@ -21,8 +21,9 @@ Coverage:
   no local credential lookup, missing/refreshed pin, stale endpoint/epoch denial,
   cancellation and the actual 15-second read timeout/connection cleanup.
 - Actual SwiftTerm objects with owned windowless AppKit views: screen cells,
-  Korean wide characters, soft wraps, OSC8 vs implicit links, BiDi fallback denial
-  and current coordinator callback. **Not GUI click automation.**
+  Korean wide characters, soft wraps, OSC8 vs implicit links, BiDi fallback denial,
+  prose run on after a path or URL and current coordinator callback. **Not GUI
+  click automation.**
 
 ## Product behavior
 
@@ -63,6 +64,10 @@ host aliases); they never redirect the reader. Nested Herdr machine filesystem
 routing is explicitly unsupported. Unknown cwd requires an absolute path; ~/ and
 shell variables are not expanded. Ambiguous bare paths containing spaces should
 use an explicit OSC8/file URI. Unsupported URI schemes are not dispatched.
+Hangul, Han or kana glued to the last letter or digit of a plain path or URL
+(`README.md에서`, `…/pull/16048에서`) ends the link, and a click on it opens
+nothing. A plain match containing a space that does not end in a previewable
+file name is prose: only the clicked word can be a link.
 
 Remote reads use a separate read-only SFTP connection and the existing saved
 credential + host-key pin. An unpinned machine must first connect through the

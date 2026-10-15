@@ -8,6 +8,11 @@ nonisolated enum TerminalWebLink {
         return lowered.hasPrefix("http:") || lowered.hasPrefix("https:")
     }
 
+    /// Hangul, Han or kana glued to the last letter or digit of a link, like
+    /// the particle in `…/pull/16048에서`, is prose that follows the link.
+    /// `FilePreviewLink.gluedProseSuffix` is the same rule for paths.
+    static let gluedProseSuffix = #"(?<=[A-Za-z0-9])[\p{Hangul}\p{Han}\p{Hiragana}\p{Katakana}]+$"#
+
     static func token(in text: String, characterOffset: Int) -> String? {
         guard text.count <= 8192, characterOffset >= 0, characterOffset < text.count else { return nil }
         let chars = Array(text)
@@ -20,6 +25,10 @@ nonisolated enum TerminalWebLink {
         var token = String(chars[start..<end])
         while token.last == "," || token.last == ";" { token.removeLast() }
         if token.last == "." { token.removeLast() }
+        if let prose = token.range(of: gluedProseSuffix, options: .regularExpression) {
+            guard characterOffset - start < token.distance(from: token.startIndex, to: prose.lowerBound) else { return nil }
+            token.removeSubrange(prose)
+        }
         return isWebLink(token) ? token : nil
     }
 

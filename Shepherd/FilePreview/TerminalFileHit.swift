@@ -28,7 +28,14 @@ import AppKit
             // The implicit matcher can include padding; OSC8 payloads above
             // remain exact (including escaped filenames and source locations).
             let candidate = native.trimmingCharacters(in: .whitespaces)
-            return (TerminalWebLink.isWebLink(candidate) || FilePreviewLink.isFileGestureLink(candidate)) ? candidate : nil
+            // It can also run a link on into the prose after it. Such a match
+            // is left to the clicked-word tokens below, which end the link at
+            // the prose, so a click on the prose never opens anything.
+            if TerminalWebLink.isWebLink(candidate) {
+                if candidate.range(of: TerminalWebLink.gluedProseSuffix, options: .regularExpression) == nil { return candidate }
+            } else if !FilePreviewLink.runsIntoProse(candidate) {
+                return FilePreviewLink.isFileGestureLink(candidate) ? candidate : nil
+            }
         }
         var start = row, end = row
         while start > 0, row - start < 4, terminal.getLine(row: start)?.isWrapped == true { start -= 1 }

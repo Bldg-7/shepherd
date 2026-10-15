@@ -31,6 +31,18 @@ import Darwin
         check(FilePreviewLink.token(in: "https://a/a.md", characterOffset: 10) == nil, "don't steal URL events")
         check(FilePreviewLink.token(in: "status ready", characterOffset: 2) == nil, "don't steal TUI words")
         check(FilePreviewLink.token(in: "a.md", characterOffset: 4) == nil, "no out of bounds")
+        check(FilePreviewLink.token(in: "test/board.test.ts에 4개", characterOffset: 3) == "test/board.test.ts", "glued particle ends the path")
+        check(FilePreviewLink.token(in: "test/board.test.ts에 4개", characterOffset: 18) == nil, "click on the glued particle")
+        check(FilePreviewLink.token(in: "src/board.ts:42에서", characterOffset: 2) == "src/board.ts:42", "particle after a source location")
+        check(FilePreviewLink.token(in: "README.md입니다.", characterOffset: 1) == "README.md", "particle then sentence period")
+        check(FilePreviewLink.token(in: "~/Projects/tf-post에", characterOffset: 3) == nil, "extensionless path before a particle")
+        check(FilePreviewLink.token(in: "docs/2024년_회의록.md", characterOffset: 3) == "docs/2024년_회의록.md", "Hangul inside a file name")
+        for raw in ["~/Projects/tf-post에 그대로 남아 있습니다.", "docs/README.md를 수정했습니다.", "test/board.test.ts에", "/tmp/foo 입니다", "~/Projects/tf-post for the rest of it"] {
+            check(FilePreviewLink.runsIntoProse(raw), "runs into prose: \(raw)")
+        }
+        for raw in ["docs/회의록.md", "README.md:42", "/owned/my dir/notes.md:12", "/Users/owned/Library/Application Support/Shepherd/settings.json", "~/Projects/tf-post"] {
+            check(!FilePreviewLink.runsIntoProse(raw), "not prose: \(raw)")
+        }
         check(!FilePreviewPresentation.usesSplit(isPad: false, detailWidth: 2000), "phone always pushed")
         check(!FilePreviewPresentation.usesSplit(isPad: true, detailWidth: 759), "narrow pad")
         check(FilePreviewPresentation.usesSplit(isPad: true, detailWidth: 760), "wide pad threshold")
