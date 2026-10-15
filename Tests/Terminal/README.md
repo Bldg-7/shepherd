@@ -15,6 +15,19 @@ validation rejects credentials, control characters and unsupported schemes.
 Non-link clicks retain the complete remote TUI press/release gesture. No user GUI or SSH server is
 operated. Live remote acceptance remains separate.
 
+## Keys
+
+```sh
+python3 Tests/Terminal/run-key-tests.py --output /tmp/shepherd-keys-FRESH \
+  --swiftterm-products /path/to/DerivedData/Build/Products/Debug
+```
+
+Sends real key-downs through SwiftTerm's `keyDown` into the production terminal
+view in a never-shown window, and checks the bytes it hands its delegate. ⌘⌫
+and ⇧⌘⌫ send Ctrl-U (0x15), with the kitty keyboard protocol pushed or not.
+⌫, ⌥⌫, ⌘←, ⌘→ and a letter send what SwiftTerm sent before. The private HOME
+keeps the user's own key bindings out.
+
 ## Focus frame
 
 ```sh

@@ -100,6 +100,23 @@ final class FocusReportingTerminalView: TerminalView {
     private static let pasteStart = Array("\u{1b}[200~".utf8)
     private static let pasteEnd = Array("\u{1b}[201~".utf8)
 
+    /// ⌘⌫ goes to the program as Ctrl-U, which deletes back to the start of
+    /// the line in a shell and in Claude Code's prompt: what Ghostty
+    /// (`super+backspace=text:\x15`) and iTerm2's Natural Text Editing send.
+    /// macOS makes the key, with or without Shift, `deleteToBeginningOfLine:`,
+    /// which SwiftTerm 1.20.0's `doCommand(by:)` drops, and that method isn't
+    /// open to a subclass. Its `keyDown` hands the key here first, with the
+    /// kitty keyboard on or off.
+    override func interpretKeyEvents(_ eventArray: [NSEvent]) {
+        if eventArray.count == 1, let event = eventArray.first,
+           event.charactersIgnoringModifiers == "\u{7f}",
+           event.modifierFlags.intersection([.control, .option, .command]) == .command {
+            send(data: [0x15])
+            return
+        }
+        super.interpretKeyEvents(eventArray)
+    }
+
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
         dropOperation(for: sender)
     }
