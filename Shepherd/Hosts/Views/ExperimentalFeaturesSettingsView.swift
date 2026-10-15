@@ -81,7 +81,7 @@ struct ExperimentalFeaturesSettingsView: View {
                     set: { enabled in Task { await feature.setEnabled(enabled, presentationOwner: passwordManagerWindowID) } }
                 )) {
                     HStack {
-                        Text("Shepherd Browser (Experimental)")
+                        Text("Shepherd Browser")
                         Image(systemName: "info.circle")
                             .foregroundStyle(.secondary)
                             .accessibilityLabel("About Shepherd Browser")
@@ -106,7 +106,7 @@ struct ExperimentalFeaturesSettingsView: View {
             Section {
                 Toggle(isOn: $terminalFileDropEnabled) {
                     HStack {
-                        Text("Terminal File Drop (Experimental)")
+                        Text("Terminal File Drop")
                         Image(systemName: "info.circle")
                             .foregroundStyle(.secondary)
                             .accessibilityLabel("About Terminal File Drop")

@@ -5200,24 +5200,24 @@
         }
       }
     },
-    "Shepherd Browser (Experimental)" : {
+    "Shepherd Browser" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd Browser (Experimental)"
+            "value" : "Shepherd Browser"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd Browser（実験的機能）"
+            "value" : "Shepherd Browser"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd Browser (실험적 기능)"
+            "value" : "Shepherd Browser"
           }
         }
       }
@@ -5623,24 +5623,24 @@
         }
       }
     },
-    "Terminal File Drop (Experimental)" : {
+    "Terminal File Drop" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Terminal File Drop (Experimental)"
+            "value" : "Terminal File Drop"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ターミナルへのファイルドロップ（実験的機能）"
+            "value" : "ターミナルへのファイルドロップ"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "터미널 파일 드롭 (실험적 기능)"
+            "value" : "터미널 파일 드롭"
           }
         }
       }
