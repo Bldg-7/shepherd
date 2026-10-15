@@ -60,7 +60,7 @@ final class CDPProxy {
     }
     @ObservationIgnored private var waitingSockets: [ObjectIdentifier: WaitingSocket] = [:]
     @ObservationIgnored private var activity: NSObjectProtocol?
-    @ObservationIgnored private var tokenFile: URL?
+    @ObservationIgnored private(set) var tokenFile: URL?
     @ObservationIgnored private var starting = false
     @ObservationIgnored private var acceptingConnections = true
     @ObservationIgnored private var token = ""
@@ -80,25 +80,15 @@ final class CDPProxy {
                 throw ProxyError("Could not create browser authentication token.")
             }
             token = Data(bytes).base64EncodedString()
-            let file = store.rootFolder.appending(path: "agent-token")
-            // Atomic replacement never follows a stale file/symlink and never
-            // briefly exposes a world-readable credential.
-            let temp = store.rootFolder.appending(path: ".token-\(UUID().uuidString)")
-            guard FileManager.default.createFile(atPath: temp.path, contents: Data(token.utf8),
-                                                  attributes: [.posixPermissions: 0o600]) else {
-                throw ProxyError("Could not write browser authentication token.")
-            }
-            guard rename(temp.path, file.path) == 0 else {
-                try? FileManager.default.removeItem(at: temp)
-                throw ProxyError("Could not replace browser authentication token.")
-            }
-            tokenFile = file
             let server = CDPListener()
-            port = try await server.start(port: requestedPort, token: token, authorizeRoute: { [weak self] route in
+            let bound = try await server.start(port: requestedPort, token: token, authorizeRoute: { [weak self] route in
                 self?.authorized(route) == true
             }, accept: { [weak self] route, socket, text in
                 self?.receive(route: route, socket: socket, text: text)
             }, credentialService: credentialService)
+            do { tokenFile = try writeToken(port: bound) }
+            catch { await server.stop(); throw error }
+            port = bound
             listener = server
             acceptingConnections = true
             error = nil
@@ -106,6 +96,25 @@ final class CDPProxy {
             self.error = "Browser agent listener could not start on loopback port \(requestedPort): \(error.localizedDescription)"
             port = nil
         }
+    }
+
+    /// Written only once the listener holds the port, and named for it: a
+    /// second Shepherd asking for the same port fails to bind and leaves the
+    /// token this one's agents read alone.
+    private func writeToken(port: Int) throws -> URL {
+        let file = store.rootFolder.appending(path: "agent-token-\(port)")
+        // Atomic replacement never follows a stale file/symlink and never
+        // briefly exposes a world-readable credential.
+        let temp = store.rootFolder.appending(path: ".token-\(UUID().uuidString)")
+        guard FileManager.default.createFile(atPath: temp.path, contents: Data(token.utf8),
+                                              attributes: [.posixPermissions: 0o600]) else {
+            throw ProxyError("Could not write browser authentication token.")
+        }
+        guard rename(temp.path, file.path) == 0 else {
+            try? FileManager.default.removeItem(at: temp)
+            throw ProxyError("Could not replace browser authentication token.")
+        }
+        return file
     }
 
     func restart(port: Int) async { await stop(); await start(port: port) }

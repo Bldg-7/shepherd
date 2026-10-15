@@ -211,7 +211,7 @@ enum BrowserPhase2Fixture {
                     guard let endpoint = proxy.endpoint(for: BrowserKey(machine: machine, pane: pane)) else { return nil }
                     return ["endpoint": endpoint.url.absoluteString, "terminal": pane.terminalID, "pane": pane.paneID]
                 }
-                let metadata: [String: Any] = ["panes": endpoints, "tokenFile": endpoints.isEmpty ? "" : BrowserStore.shared.rootFolder.appending(path: "agent-token").path]
+                let metadata: [String: Any] = ["panes": endpoints, "tokenFile": endpoints.isEmpty ? "" : proxy.tokenFile?.path ?? ""]
                 try JSONSerialization.data(withJSONObject: metadata).write(to: folder.appending(path: "ready.json"), options: .atomic)
                 while true {
                     if (try? String(contentsOf: folder.appending(path: "command"), encoding: .utf8)) == "quit" {
