@@ -12,10 +12,8 @@ struct AgentSkillSection: View {
             if machine.isLocal {
                 HStack {
                     Text("Preparation")
-                    Image(systemName: "info.circle")
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel("About agent integration")
-                        .help("Prepared automatically for Shepherd sessions. Claude uses a session skill plugin; Codex receives MCP and instructions; Pi uses a session-only TUI extension and skill. Requires Node 20+ (Pi: 22.19+). Preparation does not verify login.")
+                    InfoButton(accessibilityLabel: "About agent integration",
+                               explanation: "Prepared automatically for Shepherd sessions. Claude uses a session skill plugin; Codex receives MCP and instructions; Pi uses a session-only TUI extension and skill. Requires Node 20+ (Pi: 22.19+). Preparation does not verify login.")
                     Spacer()
                     preparationStatus
                         .help("Global CLI settings and skill folders are not modified. Running agents are not restarted automatically.")

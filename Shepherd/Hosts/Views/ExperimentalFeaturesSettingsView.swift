@@ -82,10 +82,8 @@ struct ExperimentalFeaturesSettingsView: View {
                 )) {
                     HStack {
                         Text("Shepherd Browser")
-                        Image(systemName: "info.circle")
-                            .foregroundStyle(.secondary)
-                            .accessibilityLabel("About Shepherd Browser")
-                            .help("An in-app pane browser. Codex resume confirmation may wait until the first user turn; live agents are never restarted automatically.")
+                        InfoButton(accessibilityLabel: "About Shepherd Browser",
+                                   explanation: "An in-app pane browser. Codex resume confirmation may wait until the first user turn; live agents are never restarted automatically.")
                     }
                 }
                 .disabled(feature.isTransitioning)
@@ -107,10 +105,8 @@ struct ExperimentalFeaturesSettingsView: View {
                 Toggle(isOn: $terminalFileDropEnabled) {
                     HStack {
                         Text("Terminal File Drop")
-                        Image(systemName: "info.circle")
-                            .foregroundStyle(.secondary)
-                            .accessibilityLabel("About Terminal File Drop")
-                            .help("Drop files from Finder onto a terminal pane to paste their paths. For panes on another machine, PNG, JPEG, GIF, and WebP images are first uploaded to ~/.cache/shepherd/drops on that machine.")
+                        InfoButton(accessibilityLabel: "About Terminal File Drop",
+                                   explanation: "Drop files from Finder onto a terminal pane to paste their paths. For panes on another machine, PNG, JPEG, GIF, and WebP images are first uploaded to ~/.cache/shepherd/drops on that machine.")
                     }
                 }
                 .help("Uploaded images are removed after 24 hours, the next time you drop files on that machine.")
