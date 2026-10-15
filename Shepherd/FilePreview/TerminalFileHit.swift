@@ -4,8 +4,9 @@ import CoreGraphics
 import AppKit
 
 /// Uses the terminal emulator's final cells, not raw output bytes. OSC8 and
-/// URL detection uses SwiftTerm's public cells/link API. File OSC8/URIs and
-/// plain paths and HTTP(S) links are claimed before mouse reporting reaches a TUI.
+/// URL detection uses SwiftTerm's public cells/link API. File OSC8 links and
+/// HTTP(S) links, OSC8 or plain, are claimed before mouse reporting reaches a
+/// TUI. Plain text is never a file link, however much it looks like a path.
 @MainActor enum TerminalFileHit {
     static func link(in view: TerminalView, point: CGPoint) -> String? {
         let terminal = view.getTerminal()
@@ -28,14 +29,12 @@ import AppKit
             // The implicit matcher can include padding; OSC8 payloads above
             // remain exact (including escaped filenames and source locations).
             let candidate = native.trimmingCharacters(in: .whitespaces)
-            // It can also run a link on into the prose after it. Such a match
-            // is left to the clicked-word tokens below, which end the link at
-            // the prose, so a click on the prose never opens anything.
-            if TerminalWebLink.isWebLink(candidate) {
-                if candidate.range(of: TerminalWebLink.gluedProseSuffix, options: .regularExpression) == nil { return candidate }
-            } else if !FilePreviewLink.runsIntoProse(candidate) {
-                return FilePreviewLink.isFileGestureLink(candidate) ? candidate : nil
-            }
+            // It can also run a URL on into the prose after it. Such a match
+            // is left to the clicked-word token below, which ends the URL at
+            // the prose, so a click on the prose never opens anything. Its
+            // paths and other schemes, `file:` included, are not links.
+            if TerminalWebLink.isWebLink(candidate),
+               candidate.range(of: TerminalWebLink.gluedProseSuffix, options: .regularExpression) == nil { return candidate }
         }
         var start = row, end = row
         while start > 0, row - start < 4, terminal.getLine(row: start)?.isWrapped == true { start -= 1 }
@@ -55,6 +54,6 @@ import AppKit
             }
         }
         guard let offset else { return nil }
-        return TerminalWebLink.token(in: text, characterOffset: offset) ?? FilePreviewLink.token(in: text, characterOffset: offset)
+        return TerminalWebLink.token(in: text, characterOffset: offset)
     }
 }

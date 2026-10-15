@@ -8,31 +8,34 @@ import SwiftTerm
         // automation, terminal process, or personal terminal output.
         _ = NSApplication.shared
         let view = TerminalView(frame: CGRect(x: 0, y: 0, width: 900, height: 400))
-        view.feed(text: "Read README.md:42 and docs/guide.md\r\n한글 docs/wide.md\r\nhttps://example.invalid/a.md\r\n\u{1b}]8;;file:///owned/explicit.md\u{7}explicit\u{1b}]8;;\u{7}")
+        view.feed(text: "Read README.md:42 and docs/guide.md\r\n한글 https://example.invalid/wide\r\nhttps://example.invalid/a.md\r\n\u{1b}]8;;file:///owned/explicit.md\u{7}explicit\u{1b}]8;;\u{7}")
         let cell = view.caretFrame.size
         precondition(cell.width > 0 && cell.height > 0)
         func hit(_ row: Int, _ col: Int) -> String? {
             TerminalFileHit.link(in: view, point: CGPoint(x: (CGFloat(col) + 0.5) * cell.width, y: view.bounds.maxY - (CGFloat(row) + 0.5) * cell.height))
         }
-        precondition(hit(0, 7) == "README.md:42")
-        precondition(hit(0, 26) == "docs/guide.md")
-        precondition(hit(0, 1) == nil, "not a file token")
-        precondition(hit(1, 8) == "docs/wide.md", "wide Korean cells must not shift the click")
+        // Only OSC8 makes text a file link. A plain path is TUI text.
+        precondition((0..<view.getTerminal().cols).allSatisfy { hit(0, $0) == nil }, "plain paths are not links")
+        precondition(hit(1, 8) == "https://example.invalid/wide" && hit(1, 1) == nil, "wide Korean cells must not shift the click")
         precondition(hit(2, 8) == "https://example.invalid/a.md", "web links must be claimed before TUI input")
         precondition(hit(3, 2) == "file:///owned/explicit.md", "OSC8 file clicks must be claimed before TUI input")
         precondition(view.getTerminal().link(at: .screen(Position(col: 2, row: 3)), mode: .explicitOnly) == "file:///owned/explicit.md")
         precondition(TerminalFileHit.link(in: view, point: CGPoint(x: -1, y: 0)) == nil)
         let wrapped = TerminalView(frame: CGRect(x: 0, y: 0, width: 180, height: 400))
-        wrapped.feed(text: "./directory/a-very-long-file-name.md")
+        wrapped.feed(text: "https://example.invalid/a-long/name1\r\n./directory/a-very-long-file-name.md")
         let wc = wrapped.caretFrame.size
+        precondition(wrapped.getTerminal().getLine(row: 1)?.isWrapped == true && wrapped.getTerminal().getLine(row: 3)?.isWrapped == true, "fixtures must soft-wrap")
         let point = CGPoint(x: 2.5 * wc.width, y: wrapped.bounds.maxY - 1.5 * wc.height)
-        precondition(TerminalFileHit.link(in: wrapped, point: point) == "./directory/a-very-long-file-name.md", "soft-wrapped path")
+        precondition(TerminalFileHit.link(in: wrapped, point: point) == "https://example.invalid/a-long/name1", "soft-wrapped URL")
+        let wrappedPath = CGPoint(x: 2.5 * wc.width, y: wrapped.bounds.maxY - 3.5 * wc.height)
+        precondition(TerminalFileHit.link(in: wrapped, point: wrappedPath) == nil, "soft-wrapped plain path is not a link")
         let rtl = TerminalView(frame: CGRect(x: 0, y: 0, width: 800, height: 400))
-        rtl.feed(text: "אבג docs/a.md")
+        rtl.feed(text: "אבג https://example.invalid/a")
         let rc = rtl.caretFrame.size
         precondition(TerminalFileHit.link(in: rtl, point: CGPoint(x: 8.5 * rc.width, y: rtl.bounds.maxY - 0.5 * rc.height)) == nil, "unavailable bidi mapping must not guess")
         // SwiftTerm's implicit matcher runs a path or URL on into the Korean
-        // after it. Only the link opens; a click on the prose opens nothing.
+        // after it. A plain path opens nothing; an OSC8 path or a URL opens,
+        // and a click on the prose after it opens nothing.
         let prose = TerminalView(frame: CGRect(x: 0, y: 0, width: 1600, height: 400))
         prose.feed(text: [
             "● tfpost 에이전트를 종료하고 제가 만든 pane(wE:p1C)도 닫았습니다. tf-post 수정 파일은 \u{1b}[38;2;177;185;249m~/Projects/tf-post\u{1b}[39m에 그대로 남아 있습니다.",
@@ -46,6 +49,8 @@ import SwiftTerm
             "docs/2024년_회의록.md를 보세요",
             "PR은 https://example.invalid/pull/16048에서 확인",
             "https://example.invalid/wiki/서울",
+            "file:///owned/plain/uri.md#L3 /owned/abs.md ~/notes.md",
+            "\u{1b}]8;;src/board.ts:42\u{7}src/board.ts:42\u{1b}]8;;\u{7}에서 확인",
         ].joined(separator: "\r\n"))
         let pc = prose.caretFrame.size
         func proseHit(_ row: Int, _ col: Int) -> String? {
@@ -54,13 +59,11 @@ import SwiftTerm
         let opened = (0..<prose.getTerminal().cols).compactMap { c in proseHit(0, c).map { "col \(c): \($0)" } }
         precondition(opened.isEmpty, "reported line must open nothing, got \(opened)")
         precondition(proseHit(1, 25) == "file:///owned/Projects/tf-post" && (40..<prose.getTerminal().cols).allSatisfy { proseHit(1, $0) == nil }, "OSC8 path opens, the prose glued to it does not")
-        precondition(proseHit(2, 5) == "docs/README.md" && proseHit(2, 16) == nil && proseHit(2, 22) == nil, "dotted path ends at its particle")
-        precondition(proseHit(3, 10) == "test/board.test.ts" && proseHit(3, 20) == nil, "path glued to a particle")
-        precondition(proseHit(4, 2) == "src/board.ts:42" && proseHit(4, 16) == nil, "source location glued to a particle")
-        precondition(proseHit(5, 8) == nil && proseHit(5, 16) == nil, "path then spaced Korean prose")
-        precondition(proseHit(6, 12) == "/owned/my dir/notes.md", "spaced path ending in a file name")
-        precondition(proseHit(7, 8) == "docs/회의록.md", "Korean file name")
-        precondition(proseHit(8, 3) == "docs/2024년_회의록.md" && proseHit(8, 21) == nil, "Korean file name with a digit before Hangul")
+        for row in [2, 3, 4, 5, 6, 7, 8, 11] {
+            let opened = (0..<prose.getTerminal().cols).compactMap { c in proseHit(row, c).map { "col \(c): \($0)" } }
+            precondition(opened.isEmpty, "plain path, source location or file URI must open nothing, row \(row) got \(opened)")
+        }
+        precondition(proseHit(12, 2) == "src/board.ts:42" && proseHit(12, 15) == nil && proseHit(12, 18) == nil, "OSC8 source location opens, the prose glued to it does not")
         precondition(proseHit(9, 10) == "https://example.invalid/pull/16048" && proseHit(9, 39) == nil && proseHit(9, 41) == nil, "URL ends at its particle")
         precondition(proseHit(10, 3) == "https://example.invalid/wiki/서울", "Hangul after a slash stays in the URL")
         var clicked: String?
@@ -71,6 +74,6 @@ import SwiftTerm
         coordinator.onOpenLink = { clicked = "fresh:" + $0 }
         coordinator.requestOpenLink(source: view, link: "./current.md", params: [:])
         precondition(clicked == "fresh:./current.md", "coordinator must use latest pane callback")
-        print("PASS 24 actual SwiftTerm cell/link/wide/wrap/BiDi/OSC8/prose/coordinator checks; owned windowless views, no GUI input")
+        print("PASS 26 actual SwiftTerm cell/link/wide/wrap/BiDi/OSC8/plain-path/prose/coordinator checks; owned windowless views, no GUI input")
     }
 }

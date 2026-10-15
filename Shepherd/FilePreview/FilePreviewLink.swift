@@ -86,47 +86,6 @@ nonisolated struct FilePreviewLink: Equatable, Sendable {
         guard !components.isEmpty else { throw FilePreviewError.invalidPath }
         return Self(path: "/" + components.joined(separator: "/"), line: line, column: column)
     }
-
-    /// Hangul, Han or kana written straight after a letter or digit, like the
-    /// particle in `README.md에서`, is prose: it ends the path rather than
-    /// extending it. `TerminalWebLink.gluedProseSuffix` is the same rule.
-    static let gluedProseSuffix = #"(?<=[A-Za-z0-9])[\p{Hangul}\p{Han}\p{Hiragana}\p{Katakana}]+$"#
-
-    /// SwiftTerm's implicit matcher (Ghostty's pattern, with ICU's Unicode
-    /// `\w`) runs a bare path on into text glued to it (`tf-post에`) and,
-    /// past a space, into the rest of the sentence (`… 그대로 남아 있습니다.`).
-    /// A spaced match is kept only when it ends in a previewable file name.
-    static func runsIntoProse(_ candidate: String) -> Bool {
-        if candidate.range(of: #"[A-Za-z0-9][\p{Hangul}\p{Han}\p{Hiragana}\p{Katakana}]"#, options: .regularExpression) != nil { return true }
-        guard candidate.contains(where: \.isWhitespace) else { return false }
-        return !SelfPath.hasExtension(candidate.replacingOccurrences(of: #":[1-9][0-9]*(?::[1-9][0-9]*)?$"#, with: "", options: .regularExpression))
-    }
-
-    /// Conservative fallback for non-OSC8 paths. The caller supplies a cell
-    /// mapped to a string offset, so wide characters don't shift hit testing.
-    static func token(in text: String, characterOffset: Int) -> String? {
-        guard text.count <= 8192, characterOffset >= 0, characterOffset < text.count else { return nil }
-        let chars = Array(text)
-        let delimiters = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "\"'`<>()[]{}|"))
-        func boundary(_ c: Character) -> Bool { c.unicodeScalars.allSatisfy { delimiters.contains($0) } }
-        guard !boundary(chars[characterOffset]) else { return nil }
-        var a = characterOffset, b = characterOffset + 1
-        while a > 0 && !boundary(chars[a - 1]) { a -= 1 }
-        while b < chars.count && !boundary(chars[b]) { b += 1 }
-        var token = String(chars[a..<b])
-        while token.last == "," || token.last == ";" { token.removeLast() }
-        if token.hasSuffix(".") { token.removeLast() }
-        // `test/board.test.ts에` opens the path; a click on the particle opens nothing.
-        if let prose = token.range(of: gluedProseSuffix, options: .regularExpression) {
-            guard characterOffset - a < token.distance(from: token.startIndex, to: prose.lowerBound) else { return nil }
-            token.removeSubrange(prose)
-        }
-        let withoutLocation = token.replacingOccurrences(of: #":[1-9][0-9]*(?::[1-9][0-9]*)?$"#, with: "", options: .regularExpression)
-        guard withoutLocation.range(of: #"^[A-Za-z][A-Za-z0-9+.-]*:"#, options: .regularExpression) == nil else { return nil }
-        let ext = (withoutLocation as NSString).pathExtension.lowercased()
-        guard !ext.isEmpty, FilePreviewDocument.textExtensions.contains(ext) || FilePreviewDocument.imageExtensions.contains(ext) else { return nil }
-        return token
-    }
 }
 
 private nonisolated enum SelfPath {

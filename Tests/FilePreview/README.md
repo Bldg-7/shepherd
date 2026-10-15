@@ -12,7 +12,7 @@ plugins, accesses user Keychain items, or connects to SSH servers.
 
 Coverage:
 - Actual owned files: path/source-location parsing, URL decoding/host validation,
-  token recognition, size limits, FIFO/directory/binary rejection, cancellation,
+  size limits, FIFO/directory/binary rejection, cancellation,
   native Markdown block layout and width-based iPad policy.
 - Production SFTP reader compiled with an **explicit in-memory Citadel module**:
   read-only flags, pinned endpoint, no shell-command API, bounded chunk reads,
@@ -21,22 +21,25 @@ Coverage:
   no local credential lookup, missing/refreshed pin, stale endpoint/epoch denial,
   cancellation and the actual 15-second read timeout/connection cleanup.
 - Actual SwiftTerm objects with owned windowless AppKit views: screen cells,
-  Korean wide characters, soft wraps, OSC8 vs implicit links, BiDi fallback denial,
-  prose run on after a path or URL and current coordinator callback. **Not GUI
-  click automation.**
+  Korean wide characters, soft wraps, OSC8 file links vs plain paths that open
+  nothing, BiDi fallback denial, prose run on after a path or URL and current
+  coordinator callback. **Not GUI click automation.**
 
 ## Product behavior
 
-Recognized Mac file paths, file URIs and file OSC8 links use plain click or
-Cmd-click for Shepherd preview. File intent is claimed at mouse-down before any
-remote input. HTTP(S) links are also claimed and routed to the clicked pane's
-Shepherd browser; non-link clicks remain TUI input, not a second preview on release.
+File OSC8 links (for example from `ls --hyperlink`) use plain click or Cmd-click
+for Shepherd preview. Plain text is never a file link, even when it looks like a
+path, a source location (`path:line:column`), `~/…` or a `file://` URI: its click
+is TUI input like any other text, with or without Cmd. File intent is claimed at
+mouse-down before any remote input. HTTP(S) links, plain text or OSC8, are also
+claimed and routed to the clicked pane's Shepherd browser; non-link clicks remain
+TUI input, not a second preview on release.
 Browser OFF/unavailable and invalid web URLs show a local error, without remote,
 external-app or automatic-enable fallback. Localhost URLs resolve on this Mac;
 opening a URL does not create an SSH tunnel or remote browser-agent grant.
 iOS recognizes file touches at began and owns the full gesture before native TUI
 recognizers can emit a tap/drag. Non-file gestures remain native TUI behavior. Markdown file links stay in the same preview and
-resolve against the displayed file's parent directory. Relative terminal links
+resolve against the displayed file's parent directory. Relative OSC8 file links
 resolve against the clicked pane's reported cwd, not the app's cwd.
 
 macOS: browser/preview are mutually exclusive columns. Switching hides the
@@ -62,12 +65,10 @@ Only the clicked Machine is accessed. Localhost in a file URI denotes that sourc
 machine. Other URI hosts must match the configured hostname (or known local Mac
 host aliases); they never redirect the reader. Nested Herdr machine filesystem
 routing is explicitly unsupported. Unknown cwd requires an absolute path; ~/ and
-shell variables are not expanded. Ambiguous bare paths containing spaces should
-use an explicit OSC8/file URI. Unsupported URI schemes are not dispatched.
-Hangul, Han or kana glued to the last letter or digit of a plain path or URL
-(`README.md에서`, `…/pull/16048에서`) ends the link, and a click on it opens
-nothing. A plain match containing a space that does not end in a previewable
-file name is prose: only the clicked word can be a link.
+shell variables are not expanded. Unsupported URI schemes are not dispatched.
+Hangul, Han or kana glued to the last letter or digit of a plain URL
+(`…/pull/16048에서`) ends the link, and a click on it opens nothing. Text after
+an OSC8 link is not part of it.
 
 Remote reads use a separate read-only SFTP connection and the existing saved
 credential + host-key pin. An unpinned machine must first connect through the
@@ -114,8 +115,9 @@ language grammar; templates/raw literals/preprocessor semantics may be approxima
 `Tests/Terminal/run-pointer-tests.py` uses the real SwiftTerm view with mouse
 reporting/SGR enabled and a raw owned kernel PTY. Captured file press/drag/release
 must deliver zero PTY bytes with or without Cmd; non-file clicks must deliver a
-complete mouse gesture. OSC8, implicit file URIs, source locations, missing preview
-callbacks, drag cancellation, preview failure and
+complete mouse gesture. OSC8 file URIs, paths and source locations, plain paths,
+source locations and file URIs that stay TUI input with or without Cmd, missing
+preview callbacks, drag cancellation, preview failure and
 owner-callback capture at press are covered. No user window or SSH server is used.
 The iOS recognition adapter is separately compiled by the full iOS app build;
 live iOS touch competition remains an interactive acceptance check.

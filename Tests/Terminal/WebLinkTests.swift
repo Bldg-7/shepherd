@@ -27,6 +27,7 @@ nonisolated enum AgentKind: String, Sendable {
         check(!TerminalWebLink.isWebLink("ssh://example.invalid"))
         check(TerminalWebLink.token(in: "Read https://example.invalid/a?q=b#c, now", characterOffset: 12) == "https://example.invalid/a?q=b#c")
         check(TerminalWebLink.token(in: "README.md", characterOffset: 2) == nil)
+        check(TerminalWebLink.token(in: "file:///owned/a.md", characterOffset: 3) == nil)
         check(TerminalWebLink.token(in: "PR은 https://example.invalid/pull/16048에서 확인", characterOffset: 8) == "https://example.invalid/pull/16048")
         check(TerminalWebLink.token(in: "PR은 https://example.invalid/pull/16048에서 확인", characterOffset: 38) == nil)
         check(TerminalWebLink.token(in: "https://example.invalid/wiki/서울", characterOffset: 3) == "https://example.invalid/wiki/서울")

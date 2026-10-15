@@ -30,7 +30,7 @@ import Darwin
         view.terminalDelegate = coordinator
         view.onOpenFileGesture = { opened.append($0) }
         func populate() {
-            view.feed(text: "\u{1b}[2J\u{1b}[HREADME.md:42\r\ndocs/guide.md\r\nfile:///remote/uri.md#L9\r\n\u{1b}]8;;file://owned.invalid/remote/osc.md\u{7}explicit\u{1b}]8;;\u{7}\r\n\u{1b}]8;;/remote/no-extension\u{7}relative\u{1b}]8;;\u{7}\r\n\u{1b}]8;;https://example.invalid/index\u{7}web\u{1b}]8;;\u{7}\r\nnormal control\r\nfile://foreign.invalid/remote/wrong.md\r\nhttps://example.invalid/query?q=one%20two#fragment\r\n\u{1b}]8;;https://user:synthetic@example.invalid/\u{7}invalid-web\u{1b}]8;;\u{7}\r\n\u{1b}]8;;ssh://example.invalid/\u{7}unsupported\u{1b}]8;;\u{7}\r\n\u{1b}[?1003h\u{1b}[?1006h")
+            view.feed(text: "\u{1b}[2J\u{1b}[HREADME.md:42\r\ndocs/guide.md\r\nfile:///remote/uri.md#L9\r\n\u{1b}]8;;file://owned.invalid/remote/osc.md\u{7}explicit\u{1b}]8;;\u{7}\r\n\u{1b}]8;;/remote/no-extension\u{7}relative\u{1b}]8;;\u{7}\r\n\u{1b}]8;;https://example.invalid/index\u{7}web\u{1b}]8;;\u{7}\r\nnormal control\r\n\u{1b}]8;;file://foreign.invalid/remote/wrong.md\u{7}wrong-host\u{1b}]8;;\u{7}\r\nhttps://example.invalid/query?q=one%20two#fragment\r\n\u{1b}]8;;https://user:synthetic@example.invalid/\u{7}invalid-web\u{1b}]8;;\u{7}\r\n\u{1b}]8;;ssh://example.invalid/\u{7}unsupported\u{1b}]8;;\u{7}\r\n\u{1b}]8;;README.md:42\u{7}source\u{1b}]8;;\u{7}\r\n\u{1b}]8;;file:///remote/uri.md#L9\u{7}uri\u{1b}]8;;\u{7}\r\n/remote/plain.md\r\n~/Projects/tf-post\r\n\u{1b}[?1003h\u{1b}[?1006h")
         }
         populate()
         let cell = view.caretFrame.size
@@ -53,33 +53,37 @@ import Darwin
             view.mouseDown(with: event(.leftMouseDown, p, command: command))
             view.mouseUp(with: event(.leftMouseUp, p, command: command))
         }
-        let expected = ["README.md:42", "docs/guide.md", "file:///remote/uri.md#L9", "file://owned.invalid/remote/osc.md", "/remote/no-extension", "https://example.invalid/index"]
+        let expected = [3: "file://owned.invalid/remote/osc.md", 4: "/remote/no-extension", 5: "https://example.invalid/index", 11: "README.md:42", 12: "file:///remote/uri.md#L9"]
         for command in [false, true] {
-            for row in 0..<expected.count {
+            for (row, link) in expected.sorted(by: { $0.key < $1.key }) {
                 sent = []; opened = []; _ = received()
                 let p = point(row)
                 view.mouseDown(with: event(.leftMouseDown, p, command: command))
                 check(opened.isEmpty && sent.isEmpty && received().isEmpty, "file press must be claimed before any remote input, with or without Cmd")
                 view.mouseUp(with: event(.leftMouseUp, p, command: command))
-                check(opened == [expected[row]], "plain/Cmd file click opens exactly one app preview")
+                check(opened == [link], "plain/Cmd OSC8 file click opens exactly one app preview")
                 check(sent.isEmpty && received().isEmpty, "file gesture must send zero input bytes to actual owned PTY")
                 check(view.linkReporting == .implicit, "routing must preserve native link reporting")
             }
         }
         // Ordinary NON-file clicks still reach the remote mouse TUI. Their
-        // releases must not ALSO open a local file preview.
-        for row in [6, 10] {
-            sent = []; opened = []; _ = received()
-            click(row, command: false)
-            check(!sent.isEmpty && received() == sent, "normal press/release must still reach the owned PTY")
-            check(opened.isEmpty, "ordinary TUI click must not also open preview on release")
-            check(String(decoding: sent, as: UTF8.self).hasSuffix("m"), "normal TUI gesture must include release")
+        // releases must not ALSO open a local file preview. Text that only
+        // looks like a path, source location or file URI is not a link: with
+        // or without Cmd its click is the same TUI input as any other text.
+        for command in [false, true] {
+            for row in [6, 10, 0, 1, 2, 13, 14] {
+                sent = []; opened = []; _ = received()
+                click(row, command: command)
+                check(!sent.isEmpty && received() == sent, "normal press/release must still reach the owned PTY")
+                check(opened.isEmpty, "ordinary TUI click must not also open preview on release")
+                check(String(decoding: sent, as: UTF8.self).hasSuffix("m"), "normal TUI gesture must include release")
+            }
         }
         for command in [false, true] {
             sent = []; opened = []; _ = received(); click(8, command: command)
             check(opened == ["https://example.invalid/query?q=one%20two#fragment"] && sent.isEmpty && received().isEmpty, "implicit HTTP(S) link opens locally once with zero PTY input")
         }
-        let start = point(0), moved = CGPoint(x: start.x + 40, y: start.y)
+        let start = point(11), moved = CGPoint(x: start.x + 40, y: start.y)
         for command in [false, true] {
             // Drag-out/modifier changes never replay a claimed file gesture.
             view.onOpenFileGesture = { opened.append($0) }
@@ -103,7 +107,7 @@ import Darwin
             check(failures == before + 2 && sent.isEmpty && received().isEmpty, "invalid web URL failure stays local, never invokes remote opener")
             // Even no preview callback must not cause a remote-file fallback.
             view.onOpenFileGesture = nil
-            sent = []; opened = []; _ = received(); click(0, command: command); click(5, command: command)
+            sent = []; opened = []; _ = received(); click(11, command: command); click(5, command: command)
             check(sent.isEmpty && received().isEmpty && opened.isEmpty, "missing callback must still consume file and web gestures")
         }
         // Shared iOS gesture state: begins ownership immediately, cancel/move
@@ -118,6 +122,6 @@ import Darwin
         _ = gesture.begin(link: "owned.md", at: .zero)
         check(gesture.end(at: CGPoint(x: 1, y: 1)) == "owned.md", "small pointer motion keeps original target")
         check(FilePreviewLink.isFileGestureLink("file://other/a.md") && !FilePreviewLink.isFileGestureLink("https://example.invalid/a.md"), "intent classification must not route to URI host or claim web schemes")
-        print("PASS \(checks) real SwiftTerm mouse press/drag/release, OSC8/file URI, owned PTY zero-byte, normal-input, failure and captured-owner policy checks; no user terminal/GUI/SSH")
+        print("PASS \(checks) real SwiftTerm mouse press/drag/release, OSC8 file link, plain path to TUI, owned PTY zero-byte, normal-input, failure and captured-owner policy checks; no user terminal/GUI/SSH")
     }
 }

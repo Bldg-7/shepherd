@@ -10,7 +10,6 @@ nonisolated enum TerminalWebLink {
 
     /// Hangul, Han or kana glued to the last letter or digit of a link, like
     /// the particle in `…/pull/16048에서`, is prose that follows the link.
-    /// `FilePreviewLink.gluedProseSuffix` is the same rule for paths.
     static let gluedProseSuffix = #"(?<=[A-Za-z0-9])[\p{Hangul}\p{Han}\p{Hiragana}\p{Katakana}]+$"#
 
     static func token(in text: String, characterOffset: Int) -> String? {

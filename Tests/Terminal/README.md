@@ -4,8 +4,9 @@
 
 `run-pointer-tests.py` compiles the production terminal handlers against pinned
 SwiftTerm and uses a raw owned kernel PTY plus a never-shown AppKit window.
-Recognized file paths/URIs/OSC8 targets are claimed on plain or Cmd mouse-down:
-zero remote input bytes, one local preview on release. Drag cancellation, invalid
+OSC8 file targets are claimed on plain or Cmd mouse-down: zero remote input
+bytes, one local preview on release. Plain-text paths, source locations and
+`file://` URIs are not links: with or without Cmd they stay TUI input. Drag cancellation, invalid
 host/read failure and missing callbacks stay local. Callback ownership is captured
 at press; modifier or pane changes cannot redirect a release. HTTP(S) URLs (implicit text or OSC8) are claimed the same way and dispatched to
 the clicked pane's Shepherd browser, not a remote opener. Browser OFF/unavailable,
