@@ -3,7 +3,7 @@ import test from 'node:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {detectPi, piNodeSupported, piInvocation, PI_MANAGED_LAUNCH_QUALIFIED} from '../../../Shepherd/Agents/AgentRuntime/pi-runtime.mjs';
+import {detectPi, resolvePiExecutable, piNodeSupported, piInvocation, PI_MANAGED_LAUNCH_QUALIFIED} from '../../../Shepherd/Agents/AgentRuntime/pi-runtime.mjs';
 import {registerPiLifecycle} from '../../../Shepherd/Agents/AgentRuntime/pi-lifecycle.mjs';
 import {detect, injected, resume, childCommand} from '../../../Shepherd/Agents/AgentRuntime/runtime-core.mjs';
 import {prepare} from '../../../Shepherd/Agents/AgentRuntime/runtime.mjs';
@@ -64,6 +64,30 @@ test('Probe reads package metadata but never executes pi or loads its settings/e
   fs.writeFileSync(manifest,'{bad'); assert.equal(detectPi('pi',options).readiness,'unsupported');
   assert.equal(detectPi('pi',{...options,environment:{PATH:'.'}}).readiness,'missing');
   assert(!fs.existsSync(marker));
+});
+const qualifiedVersions = ['1.0.0','1.1.0','1.2.0','1.10.3'];
+const unqualifiedVersions = ['0.9.9','2.0.0','1.3.0-beta.1','1.2','v1.2.0'];
+function versionedPackage(name) {
+  const dist = path.join(directory, name, 'dist'); fs.mkdirSync(dist, { recursive: true });
+  const cli = path.join(dist, 'cli.js'); fs.writeFileSync(cli, '#!/bin/sh\nexit 1\n', { mode: 0o700 });
+  const write = version => fs.writeFileSync(path.join(directory, name, 'package.json'), JSON.stringify({ name:'@earendil-works/pi-coding-agent', version, bin:{pi:'dist/cli.js'} }), { mode:0o600 });
+  return { cli, write };
+}
+test('Probe qualifies any Pi 1.x release and nothing outside ^1.0.0', () => {
+  const { cli, write } = versionedPackage('probe-range'), options = { environment: {}, nodeVersion: '22.19.0' };
+  for (const version of qualifiedVersions) {
+    write(version); const result = detectPi(cli, options);
+    assert.equal(result.version, version); assert.equal(result.readiness, 'availableAuthenticationUnknown'); assert.equal(result.sessionPlugin, true);
+  }
+  for (const version of unqualifiedVersions) {
+    write(version); const result = detectPi(cli, options);
+    assert.equal(result.version, version); assert.equal(result.readiness, 'unsupported'); assert.equal(result.sessionPlugin, false);
+  }
+});
+test('Launch resolves any Pi 1.x release and rejects the rest as an unsupported package', { skip: !piNodeSupported() && 'Pi launch requires Node >=22.19.0' }, () => {
+  const { cli, write } = versionedPackage('launch-range');
+  for (const version of qualifiedVersions) { write(version); assert.equal(resolvePiExecutable(cli, {}), fs.realpathSync(cli)); }
+  for (const version of unqualifiedVersions) { write(version); assert.throws(() => resolvePiExecutable(cli, {}), {code:'pi-package-unsupported'}); }
 });
 test('Qualified Pi still cannot use legacy injection, resume, child rewrite or prepare', () => {
   assert.equal(PI_MANAGED_LAUNCH_QUALIFIED, true);

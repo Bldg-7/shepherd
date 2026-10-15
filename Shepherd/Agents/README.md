@@ -26,7 +26,7 @@ return `session-only-policy`; the MCP `--global` entry point is disabled.
 
 ## Pi local managed TUI launch
 
-Pi 1.1.0 is available in the macOS launcher when the experimental browser is ON.
+Pi 1.x (`^1.0.0`) is available in the macOS launcher when the experimental browser is ON.
 It requires Node >=22.19.0; the existing Claude/Codex Node 20 floor is unchanged.
 `pi-runtime.mjs` probes the package-declared executable without running Pi or
 loading personal settings/auth. Metadata availability never proves login or a
@@ -41,8 +41,9 @@ connection while agent.start is pending. `PiBrowserLeaseProvider` composes the
 real CDP proxy: per-epoch route leases deny unleased fallback and old-route replay,
 recheck live process authority before dispatch, and wait for native detach.
 
-The built-in MCP backend and adapter 5.1.0 are both qualified with actual Pi,
-Herdr and CEF through the public launch service. Private normal Pi settings,
+The built-in MCP backend and adapter 5.1.0 are both qualified with actual Pi 1.1.0,
+Herdr and CEF through the public launch service; Pi 1.2.0 so far only through
+the native bridge (`docs/pi-agent-support.md`). Private normal Pi settings,
 user instructions and extensions survive; model responses come only from an
 owned loopback fake provider. No vendor accounts or personal profiles are used.
 Session-only Herdr state reports travel through the authenticated app bridge,

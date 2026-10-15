@@ -4,7 +4,7 @@ import path from 'node:path';
 // Qualified local TUI launch only. Resume/headless/children remain separate.
 // No preference, argv or environment override of the native binding contract.
 export const PI_MANAGED_LAUNCH_QUALIFIED = true;
-export const PI_VERSION = '1.1.0';
+export const PI_VERSION_RANGE = '^1.0.0';
 export const PI_PACKAGE = '@earendil-works/pi-coding-agent';
 export const PI_MINIMUM_NODE = '22.19.0';
 export class PiIntegrationError extends Error {
@@ -14,6 +14,14 @@ const check = (value, code) => { if (!value) throw new PiIntegrationError(code);
 export function piNodeSupported(version = process.versions.node) {
   const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
   return !!match && (+match[1] > 22 || (+match[1] === 22 && +match[2] >= 19));
+}
+// npm caret on a nonzero major: the range's major, at or above its floor. Only a
+// plain release `x.y.z` matches; pre-release, build, partial or `v` forms do not.
+export function piVersionSupported(version) {
+  const release = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+  const [, major, minor, patch] = release.exec(PI_VERSION_RANGE.slice(1)).map(Number);
+  const match = typeof version === 'string' && release.exec(version);
+  return !!match && +match[1] === major && (+match[2] > minor || (+match[2] === minor && +match[3] >= patch));
 }
 
 function executablePath(executable, environment) {
@@ -55,7 +63,7 @@ function packageManifest(executable) {
 export function resolvePiExecutable(executable, environment = process.env) {
   check(piNodeSupported(), 'node-version-unsupported');
   const real = executablePath(executable, environment);
-  check(real && packageManifest(real).version === PI_VERSION, 'pi-package-unsupported');
+  check(real && piVersionSupported(packageManifest(real).version), 'pi-package-unsupported');
   return real;
 }
 
@@ -72,9 +80,9 @@ export function detectPi(executable, { environment = process.env, nodeVersion = 
     if (!result.nodeSupported) return { ...result, readiness: 'unsupportedPrerequisite' };
     const manifest = packageManifest(real);
     result.version = typeof manifest.version === 'string' ? manifest.version : null;
-    const qualified=result.version===PI_VERSION && PI_MANAGED_LAUNCH_QUALIFIED;
+    const qualified=piVersionSupported(result.version) && PI_MANAGED_LAUNCH_QUALIFIED;
     return { ...result, sessionPlugin:qualified,
-      readiness: result.version===PI_VERSION ? (qualified?'availableAuthenticationUnknown':'integrationUnavailable') : 'unsupported' };
+      readiness: piVersionSupported(result.version) ? (qualified?'availableAuthenticationUnknown':'integrationUnavailable') : 'unsupported' };
   } catch { return { ...result, readiness: 'unsupported' }; }
 }
 

@@ -179,7 +179,7 @@ import NIOPosix
         precondition(summary["forced"] as? Bool == false && summary["ctrlDSent"] as? Bool == true)
         precondition(!proof.isCurrent())
         host.retire(launchID:id)
-        print("PASS actual Pi 1.1.0 private TUI extension -> native Unix bridge -> bundled MCP metadata; natural Ctrl-D exit, zero model prompts")
+        print("PASS actual Pi 1.x private TUI extension -> native Unix bridge -> bundled MCP metadata; natural Ctrl-D exit, zero model prompts")
     }
 
     static func write(_ value: [String:Any], _ file: URL) throws {

@@ -3,11 +3,19 @@
 ## 현재 상태: macOS 로컬 새 세션 런처 활성화
 
 실험적 브라우저를 켜고 Preparation이 완료되면 새 탭 런처에서 **Pi**를 선택할 수 있다.
-지원 기준은 **Pi 1.1.0, Node >=22.19.0, Herdr 0.9.1**이다. Pi가 설치되어 있지 않으면
+지원 기준은 **Pi 1.x (`^1.0.0`), Node >=22.19.0, Herdr 0.9.1**이다. Pi가 설치되어 있지 않으면
 기존 Claude/Codex의 Node 20 환경에 불필요한 Pi 업그레이드 경고를 추가하지 않는다.
+범위는 npm caret과 같아 `1.y.z` 정식 버전만 받는다. 2.x, 0.x, pre-release(`1.3.0-beta.1`)는
+`pi-package-unsupported`로 거절한다.
 
-기본 MCP와 **pi-mcp-adapter 5.1.0** 모두 실제 `AgentLaunchService.launch` 경로에서
-Herdr → Pi → MCP → native CEF 페이지 이동/내용 확인 → 권한 폐기 → 자연 종료를 검증했다.
+실제로 확인한 Pi는 **1.1.0과 1.2.0**이다.
+
+- Pi 1.1.0: 기본 MCP와 **pi-mcp-adapter 5.1.0** 모두 실제 `AgentLaunchService.launch` 경로에서
+  Herdr → Pi → MCP → native CEF 페이지 이동/내용 확인 → 권한 폐기 → 자연 종료를 검증했다.
+- Pi 1.2.0: Shepherd가 쓰는 CLI 인자, 확장 API, 진입부가 1.1.0과 같은 것을 확인하고
+  `run-pi-bridge-tests.py`로 실제 TUI 기동 → 확장 → native bridge → MCP metadata → 자연 종료를 검증했다.
+  native CEF 경로(`run-pi-native-tests.py`)는 아직 실행하지 않았다.
+
 로그인 확인이나 실제 비밀정보 입력이 완료되었다는 뜻은 아니다.
 
 ### 사용 범위와 제한
@@ -107,5 +115,5 @@ terminal 변경으로 권한을 넘기지 않는다. 불확실한 cleanup은 새
   종료 중 process-info 필드 생략. 빌드 성공과 helper 강제 종료 여부는 따로 기록한다.
 - 실제 GUI 버튼 조작, signing/notarization, remote routing, 실제 Vendor 인증은 이 테스트의 증명이 아니다.
 
-참고: 설치된 Pi 1.1.0 공식 CLI/extensions/MCP/session 문서, adapter extension/protocol API 문서,
+참고: 설치된 Pi 1.1.0 공식 CLI/extensions/MCP/session 문서와 Pi 1.2.0 CHANGELOG, adapter extension/protocol API 문서,
 private HOME에 생성하여 확인한 Herdr Pi integration v9.

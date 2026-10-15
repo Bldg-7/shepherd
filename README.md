@@ -10,7 +10,7 @@ This repository contains the **macOS application source**, its required shared d
 
 - macOS 26.6.2 or later. Experimental Chromium browsing requires Apple silicon; the Intel build retains terminal functionality.
 - Herdr installed separately.
-- Optional managed browser agents: Node >=20 for Claude Code/Codex; **Pi 1.1.0 requires Node >=22.19.0**. Agent CLIs and their authentication remain user-managed.
+- Optional managed browser agents: Node >=20 for Claude Code/Codex; **Pi 1.x (`^1.0.0`) requires Node >=22.19.0**. Agent CLIs and their authentication remain user-managed.
 
 ## Experimental browser and agents
 

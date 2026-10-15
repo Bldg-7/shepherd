@@ -12,7 +12,8 @@ for(const p of [home,bin,profile,path.join(home,'.pi-agent')])fs.mkdirSync(p,{mo
 fs.symlinkSync(fs.realpathSync(piCLI),path.join(bin,'pi'));
 fs.copyFileSync('Tests/AgentBrowser/Phase3/OwnedPiNativeTool.ts',path.join(root,'OwnedPiNativeTool.ts'));
 if(adapterEntry){
- assert.equal(JSON.parse(fs.readFileSync(path.join(path.dirname(adapterEntry),'package.json'),'utf8')).version,'5.1.0');
+ // Any adapter 5.x from 5.1.0 (^5.1.0); a plain release only.
+ assert.match(JSON.parse(fs.readFileSync(path.join(path.dirname(adapterEntry),'package.json'),'utf8')).version,/^5\.[1-9]\d*\.(0|[1-9]\d*)$/);
  fs.writeFileSync(path.join(root,'OwnedAdapter.ts'),`import {createMcpAdapter} from ${JSON.stringify(adapterEntry)};\nexport default createMcpAdapter({config:{mcpServers:{}}});\n`,{mode:0o600});
 }
 const extensions=[path.join(root,'OwnedPiNativeTool.ts'),...(adapterEntry?[path.join(root,'OwnedAdapter.ts')]:[])];
