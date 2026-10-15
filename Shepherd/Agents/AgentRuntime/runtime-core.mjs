@@ -202,7 +202,7 @@ export function childCommand(command) {
     if(words[i] === '--pane') pane=words[i+1];
     if(words[i] === '--timeout' && !/^\d+$/.test(words[i+1])) return null;
   }
-  if(!['claude','codex'].includes(kind) || !/^w[0-9]+:p[0-9]+$/.test(pane)) return null;
+  if(!['claude','codex'].includes(kind) || !/^w[0-9A-Za-z]+:p[0-9A-Za-z]+$/.test(pane)) return null;
   return {words,kind,pane,tail,args:tail === words.length ? [] : words.slice(tail+1)};
 }
 export function injected(kind, args, prepared) {
