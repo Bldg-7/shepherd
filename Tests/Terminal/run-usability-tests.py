@@ -50,4 +50,7 @@ assert '.focusedSceneValue(\\.closeCommand' in c and 'closeRequests: closeReques
 assert 'coversTerminal: launcherStart != nil || isShowingSettings || isShowingPaneSwitcher\n                || (showsFilePreview && expandsFilePreview) || webLinkFailure != nil' in c
 assert 'guard renaming == nil, closing == nil, actionFailure == nil else { return }\n            closing = selection' in b
 assert all(s['Close Window']['localizations'][l]['stringUnit']['state']=='translated' for l in ['ko','ja'])
+# The pane switcher and Settings close for a quit, an update's Install and Relaunch included, instead of stopping it with a beep.
+assert c.count('.presentationPreventsAppTermination(false)')==2
+for k,e in [('.sheet(isPresented: $isShowingPaneSwitcher','.onChange(of: showsTabs)'),('.sheet(isPresented: $isShowingSettings)','.onAppear {')]:i=c.index(k);assert '.presentationPreventsAppTermination(false)' in c[i:c.index(e,i)],k
 (o/'validation.json').write_text(json.dumps({'passed':True,'stages':checks,'snapshotsOnlyNavigation':True,'actualSwiftTermOwnedKernelPTY':True,'singleModalPanelTerminalIdentityPreserved':True,'installedAppOrSSHOrNetwork':False,'realGUIKeyboardHover':'NOTRUN'},indent=2))

@@ -280,6 +280,14 @@ struct ContentView: View {
                 pendingPaneDestination = destination
                 isShowingPaneSwitcher = false
             }, onClose: { pendingPaneDestination = nil; isShowingPaneSwitcher = false })
+            #if os(macOS)
+            // A sheet that is up keeps the app from quitting: AppKit beeps
+            // and calls the quit off before the app delegate hears of it, and
+            // that goes for the quit an update's Install and Relaunch sends as
+            // much as for ⌘Q. Nothing in the switcher is lost by closing it,
+            // so it closes and lets the app quit.
+            .presentationPreventsAppTermination(false)
+            #endif
         }
         .onChange(of: showsTabs) {
             // The board now lists the other kind of row, and what was
@@ -313,6 +321,13 @@ struct ContentView: View {
         }
         .sheet(isPresented: $isShowingSettings) {
             MachinesSettingsView(machineStore: machineStore, passwordManagerWindowID: passwordManagerWindowID)
+                #if os(macOS)
+                // Settings, too, closes for a quit rather than stopping it
+                // (see the pane switcher's sheet). Its Check Now leaves it
+                // open behind the update's window, so without this the
+                // update's Install and Relaunch only beeps.
+                .presentationPreventsAppTermination(false)
+                #endif
         }
         #if os(macOS)
         .onAppear {
