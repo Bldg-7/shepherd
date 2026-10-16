@@ -88,11 +88,11 @@ export function detectPi(executable, { environment = process.env, nodeVersion = 
 
 // Pure argv planning, not authorization to start. No shell parsing, configuration
 // reads/writes, token parameters, or automatic trust/extension suppression.
-export function piInvocation({ extension, skill, guidance, sessionID, arguments: args = [], disableCompetingBrowsers = false }) {
+// "Block other browser tools" does not reach Pi: Pi keeps all of its MCP servers.
+export function piInvocation({ extension, skill, guidance, sessionID, arguments: args = [] }) {
   for (const file of [extension, skill, guidance]) check(typeof file === 'string' && path.isAbsolute(file) && !file.includes('\0'), 'pi-resource-path-invalid');
   check(typeof sessionID === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(sessionID), 'pi-session-invalid');
   check(Array.isArray(args) && args.every(arg => typeof arg === 'string' && !arg.includes('\0')), 'pi-arguments-invalid');
-  check(!disableCompetingBrowsers, 'pi-tool-policy-unqualified');
   // Only a small, value-taking set is accepted initially. Unknown options or
   // prompts cannot hide resource/session flags. Preserve accepted user values.
   const allowed = new Set(['--provider', '--model', '--thinking', '--models', '--system-prompt', '--append-system-prompt', '--tui-mode', '--name']);

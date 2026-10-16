@@ -41,7 +41,7 @@ import Foundation
     init(stage: PiStagedLaunch, owner: AgentPaneIdentity, machine: Machine, client: HerdrClient,
          cwd: String, preferences: AgentRuntimePreferences, proxy: CDPProxy = .shared) throws {
         guard machine.isLocal, owner.herdrMachineID == nil, owner.machineID == machine.id.uuidString,
-              owner.session == BrowserKey.session(named: machine.sessionName), !preferences.disableCompetingBrowsers else { throw PiBridgeFailure.denied }
+              owner.session == BrowserKey.session(named: machine.sessionName) else { throw PiBridgeFailure.denied }
         self.stage = stage; self.owner = owner; self.machine = machine; self.client = client
         admission = Admission(owner: owner)
         let admissionState = admission

@@ -6,7 +6,7 @@ import path from 'node:path';
 import {detectPi, resolvePiExecutable, piNodeSupported, piInvocation, PI_MANAGED_LAUNCH_QUALIFIED} from '../../../Shepherd/Agents/AgentRuntime/pi-runtime.mjs';
 import {registerPiLifecycle} from '../../../Shepherd/Agents/AgentRuntime/pi-lifecycle.mjs';
 import {detect, injected, resume, childCommand} from '../../../Shepherd/Agents/AgentRuntime/runtime-core.mjs';
-import {prepare} from '../../../Shepherd/Agents/AgentRuntime/runtime.mjs';
+import {prepare, stagePi} from '../../../Shepherd/Agents/AgentRuntime/runtime.mjs';
 
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'shepherd-pi-fixture-'));
 process.on('exit', () => fs.rmSync(directory, { recursive: true, force: true }));
@@ -100,7 +100,20 @@ test('Qualified Pi still cannot use legacy injection, resume, child rewrite or p
 test('Pure invocation appends local resources and preserves accepted user instructions', () => {
   const args = ['--model','openai/example','--system-prompt','User instructions','--append-system-prompt=More user instructions','--tui-mode','regular'];
   assert.deepEqual(piInvocation({...invocation,arguments:args}),[...args,'--extension',invocation.extension,'--skill',invocation.skill,'--append-system-prompt',invocation.guidance,'--session-id',invocation.sessionID]);
-  assert.throws(() => piInvocation({...invocation,disableCompetingBrowsers:true}),{code:'pi-tool-policy-unqualified'});
+  const blocking = {disableCompetingBrowsers:true,competingBrowserServers:['playwright','chrome-devtools']};
+  assert.deepEqual(piInvocation({...invocation,...blocking,arguments:args}),piInvocation({...invocation,arguments:args}));
+});
+test('Blocking other browser tools neither refuses nor changes the staged Pi launch', { skip: !piNodeSupported() && 'Pi launch requires Node >=22.19.0' }, () => {
+  const { cli, write } = versionedPackage('stage-blocking'); write('1.2.0');
+  const root = path.join(directory, 'stage-runtime'); fs.mkdirSync(root, { mode: 0o700 });
+  fs.writeFileSync(path.join(root, 'installation.json'), JSON.stringify({ mode:'plugin', resourceDirectory:'/owned/resources' }), { mode:0o600 });
+  const plan = preferences => {
+    const stage = stagePi({ root, executable: cli, arguments: ['--model','openai/example'], preferences });
+    return stage.arguments.map(arg => arg.replaceAll(stage.sessionID, '<session>').replaceAll(stage.folder, '<folder>'));
+  };
+  const unblocked = plan({ disableCompetingBrowsers:false, competingBrowserServers:[] });
+  assert.deepEqual(plan({ disableCompetingBrowsers:true, competingBrowserServers:['playwright','chrome-devtools'] }), unblocked);
+  assert(!unblocked.some(arg => /playwright|chrome-devtools|^--no-mcp|^--(exclude-)?tools/.test(arg)));
 });
 test('Session, global configuration, trust, headless and unknown flags are not smuggled into the first-launch plan', () => {
   for (const argument of ['--continue','-c','--resume','-r','--session','--session-id','--fork','--no-session','--no-mcp','--no-extensions','--no-skills','--approve','--no-approve','--api-key','--print','-p','--mode','--extension','--tools','--exclude-tools','--','prompt text','--session=somewhere']) {

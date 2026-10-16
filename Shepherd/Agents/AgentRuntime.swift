@@ -245,9 +245,9 @@ nonisolated struct AgentRuntime: Sendable {
             "claudeSkillDirectory": claudeSkillDirectory, "codexHome": codexHome])
     }
 
-    func stagePi(executable: String = "pi", preferences: AgentRuntimePreferences, on host: AgentHost) async throws -> PiStagedLaunch {
+    func stagePi(executable: String = "pi", on host: AgentHost) async throws -> PiStagedLaunch {
         try requireLocal(host)
-        return try await run(action: "stagePi", values: ["executable": executable, "preferences": try object(preferences)])
+        return try await run(action: "stagePi", values: ["executable": executable])
     }
 
     func reserveLaunch(on host: AgentHost) async throws -> AgentLaunchReservation {

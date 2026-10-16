@@ -138,7 +138,7 @@ struct ExperimentalFeaturesSettingsView: View {
                         saveAgentPreferences()
                     }
                 ))
-                .help("Only affects future Shepherd launches. Keeps agents from using competing browser tools; does not change global CLI settings.")
+                .help("Only affects future Shepherd launches. Keeps agents from using competing browser tools; does not change global CLI settings. Pi isn't covered: Pi agents keep all of their MCP servers.")
                 if service.preferences.disableCompetingBrowsers {
                     TextField("Browser MCP servers to block", text: Binding(
                         get: { service.preferences.competingBrowserServers.joined(separator: ", ") },

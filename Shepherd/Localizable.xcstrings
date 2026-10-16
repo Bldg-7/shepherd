@@ -4385,24 +4385,24 @@
         }
       }
     },
-    "Only affects future Shepherd launches. Keeps agents from using competing browser tools; does not change global CLI settings." : {
+    "Only affects future Shepherd launches. Keeps agents from using competing browser tools; does not change global CLI settings. Pi isn't covered: Pi agents keep all of their MCP servers." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Only affects future Shepherd launches. Keeps agents from using competing browser tools; does not change global CLI settings."
+            "value" : "Only affects future Shepherd launches. Keeps agents from using competing browser tools; does not change global CLI settings. Pi isn't covered: Pi agents keep all of their MCP servers."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "今後 Shepherd から起動するセッションだけに適用します。他のブラウザツールの使用を抑止し、グローバルな CLI 設定は変更しません。"
+            "value" : "今後 Shepherd から起動するセッションだけに適用します。他のブラウザツールの使用を抑止し、グローバルな CLI 設定は変更しません。Pi には適用されず、Pi エージェントはすべての MCP サーバーをそのまま使います。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "앞으로 Shepherd에서 실행할 세션에만 적용합니다. 다른 브라우저 도구 사용을 막으며 전역 CLI 설정은 변경하지 않습니다."
+            "value" : "앞으로 Shepherd에서 실행할 세션에만 적용합니다. 다른 브라우저 도구 사용을 막으며 전역 CLI 설정은 변경하지 않습니다. Pi에는 적용되지 않으며, Pi 에이전트는 모든 MCP 서버를 그대로 사용합니다."
           }
         }
       }

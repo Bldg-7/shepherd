@@ -87,7 +87,7 @@ export function stagePi(request) {
     privateDirectory(folder);privateDirectory(path.join(folder,'bin'));privateDirectory(path.join(folder,'sessions'));
     const resources=installation.resourceDirectory, manifest=path.join(folder,'launch.json'),bootstrap=path.join(folder,'bootstrap.json');
     const args=piInvocation({extension:path.join(resources,'pi-entry.ts'),skill:path.join(resources,'skill','SKILL.md'),guidance:path.join(resources,'pi-guidance.md'),sessionID,
-      arguments:request.arguments ?? [],disableCompetingBrowsers:request.preferences?.disableCompetingBrowsers ?? false});
+      arguments:request.arguments ?? []});
     args.push('--session-dir',path.join(folder,'sessions'));
     const entry=path.join(resources,'pi-launch.mjs');
     const shim=path.join(folder,'bin','pi');

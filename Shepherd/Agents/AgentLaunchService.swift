@@ -301,7 +301,7 @@ final class AgentLaunchService {
                           create: ([String: String]) async throws -> HerdrClient.CreatedTab,
                           select: (HerdrClient.CreatedTab) -> Void) async throws -> HerdrClient.CreatedTab {
         installation = try await runtime.install(on: .thisMac)
-        let stage = try await runtime.stagePi(preferences: preferences, on: .thisMac)
+        let stage = try await runtime.stagePi(on: .thisMac)
         let created = try await create(stage.environment)
         select(created)
         let pane = AgentPaneIdentity(key: BrowserKey(machine: machine, pane: created.pane), terminalID: created.pane.terminalID)
