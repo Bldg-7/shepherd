@@ -220,5 +220,60 @@ actor LaunchTransport: HerdrTransport {
                 "foreground_processes": [["pid": 2, "name": "node", "argv0": name, "argv": [name, "--resume"]]]]))
             check(info.agentArguments(for: .claude) == [name, "--resume"] && info.agentArguments(for: .codex) == nil, "\(name) found by argv0")
         }
+
+        try shimPreflight()
+    }
+
+    /// The shell's answer to `command -v pi` has to be the staged shim, as
+    /// found through the staged PATH by a real interactive `sh`, startup
+    /// noise and all.
+    static func shimPreflight() throws {
+        typealias Preflight = PiShimPreflight
+        let script = Preflight.script(path: "/owned/stage/bin:/usr/bin:/bin", shell: "/bin/zsh")
+        check(script == "PATH='/owned/stage/bin:/usr/bin:/bin' exec '/bin/zsh' -ic 'command -v pi'", "preflight script quotes PATH and the shell")
+        check(Preflight.script(path: "/a b/c'd", shell: "/bin/sh").hasPrefix("PATH='/a b/c'\\''d' "), "spaces and quotes in PATH stay one word")
+        check(Preflight.resolvedPath(in: Data("Welcome\r\n\n  /owned/stage/bin/pi \n\n".utf8)) == "/owned/stage/bin/pi", "the shell's last line is the answer, trimmed")
+        check(Preflight.resolvedPath(in: Data()) == "", "no output resolves nothing")
+        try Preflight.check(output: Data("/owned/stage/bin/pi\n".utf8), shim: "/owned/stage/bin/pi")
+        do {
+            try Preflight.check(output: Data("motd\n/Users/owned/.bun/bin/pi\n".utf8), shim: "/owned/stage/bin/pi"); preconditionFailure("shadowed shim accepted")
+        } catch let error as PiShimPreflightError {
+            let text = error.errorDescription ?? ""
+            check(error.resolved == "/Users/owned/.bun/bin/pi" && text.contains("/Users/owned/.bun/bin/pi") && text.contains("/owned/stage/bin/pi")
+                  && text.contains(Preflight.rejectionCode), "a shadowed shim is refused with both paths and the code")
+        }
+        do { try Preflight.check(output: Data("alias pi='pi --no-session'\n".utf8), shim: "/owned/stage/bin/pi"); preconditionFailure("alias accepted") }
+        catch is PiShimPreflightError { print("PASS: an alias for pi is refused too") }
+        check(Preflight.loginShell(environment: [:]).hasPrefix("/"), "the login shell is an absolute path")
+
+        // The script run as `runScript` runs it, with sh as the login shell,
+        // and two folders that each have a pi.
+        let manager = FileManager.default
+        let base = manager.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("shim-preflight-" + UUID().uuidString)
+        defer { try? manager.removeItem(at: base) }
+        for folder in ["stage/bin", "other bin"] {
+            let directory = base.appendingPathComponent(folder)
+            try manager.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            let pi = directory.appendingPathComponent("pi")
+            try Data("#!/bin/sh\nexit 0\n".utf8).write(to: pi)
+            try manager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: pi.path)
+        }
+        let shim = base.appendingPathComponent("stage/bin/pi").path
+        func run(_ path: String) throws -> Data {
+            let process = Process(); process.executableURL = URL(fileURLWithPath: "/bin/sh")
+            process.arguments = ["-c", Preflight.script(path: path, shell: "/bin/sh")]
+            process.environment = ["HOME": base.path, "ENV": "/nonexistent"]
+            let pipe = Pipe(); process.standardOutput = pipe; process.standardError = FileHandle.nullDevice; process.standardInput = FileHandle.nullDevice
+            try process.run(); process.waitUntilExit()
+            return pipe.fileHandleForReading.readDataToEndOfFile()
+        }
+        let staged = base.appendingPathComponent("stage/bin").path + ":/usr/bin:/bin"
+        try Preflight.check(output: try run(staged), shim: shim)
+        print("PASS: a real interactive sh finds the staged shim first")
+        let shadowed = base.appendingPathComponent("other bin").path + ":" + staged
+        do { try Preflight.check(output: try run(shadowed), shim: shim); preconditionFailure("shadowing folder accepted") }
+        catch let error as PiShimPreflightError {
+            check(error.resolved == base.appendingPathComponent("other bin/pi").path, "a real shell's other pi is what the refusal names")
+        }
     }
 }

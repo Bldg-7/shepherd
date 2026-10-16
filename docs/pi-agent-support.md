@@ -48,6 +48,15 @@ extension/skill/append 지침 인자를 준비한다. 셸 인자로 token 값은
 `pi-launch.mjs`는 실제 Pi를 import하기 전에 native host의 bind 승인을 기다린다.
 패키지가 선언한 실제 bin과 버전을 다시 확인하며 잘못된 인자/cwd/신원에서는 종료한다.
 
+shim은 PATH로만 찾아진다. Herdr는 새 pane의 셸에 `pi …`를 타이핑하는데, 그 셸은 대화형이라
+startup 파일(`~/.zshrc` 등)이 먼저 실행된다. 그 파일이 `~/.bun/bin`이나 `~/.local/bin`을 PATH 앞에
+다시 붙이면 `pi`는 거기 설치된 CLI가 되고 shim은 실행되지 않는다. 그러면 bind가 끝내 오지 않아
+20초 뒤 `pi-foreground-binding-lost`로 실패하고, 그 실패는 남겨진 pane에 붙은 채로 남는다. 그래서
+`AgentLaunchService.launchPi`는 pane을 만들기 전에 같은 종류의 셸(계정의 로그인 셸, `-ic`)을
+stage된 PATH로 띄워 `command -v pi`를 묻는다(`PiShimPreflight`). shim이 아닌 다른 경로가 나오면
+런치를 바로 거절하며, 런처에 그 경로와 `pi-shim-shadowed-by-shell-path`를 보여 준다. 이 검사는
+사용자의 startup 파일을 읽거나 고치지 않는다.
+
 `PiLaunchCoordinator`는 `agent.start`와 다른 Herdr connection으로 같은 pane/terminal의
 foreground 프로세스를 관찰한다. Pi가 아직 시작을 기다리는 동안 전체 argv를 pin할 수 있으므로
 Herdr readiness와 Pi session_start가 서로 기다리는 교착이나 짧은 argv 수집 경쟁을 피한다.

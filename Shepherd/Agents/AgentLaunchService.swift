@@ -306,6 +306,13 @@ final class AgentLaunchService {
                           select: (HerdrClient.CreatedTab) -> Void) async throws -> HerdrClient.CreatedTab {
         installation = try await runtime.install(on: .thisMac)
         let stage = try await runtime.stagePi(on: .thisMac)
+        // Before there is a pane to keep: the shim is only reached through
+        // PATH, and the pane's shell runs its startup files before herdr
+        // types `pi` (see `PiShimPreflight`).
+        if let path = stage.environment["PATH"] {
+            let output = try await client.runScript(PiShimPreflight.script(path: path, shell: PiShimPreflight.loginShell()))
+            try PiShimPreflight.check(output: output, shim: stage.folder + "/bin/pi")
+        }
         let created = try await create(stage.environment)
         select(created)
         let pane = AgentPaneIdentity(key: BrowserKey(machine: machine, pane: created.pane), terminalID: created.pane.terminalID)
