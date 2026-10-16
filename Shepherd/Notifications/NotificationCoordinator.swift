@@ -11,10 +11,11 @@ import AppKit
 /// work. One for the app, running from launch to quit, window or no window.
 ///
 /// What it is told:
-/// - Snapshots, from the board for the machine it shows, and from the
-///   `MachineWatcher` for every other machine — and for that one too while
-///   the window is closed (see `coverWithBoard`). Each comes through a
-///   `NotificationFeed`.
+/// - Snapshots, from the `MachineMonitor` of every machine — the same ones
+///   the board shows, read over the same connection — each through a
+///   `NotificationFeed`. It has `MachineMonitors` keep every machine's
+///   monitor running while there is anything to look for (see `reconcile`),
+///   window or no window.
 /// - Which panes the person is looking at (`setViewedPanes`).
 ///
 /// What it does with a snapshot: an `AgentEventDeriver` per herdr server
@@ -47,10 +48,10 @@ final class NotificationCoordinator {
     static let confirmationDelay: Duration = .milliseconds(1500)
     /// How long a click on a notification waits for its pane to be listed.
     private static let navigationTimeout: Duration = .seconds(15)
-    /// How long the watcher waits for the machines and boards to settle
-    /// before it starts or stops looking at one. A board taking over its
-    /// machine from the watcher — or the other way round — stops and starts
-    /// in a moment, and the watcher shouldn't connect and disconnect for it.
+    /// How long the machines and the preferences are left to settle before
+    /// the monitors are told which machines to watch: an edit can change
+    /// them several times in a row, and a monitor shouldn't connect and
+    /// disconnect for each.
     private static let reconcileDelay: Duration = .seconds(1)
 
     let preferences = NotificationPreferences()
@@ -66,11 +67,8 @@ final class NotificationCoordinator {
     @ObservationIgnored var openWindow: OpenWindowAction?
 
     @ObservationIgnored private let presenter = UserNotificationPresenter()
-    @ObservationIgnored private var watcher: MachineWatcher?
     @ObservationIgnored private var isStarted = false
     @ObservationIgnored private var machines: [Machine] = []
-    /// How many boards are looking at each machine right now.
-    @ObservationIgnored private var boardCoverage: [Machine.ConnectionIdentity: Int] = [:]
     @ObservationIgnored private var derivers: [NotificationServerKey: AgentEventDeriver] = [:]
     @ObservationIgnored private var viewedPanes: Set<NotificationPaneKey> = []
     /// What is shown, by notification identifier (the event's
@@ -116,9 +114,8 @@ final class NotificationCoordinator {
     /// Starts watching, for as long as the app runs. Called once the app has
     /// finished launching, whether or not its window came up with it.
     func start() {
-        guard Self.isAvailable, !isStarted, let machineStore else { return }
+        guard Self.isAvailable, !isStarted, machineStore != nil else { return }
         isStarted = true
-        watcher = MachineWatcher(store: machineStore, coordinator: self)
         trackMachines()
         trackPreferences()
         #if os(macOS)
@@ -137,7 +134,7 @@ final class NotificationCoordinator {
         preferences.kinds.any && authorization != .denied
     }
 
-    /// Keeps `machines` up to date with the store, and the watcher with
+    /// Keeps `machines` up to date with the store, and the monitors with
     /// both. Observation tells of one change at a time: each takes looking
     /// again, which is what tells of the next.
     private func trackMachines() {
@@ -148,8 +145,8 @@ final class NotificationCoordinator {
         scheduleReconcile()
     }
 
-    /// Starts or stops the watcher as kinds of notification are turned on
-    /// and off.
+    /// Starts or stops watching as kinds of notification are turned on and
+    /// off.
     private func trackPreferences() {
         _ = withObservationTracking { preferences.kinds } onChange: {
             Task { @MainActor in NotificationCoordinator.shared.trackPreferences() }
@@ -187,30 +184,13 @@ final class NotificationCoordinator {
         }
     }
 
-    /// Has the watcher look at every machine no board is looking at — or at
-    /// none, while there is nothing to look for.
+    /// Has every machine watched — its monitor kept running whether or not
+    /// the board shows it — or none, while there is nothing to look for. A
+    /// monitor the board holds runs either way, and feeds the notifications
+    /// all the same.
     private func reconcile() {
-        let unwatched = isWatching ? machines.filter { boardCoverage[$0.connectionIdentity] == nil } : []
-        watcher?.watch(unwatched)
-    }
-
-    /// Takes `machine` off the watcher's hands for as long as the calling
-    /// task — the board's for it — runs: the board looks at it itself, and
-    /// sooner. Returns once the task has been cancelled.
-    func coverWithBoard(_ machine: Machine) async {
-        guard Self.isAvailable else { return }
-        let identity = machine.connectionIdentity
-        boardCoverage[identity, default: 0] += 1
-        scheduleReconcile()
-        while !Task.isCancelled {
-            try? await Task.sleep(for: .seconds(3600))
-        }
-        if let count = boardCoverage[identity], count > 1 {
-            boardCoverage[identity] = count - 1
-        } else {
-            boardCoverage[identity] = nil
-        }
-        scheduleReconcile()
+        guard let machineStore else { return }
+        MachineMonitors.shared.watch(isWatching ? machines : [], in: machineStore)
     }
 
     // MARK: Events
@@ -219,9 +199,7 @@ final class NotificationCoordinator {
     /// another over the same connection.
     func ingest(_ observations: [AgentObservation], from machine: Machine, on herdrMachine: HerdrMachine?, startsRun: Bool,
                 refetch: @escaping @Sendable () async throws -> [AgentObservation]) {
-        guard isStarted, let machineStore, machineStore.isCurrentConnection(machine) else { return }
-        watcher?.connectionWorked(machine.connectionIdentity)
-        guard isWatching else { return }
+        guard isStarted, let machineStore, machineStore.isCurrentConnection(machine), isWatching else { return }
         let server = NotificationServerKey(connection: machine.connectionIdentity, herdrMachineID: herdrMachine?.id)
         let now = Date()
         let herdr = eventSource(for: (try? machineStore.currentMachine(matching: machine)) ?? machine, on: herdrMachine)
@@ -269,9 +247,9 @@ final class NotificationCoordinator {
             do {
                 holds = AgentEventDeriver.stillHolds(event, in: try await refetch())
             } catch {
-                // The connection it came over has gone — the board left
-                // its machine, say. Then the last look at the pane, from
-                // wherever, has to do.
+                // The connection it came over has gone — the machine's
+                // monitor reconnected or stopped, say. Then the last look at
+                // the pane, from wherever, has to do.
                 holds = self?.derivers[server]?.latest(terminalID: event.subject.terminalID)
                     .map { AgentEventDeriver.stillHolds(event, in: [$0]) } ?? false
             }

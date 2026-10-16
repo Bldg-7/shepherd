@@ -1,7 +1,4 @@
 import SwiftUI
-#if canImport(Citadel)
-import Citadel
-#endif
 
 /// What can be selected on the board: a pane, or — while the board shows
 /// tabs — a whole tab.
@@ -62,7 +59,9 @@ struct CloseCommandTarget: Equatable {
 
 /// The sidebar content of `ContentView`'s `NavigationSplitView` — the panes,
 /// or the tabs, of whichever Machine is currently active, with `selection`
-/// driving the detail column.
+/// driving the detail column. What it lists comes from the machine's
+/// `MachineMonitor`, which it keeps running while it is on screen; the
+/// notifications share it.
 struct AgentBoardView: View {
     let machine: Machine
     let machineStore: MachineStore
@@ -76,7 +75,7 @@ struct AgentBoardView: View {
     /// What the new tab launcher offers, kept up to date with what the board
     /// knows of its herdrs (see `launchTargetsNow`).
     @Binding var launchTargets: [LaunchTarget]
-    /// Goes up each time the board is to fetch everything again at once.
+    /// Goes up each time the board is to read everything again at once.
     let refreshRequests: Int
     /// Goes up each time the File menu's Close Tab or Close Pane (⌘W) is
     /// chosen, to close the selection as its row's context menu would — but
@@ -84,32 +83,6 @@ struct AgentBoardView: View {
     let closeRequests: Int
     var onNavigationDestinations: ([PaneDestination]) -> Void
 
-    @State private var agents: [AgentSummary] = []
-    /// The host's tabs, or nil while its herdr hasn't reported any — before
-    /// the first snapshot, or for good from a herdr too old to.
-    @State private var tabs: [TabSummary]?
-    /// The host's workspaces, which its rows are listed under, or nil as for
-    /// `tabs`.
-    @State private var workspaces: [WorkspaceSummary]?
-    /// Whether `agents` is a list herdr reported rather than the empty one
-    /// this view starts out with. An empty list says nothing by itself: it
-    /// is what a machine with no agents looks like, and also what a board
-    /// that hasn't heard from its machine yet looks like.
-    @State private var hasLoadedAgents = false
-    @State private var loadError: String?
-    /// Whether the board will try again by itself after `loadError`, or has
-    /// stopped until the person asks (see `isPermanentFailure`). The two
-    /// look alike otherwise, and only one of them needs the person to do
-    /// something.
-    @State private var isRetrying = false
-    /// How many times the person has asked for another connection attempt.
-    /// It is part of the board task's identity, so asking restarts the task
-    /// — whether it was waiting to reconnect or had stopped trying.
-    @State private var retryCount = 0
-    /// How many times the board has been asked to fetch everything again
-    /// straight away, after a change made from its own context menus. Part
-    /// of the board task's identity, like `retryCount`.
-    @State private var refreshCount = 0
     /// The pane or tab whose name is being edited, and the name as typed.
     @State private var renaming: BoardItem?
     @State private var newName = ""
@@ -117,11 +90,6 @@ struct AgentBoardView: View {
     @State private var closing: BoardItem?
     /// Why the last rename or close didn't go through.
     @State private var actionFailure: ActionFailure?
-    /// The herdr machines saved on the host (see `HerdrMachine`), each with
-    /// what was last heard from it. Empty while the host has none, and then
-    /// the board is one flat list of the host's agents, as it always was;
-    /// with any, it is grouped by machine, the host's own agents first.
-    @State private var herdrMachineGroups: [HerdrMachineGroup] = []
     /// The groups the person has folded away, by group ID, one per line.
     /// Kept per Shepherd Machine (see `init`), so the host group of one
     /// machine and of another are folded separately, and across launches.
@@ -160,6 +128,35 @@ struct AgentBoardView: View {
         self._collapsedGroupIDs = AppStorage(wrappedValue: "", "AgentBoardView.collapsedGroups.\(machine.id.uuidString)")
     }
 
+    /// The machine's monitor, which keeps what the board lists up to date
+    /// (see `MachineMonitors`).
+    private var monitor: MachineMonitor {
+        MachineMonitors.shared.monitor(for: machine, in: machineStore)
+    }
+
+    /// The host's panes, and the agents in them.
+    private var agents: [AgentSummary] { monitor.panes }
+    /// The host's tabs, or nil while its herdr hasn't reported any — before
+    /// the first snapshot, or for good from a herdr too old to.
+    private var tabs: [TabSummary]? { monitor.tabs }
+    /// The host's workspaces, which its rows are listed under, or nil as for
+    /// `tabs`.
+    private var workspaces: [WorkspaceSummary]? { monitor.workspaces }
+    /// Whether `agents` is a list herdr reported rather than the empty one
+    /// a monitor starts out with (see `MachineMonitor.hasLoaded`).
+    private var hasLoadedAgents: Bool { monitor.hasLoaded }
+    private var loadError: String? { monitor.loadError }
+    /// Whether the board will try again by itself after `loadError`, or has
+    /// stopped until the person asks (see `MachineMonitor.isPermanentFailure`).
+    /// The two look alike otherwise, and only one of them needs the person
+    /// to do something.
+    private var isRetrying: Bool { monitor.isRetrying }
+    /// The herdr machines saved on the host (see `HerdrMachine`), each with
+    /// what was last heard from it. Empty while the host has none, and then
+    /// the board is one flat list of the host's agents, as it always was;
+    /// with any, it is grouped by machine, the host's own agents first.
+    private var herdrMachineGroups: [MachineMonitor.HerdrMachineGroup] { monitor.herdrMachineGroups }
+
     /// Where the tab setting is kept. `ContentView` reads it too: a pane
     /// selected in one mode means nothing in the other.
     static let showsTabsKey = "AgentBoardView.showsTabs"
@@ -171,78 +168,9 @@ struct AgentBoardView: View {
         true
     }
 
-    /// One herdr machine's part of the board.
-    struct HerdrMachineGroup: Identifiable, Equatable {
-        let machine: HerdrMachine
-        var agents: [AgentSummary] = []
-        /// Its tabs and workspaces, as for the host's (see
-        /// `AgentBoardView.tabs` and `workspaces`).
-        var tabs: [TabSummary]?
-        var workspaces: [WorkspaceSummary]?
-        /// Why the last attempt to list its panes failed. The panes from
-        /// before the failure stay listed under it: a machine dropping off
-        /// for a moment shouldn't empty its group.
-        var error: String?
-        var hasLoaded = false
-        var id: String { machine.id }
-    }
-
     /// The host's own group, among the machines' (whose IDs are herdr's
     /// profile IDs, so they can't clash with this).
     private static let hostGroupID = "host"
-
-    /// How often the panes on herdr machines are fetched again. They can't
-    /// be long-polled like the host's: each request to a machine is a herdr
-    /// CLI run that opens an SSH connection of its own, so they are polled,
-    /// and a change on a machine shows within this long.
-    private static let herdrMachineRefreshInterval: Duration = .seconds(5)
-
-    /// What makes one run of the board's task a different run from another.
-    private nonisolated struct ConnectionRun: Hashable {
-        let machineID: UUID
-        let retryCount: Int
-        let refreshCount: Int
-    }
-
-    /// The shortest time between two refreshes of the pane list. A wait
-    /// round normally lasts as long as herdr holds the long-poll open, but
-    /// the refresh loop must not rely on that for its pacing: a round that
-    /// comes back at once is followed straight away by the next, so a
-    /// transport that answers `events.wait` without waiting would turn the
-    /// loop into a busy loop of requests.
-    private static let minimumRefreshInterval: Duration = .seconds(1)
-
-    /// How long herdr is asked to hold one `events.wait` open, and so how
-    /// long a round lasts while nothing happens. It is also the pace at which
-    /// the board catches up with what no wait reports: a pane opening, a
-    /// pane becoming `unknown`, or a change that leaves a pane's status as
-    /// it was (a new title, say).
-    private static let longPollTimeoutMs = 25_000
-
-    /// The statuses a pane is watched for moving into: every one that says
-    /// something about an agent. herdr 0.9.1's `events.wait` takes any of
-    /// its five agent statuses in a match (see
-    /// `HerdrClient.waitForPaneStatus`), so leaving `unknown` out is a
-    /// choice rather than a limit. It is what herdr reports when it doesn't
-    /// recognise what runs in a pane; a pane drifting into it is nothing
-    /// that has to be shown at once, and not worth a further long-poll per
-    /// pane.
-    private static let awaitedStatuses: [AgentState] = [.idle, .working, .blocked, .done]
-
-    /// How long a failed connection is left alone before the first new
-    /// attempt. What usually breaks one — herdr not started yet, the machine
-    /// asleep, the network gone — takes seconds to pass, and over SSH every
-    /// attempt is a full handshake, so retrying any faster would only add
-    /// load without recovering any sooner.
-    private static let firstReconnectDelay: Duration = .seconds(5)
-
-    /// Where the wait between attempts stops growing. Each attempt that
-    /// fails doubles it: a machine that has been unreachable for a minute is
-    /// more likely switched off than about to answer, and the board would
-    /// otherwise keep knocking every few seconds for as long as it is on
-    /// screen. A minute still brings the board back by itself soon after the
-    /// machine returns; anyone who doesn't want to wait has the Retry button.
-    private static let maximumReconnectDelay: Duration = .seconds(60)
 
     /// How long a selection has to stay on a finished agent before herdr is
     /// told it has been seen (see `markSeen`). The rows the arrow keys pass
@@ -262,7 +190,7 @@ struct AgentBoardView: View {
         .id(showsTabRows)
         .navigationTitle(machine.displayName)
         // The last known list stays on screen while the connection is down
-        // (see `connectAndLoad`), so a failure can't be drawn in the list's
+        // (see `MachineMonitor`), so a failure can't be drawn in the list's
         // own place: over rows it would print across them. With rows to
         // show it goes above them instead, and takes the list's place only
         // when the list has none.
@@ -309,18 +237,21 @@ struct AgentBoardView: View {
                 ContentUnavailableView.search(text: searchText)
             }
         }
-        .task(id: ConnectionRun(machineID: machine.id, retryCount: retryCount, refreshCount: refreshCount)) {
-            await connectAndLoad()
-        }
-        .task(id: ConnectionRun(machineID: machine.id, retryCount: retryCount, refreshCount: refreshCount)) {
-            await loadHerdrMachines()
-        }
-        // For as long as the board is on screen, it is what tells the
-        // notifications about its machine, and the watcher leaves the
-        // machine alone. Not restarted with the tasks above: the board
-        // looks after its machine through every retry and refresh.
+        // The machine's monitor runs for as long as the board is on screen
+        // — and, while the notifications watch the machine, longer. The
+        // board looks after its machine through every retry and refresh,
+        // which go to the monitor rather than restarting this.
         .task(id: machine.connectionIdentity) {
-            await NotificationCoordinator.shared.coverWithBoard(machine)
+            await MachineMonitors.shared.holdForBoard(machine, in: machineStore)
+        }
+        // Every snapshot the monitor reads, and every round over the herdr
+        // machines, brings the selection up to date with it — and the
+        // browsers, with the panes that are left.
+        .onChange(of: monitor.snapshotCount, initial: true) {
+            showSnapshot()
+        }
+        .onChange(of: monitor.herdrMachineRoundCount, initial: true) {
+            showHerdrMachines()
         }
         // Started over only when the request changes — the selection moving
         // to another tab, its agent finishing or being seen, the window
@@ -372,7 +303,7 @@ struct AgentBoardView: View {
             onNavigationDestinations(destinations)
         }
         .onChange(of: refreshRequests) {
-            refreshCount += 1
+            monitor.refreshNow()
         }
         .onChange(of: closeRequests) {
             guard renaming == nil, closing == nil, actionFailure == nil else { return }
@@ -1000,12 +931,12 @@ struct AgentBoardView: View {
             : String(localized: "Not trying again until you press Retry.")
     }
 
-    /// Starts the board's task over. A new connection attempt is all it
-    /// takes in either case a failure leaves behind: the task sitting out
-    /// the wait before its next attempt, or having ended because the failure
-    /// was one that no further attempt of its own could get past.
+    /// Has the monitor start over with a new connection. That is all it
+    /// takes in either case a failure leaves behind: the monitor sitting out
+    /// the wait before its next attempt, or having stopped because the
+    /// failure was one that no further attempt of its own could get past.
     private func retry() {
-        retryCount += 1
+        monitor.retry()
     }
 
     /// A rename or close that didn't go through: which of the two, and what
@@ -1084,10 +1015,10 @@ struct AgentBoardView: View {
         }
     }
 
-    /// Sends a change to herdr over a connection of its own — the board's
-    /// are busy holding long-polls open — and then has the board fetch
-    /// everything again, so the change shows at once rather than at the
-    /// next refresh. A change to a pane or tab on a herdr machine goes
+    /// Sends a change to herdr over a connection of its own, and then has
+    /// the monitor read everything again, so the change shows at once even
+    /// where herdr reports no event for it (a pane renamed, a change on a
+    /// herdr machine). A change to a pane or tab on a herdr machine goes
     /// through the host, as every request to one does.
     private func perform(failureTitle: String, _ change: @escaping (HerdrClient) async throws -> Void) {
         Task {
@@ -1103,7 +1034,7 @@ struct AgentBoardView: View {
                     throw error
                 }
                 await client.disconnect()
-                refreshCount += 1
+                monitor.refreshNow()
             } catch {
                 actionFailure = ActionFailure(title: failureTitle, message: connectionFailureDescription(error))
             }
@@ -1128,17 +1059,18 @@ struct AgentBoardView: View {
     /// the request for `seenDelay`, over a connection of its own like
     /// `perform`'s changes. Unlike those, a failure is dropped without a
     /// word: the row stays Done, as it did before there was this. Nor does
-    /// the board fetch everything again after it, which would start its
-    /// connections over; the next round of its own shows the agent idle.
+    /// the board ask for everything to be read again after it: herdr reports
+    /// the agent going idle, and the snapshot the monitor reads for that
+    /// shows it.
     private func markSeen(_ request: SeenRequest?) async {
         guard let request, (try? await Task.sleep(for: Self.seenDelay)) != nil,
               machineStore.isCurrentConnection(machine),
               let current = try? machineStore.currentMachine(matching: machine),
               let transport = try? machineStore.makeHerdrTransport(for: current) else { return }
         let client = HerdrClient(transport: transport)
-        // As in `keepUpToDate`: closing the connection is what ends an await
-        // the cancellation doesn't reach, and a connection still being made
-        // when the task is cancelled is closed once it is made.
+        // As in `MachineMonitor`: closing the connection is what ends an
+        // await the cancellation doesn't reach, and a connection still being
+        // made when the task is cancelled is closed once it is made.
         await withTaskCancellationHandler {
             do {
                 try await client.connect()
@@ -1188,18 +1120,18 @@ struct AgentBoardView: View {
         )
     }
 
-    /// Shows a fresh round from the herdr machines, and keeps a selection on
-    /// one of them in step the way `show` does for the host's: re-pointed at
-    /// the new snapshot of its pane or tab, dropped once that — or the whole
-    /// machine — is gone. Not while its machine can't be reached, though:
-    /// that says nothing about whether the pane or tab is still there.
-    private func showHerdrMachines(_ groups: [HerdrMachineGroup]) {
-        guard machineStore.isCurrentConnection(machine) else { return }
-        if groups != herdrMachineGroups {
-            herdrMachineGroups = groups
-        }
+    /// Takes in a fresh round from the herdr machines, and keeps a selection
+    /// on one of them in step the way `showSnapshot` does for the host's:
+    /// re-pointed at the new snapshot of its pane or tab, dropped once that
+    /// — or the whole machine — is gone. Not while its machine can't be
+    /// reached, though: that says nothing about whether the pane or tab is
+    /// still there.
+    private func showHerdrMachines() {
+        guard monitor.herdrMachineRoundCount > 0, machineStore.isCurrentConnection(machine) else { return }
+        let groups = herdrMachineGroups
         #if os(macOS)
-        // As in `show`, for each machine whose panes were listed this time.
+        // As in `showSnapshot`, for each machine whose panes were listed
+        // this time.
         // One that couldn't be reached says nothing about its panes.
         let browsers = BrowserStore.shared
         browsers.reconcile(machineID: machine.id, herdrMachines: Set(groups.map(\.id)))
@@ -1216,36 +1148,20 @@ struct AgentBoardView: View {
         reselect(selected, in: group.agents, tabs: group.tabs)
     }
 
-    /// Shows a freshly fetched snapshot, and keeps the selection in step
-    /// with it: the selection is a snapshot of its own, so it is re-pointed
-    /// at the new snapshot of the same pane or tab (the detail column's
-    /// title, and a tab's layout, come from it), and dropped once that is no
-    /// longer listed — there is nothing left to attach to.
-    ///
-    /// A list on screen also means the connection works, so whatever error
-    /// an earlier attempt left behind no longer applies.
-    private func show(_ snapshot: HerdrSnapshot) {
-        guard machineStore.isCurrentConnection(machine) else { return }
-        if loadError != nil {
-            loadError = nil
-        }
-        if !hasLoadedAgents {
-            hasLoadedAgents = true
-        }
-        agents = snapshot.panes
+    /// Takes in the snapshot the monitor has just read, and keeps the
+    /// selection in step with it: the selection is a snapshot of its own, so
+    /// it is re-pointed at the new snapshot of the same pane or tab (the
+    /// detail column's title, and a tab's layout, come from it), and dropped
+    /// once that is no longer listed — there is nothing left to attach to.
+    private func showSnapshot() {
+        guard monitor.snapshotCount > 0, monitor.hasLoaded, machineStore.isCurrentConnection(machine) else { return }
         #if os(macOS)
         // The browsers of panes that are no longer listed go with them.
-        if !machine.isLocal { BrowserStore.shared.reconcile(machineID: machine.id, herdrMachineID: nil, panes: snapshot.panes) }
+        if !machine.isLocal { BrowserStore.shared.reconcile(machineID: machine.id, herdrMachineID: nil, panes: agents) }
         #endif
-        if snapshot.tabs != tabs {
-            tabs = snapshot.tabs
-        }
-        if snapshot.workspaces != workspaces {
-            workspaces = snapshot.workspaces
-        }
         // A selection on a herdr machine is `showHerdrMachines`'s to keep.
         guard let selected = selection, selected.herdrMachine == nil else { return }
-        reselect(selected, in: snapshot.panes, tabs: snapshot.tabs)
+        reselect(selected, in: agents, tabs: tabs)
     }
 
     /// Points `selection` at the newest snapshot of the pane or tab it
@@ -1319,433 +1235,6 @@ struct AgentBoardView: View {
                 workspace: workspace,
                 tabCount: (tabs ?? []).filter { $0.workspaceID == workspace.workspaceID }.count
             )
-        }
-    }
-
-    private func loadHerdrMachines() async {
-        guard !Task.isCancelled else { return }
-        let notifications = NotificationFeed(machine: machine)
-        await Self.keepHerdrMachinesUpToDate(
-            makeClient: {
-                // Do not let an old board reconnect to a newly edited endpoint.
-                guard machineStore.isCurrentConnection(machine) else { return nil }
-                let current = try machineStore.currentMachine(matching: machine)
-                return HerdrClient(transport: try machineStore.makeHerdrTransport(for: current))
-            },
-            show: { groups in
-                showHerdrMachines(groups)
-                // Only the machines listed this round: one that couldn't be
-                // reached still has the panes it last listed.
-                for group in groups where group.error == nil && group.hasLoaded {
-                    notifications.observe(panes: group.agents, tabs: group.tabs, workspaces: group.workspaces, on: group.machine)
-                }
-            },
-            connected: notifications.connected
-        )
-    }
-
-    /// Keeps the board's herdr machine groups up to date for as long as the
-    /// calling task lives: lists the machines saved on the host, then every
-    /// machine's panes and tabs, every `herdrMachineRefreshInterval`. The list of
-    /// machines is read again each time, so one added or removed in herdr
-    /// appears or goes without anything restarting.
-    ///
-    /// It runs beside `keepUpToDate`, on a connection of its own, and leaves
-    /// failures of that connection to it: the host can't be reached either
-    /// way, `keepUpToDate` already says so, and the machines' groups keep
-    /// what they last showed meanwhile. This one just backs off and starts
-    /// over. A host whose herdr has no saved machines — or is too old to know
-    /// about them — gives no groups, and the board stays a flat list.
-    /// `connected` is given each connection once it has been made, before
-    /// anything fetched over it is shown.
-    static func keepHerdrMachinesUpToDate(
-        makeClient: () throws -> HerdrClient?,
-        show: ([HerdrMachineGroup]) -> Void,
-        connected: (HerdrClient) -> Void = { _ in }
-    ) async {
-        var groups: [HerdrMachineGroup] = []
-        var retryDelay = firstReconnectDelay
-        while !Task.isCancelled {
-            let client: HerdrClient
-            do {
-                guard let made = try makeClient() else { return }
-                client = made
-            } catch {
-                guard (try? await Task.sleep(for: retryDelay)) != nil else { return }
-                retryDelay = min(retryDelay * 2, maximumReconnectDelay)
-                continue
-            }
-            // Same reason for the cancellation handler as in `keepUpToDate`:
-            // Citadel's awaits don't notice cancellation, closing the
-            // connection does.
-            let failed = await withTaskCancellationHandler {
-                do {
-                    try await client.connect()
-                    try Task.checkCancellation()
-                    connected(client)
-                    while true {
-                        try Task.checkCancellation()
-                        let machines = try await client.listHerdrMachines()
-                        try Task.checkCancellation()
-                        groups = await fetchSnapshots(on: machines, previous: groups, client: client)
-                        try Task.checkCancellation()
-                        show(groups)
-                        retryDelay = firstReconnectDelay
-                        try await Task.sleep(for: herdrMachineRefreshInterval)
-                    }
-                } catch {
-                    await client.disconnect()
-                    return !Task.isCancelled
-                }
-            } onCancel: {
-                Task { await client.disconnect() }
-            }
-            guard failed, (try? await Task.sleep(for: retryDelay)) != nil else { return }
-            retryDelay = min(retryDelay * 2, maximumReconnectDelay)
-        }
-    }
-
-    /// One round over the machines: all of them at once, each on its own, so
-    /// one that is slow or down neither holds up nor hides the others. A
-    /// machine that fails keeps the panes and tabs it last listed, under its
-    /// error.
-    private static func fetchSnapshots(
-        on machines: [HerdrMachine],
-        previous: [HerdrMachineGroup],
-        client: HerdrClient
-    ) async -> [HerdrMachineGroup] {
-        let results = await withTaskGroup(of: (Int, HerdrSnapshot?, String?).self) { group in
-            for (index, machine) in machines.enumerated() {
-                group.addTask {
-                    do {
-                        return (index, try await client.snapshot(on: machine), nil)
-                    } catch {
-                        return (index, nil, connectionFailureDescription(error))
-                    }
-                }
-            }
-            var results = [(snapshot: HerdrSnapshot?, error: String?)](repeating: (nil, nil), count: machines.count)
-            for await (index, snapshot, error) in group {
-                results[index] = (snapshot, error)
-            }
-            return results
-        }
-        return zip(machines, results).map { machine, result in
-            let last = previous.first { $0.id == machine.id }
-            if let snapshot = result.snapshot {
-                return HerdrMachineGroup(
-                    machine: machine,
-                    agents: snapshot.panes,
-                    tabs: snapshot.tabs,
-                    workspaces: snapshot.workspaces,
-                    error: nil,
-                    hasLoaded: true
-                )
-            }
-            return HerdrMachineGroup(
-                machine: machine,
-                agents: last?.agents ?? [],
-                tabs: last?.tabs,
-                workspaces: last?.workspaces,
-                error: result.error,
-                hasLoaded: last?.hasLoaded ?? false
-            )
-        }
-    }
-
-    private func connectAndLoad() async {
-        // SwiftUI can cancel this task before its body has run at all (the
-        // board appearing and going away in one breath), and the body runs
-        // regardless. There is no one left to show anything to by then.
-        guard !Task.isCancelled else { return }
-        // A previous run's failure says nothing about this one: the task is
-        // restarted every time the list comes back on screen (on iPhone,
-        // returning from the terminal), and the reconnect below may well
-        // succeed. `agents` is deliberately kept, so that returning shows the
-        // last known list instead of flashing back to "Loading panes…".
-        loadError = nil
-        let notifications = NotificationFeed(machine: machine)
-        await Self.keepUpToDate(
-            makeClient: {
-                // The machine as the store has it now, not as this view
-                // captured it when the task began: a host key pinned by an
-                // earlier connection is recorded in the store's copy only,
-                // and a transport built from the captured one — nothing
-                // pinned — would trust whichever key it is shown all over
-                // again. A removed or edited connection ends this board's run.
-                guard machineStore.isCurrentConnection(machine) else { return nil }
-                let current = try machineStore.currentMachine(matching: machine)
-                return HerdrClient(transport: try machineStore.makeHerdrTransport(for: current))
-            },
-            pinHostKey: { fingerprint in
-                machineStore.pinHostKeyFingerprint(fingerprint, for: machine)
-            },
-            show: { snapshot in
-                show(snapshot)
-                if machineStore.isCurrentConnection(machine) {
-                    notifications.observe(snapshot)
-                }
-            },
-            report: { error, willRetry in
-                loadError = connectionFailureDescription(error)
-                isRetrying = willRetry
-                // With no rows there is no last known list worth keeping,
-                // and "No Panes" would go on claiming something about a
-                // machine that can't be reached. The next attempt starts
-                // from "Loading panes…" instead.
-                if agents.isEmpty && hasLoadedAgents {
-                    hasLoadedAgents = false
-                }
-            },
-            connected: notifications.connected
-        )
-    }
-
-    /// Whether a failed connection attempt is one that another attempt
-    /// cannot get past: it would fail the same way every time, until the
-    /// person changes something. This is the one place that decides it, and
-    /// `keepUpToDate` stops reconnecting on its own when the answer is yes.
-    ///
-    /// The cost of getting it wrong is not symmetric. Retrying a failure
-    /// that will not pass means presenting the same rejected credential to
-    /// sshd over and over for as long as the board is on screen, which is
-    /// what fail2ban, sshd's own per-source penalties and account lockouts
-    /// exist to punish. Stopping at a failure that would have passed only
-    /// costs a press of Retry. Even so the list is short and specific, and
-    /// everything not on it — a refused or lost connection, a timeout, herdr
-    /// not running, a Keychain that can't be read right now — is retried:
-    /// - the stored key is not one this app can use (`OpenSSHKeyError`);
-    /// - the server's host key is not the one pinned for this machine
-    ///   (`HostKeyValidationError`): either it was reinstalled or someone is
-    ///   in the middle, and neither changes by asking again;
-    /// - the server turned the credential down, or doesn't offer the kind of
-    ///   authentication this machine is set up for (Citadel's
-    ///   `SSHClientError`, except for its one case that isn't about
-    ///   authentication).
-    ///
-    /// All of these come from the SSH transport, so a build without Citadel
-    /// has no such failure.
-    nonisolated static func isPermanentFailure(_ error: any Error) -> Bool {
-        #if canImport(Citadel)
-        switch error {
-        case is OpenSSHKeyError, is HostKeyValidationError:
-            return true
-        case SSHClientError.allAuthenticationOptionsFailed,
-             SSHClientError.unsupportedPasswordAuthentication,
-             SSHClientError.unsupportedPrivateKeyAuthentication,
-             SSHClientError.unsupportedHostBasedAuthentication:
-            return true
-        default:
-            return false
-        }
-        #else
-        return false
-        #endif
-    }
-
-    /// Keeps a board up to date for as long as the calling task lives:
-    /// connects, shows the pane list, refreshes it whenever something may
-    /// have changed — and after a failure starts over with a new connection
-    /// instead of giving up. The board is the split view's permanent
-    /// sidebar: on macOS and iPad it never leaves the screen, so nothing
-    /// would restart a task that had ended, and a single failure (the app
-    /// opened before herdr, the Mac waking from sleep, a network blip) would
-    /// stay on screen until the app was relaunched.
-    ///
-    /// How soon it starts over depends on how long that has been failing:
-    /// `firstReconnectDelay` after a connection that had kept working
-    /// through a whole round of waits, twice as long after every attempt that
-    /// didn't, up to `maximumReconnectDelay`. Listing the agents alone isn't
-    /// enough to count as working: a connection that lists them and then
-    /// fails in the waits that follow fails the same way on every attempt,
-    /// and would otherwise be retried at the shortest delay for good. The
-    /// one exception is a failure that
-    /// `isPermanentFailure` says no further attempt can get past. That ends
-    /// the loop with the failure reported, and it is up to the caller to
-    /// start it again once the person asks for another try.
-    ///
-    /// Everything this does to the board goes through the closures, which
-    /// keeps the whole lifecycle runnable without a view. None of them is
-    /// called once the task has been cancelled.
-    /// - `makeClient` returns the client for one connection attempt, or nil
-    ///   when there is nothing to connect to any more, which ends the loop.
-    ///   Each attempt gets a client and transport of its own: what a
-    ///   transport was created with (the pinned host key above all) is fixed
-    ///   for its lifetime, and may be out of date by the next attempt. It
-    ///   throws when the client can't be put together, which counts as a
-    ///   failed attempt like any other.
-    /// - `pinHostKey` receives the fingerprint of a host key that a
-    ///   connection has just trusted for the first time.
-    /// - `show` receives every snapshot fetched, `report` every failure
-    ///   that ends an attempt, together with whether another attempt will
-    ///   follow by itself.
-    /// - `connected` receives each connection once it has been made, before
-    ///   anything fetched over it is shown.
-    static func keepUpToDate(
-        makeClient: () throws -> HerdrClient?,
-        pinHostKey: (String) -> Void,
-        show: (HerdrSnapshot) -> Void,
-        report: (any Error, _ willRetry: Bool) -> Void,
-        connected: (HerdrClient) -> Void = { _ in }
-    ) async {
-        var reconnectDelay = firstReconnectDelay
-        while !Task.isCancelled {
-            // What ended this attempt. Nil means it was not a failure but the
-            // task being cancelled.
-            let failure: (any Error)?
-            do {
-                guard let client = try makeClient() else { return }
-                // SwiftUI cancels the board's `.task` when the view disappears, but Swift's
-                // cooperative cancellation doesn't reach into Citadel's NIO-backed
-                // awaits (EventLoopFuture.get() and the AsyncStream read loop in
-                // SSHHerdrTransport.send() don't check Task.isCancelled) — so without
-                // this, leaving the screen would leave the SSH connection and every
-                // in-flight long-poll channel open for up to their full timeout
-                // (confirmed live: repeated visits pile up connections until herdr.sock
-                // starts refusing new ones). withTaskCancellationHandler's onCancel
-                // fires immediately on cancellation, so close the connection there —
-                // Citadel's SSHClient.close() cascades to every multiplexed channel.
-                //
-                // That same disconnect makes whatever this task is awaiting fail (or,
-                // for awaits that can't be interrupted, return late), and by then the
-                // view's state belongs to whichever task replaced this one. So every
-                // await below is followed by a cancellation check before any state is
-                // touched, and a failure that arrives after cancellation is dropped
-                // rather than reported — it was caused by leaving, not by the machine.
-                failure = await withTaskCancellationHandler {
-                    var reported: (any Error)?
-                    do {
-                        try await client.connect()
-                        try Task.checkCancellation()
-                        if let newFingerprint = await client.newlyPinnedHostKeyFingerprint() {
-                            try Task.checkCancellation()
-                            pinHostKey(newFingerprint)
-                        }
-                        connected(client)
-                        var snapshot = try await client.snapshot()
-                        try Task.checkCancellation()
-                        show(snapshot)
-                        // herdr has no "subscribe to everything" — events.wait long-polls
-                        // for one specific pane to reach one specific status (it holds the
-                        // request server-side until that happens or it times out,
-                        // confirmed live). So: long-poll every known pane concurrently,
-                        // and as soon as ANY one of those waits ends (or we've waited long
-                        // enough that it's worth checking for new/closed panes anyway),
-                        // refresh the full list and restart. This reacts near-instantly to
-                        // real changes without hammering the server with fixed-interval
-                        // polling.
-                        while true {
-                            let roundStart = ContinuousClock.now
-                            try await waitForAnyPaneChange(client: client, panes: snapshot.panes)
-                            let remaining = minimumRefreshInterval - (ContinuousClock.now - roundStart)
-                            if remaining > .zero {
-                                try await Task.sleep(for: remaining)
-                            }
-                            try Task.checkCancellation()
-                            snapshot = try await client.snapshot()
-                            try Task.checkCancellation()
-                            show(snapshot)
-                            // A whole round of waits came and went on this
-                            // connection, so whatever goes wrong from here on
-                            // is a new outage, not more of the one the delay
-                            // had grown for.
-                            reconnectDelay = firstReconnectDelay
-                        }
-                    } catch {
-                        if !Task.isCancelled {
-                            report(error, !isPermanentFailure(error))
-                            reported = error
-                        }
-                    }
-                    // The loop above only ends by failing or by being cancelled, and
-                    // either way this connection has no further use. onCancel alone
-                    // doesn't cover it: when cancellation lands while connect() is
-                    // still in flight there is nothing for it to close yet, and the
-                    // connection that connect() then goes on to establish would stay
-                    // open with no one left to close it.
-                    await client.disconnect()
-                    return reported
-                } onCancel: {
-                    Task { await client.disconnect() }
-                }
-            } catch {
-                // There is no client, so nothing was connected and nothing
-                // needs closing. Nothing has been awaited since the loop
-                // last saw the task alive, either.
-                report(error, !isPermanentFailure(error))
-                failure = error
-            }
-            guard let failure, !isPermanentFailure(failure) else { return }
-            // `Task.sleep` throws on cancellation, so leaving the board — or
-            // asking for another attempt — while it waits to reconnect ends
-            // the task there and then.
-            do {
-                try await Task.sleep(for: reconnectDelay)
-            } catch {
-                return
-            }
-            reconnectDelay = min(reconnectDelay * 2, maximumReconnectDelay)
-        }
-    }
-
-    /// Returns when something on the board may have changed — or, failing
-    /// that, when it has been long enough that the list is worth fetching
-    /// again anyway. Throws when the connection fails, when herdr answers a
-    /// wait with an error that isn't about the pane having gone, or when the
-    /// task is cancelled.
-    ///
-    /// herdr's `events.wait` holds a request until one pane reaches one
-    /// status, so noticing a change of status takes a concurrent wait per
-    /// pane for every status it could move to (`awaitedStatuses`). Whichever
-    /// way a pane goes — into `blocked` or `done`, or back out of them when
-    /// it is given something new to do — one of its waits matches, and the
-    /// first wait to end, by matching or by timing out, ends the round.
-    ///
-    /// A status the pane already has is not waited for. herdr answers such a
-    /// wait at once instead of holding it, so every round would end
-    /// immediately, and the loop would refetch the list at its floor for as
-    /// long as the board was open.
-    ///
-    /// Nor is a pane with no agent in it: it has no status to change. An
-    /// agent starting in one shows up the way a pane opening does, when the
-    /// round ends.
-    static func waitForAnyPaneChange(client: HerdrClient, panes: [AgentSummary]) async throws {
-        let agents = panes.filter(\.hasAgent)
-        guard !agents.isEmpty else {
-            try await Task.sleep(for: .seconds(5))
-            return
-        }
-        // Never empty: there are more statuses to wait for than the one a
-        // pane can have, so every pane brings at least one wait.
-        let waits = agents.flatMap { agent in
-            awaitedStatuses
-                .filter { $0 != agent.state }
-                .map { (paneID: agent.paneID, status: $0) }
-        }
-        let timeoutMs = longPollTimeoutMs
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            for wait in waits {
-                group.addTask {
-                    do {
-                        _ = try await client.waitForPaneStatus(paneID: wait.paneID, status: wait.status, timeoutMs: timeoutMs)
-                    } catch let error as HerdrErrorPayload where error.code == "pane_not_found" {
-                        // The pane closed while being waited on, or between
-                        // the list and the wait. That is exactly the kind of
-                        // change the list has to be fetched again for, so it
-                        // ends the round like a match would.
-                        //
-                        // No other error herdr answers a wait with is taken
-                        // for a change. One that herdr gives every time (a
-                        // version that turns the match down, say) comes
-                        // back at once, and treated as a change it would
-                        // have the loop refetching the list at its floor
-                        // with nothing on screen to say anything is wrong.
-                        // Thrown, it ends the connection and is shown.
-                    }
-                }
-            }
-            _ = try await group.next()
-            group.cancelAll()
         }
     }
 

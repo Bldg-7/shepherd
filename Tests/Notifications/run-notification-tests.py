@@ -12,7 +12,7 @@ events=[str(p.relative_to(ROOT)) for p in sorted((ROOT/'Shepherd/HerdrKit/Events
 models=['Shepherd/HerdrKit/Models/AgentModels.swift','Shepherd/HerdrKit/Models/TabModels.swift','Shepherd/HerdrKit/Models/AgentTitleDisplay.swift','Shepherd/HerdrKit/Models/AgentLaunchModels.swift','Shepherd/HerdrKit/Models/HerdrMachine.swift','Shepherd/HerdrKit/Models/JSONValue.swift']
 event_tests=events+models+['Tests/Notifications/AgentEventTests.swift']
 policy_tests=['Shepherd/HerdrKit/Events/AgentEvent.swift','Shepherd/HerdrKit/Events/AgentEventDigest.swift','Shepherd/Notifications/NotificationPolicy.swift','Shepherd/Notifications/NotificationText.swift','Tests/Notifications/NotificationPolicyTests.swift']
-app=[str(p.relative_to(ROOT)) for p in sorted((ROOT/'Shepherd/Notifications').glob('*.swift'))]+['Shepherd/Hosts/Views/NotificationSettingsView.swift','Shepherd/Hosts/Views/MachinesSettingsView.swift','Shepherd/Hosts/Views/AgentBoardView.swift','Shepherd/ContentView.swift','Shepherd/Shepherd.swift','Shepherd/Localizable.xcstrings']
+app=[str(p.relative_to(ROOT)) for p in sorted((ROOT/'Shepherd/Notifications').glob('*.swift'))]+['Shepherd/Hosts/Monitoring/MachineMonitor.swift','Shepherd/Hosts/Monitoring/MachineMonitors.swift','Shepherd/Hosts/Views/NotificationSettingsView.swift','Shepherd/Hosts/Views/MachinesSettingsView.swift','Shepherd/Hosts/Views/AgentBoardView.swift','Shepherd/ContentView.swift','Shepherd/Shepherd.swift','Shepherd/Localizable.xcstrings']
 examples=sorted(str(p.relative_to(ROOT)) for p in EXAMPLES.glob('*.json'))
 (out/'source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in sorted(set(event_tests+policy_tests+app+examples))},indent=2))
 def stage(name,seconds,args):
@@ -46,22 +46,30 @@ assert importers==['Shepherd/Notifications/UserNotificationPresenter.swift'],imp
 for n in events:
  assert re.findall(r'^import (\w+)',(ROOT/n).read_text(),re.M)==['Foundation'],n
 
-# Where it is wired in: the board feeds its snapshots and keeps its machine
-# from the watcher; the window says what is viewed and goes to a clicked pane.
+# Where it is wired in: each machine's monitor feeds its snapshots, its herdr
+# machines' included, over the one connection the board shares while it shows
+# the machine; the notifications keep every machine's monitor running; the
+# window says what is viewed and goes to a clicked pane.
 board=(ROOT/'Shepherd/Hosts/Views/AgentBoardView.swift').read_text()
-assert board.count('connected: notifications.connected')==2 and board.count('NotificationFeed(machine: machine)')==2
-assert '.task(id: machine.connectionIdentity) {\n            await NotificationCoordinator.shared.coverWithBoard(machine)' in board
-assert 'notifications.observe(snapshot)' in board and 'for group in groups where group.error == nil && group.hasLoaded {\n                    notifications.observe(' in board
+assert 'NotificationFeed' not in board and 'coverWithBoard' not in board
+assert '.task(id: machine.connectionIdentity) {\n            await MachineMonitors.shared.holdForBoard(machine, in: machineStore)' in board
+monitors=(ROOT/'Shepherd/Hosts/Monitoring/MachineMonitors.swift').read_text()
+assert 'listener: NotificationFeed(machine: machine)' in monitors and 'pollInterval: machine.isLocal ? .seconds(3) : .seconds(5)' in monitors and 'pinHostKeyFingerprint' in monitors
+monitor=(ROOT/'Shepherd/Hosts/Monitoring/MachineMonitor.swift').read_text()
+assert monitor.count('listener?.connected(client)')==1 and monitor.count('listener?.observe(')==2 and 'for group in groups where group.error == nil && group.hasLoaded {\n            listener?.observe(' in monitor
+assert 'if isPermanent(failure) {\n                isStoppedOnFailure = true' in monitor and 'pinHostKey(newFingerprint)' in monitor
+feed=(ROOT/'Shepherd/Notifications/NotificationFeed.swift').read_text()
+assert 'final class NotificationFeed: MachineMonitorListener {' in feed
 content=(ROOT/'Shepherd/ContentView.swift').read_text()
 assert 'controlActiveState == .key' in content and 'setViewedPanes(panes)' in content and 'setViewedPanes([])' in content
 assert '.onChange(of: NotificationCoordinator.shared.navigationRequest, initial: true)' in content and '.onChange(of: paneDestinations)' in content
 shep=(ROOT/'Shepherd/Shepherd.swift').read_text()
 assert shep.index('NotificationCoordinator.shared.prepare()')<shep.index('guard ShepherdBrowserFeature.shared.isEnabled else { return }')<shep.index('func applicationDidFinishLaunching')<shep.index('NotificationCoordinator.shared.start()')
 assert 'Window(Text(verbatim: "Shepherd"), id: "main")' in shep and 'WindowGroup {' not in shep
-watcher=(ROOT/'Shepherd/Notifications/MachineWatcher.swift').read_text()
-assert "machine.isLocal ? .seconds(3) : .seconds(5)" in watcher and 'AgentBoardView.isPermanentFailure(failure)' in watcher and 'pinHostKeyFingerprint' in watcher
+assert not (ROOT/'Shepherd/Notifications/MachineWatcher.swift').exists()
 coordinator=(ROOT/'Shepherd/Notifications/NotificationCoordinator.swift').read_text()
 assert 'confirmationDelay: Duration = .milliseconds(1500)' in coordinator and 'SHEPHERD_OWNED_OPERATOR_ROOT' in coordinator
+assert 'MachineMonitors.shared.watch(isWatching ? machines : [], in: machineStore)' in coordinator and 'boardCoverage' not in coordinator and 'watcher' not in coordinator
 
 # Settings: its own page, ⓘ buttons as elsewhere, every string in Korean and Japanese.
 page=(ROOT/'Shepherd/Hosts/Views/NotificationSettingsView.swift').read_text()

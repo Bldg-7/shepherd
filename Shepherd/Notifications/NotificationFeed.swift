@@ -1,16 +1,15 @@
 import Foundation
 
-/// What one connection to one machine sees of its herdrs, passed on to the
-/// notifications. A board, for the machine it shows, and the watcher, for
-/// each machine no board shows, keep one of these per connection loop: they
-/// say when a connection has been made (`connected`), and hand over every
+/// What one machine's connection sees of its herdrs, passed on to the
+/// notifications. Each machine's `MachineMonitor` keeps one of these: it
+/// says when a connection has been made (`connected`), and hands over every
 /// snapshot it brings (`observe`).
 ///
 /// The first snapshot of each herdr on a connection is a baseline only (see
 /// `AgentEventDeriver`): what happened while there was none isn't told
 /// about after the fact. A change seen later is checked again over the same
 /// connection before it is shown.
-final class NotificationFeed {
+final class NotificationFeed: MachineMonitorListener {
     private let machine: Machine
     private weak var coordinator: NotificationCoordinator?
     private var client: HerdrClient?
