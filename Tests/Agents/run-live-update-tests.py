@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Keeping the board and the notifications up to date with herdr's events.subscribe: the request, the lines, when a snapshot
-is read, the local socket's subscription against a stand-in, MachineMonitor over a fake transport, and — when herdr is
-installed — against a test server of its own. Never the herdr anyone works in; no app, no SSH."""
+is read, the local socket's subscription against a stand-in, MachineMonitor over a fake transport, its herdr machines'
+task group built with -O as a release build is, and — when herdr is installed — against a test server of its own. Never
+the herdr anyone works in; no app, no SSH."""
 from pathlib import Path
 import argparse,os,json,hashlib,pwd,re,signal,socket,subprocess,sys,platform,time
 ROOT=Path(__file__).resolve().parents[2]
@@ -18,22 +19,30 @@ client=['Shepherd/Agents/AgentRuntime.swift','Shepherd/Agents/AgentSavedSession.
  'Shepherd/HerdrKit/HerdrClient.swift','Shepherd/HerdrKit/Transport/HerdrTransport.swift','Shepherd/HerdrKit/Terminal/ShellQuoting.swift']+[str(x.relative_to(ROOT)) for x in sorted((ROOT/'Shepherd/HerdrKit/Models').glob('*.swift'))]
 monitor=client+schedule+['Shepherd/Hosts/Monitoring/MachineMonitor.swift','Shepherd/HerdrKit/Transport/ConnectionFailureDescription.swift']
 live=monitor+['Shepherd/HerdrKit/Transport/LocalHerdrTransport.swift','Shepherd/HerdrKit/Terminal/HerdrExecutable.swift','Shepherd/HerdrKit/Terminal/LocalCommand.swift']
-tests=['Tests/Agents/LiveUpdateModelTests.swift','Tests/Agents/LocalSubscribeTests.swift','Tests/Agents/MachineMonitorTests.swift','Tests/Agents/LiveHerdrSubscribeTests.swift']
+tests=['Tests/Agents/LiveUpdateModelTests.swift','Tests/Agents/LocalSubscribeTests.swift','Tests/Agents/MachineMonitorTests.swift','Tests/Agents/FakeHerdr.swift',
+ 'Tests/Agents/OptimizedSnapshotTests.swift','Tests/Agents/LiveHerdrSubscribeTests.swift']
 checked=['Shepherd/Hosts/Views/AgentBoardView.swift','Shepherd/Hosts/Monitoring/MachineMonitors.swift','Shepherd/HerdrKit/Transport/SSHHerdrTransport.swift',
  'Shepherd/Notifications/NotificationCoordinator.swift','Shepherd/Notifications/NotificationFeed.swift']
 (out/'source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in sorted(set(models+schedule+local+monitor+live+tests+checked))},indent=2))
-def stage(name,seconds,args):
+def stage(name,seconds,args,extraEnv=()):
  log=out/(name+'.log')
- code=subprocess.run([sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(seconds),'--natural-exit-grace','10','--log',str(log),'--',*args],cwd=ROOT,env=env,timeout=seconds+40).returncode
+ code=subprocess.run([sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(seconds),'--natural-exit-grace','10','--log',str(log),
+  *[f'--env={e}' for e in extraEnv],'--',*args],cwd=ROOT,env=env,timeout=seconds+40).returncode
  j=json.loads(log.with_suffix('.stage.json').read_text());assert code==0 and j['naturalExitConfirmed'] and not j['signalsSent'] and j['cleanupVerified'],name
 flags=['xcrun','swiftc','-swift-version','6','-default-isolation','MainActor','-target',platform.machine()+'-apple-macos26.6.2','-parse-as-library']
 stage('model-build',90,flags+models+schedule+['Tests/Agents/LiveUpdateModelTests.swift','-o',str(out/'model-tests')])
 stage('model-tests',20,[str(out/'model-tests')])
 stage('local-subscribe-build',90,flags+local+['Tests/Agents/LocalSubscribeTests.swift','-o',str(out/'local-subscribe-tests')])
 stage('local-subscribe-tests',60,[str(out/'local-subscribe-tests'),str(out/'socket')])
-stage('monitor-build',120,flags+monitor+['Tests/Agents/MachineMonitorTests.swift','-o',str(out/'monitor-tests')])
+stage('monitor-build',120,flags+monitor+['Tests/Agents/MachineMonitorTests.swift','Tests/Agents/FakeHerdr.swift','-o',str(out/'monitor-tests')])
 stage('monitor-tests',120,[str(out/'monitor-tests')])
-stages=6
+# The herdr machines' task group the way a release build has it (-O, whole module), run with
+# MallocScribble=1: Swift 6.3/6.4 -O drops `index` from `return (index, try await …, nil)` in a do
+# with a catch returning a tuple too (swiftlang/swift#92698, SHPHRD-54), which -Onone never shows.
+# A trap there, with no FAIL line, is a result landing out of bounds.
+stage('optimized-snapshot-build',180,flags+['-O','-wmo']+monitor+['Tests/Agents/FakeHerdr.swift','Tests/Agents/OptimizedSnapshotTests.swift','-o',str(out/'optimized-snapshot-tests')])
+stage('optimized-snapshot-tests',60,[str(out/'optimized-snapshot-tests')],extraEnv=['MallocScribble=1'])
+stages=8
 
 # Optional: a herdr test server of its own — home, config, state and
 # sockets under the output directory (the sockets by relative path, an
