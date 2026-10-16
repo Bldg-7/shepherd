@@ -1,14 +1,15 @@
 import SwiftUI
 
 #if os(macOS)
-/// Normal view is one status row. Detailed checks live in the page's conditional
-/// Diagnostics section; advanced preferences share its inline disclosure group.
-struct AgentSkillSection: View {
+/// Normal view is one status row in the Shepherd Browser card. Detailed checks
+/// live in the card's conditional Diagnostics rows; advanced preferences share
+/// its inline disclosure group.
+struct AgentSkillRows: View {
     let machine: Machine
     private var service: AgentLaunchService { .shared }
 
     var body: some View {
-        Section("Agents") {
+        Group {
             if machine.isLocal {
                 HStack {
                     Text("Preparation")

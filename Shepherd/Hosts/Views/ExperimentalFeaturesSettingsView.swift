@@ -1,8 +1,9 @@
 #if os(macOS)
 import SwiftUI
 
-/// A single detail page: essentials first, advanced controls inline, diagnostics
-/// only when a real issue exists. No third navigation level or nested sheet.
+/// A single detail page with one card per feature: essentials first, advanced
+/// controls inline, diagnostics only when a real issue exists. No third
+/// navigation level or nested sheet.
 struct ExperimentalFeaturesSettingsView: View {
     let machineStore: MachineStore
     let passwordManagerWindowID: UUID
@@ -75,6 +76,8 @@ struct ExperimentalFeaturesSettingsView: View {
 
     private var featuresForm: some View {
         Form {
+            // The Shepherd Browser card: everything that belongs to the browser,
+            // with Diagnostics last. The toggle names the feature, so no header.
             Section {
                 Toggle(isOn: Binding(
                     get: { feature.isEnabled },
@@ -88,19 +91,20 @@ struct ExperimentalFeaturesSettingsView: View {
                 }
                 .disabled(feature.isTransitioning)
                 .help("Turning this off preserves saved tabs, profiles, cookies, and runtime settings. An already initialized idle browser engine may remain resident until quit.")
-            }
-            if feature.isEnabled {
-                PasswordManagerSettingsSection(preferences: feature.passwordManagers,
-                    windowID: passwordManagerWindowID, connectIntent: { manager in
-                        feature.passwordManagers.connections.begin(owner: passwordManagerWindowID, manager: manager)
-                    })
-                if let activeMachine = machineStore.activeMachine {
-                    AgentSkillSection(machine: activeMachine).id(activeMachine.id)
+                if feature.isEnabled {
+                    PasswordManagerSettingsRows(preferences: feature.passwordManagers,
+                        windowID: passwordManagerWindowID, connectIntent: { manager in
+                            feature.passwordManagers.connections.begin(owner: passwordManagerWindowID, manager: manager)
+                        })
+                    if let activeMachine = machineStore.activeMachine {
+                        AgentSkillRows(machine: activeMachine).id(activeMachine.id)
+                    }
+                    advancedSettings
                 }
-                advancedSettings
+                if showsDiagnostics { diagnosticsRows }
             }
-            // Independent of the browser, and with nothing to set up or tear
-            // down: terminals read it at each drop.
+            // The Terminal File Drop card. Independent of the browser, and with
+            // nothing to set up or tear down: terminals read it at each drop.
             Section {
                 Toggle(isOn: $terminalFileDropEnabled) {
                     HStack {
@@ -112,52 +116,52 @@ struct ExperimentalFeaturesSettingsView: View {
                 .help("Uploaded images are removed after 24 hours, the next time you drop files on that machine.")
                 .accessibilityIdentifier("settings.experimental-features.terminal-file-drop")
             }
-            if showsDiagnostics { diagnosticsSection }
         }
     }
 
     private var advancedSettings: some View {
-        Section {
-            DisclosureGroup("Advanced", isExpanded: $advancedExpanded) {
-                HStack {
-                    TextField("Loopback port", value: $browserPort, format: .number.grouping(.never))
-                        .help("Port used only for authenticated browser connections on this Mac.")
-                    Button("Apply") {
-                        guard (1...65535).contains(browserPort) else { return }
-                        Task {
-                            do { try await service.setBrowserPort(browserPort); browserPortFailure = nil }
-                            catch { browserPortFailure = connectionFailureDescription(error) }
-                        }
+        DisclosureGroup("Advanced", isExpanded: $advancedExpanded) {
+            HStack {
+                TextField("Loopback port", value: $browserPort, format: .number.grouping(.never))
+                    .help("Port used only for authenticated browser connections on this Mac.")
+                Button("Apply") {
+                    guard (1...65535).contains(browserPort) else { return }
+                    Task {
+                        do { try await service.setBrowserPort(browserPort); browserPortFailure = nil }
+                        catch { browserPortFailure = connectionFailureDescription(error) }
                     }
-                    .disabled(!(1...65535).contains(browserPort) || service.modeChangeBlocked)
                 }
-                Toggle("Block other browser tools", isOn: Binding(
-                    get: { service.preferences.disableCompetingBrowsers },
+                .disabled(!(1...65535).contains(browserPort) || service.modeChangeBlocked)
+            }
+            Toggle("Block other browser tools", isOn: Binding(
+                get: { service.preferences.disableCompetingBrowsers },
+                set: { value in
+                    service.preferences.disableCompetingBrowsers = value
+                    saveAgentPreferences()
+                }
+            ))
+            .help("Only affects future Shepherd launches. Keeps agents from using competing browser tools; does not change global CLI settings. Pi isn't covered: Pi agents keep all of their MCP servers.")
+            if service.preferences.disableCompetingBrowsers {
+                TextField("Browser MCP servers to block", text: Binding(
+                    get: { service.preferences.competingBrowserServers.joined(separator: ", ") },
                     set: { value in
-                        service.preferences.disableCompetingBrowsers = value
+                        service.preferences.competingBrowserServers = value.split(separator: ",")
+                            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
                         saveAgentPreferences()
                     }
-                ))
-                .help("Only affects future Shepherd launches. Keeps agents from using competing browser tools; does not change global CLI settings. Pi isn't covered: Pi agents keep all of their MCP servers.")
-                if service.preferences.disableCompetingBrowsers {
-                    TextField("Browser MCP servers to block", text: Binding(
-                        get: { service.preferences.competingBrowserServers.joined(separator: ", ") },
-                        set: { value in
-                            service.preferences.competingBrowserServers = value.split(separator: ",")
-                                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-                            saveAgentPreferences()
-                        }
-                    ), prompt: Text(verbatim: "playwright, chrome-devtools"))
-                    .help("Comma-separated names from your agent's MCP configuration. This does not rename Shepherd's MCP server.")
-                    .accessibilityIdentifier("settings.experimental-features.competing-servers")
-                }
+                ), prompt: Text(verbatim: "playwright, chrome-devtools"))
+                .help("Comma-separated names from your agent's MCP configuration. This does not rename Shepherd's MCP server.")
+                .accessibilityIdentifier("settings.experimental-features.competing-servers")
             }
-            .accessibilityIdentifier("settings.experimental-features.advanced")
         }
+        .accessibilityIdentifier("settings.experimental-features.advanced")
     }
 
-    private var diagnosticsSection: some View {
-        Section("Diagnostics") {
+    /// Rows at the end of the browser card, open whenever they show; the first
+    /// row says where they start.
+    private var diagnosticsRows: some View {
+        Group {
+            Text("Diagnostics")
             ForEach(messages, id: \.self) { message in
                 Text(message).font(.caption).foregroundStyle(.red).textSelection(.enabled)
                     .help(message.contains("global") || message.contains("duplicate-registration")

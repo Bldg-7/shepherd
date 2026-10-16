@@ -22,7 +22,7 @@ sources = ['Shepherd/Agents/' + name + '.swift' for name in [
     'AgentRuntime', 'PiProcessIdentity', 'AgentHostExecutables', 'AgentSkillPreparation', 'AgentLaunchService', 'ExperimentalSettingsDiagnostics', 'AgentSavedSession',
     'AgentIdleStopPolicy', 'AgentLaunchState', 'AgentResumeConfirmation', 'AgentBrowserAdapter']]
 sources += ['Shepherd/Hosts/Models/Machine.swift', 'Shepherd/Hosts/Models/AgentSkillSetup.swift',
-            'Shepherd/Hosts/Views/AgentSkillSection.swift', 'Shepherd/Hosts/Views/InfoButton.swift',
+            'Shepherd/Hosts/Views/AgentSkillRows.swift', 'Shepherd/Hosts/Views/InfoButton.swift',
             'Shepherd/Browser/BrowserKey.swift',
             'Shepherd/Browser/CDPPolicy.swift', 'Shepherd/HerdrKit/HerdrClient.swift',
             'Shepherd/HerdrKit/Transport/HerdrTransport.swift', 'Shepherd/HerdrKit/Terminal/ShellQuoting.swift']

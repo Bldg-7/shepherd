@@ -41,7 +41,7 @@ def main():
     feature = 'Shepherd/Browser/ShepherdBrowserFeature.swift'
     selection = 'Tests/AgentBrowser/Phase3/PasswordManagerSelectionTests.swift'
     existing = 'Tests/AgentBrowser/Phase3/ShepherdBrowserFeatureTests.swift'
-    view = 'Shepherd/PasswordManagers/PasswordManagerSettingsSection.swift'
+    view = 'Shepherd/PasswordManagers/PasswordManagerSettingsRows.swift'
     sources = [*common, feature, selection, existing, view,
                'Shepherd/PasswordManagers/PasswordManagerConnectionSetupView.swift']
     hashes = {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in sources}

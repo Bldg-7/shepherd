@@ -2,14 +2,15 @@
 import SwiftUI
 import AppKit
 
-struct PasswordManagerSettingsSection: View {
+/// Rows in the Shepherd Browser card; the picker's label names them.
+struct PasswordManagerSettingsRows: View {
     let preferences: PasswordManagerPreferences
     let windowID: UUID
     /// Explicit Settings intent. The app-owned coordinator leases one window.
     let connectIntent: @MainActor (PasswordManagerProviderID) -> Void
 
     var body: some View {
-        Section("Password Manager") {
+        Group {
             PasswordManagerPicker(selection: Binding(get: { preferences.selectedManager }, set: {
                 preferences.select($0)
             }))

@@ -7,7 +7,7 @@ p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);o
 for n in ['home','tmp','cache']:(out/n).mkdir(mode=0o700)
 env=dict(os.environ,DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer',HOME=str(out/'home'),CFFIXED_USER_HOME=str(out/'home'),TMPDIR=str(out/'tmp'),CLANG_MODULE_CACHE_PATH=str(out/'cache'))
 sources=['Shepherd/Hosts/Views/InfoButton.swift','Tests/Settings/InfoButtonTests.swift']
-views=['Shepherd/Hosts/Views/ExperimentalFeaturesSettingsView.swift','Shepherd/Hosts/Views/AgentSkillSection.swift']
+views=['Shepherd/Hosts/Views/ExperimentalFeaturesSettingsView.swift','Shepherd/Hosts/Views/AgentSkillRows.swift']
 (out/'source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in sources+views},indent=2))
 def stage(name,seconds,args):
  log=out/(name+'.log')
