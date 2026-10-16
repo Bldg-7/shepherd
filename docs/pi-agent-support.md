@@ -25,7 +25,10 @@
 - Pi metadata 확인은 executable/package 정보만 읽으며 `pi --version`도 실행하지 않는다.
 - 브라우저 준비, MCP 등록, 실제 browser socket 연결, Provider 연결, credential 승인은 서로 다른 상태다.
 - **정확한 저장 파일 재개, 자식/headless 실행, 경쟁 MCP dispatch 차단은 미지원**이다.
-  Advanced에서 경쟁 브라우저 차단을 요청하면 Pi 실행을 거부하며, 옵션을 몰래 끄지 않는다.
+- 경쟁 MCP dispatch 차단을 지원하지 않으므로, 설정 Experimental Features의 Advanced에 있는
+  "Block other browser tools"는 Pi에 적용되지 않는다. 이 설정을 켜도 Pi 실행은 거부되지 않는다.
+  Pi에는 차단 인자를 넘기지 않으므로 Pi는 자기 MCP 서버를 모두 그대로 쓴다. 이 설정의 도움말에도
+  같은 내용이 적혀 있다.
 - 현재 launch는 최초 session ID와 session directory에 묶인다. `/new`, 다른 저장 파일 선택,
   새 ID를 만드는 fork는 이전 권한을 폐기하고 자동 재승인하지 않는다. 브라우저가 필요한 새 대화는
   새 관리형 실행을 사용한다. 같은 세션의 tree/reload는 별도 epoch로 retire/rebind한다.

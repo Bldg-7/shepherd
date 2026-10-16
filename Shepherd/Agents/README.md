@@ -52,9 +52,13 @@ the built-in backend. Its runtime server is session-owned, with acknowledged
 unregistration; no global MCP/skill installation or npm/download is performed.
 
 Resume, child/headless launch and competing-browser dispatch suppression remain
-unqualified. A different session ID/file is retired and denied, not silently
-rebound; use a fresh managed launch. See `docs/pi-agent-support.md` for scope,
-security contracts, evidence and these explicit limitations.
+unqualified. Because that suppression is unqualified, "Block other browser
+tools" (Settings, Experimental Features, Advanced) is not applied to Pi and does
+not refuse a Pi launch: Pi gets no blocking arguments and keeps all of its MCP
+servers, and the setting's help says so. A different session ID/file is retired
+and denied, not silently rebound; use a fresh managed launch. See
+`docs/pi-agent-support.md` for scope, security contracts, evidence and these
+explicit limitations.
 
 ## Packaging requirement — integration owner
 
