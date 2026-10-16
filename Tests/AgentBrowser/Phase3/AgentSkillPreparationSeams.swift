@@ -51,7 +51,6 @@ actor LocalHerdrTransport: HerdrTransport {
     func connect() {}
     func disconnect() {}
     func send(method: String, params: JSONValue) throws -> JSONValue { throw HostScriptError(status: 1, message: "synthetic only") }
-    func events() -> AsyncStream<JSONValue> { AsyncStream { $0.finish() } }
     func runHerdr(_ arguments: [String]) throws -> Data { throw HostScriptError(status: 1, message: "synthetic only") }
     func runScript(_ script: String) throws -> Data { throw HostScriptError(status: 1, message: "synthetic only") }
 }

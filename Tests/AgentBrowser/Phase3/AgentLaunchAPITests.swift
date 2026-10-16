@@ -12,7 +12,6 @@ actor LaunchTransport: HerdrTransport {
     func send(method: String, params: JSONValue) async throws -> JSONValue { requests.append((method, params)); return response }
     func runHerdr(_ arguments: [String]) async throws -> Data { commands.append(arguments); return try JSONEncoder().encode(JSONValue.object(["result": response])) }
     func runScript(_ script: String) async throws -> Data { throw AgentRuntimeError.rejected("not-a-runtime-test") }
-    func events() -> AsyncStream<JSONValue> { AsyncStream { $0.finish() } }
 }
 
 @main struct AgentLaunchAPITests {

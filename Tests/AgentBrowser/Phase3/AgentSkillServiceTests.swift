@@ -27,7 +27,6 @@ private actor SkillTransport: HerdrTransport {
     func releaseRegistration() { registrationHold = nil; heldRegistration?.resume(); heldRegistration = nil }
     func connect() {}
     func disconnect() { disconnects += 1 }
-    func events() -> AsyncStream<JSONValue> { AsyncStream { $0.finish() } }
     func configure(agents: [JSONValue], processes: [String: JSONValue]) { agentRows = agents; self.processes = processes }
     /// Only the browser check's requests; nothing that changes herdr.
     func send(method: String, params: JSONValue) throws -> JSONValue {

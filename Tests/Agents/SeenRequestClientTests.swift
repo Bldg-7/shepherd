@@ -20,7 +20,6 @@ actor SeenTransport: HerdrTransport {
         return Data("{\"result\":{\"type\":\"ok\"}}".utf8)
     }
     func runScript(_ script: String) async throws -> Data { throw HostScriptError(status: 127, message: "not a script test") }
-    func events() -> AsyncStream<JSONValue> { AsyncStream { $0.finish() } }
 }
 
 @main struct SeenRequestClientTests {

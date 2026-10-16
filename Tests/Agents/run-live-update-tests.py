@@ -108,7 +108,7 @@ for wrong in ['ack never arrives','ack never even arrives','acknowledgement neve
               'once the Citadel/swift-nio-ssh package dependency is wired up',"while the real SSH transport isn't buildable yet"]:
  hits=[n for n,t in swift.items() if wrong in t]
  assert not hits,(wrong,hits)
-# events() left the protocol; the transports don't keep it (fakes elsewhere may).
+# events() left the protocol; the transports don't keep it.
 assert not [n for n,t in swift.items() if n.startswith('Shepherd/HerdrKit/') and 'func events()' in t]
 transport=read('Shepherd/HerdrKit/Transport/LocalHerdrTransport.swift')
 assert 'answers an ordinary request on a connection and then closes it' in transport and '`events.subscribe`,\n/// `events.wait` and `agent.wait`' in transport

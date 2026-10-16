@@ -256,7 +256,6 @@ private actor SnapshotFixtureTransport: HerdrTransport {
         guard method == "session.snapshot" else { throw ProxyError("Unexpected fixture method") }
         return response
     }
-    func events() -> AsyncStream<JSONValue> { AsyncStream { $0.finish() } }
     func runHerdr(_ arguments: [String]) async throws -> Data { throw ProxyError("No fixture CLI") }
     func runScript(_ script: String) async throws -> Data { throw ProxyError("No fixture shell") }
 }
