@@ -588,13 +588,24 @@ private struct LauncherField: NSViewRepresentable {
         var parent: LauncherField
         weak var window: NSWindow?
         weak var previousResponder: NSResponder?
+        /// The text last given to the field or reported by it. The field's
+        /// own `stringValue` also has the syllable the input method is still
+        /// composing, which AppKit doesn't report until it is committed: set
+        /// back over it, that syllable would be thrown away.
+        var text: String?
+        /// Set while SwiftUI updates the field. What AppKit reports then —
+        /// the composition committed as the field's value is replaced — isn't
+        /// typing, and the launcher's state can't be changed in the middle of
+        /// an update.
+        var isUpdating = false
 
         init(_ parent: LauncherField) {
             self.parent = parent
         }
 
         func controlTextDidChange(_ notification: Notification) {
-            guard let field = notification.object as? NSTextField else { return }
+            guard !isUpdating, let field = notification.object as? NSTextField else { return }
+            text = field.stringValue
             parent.text = field.stringValue
         }
 
@@ -633,7 +644,7 @@ private struct LauncherField: NSViewRepresentable {
         field.lineBreakMode = .byTruncatingTail
         field.cell?.isScrollable = true
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        update(field)
+        update(field, context.coordinator)
         // Once the field is in its window: the keyboard is taken on the next
         // turn of the run loop, after SwiftUI's update that put it there.
         DispatchQueue.main.async { [weak field, coordinator = context.coordinator] in
@@ -648,11 +659,16 @@ private struct LauncherField: NSViewRepresentable {
 
     func updateNSView(_ field: NSTextField, context: Context) {
         context.coordinator.parent = self
-        update(field)
+        update(field, context.coordinator)
     }
 
-    private func update(_ field: NSTextField) {
-        if field.stringValue != text {
+    /// Puts `text` in the field only when the launcher changed it — not on
+    /// every update, where it would wipe out a syllable being composed.
+    private func update(_ field: NSTextField, _ coordinator: Coordinator) {
+        coordinator.isUpdating = true
+        defer { coordinator.isUpdating = false }
+        if coordinator.text != text {
+            coordinator.text = text
             field.stringValue = text
         }
         field.placeholderString = prompt
