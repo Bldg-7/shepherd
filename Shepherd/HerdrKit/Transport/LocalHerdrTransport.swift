@@ -6,9 +6,12 @@ import Darwin
 /// Talks to this same Mac's own herdr instance directly over its Unix domain
 /// socket — no SSH, no credential, because there's no network hop at all.
 /// Mirrors `SSHHerdrTransport`'s one-connection-per-request design: herdr.sock
-/// answers exactly one request per connection and closes it, regardless of
-/// transport (confirmed live with a plain local socket — see
-/// SSHHerdrTransport.swift's header comment for the full story).
+/// answers an ordinary request on a connection and then closes it, whatever
+/// the transport (confirmed live with a plain local socket — see
+/// SSHHerdrTransport.swift's header comment for the full story). The
+/// exceptions are the requests that wait for something — `events.subscribe`,
+/// `events.wait` and `agent.wait`: herdr keeps their connection open, for as
+/// long as the subscription lasts or until what is waited for happens.
 actor LocalHerdrTransport: HerdrTransport {
     enum LocalHerdrTransportError: Error, LocalizedError {
         case socketPathTooLong
@@ -42,9 +45,10 @@ actor LocalHerdrTransport: HerdrTransport {
     }
 
     private let socketPath: String
-    /// Where every request's socket work happens — see `SocketExchange`.
-    /// Serial, and shared by all of this transport's requests: nothing run
-    /// on it ever blocks, so one queue carries any number of them.
+    /// Where every request's and subscription's socket work happens — see
+    /// `SocketExchange` and `SocketSubscription`. Serial, and shared by all
+    /// of this transport's connections: nothing run on it ever blocks, so
+    /// one queue carries any number of them.
     private let ioQueue = DispatchQueue(label: "LocalHerdrTransport.io")
     private var nextRequestID = 0
 
@@ -58,10 +62,11 @@ actor LocalHerdrTransport: HerdrTransport {
 
     /// The actor's part in a request is to hand out its id. The round trip
     /// itself is awaited with the actor released, so requests don't queue
-    /// behind each other: the status board keeps several `events.wait`
-    /// long-polls open per pane, each held by herdr for up to 25 s, and needs to hear
-    /// from whichever resolves first — and to get a `pane.list` through
-    /// while the rest are still waiting.
+    /// behind each other. A machine whose herdr can't subscribe has its
+    /// monitor keep several `events.wait` long-polls open per pane instead
+    /// (see `MachineMonitor`), each held by herdr for up to 25 s; it needs to
+    /// hear from whichever resolves first — and to get a `session.snapshot`
+    /// through while the rest are still waiting.
     func send(method: String, params: JSONValue) async throws -> JSONValue {
         let id = "req_\(nextRequestID)"
         nextRequestID += 1
@@ -93,11 +98,16 @@ actor LocalHerdrTransport: HerdrTransport {
         }
     }
 
-    func events() -> AsyncStream<JSONValue> {
-        // Same limitation as SSHHerdrTransport: herdr.sock has no real push
-        // stream to offer (even events.subscribe's ack never arrives before
-        // the connection drops). AgentBoardView polls agent.list instead.
-        AsyncStream { $0.finish() }
+    /// Like `send`, the actor only hands out the id; the subscription's
+    /// connection is read on `ioQueue` as lines arrive, whatever the reader
+    /// is busy with. herdr drops a subscriber it can't write to for 5 s
+    /// (its STREAM_WRITE_TIMEOUT, 0.9.1), so the lines are taken off the
+    /// socket straight away and wait in the stream for the reader.
+    func subscribe(params: JSONValue) async throws -> HerdrSubscriptionLines {
+        let id = "req_\(nextRequestID)"
+        nextRequestID += 1
+        let line = try HerdrRequest(id: id, method: "events.subscribe", params: params).encodedLine()
+        return try await SocketSubscription.open(socketPath: socketPath, requestLine: line, queue: ioQueue)
     }
 }
 
@@ -105,10 +115,10 @@ actor LocalHerdrTransport: HerdrTransport {
 ///
 /// The socket is non-blocking and driven by dispatch sources instead of by a
 /// thread sitting in `recv`: a long-poll spends nearly all of its life
-/// waiting, a board with 30 panes has around 90 of them open at a time, and a
-/// parked thread apiece would run GCD's pool dry. It is also what makes
-/// cancellation prompt — there is no blocked call to wake, only a source to
-/// cancel.
+/// waiting, a monitor polling that way with 30 panes has around 90 of them
+/// open at a time (see `MachineMonitor`), and a parked thread apiece would
+/// run GCD's pool dry. It is also what makes cancellation prompt — there is
+/// no blocked call to wake, only a source to cancel.
 ///
 /// Every stored property below is touched on `queue` only, which is what
 /// makes this safe to share despite the compiler not being able to see it.
@@ -168,7 +178,7 @@ private nonisolated final class SocketExchange: @unchecked Sendable {
         }
         self.continuation = continuation
         do {
-            descriptor = try Self.openSocket(path: socketPath)
+            descriptor = try HerdrSocket.open(path: socketPath)
         } catch {
             finish(.failure(error))
             return
@@ -273,9 +283,14 @@ private nonisolated final class SocketExchange: @unchecked Sendable {
             finish(.failure(TransportError.connectFailed(String(localized: "read failed: \(systemErrorDescription(error))"))))
         }
     }
+}
+
+/// Opening the socket every connection to herdr.sock starts with.
+private nonisolated enum HerdrSocket {
+    private typealias TransportError = LocalHerdrTransport.LocalHerdrTransportError
 
     /// Returns a connected, non-blocking socket.
-    private static func openSocket(path: String) throws -> Int32 {
+    static func open(path: String) throws -> Int32 {
         var addr = sockaddr_un()
         addr.sun_family = sa_family_t(AF_UNIX)
 
@@ -297,10 +312,11 @@ private nonisolated final class SocketExchange: @unchecked Sendable {
             throw TransportError.connectFailed(systemErrorDescription(errno))
         }
         // Not to be inherited by the terminal attaches this app forks while
-        // long-polls are open: herdr tells that a caller has given up on a
-        // wait by its end of the connection closing, and a copy held by a
-        // child would keep it open for as long as that child runs. macOS
-        // has no SOCK_CLOEXEC to ask for this in `socket()` itself.
+        // long-polls and subscriptions are open: herdr tells that a caller
+        // has given up on a wait, or on a subscription, by its end of the
+        // connection closing, and a copy held by a child would keep it open
+        // for as long as that child runs. macOS has no SOCK_CLOEXEC to ask
+        // for this in `socket()` itself.
         _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
 
         // Connecting comes before switching to non-blocking on purpose. A
@@ -325,6 +341,205 @@ private nonisolated final class SocketExchange: @unchecked Sendable {
         _ = setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &enabled, socklen_t(MemoryLayout<Int32>.size))
         _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
         return fd
+    }
+}
+
+/// An `events.subscribe` over a connection of its own, kept open for as long
+/// as the subscription lasts.
+///
+/// Built like `SocketExchange` — a non-blocking socket driven by dispatch
+/// sources on `queue`, every stored property touched on `queue` only, which
+/// is what makes this safe to share — but where an exchange ends with its
+/// one response line, this hands the first line, herdr's acknowledgement,
+/// to `open`, and every line after it to the stream `open` returns, until
+/// herdr or the reader closes the connection. Lines are taken off the socket
+/// as they arrive and wait in that stream, however slowly it is read.
+private nonisolated final class SocketSubscription: @unchecked Sendable {
+    private typealias TransportError = LocalHerdrTransport.LocalHerdrTransportError
+
+    private static let readChunkSize = 16 * 1024
+
+    private let socketPath: String
+    private let requestLine: Data
+    private let queue: DispatchQueue
+    /// Gets the first line, and ends right after it.
+    private let acknowledgement: AsyncThrowingStream<Data, any Error>.Continuation
+    /// Gets every line after the first.
+    private let lines: AsyncThrowingStream<Data, any Error>.Continuation
+
+    /// Set by `end`, after which nothing is read or written any more — and
+    /// before `begin` has run, keeps it from opening a socket at all.
+    private var isEnded = false
+    private var isAcknowledged = false
+    private var descriptor: Int32 = -1
+    private var readSource: DispatchSourceRead?
+    private var writeSource: DispatchSourceWrite?
+    /// See `SocketExchange.sourceDidCancel`.
+    private var registeredSources = 0
+    private var sentCount = 0
+    private var buffer = HerdrLineBuffer()
+
+    private init(
+        socketPath: String,
+        requestLine: Data,
+        queue: DispatchQueue,
+        acknowledgement: AsyncThrowingStream<Data, any Error>.Continuation,
+        lines: AsyncThrowingStream<Data, any Error>.Continuation
+    ) {
+        self.socketPath = socketPath
+        self.requestLine = requestLine
+        self.queue = queue
+        self.acknowledgement = acknowledgement
+        self.lines = lines
+    }
+
+    /// Opens the connection, sends the request, and returns once herdr has
+    /// acknowledged it (see `HerdrTransport.subscribe`).
+    static func open(socketPath: String, requestLine: Data, queue: DispatchQueue) async throws -> HerdrSubscriptionLines {
+        let (acknowledgementStream, acknowledgement) = AsyncThrowingStream<Data, any Error>.makeStream()
+        let (lineStream, lines) = AsyncThrowingStream<Data, any Error>.makeStream()
+        let subscription = SocketSubscription(
+            socketPath: socketPath,
+            requestLine: requestLine,
+            queue: queue,
+            acknowledgement: acknowledgement,
+            lines: lines
+        )
+        let close: @Sendable () -> Void = { queue.async { subscription.end() } }
+        // The caller giving up on the acknowledgement — its task cancelled
+        // while it waits — gives up on the subscription. The stream ending
+        // because the acknowledgement came doesn't.
+        acknowledgement.onTermination = { termination in
+            if case .cancelled = termination { close() }
+        }
+        // The reader stopping, for whatever reason, ends the connection.
+        lines.onTermination = { _ in close() }
+        queue.async { subscription.begin() }
+        var first: Data?
+        do {
+            for try await line in acknowledgementStream {
+                first = line
+                break
+            }
+            try Task.checkCancellation()
+            try HerdrStreamLine.checkAcknowledgement(first)
+        } catch {
+            close()
+            throw error
+        }
+        return HerdrSubscriptionLines(lines: lineStream, close: close)
+    }
+
+    private func begin() {
+        guard !isEnded else { return }
+        do {
+            descriptor = try HerdrSocket.open(path: socketPath)
+        } catch {
+            end(throwing: error)
+            return
+        }
+        let readSource = DispatchSource.makeReadSource(fileDescriptor: descriptor, queue: queue)
+        readSource.setEventHandler { self.readAvailable() }
+        readSource.setCancelHandler { self.sourceDidCancel() }
+        self.readSource = readSource
+        registeredSources += 1
+        readSource.activate()
+
+        writePending()
+    }
+
+    /// The one place a subscription ends: the reader closing it, herdr
+    /// closing it, or the connection failing. Whatever gets here first
+    /// decides how the streams end; anything later finds nothing to do.
+    private func end(throwing error: (any Error)? = nil) {
+        guard !isEnded else { return }
+        isEnded = true
+        if let error {
+            acknowledgement.finish(throwing: error)
+            lines.finish(throwing: error)
+        } else {
+            acknowledgement.finish()
+            lines.finish()
+        }
+        readSource?.cancel()
+        readSource = nil
+        writeSource?.cancel()
+        writeSource = nil
+    }
+
+    /// As in `SocketExchange`: the descriptor is closed once the last
+    /// source registered on it has been cancelled.
+    private func sourceDidCancel() {
+        registeredSources -= 1
+        guard registeredSources == 0 else { return }
+        Darwin.close(descriptor)
+        descriptor = -1
+    }
+
+    private func writePending() {
+        while sentCount < requestLine.count {
+            let (count, error) = requestLine.withUnsafeBytes { (raw: UnsafeRawBufferPointer) -> (Int, Int32) in
+                let count = Darwin.send(descriptor, raw.baseAddress?.advanced(by: sentCount), raw.count - sentCount, 0)
+                return (count, errno)
+            }
+            if count > 0 {
+                sentCount += count
+            } else if count < 0 && error == EINTR {
+                continue
+            } else if count < 0 && (error == EAGAIN || error == EWOULDBLOCK) {
+                waitUntilWritable()
+                return
+            } else {
+                end(throwing: TransportError.connectFailed(String(localized: "write failed: \(systemErrorDescription(error))")))
+                return
+            }
+        }
+        writeSource?.cancel()
+        writeSource = nil
+    }
+
+    private func waitUntilWritable() {
+        guard writeSource == nil else { return }
+        let writeSource = DispatchSource.makeWriteSource(fileDescriptor: descriptor, queue: queue)
+        writeSource.setEventHandler { self.writePending() }
+        writeSource.setCancelHandler { self.sourceDidCancel() }
+        self.writeSource = writeSource
+        registeredSources += 1
+        writeSource.activate()
+    }
+
+    /// Takes what has arrived and passes on every line it completes. herdr
+    /// closing the connection ends the subscription — after an error line
+    /// (`events_lost`, say), or because it is going away; before the
+    /// acknowledgement, `open` reads that as there having been none.
+    private func readAvailable() {
+        var chunk = [UInt8](repeating: 0, count: Self.readChunkSize)
+        let (count, error) = chunk.withUnsafeMutableBytes { (raw: UnsafeMutableRawBufferPointer) -> (Int, Int32) in
+            let count = Darwin.recv(descriptor, raw.baseAddress, raw.count, 0)
+            return (count, errno)
+        }
+        if count > 0 {
+            let complete: [Data]
+            do {
+                complete = try buffer.append(chunk[..<count])
+            } catch {
+                end(throwing: error)
+                return
+            }
+            for line in complete {
+                if isAcknowledged {
+                    lines.yield(line)
+                } else {
+                    isAcknowledged = true
+                    acknowledgement.yield(line)
+                    acknowledgement.finish()
+                }
+            }
+        } else if count == 0 {
+            end()
+        } else if error != EINTR && error != EAGAIN && error != EWOULDBLOCK {
+            end(throwing: TransportError.connectFailed(String(localized: "read failed: \(systemErrorDescription(error))")))
+        }
     }
 }
 #endif

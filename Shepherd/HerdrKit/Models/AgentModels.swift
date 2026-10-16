@@ -82,8 +82,10 @@ nonisolated struct AgentSummary: Identifiable, Equatable, Sendable {
     /// herdr reports `unknown` for a pane with no agent, so for one of
     /// those this says nothing (see `hasAgent`).
     let state: AgentState
-    /// Bumps whenever the pane's output/state changes — used as the
-    /// `min_revision` watermark for `events.wait` long-polling.
+    /// herdr's count of the pane's changes, which goes up whenever its
+    /// output or state does. Only the agent launch code uses it
+    /// (`AgentLaunchService`, `AgentLaunchState`), to tell whether what it
+    /// last saw of a pane is still current.
     let revision: Int
 
     /// The pane ID, qualified by the herdr machine it is on.

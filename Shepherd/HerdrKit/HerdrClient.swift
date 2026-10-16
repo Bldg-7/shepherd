@@ -218,7 +218,8 @@ actor HerdrClient {
         return agents
     }
 
-    /// A finite request for launch/revalidation without changing the board's polling.
+    /// A finite request for launch/revalidation, apart from the machine
+    /// monitors' own reading (see `MachineMonitor`).
     func launchSnapshot() async throws -> HerdrSnapshot {
         try await withThrowingTaskGroup(of: HerdrSnapshot.self) { group in
             group.addTask { try await self.snapshot() }
@@ -291,10 +292,24 @@ actor HerdrClient {
         try await transport.runScript(script)
     }
 
-    /// Long-polls for a pane to transition to a specific status (confirmed
-    /// live: `events.wait` only supports agent-status matches — a broader
-    /// "pane output changed" match exists in the request schema but the
-    /// server rejects it for `events.wait` with `unsupported_event_wait_match`).
+    /// Subscribes to every change of herdr's workspaces, tabs, panes and
+    /// layouts, and to the agent status of the panes in `paneIDs` (see
+    /// `HerdrChangeSubscription`), and returns once herdr has acknowledged
+    /// it, with the lines herdr writes from then on. Throws herdr's error for
+    /// a subscription it turns down — a `HerdrErrorPayload` with the code
+    /// "pane_not_found" when one of the panes is gone — and
+    /// `HerdrSubscriptionError` when there's no subscription to be had over
+    /// this transport at all.
+    func subscribeToChanges(statusOf paneIDs: Set<String>) async throws -> HerdrSubscriptionLines {
+        try await transport.subscribe(params: HerdrChangeSubscription(statusOf: paneIDs).params)
+    }
+
+    /// Long-polls for a pane to transition to a specific status — what a
+    /// machine's monitor keeps up with in place of a subscription when it
+    /// can't have one (see `MachineMonitor`). Confirmed live: `events.wait`
+    /// only supports agent-status matches — a broader "pane output changed"
+    /// match exists in the request schema but the server rejects it for
+    /// `events.wait` with `unsupported_event_wait_match`.
     /// Blocks server—side until the pane reaches `status` or `timeoutMs`
     /// elapses, then the connection ends either way. Returns `true` if it
     /// matched, `false` on a plain timeout.

@@ -37,14 +37,5 @@ nonisolated struct HerdrErrorPayload: Decodable, Sendable, LocalizedError {
     }
 }
 
-/// Unsolicited event line delivered after `events.subscribe` acknowledges.
-/// The exact event envelope shape (e.g. whether the discriminator field is
-/// named "event" or "type") should be confirmed against `herdr api schema --json`;
-/// callers should treat this as provisional and fall back to raw access via `payload`.
-nonisolated struct HerdrEvent: Decodable, Sendable {
-    let payload: JSONValue
-
-    init(from decoder: Decoder) throws {
-        payload = try JSONValue(from: decoder)
-    }
-}
+// The lines herdr writes after acknowledging `events.subscribe` are read
+// with `HerdrStreamLine` (HerdrSubscription.swift).

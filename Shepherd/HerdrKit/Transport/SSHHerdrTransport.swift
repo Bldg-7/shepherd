@@ -2,8 +2,9 @@ import Foundation
 
 // Needs our patched local Citadel + swift-nio-ssh packages (see Vendor/), which
 // add the direct-streamlocal@openssh.com channel type that upstream swift-nio-ssh
-// doesn't support. Guarded with `canImport` so the rest of the app keeps building
-// before that's wired up; StubHerdrTransport stands in until then.
+// doesn't support. Guarded with `canImport` so that a build without them still
+// builds; StubHerdrTransport stands in there (see
+// `MachineStore.makeHerdrTransport`).
 #if canImport(Citadel)
 import Citadel
 import Crypto
@@ -30,16 +31,24 @@ enum SSHHerdrTransportError: Error, LocalizedError {
 ///
 /// CONFIRMED LIVE (2026-10-01), with a plain local Unix-socket connection to
 /// herdr.sock — no SSH, no our code involved at all: **herdr.sock answers
-/// exactly one request per connection and then closes it.** This isn't an
-/// artifact of `remote-api-bridge` or of our transport; it's how the server
-/// itself behaves, for every method including `events.subscribe` (the
-/// subscription ack never even arrives before the connection drops). So:
-/// - Every `send()` opens its own fresh direct-streamlocal channel — there's
-///   nothing to multiplex, because the server never keeps a connection open
-///   for a second request.
-/// - A real push-event stream is not achievable client-side at all against
-///   this herdr version; AgentBoardView polls `agent.list` instead, and
-///   that's the correct approach here, not a stand-in for something better.
+/// one request per connection and then closes it.** This isn't an artifact
+/// of `remote-api-bridge` or of our transport; it's how the server itself
+/// behaves. So every `send()` opens its own fresh direct-streamlocal channel
+/// — there's nothing to multiplex, because the server never keeps a
+/// connection open for a second request.
+///
+/// The exceptions are the requests that wait for something, which herdr
+/// answers on a connection it keeps open (confirmed live on herdr 0.9.0 and
+/// 0.9.1 with a local socket, 2026-10-16): `events.wait` and `agent.wait`
+/// until what is waited for happens, and `events.subscribe` for as long as
+/// the subscription lasts — herdr acknowledges it at once and then writes one
+/// event per line (`subscribe` below). An earlier note here had it that the
+/// acknowledgement never arrived; that didn't hold up. A subscription has to
+/// be over a channel of its own like any request, and stays open with the
+/// SSH connection; one that has been quiet for a long time is kept from
+/// looking idle to sshd and NAT by the snapshots its monitor reads in
+/// between (see `MachineMonitor`). That has not been tried against a real
+/// remote machine yet.
 ///
 /// Upstream swift-nio-ssh doesn't support direct-streamlocal at all (its
 /// ChannelOpenMessage codec hardcodes session/direct-tcpip/forwarded-tcpip),
@@ -188,15 +197,83 @@ actor SSHHerdrTransport: HerdrTransport {
         return stdout
     }
 
-    func events() -> AsyncStream<JSONValue> {
-        // herdr.sock closes every connection after a single response — even
-        // the events.subscribe ack never arrives before the connection drops
-        // (confirmed live, no SSH or our code involved: a plain local socket
-        // connection behaves identically). There is no server-side support
-        // for a push stream to receive here; AgentBoardView polls agent.list
-        // instead, which is the correct approach against this herdr version,
-        // not a stand-in for something better.
-        AsyncStream { $0.finish() }
+    /// Opens a direct-streamlocal channel for the subscription and keeps it
+    /// open: a task of its own reads it for as long as it lasts, as lines
+    /// arrive, and passes them on (see `HerdrTransport.subscribe`). The
+    /// channel closes when the reader stops, when herdr closes it, or with
+    /// the SSH connection. Closing it is also what ends an await here that
+    /// cancellation alone wouldn't — the channel being opened, the request
+    /// being written.
+    func subscribe(params: JSONValue) async throws -> HerdrSubscriptionLines {
+        guard let client, let socketPath else { throw SSHHerdrTransportError.notConnected }
+        let id = "req_\(nextRequestID)"
+        nextRequestID += 1
+        let line = try HerdrRequest(id: id, method: "events.subscribe", params: params).encodedLine()
+
+        var inboundContinuation: AsyncStream<ByteBuffer>.Continuation!
+        let inbound = AsyncStream<ByteBuffer> { inboundContinuation = $0 }
+        let channel = try await client.createDirectStreamlocalChannel(
+            using: .init(socketPath: socketPath)
+        ) { channel in
+            channel.pipeline.addHandler(ByteStreamBridge(continuation: inboundContinuation))
+        }
+
+        let (acknowledgementStream, acknowledgement) = AsyncThrowingStream<Data, any Error>.makeStream()
+        let (lineStream, lines) = AsyncThrowingStream<Data, any Error>.makeStream()
+        // The first line is herdr's acknowledgement, every one after it an
+        // event (or the error herdr ends the subscription with).
+        let reader = Task.detached {
+            var buffer = HerdrLineBuffer()
+            var isAcknowledged = false
+            do {
+                for await chunk in inbound {
+                    for line in try buffer.append(chunk.readableBytesView) {
+                        if isAcknowledged {
+                            lines.yield(line)
+                        } else {
+                            isAcknowledged = true
+                            acknowledgement.yield(line)
+                            acknowledgement.finish()
+                        }
+                    }
+                }
+                acknowledgement.finish()
+                lines.finish()
+            } catch {
+                acknowledgement.finish(throwing: error)
+                lines.finish(throwing: error)
+            }
+            channel.close(promise: nil)
+        }
+        let close: @Sendable () -> Void = {
+            reader.cancel()
+            channel.close(promise: nil)
+        }
+        // As in `SocketSubscription.open`: giving up on the acknowledgement
+        // gives up on the subscription, and the reader stopping ends it.
+        acknowledgement.onTermination = { termination in
+            if case .cancelled = termination { close() }
+        }
+        lines.onTermination = { _ in close() }
+
+        do {
+            try await withTaskCancellationHandler {
+                try await channel.writeAndFlush(ByteBuffer(bytes: line)).get()
+            } onCancel: {
+                close()
+            }
+            var first: Data?
+            for try await line in acknowledgementStream {
+                first = line
+                break
+            }
+            try Task.checkCancellation()
+            try HerdrStreamLine.checkAcknowledgement(first)
+        } catch {
+            close()
+            throw error
+        }
+        return HerdrSubscriptionLines(lines: lineStream, close: close)
     }
 }
 

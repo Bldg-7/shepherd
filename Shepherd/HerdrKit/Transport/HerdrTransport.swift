@@ -1,15 +1,25 @@
 import Foundation
 
-/// Abstraction over "however we're currently talking to herdr.sock on a remote
-/// host". Kept separate from `HerdrClient` so the SSH implementation can be
-/// swapped in once the Citadel/swift-nio-ssh package dependency is wired up,
-/// without the rest of the app depending on that package directly.
+/// Abstraction over however a machine's herdr.sock is reached: this Mac's
+/// own socket directly (`LocalHerdrTransport`), or a remote one over SSH
+/// (`SSHHerdrTransport`). Kept separate from `HerdrClient` so that the rest
+/// of the app doesn't depend on the SSH packages (Citadel, swift-nio-ssh)
+/// directly.
 protocol HerdrTransport: Actor {
     func connect() async throws
     func disconnect() async
     func send(method: String, params: JSONValue) async throws -> JSONValue
-    /// Long-lived event stream opened after `events.subscribe` is acknowledged.
-    func events() -> AsyncStream<JSONValue>
+    /// Sends `events.subscribe` with `params` over a connection of its own,
+    /// which herdr keeps open, and returns once herdr has acknowledged it,
+    /// with every line herdr writes on it after that. Throws herdr's error
+    /// for a subscription it turns down (`HerdrErrorPayload`), and
+    /// `HerdrSubscriptionError` for a connection that closes before herdr
+    /// acknowledges it. Cancelling the call closes the connection.
+    ///
+    /// The default throws `HerdrSubscriptionError.unsupported`: a transport
+    /// that can't keep a connection open goes without, and its callers keep
+    /// up by asking again instead (see `MachineMonitor`).
+    func subscribe(params: JSONValue) async throws -> HerdrSubscriptionLines
     /// If `connect()` just pinned a host key for the first time (no fingerprint
     /// was known going in), returns that fingerprint so the caller can persist
     /// it. Returns nil once a host already has one pinned, or for transports
@@ -30,6 +40,10 @@ protocol HerdrTransport: Actor {
 
 extension HerdrTransport {
     func newlyPinnedHostKeyFingerprint() async -> String? { nil }
+
+    func subscribe(params: JSONValue) async throws -> HerdrSubscriptionLines {
+        throw HerdrSubscriptionError.unsupported
+    }
 }
 
 /// A script run with `HerdrTransport.runScript` exited with a failure. Its
@@ -47,13 +61,12 @@ nonisolated struct HostScriptError: Error, LocalizedError {
     }
 }
 
-/// In-memory fake used while the real SSH transport isn't buildable yet
-/// (see SSHHerdrTransport.swift) and for SwiftUI previews. Returns a fixed
-/// set of agents and emits one synthetic state change so the status board
-/// has something to render end-to-end.
+/// In-memory fake for builds without the SSH packages (see
+/// `MachineStore.makeHerdrTransport`) and for SwiftUI previews. Returns a
+/// fixed set of agents, so the status board has something to render end to
+/// end. It can't subscribe, so whatever uses it keeps up by asking again
+/// (see `MachineMonitor`), and nothing it reports ever changes.
 actor StubHerdrTransport: HerdrTransport {
-    private var continuation: AsyncStream<JSONValue>.Continuation?
-
     func connect() async throws {}
     func disconnect() async {}
 
@@ -68,8 +81,6 @@ actor StubHerdrTransport: HerdrTransport {
                 "layouts": .array(Self.sampleLayouts),
                 "workspaces": .array(Self.sampleWorkspaces)
             ])])
-        case "events.subscribe":
-            return .object([:])
         case "events.wait":
             // The real server holds an `events.wait` request open until the
             // pane reaches the requested status or `timeout_ms` passes, and
@@ -100,20 +111,6 @@ actor StubHerdrTransport: HerdrTransport {
 
     func runScript(_ script: String) async throws -> Data {
         throw HostScriptError(status: 127, message: "Scripts don't run in previews")
-    }
-
-    func events() -> AsyncStream<JSONValue> {
-        AsyncStream { continuation in
-            self.continuation = continuation
-            Task {
-                try? await Task.sleep(for: .seconds(3))
-                continuation.yield(.object([
-                    "type": .string("pane.agent_status_changed"),
-                    "pane_id": .string("w1:p2"),
-                    "state": .string("done")
-                ]))
-            }
-        }
     }
 
     /// Used when an `events.wait` request carries no `timeout_ms` of its own;
