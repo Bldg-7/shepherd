@@ -22,7 +22,7 @@ stage('client-tests',20,[str(out/'client-tests')])
 # The board asks for it on its own: the selection's request is the task's identity,
 # after a wait, never refreshing the board or showing a failure.
 board=(ROOT/'Shepherd/Hosts/Views/AgentBoardView.swift').read_text()
-mark=board[board.index('    private func markSeen('):board.index('    private var isRenaming:')]
+mark=board[board.index('    private func markSeen('):board.index('    private var isClosing:')]
 assert '.task(id: seenRequestNow) { [request = seenRequestNow] in\n            await markSeen(request)' in board
 assert 'controlActiveState == .key' in board and 'Task.sleep(for: Self.seenDelay)' in mark and 'focusTab(request.tabID, on: request.herdrMachine)' in mark
 assert mark.count('isCurrentConnection(machine)')==2 and 'withTaskCancellationHandler' in mark and mark.count('client.disconnect()')==2

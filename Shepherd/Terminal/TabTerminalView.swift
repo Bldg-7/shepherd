@@ -19,6 +19,13 @@ struct TabTerminalView: View {
     var onPaneActivated: ((String) -> Void)?
     var onOpenFile: ((FilePreviewRequest) -> Void)? = nil
     var onOpenWeb: ((TerminalWebLinkRequest) -> Void)? = nil
+    /// Whether a pane that comes up gives its terminal the keyboard (see
+    /// `shouldInitiallyFocus`). Not while a name is being typed into the
+    /// window's title: a tab selected for that comes up as the field takes
+    /// the keyboard, and would take it straight back.
+    var takesKeyboardWhenShown = true
+    /// As `AgentTerminalView.title`, for the tab.
+    var title: String? = nil
 
     /// The pane the keyboard is in, which its border marks. On macOS that
     /// starts as the pane herdr has focused in the tab, which is given the
@@ -42,7 +49,7 @@ struct TabTerminalView: View {
                             machine: machine,
                             pane: pane,
                             machineStore: machineStore,
-                            focusesWhenShown: shouldInitiallyFocus(pane),
+                            focusesWhenShown: takesKeyboardWhenShown && shouldInitiallyFocus(pane),
                             onFocusChange: { focused in
                                 if focused {
                                     focusedPaneID = pane.paneID
@@ -76,7 +83,7 @@ struct TabTerminalView: View {
             }
         }
         .background(Color(white: 0.3))
-        .navigationTitle(tab.title)
+        .navigationTitle(title ?? tab.title)
     }
 }
 

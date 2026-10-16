@@ -67,6 +67,13 @@ struct ContentView: View {
     @State private var switcherConnection: Machine.ConnectionIdentity?
     @State private var pendingPaneDestination: PaneDestination?
     @State private var terminalPaneFocus: TerminalPaneFocus?
+    /// The name being typed into the window's title, in place of the title,
+    /// if one is (see `TitleRenameField`). A row's Rename item starts it on
+    /// the board; it is ended here.
+    @State private var titleRename: TitleRenameSession?
+    /// The last name typed into the title, which the title shows until
+    /// herdr reports it (see `TitleRenameCommit`). The board sends it.
+    @State private var renameCommit: TitleRenameCommit?
     #if os(macOS)
     @State private var passwordManagerWindowID = UUID()
     /// Whether the window shows the browser column beside the terminal.
@@ -97,6 +104,8 @@ struct ContentView: View {
                         launchTargets: $launchTargets,
                         refreshRequests: boardRefreshRequests,
                         closeRequests: closeRequests,
+                        renaming: Binding(get: { titleRename }, set: { beginTitleRename($0, on: machine) }),
+                        renameCommit: $renameCommit,
                         onNavigationDestinations: { destinations in
                             guard machineStore.isCurrentConnection(machine),
                                   machineStore.activeMachine?.connectionIdentity == machine.connectionIdentity else { return }
@@ -161,8 +170,25 @@ struct ContentView: View {
             }
             // Native hosting isolates sidebar insets; project the selected
             // terminal title here so it still reaches the window's toolbar.
+            // (The terminal views set it too, and theirs is the one taken:
+            // see `AgentTerminalView.title`.)
             .navigationTitle(detailNavigationTitle(on: machine))
+            // While a name is typed into the title, the field stands in its
+            // place.
+            .toolbar(removing: titleRenameShown(on: machine) == nil ? nil : .title)
             .toolbar {
+                if let session = titleRenameShown(on: machine) {
+                    ToolbarItem(placement: .navigation) {
+                        TitleRenameField(
+                            session: session,
+                            canSubmit: { TitleRename.canSubmit($0, for: session.item) },
+                            onEnd: endTitleRename
+                        )
+                        .id(session.id)
+                        .frame(minWidth: 160, idealWidth: 280, maxWidth: 420)
+                    }
+                    .sharedBackgroundVisibility(.hidden)
+                }
                 if ShepherdBrowserFeature.shared.isEnabled {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
@@ -204,6 +230,13 @@ struct ContentView: View {
             justCreatedID = nil
             launcherStart = nil
             filePreview = nil
+            // A name typed for the other machine's board isn't sent, and the
+            // keyboard is left alone: a pane ID means nothing on its own.
+            if let titleRename {
+                _ = titleRename.end()
+                self.titleRename = nil
+            }
+            renameCommit = nil
             #if os(macOS)
             showsFilePreview = false
             activatedPanes = [:]
@@ -217,7 +250,13 @@ struct ContentView: View {
                 #endif
             }
         }
-        .onChange(of: selection?.item.id) { _, _ in
+        .onChange(of: selection?.item.id) { _, id in
+            // The title isn't the renamed item's any more: as if the
+            // keyboard had gone elsewhere — which a click on another row
+            // has already done.
+            if let titleRename, titleRename.item.id != id {
+                endTitleRename(titleRename, .left)
+            }
             filePreview = nil
             #if os(macOS)
             showsFilePreview = false
@@ -329,9 +368,71 @@ struct ContentView: View {
     #if os(macOS)
     private func detailNavigationTitle(on machine: Machine?) -> String {
         guard let machine, let item = selection(on: machine).wrappedValue else { return "" }
+        return renameCommit?.title(for: item) ?? item.title
+    }
+
+    /// The rename to show in the window's title on `machine`: one for what
+    /// is selected there, if there is one.
+    private func titleRenameShown(on machine: Machine?) -> TitleRenameSession? {
+        guard let machine, let titleRename,
+              selection(on: machine).wrappedValue?.id == titleRename.item.id else { return nil }
+        return titleRename
+    }
+
+    /// Takes a rename a row's Rename item has started on the board. The
+    /// board selects the item first; a rename of anything that didn't get
+    /// selected is let go of at once. One already being typed ends first,
+    /// as if the keyboard had gone elsewhere. No terminal is to take the
+    /// keyboard as it comes up while the field is to have it: a stale
+    /// request for one is dropped here, and a tab is told so (see
+    /// `TabTerminalView.takesKeyboardWhenShown`).
+    private func beginTitleRename(_ session: TitleRenameSession?, on machine: Machine) {
+        if let titleRename, titleRename !== session {
+            endTitleRename(titleRename, .left)
+        }
+        guard let session else { return }
+        guard selection(on: machine).wrappedValue?.id == session.item.id else {
+            _ = session.end()
+            return
+        }
+        terminalPaneFocus = nil
+        titleRename = session
+    }
+
+    /// Ends a rename typed into the window's title. Of the ways one can
+    /// end, the first counts; the rest are let go of. Return, and the
+    /// keyboard going elsewhere, send the name if there is one to send
+    /// (see `TitleRename.commit`) — the latter only while the item is still
+    /// listed: one closed while its name was being typed has nothing to
+    /// rename. Return and Escape give the keyboard back to what had it
+    /// before, or else to the item's terminal; where it went by itself, it
+    /// stays.
+    private func endTitleRename(_ session: TitleRenameSession, _ ending: TitleRenameEnding) {
+        guard session.end() else { return }
+        if titleRename === session {
+            titleRename = nil
+        }
+        if ending != .cancel, let commit = TitleRename.commit(session.text, for: session.item),
+           ending == .submit || paneDestinations.contains(where: { $0.item.id == session.item.id }) {
+            renameCommit = commit
+        }
+        if ending != .left, !session.giveKeyboardBack() {
+            terminalPaneFocus = keyboardPane(in: session.item).map { TerminalPaneFocus(paneID: $0) }
+        }
+    }
+
+    /// The pane in `item` that is to have the keyboard: the pane itself, or
+    /// in the selected tab the pane last given it — until one has been, the
+    /// one herdr has focused in it — as for the browser column.
+    private func keyboardPane(in item: BoardItem) -> String? {
         switch item {
-        case .pane(let pane): return pane.title
-        case .tab(let tab): return tab.title
+        case .pane(let pane):
+            return pane.id
+        case .tab(let renamed):
+            guard let selected = selection, case .tab(let tab) = selected.item, tab.id == renamed.id else { return nil }
+            let identity = TerminalIdentity(connection: selected.connection, itemID: tab.id)
+            let paneID = activatedPanes[identity] ?? tab.focusedPaneID
+            return (tab.panes.first { $0.paneID == paneID } ?? tab.panes.first)?.id
         }
     }
 
@@ -353,13 +454,16 @@ struct ContentView: View {
             if let machine, let item = selection(on: machine).wrappedValue {
                 if isDetailColumnVisible {
                     let identity = TerminalIdentity(connection: machine.connectionIdentity, itemID: item.id)
+                    let typedTitle = renameCommit?.title(for: item)
                     Group {
                         switch item {
                         case .pane(let agent):
-                            AgentTerminalView(machine: machine, agent: agent, machineStore: machineStore, onOpenFile: openFile, onOpenWeb: openWeb)
+                            AgentTerminalView(machine: machine, agent: agent, machineStore: machineStore, onOpenFile: openFile, onOpenWeb: openWeb,
+                                title: typedTitle)
                         case .tab(let tab):
                             TabTerminalView(machine: machine, tab: tab, machineStore: machineStore,
-                                onPaneActivated: { paneID in activatedPanes[identity] = paneID }, onOpenFile: openFile, onOpenWeb: openWeb)
+                                onPaneActivated: { paneID in activatedPanes[identity] = paneID }, onOpenFile: openFile, onOpenWeb: openWeb,
+                                takesKeyboardWhenShown: titleRename == nil, title: typedTitle)
                         }
                     }
                     .id(identity)

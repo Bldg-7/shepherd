@@ -30,6 +30,15 @@ enum BoardItem: Equatable {
         case .tab(let tab): tab.workspaceID
         }
     }
+
+    /// What the item is called on screen: in its row, and in the window's
+    /// title while it is selected.
+    var title: String {
+        switch self {
+        case .pane(let pane): pane.title
+        case .tab(let tab): tab.title
+        }
+    }
 }
 
 /// What the File menu's Close item — ⌘W — closes. Never the window: the
@@ -79,13 +88,19 @@ struct AgentBoardView: View {
     let refreshRequests: Int
     /// Goes up each time the File menu's Close Tab or Close Pane (⌘W) is
     /// chosen, to close the selection as its row's context menu would — but
-    /// not over a rename, a confirmation or a failure the board still shows.
+    /// not while a name is being typed into the window's title, nor over a
+    /// confirmation or a failure the board still shows.
     let closeRequests: Int
     var onNavigationDestinations: ([PaneDestination]) -> Void
 
-    /// The pane or tab whose name is being edited, and the name as typed.
-    @State private var renaming: BoardItem?
-    @State private var newName = ""
+    /// The rename being typed into the window's title, if there is one.
+    /// A row's Rename item starts it here; `ContentView` shows it in the
+    /// title, and ends it.
+    @Binding var renaming: TitleRenameSession?
+    /// The last name typed into the title, from when it is ready to be sent
+    /// until herdr reports it (see `TitleRenameCommit`). `ContentView` puts
+    /// it here; the board sends it, and lets it go.
+    @Binding var renameCommit: TitleRenameCommit?
     /// The pane or tab waiting for the person to confirm it is to be closed.
     @State private var closing: BoardItem?
     /// Why the last rename or close didn't go through.
@@ -115,6 +130,8 @@ struct AgentBoardView: View {
         launchTargets: Binding<[LaunchTarget]>,
         refreshRequests: Int,
         closeRequests: Int,
+        renaming: Binding<TitleRenameSession?>,
+        renameCommit: Binding<TitleRenameCommit?>,
         onNavigationDestinations: @escaping ([PaneDestination]) -> Void = { _ in }
     ) {
         self.machine = machine
@@ -124,6 +141,8 @@ struct AgentBoardView: View {
         self._launchTargets = launchTargets
         self.refreshRequests = refreshRequests
         self.closeRequests = closeRequests
+        self._renaming = renaming
+        self._renameCommit = renameCommit
         self.onNavigationDestinations = onNavigationDestinations
         self._collapsedGroupIDs = AppStorage(wrappedValue: "", "AgentBoardView.collapsedGroups.\(machine.id.uuidString)")
     }
@@ -261,14 +280,11 @@ struct AgentBoardView: View {
         .task(id: seenRequestNow) { [request = seenRequestNow] in
             await markSeen(request)
         }
-        .alert(renameTitle, isPresented: isRenaming, presenting: renaming) { item in
-            TextField(renamePrompt(for: item), text: $newName)
-            Button("Rename") { rename(item) }
-                .disabled(!canRename(item))
-            Button("Cancel", role: .cancel) {}
-        } message: { item in
-            if case .pane = item {
-                Text("Leave it empty to call the pane by its title again.")
+        // A name typed into the window's title goes to herdr from here, where
+        // the close and its failures go from too.
+        .onChange(of: renameCommit?.id) {
+            if let commit = renameCommit, commit.readsSinceSent == nil {
+                rename(commit)
             }
         }
         .confirmationDialog(closeTitle, isPresented: isClosing, titleVisibility: .visible, presenting: closing) { item in
@@ -946,53 +962,47 @@ struct AgentBoardView: View {
         let message: String
     }
 
-    private var renameTitle: Text {
-        if case .tab = renaming {
-            Text("Rename Tab")
-        } else {
-            Text("Rename Pane")
-        }
-    }
-
-    /// The field starts out with the name the pane or tab already has. A
-    /// pane that has none of its own starts out empty, with its title as the
-    /// prompt: filled in with the title, a rename would pin today's title on
-    /// it for good, where left alone it follows whatever runs in the pane.
+    /// Has the name of `item` typed into the window's title. The title is
+    /// the selected item's, so `item` is selected first if it isn't — as a
+    /// click on its row would select it.
     private func beginRenaming(_ item: BoardItem) {
-        switch item {
-        case .tab(let tab):
-            newName = tab.label
-        case .pane(let pane):
-            newName = pane.label ?? ""
+        if selection?.id != item.id {
+            justCreatedID = nil
+            selection = item
         }
-        renaming = item
+        renaming = TitleRenameSession(item: item)
     }
 
-    private func renamePrompt(for item: BoardItem) -> String {
-        switch item {
-        case .tab(let tab): tab.title
-        case .pane(let pane): pane.automaticTitle
-        }
-    }
-
-    /// A tab can't be given an empty name — herdr would show it as one. A
-    /// pane can: that is how its own name is taken away again.
-    private func canRename(_ item: BoardItem) -> Bool {
-        if case .tab = item {
-            return !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        }
-        return true
-    }
-
-    private func rename(_ item: BoardItem) {
-        let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
-        perform(failureTitle: String(localized: "Couldn't Rename")) { client in
-            switch item {
+    /// Sends a name typed into the window's title, which shows it from now
+    /// until herdr reports it (see `settleRenameCommit`) — or, if it doesn't
+    /// go through, goes back to the name herdr has.
+    private func rename(_ commit: TitleRenameCommit) {
+        perform(failureTitle: String(localized: "Couldn't Rename"), succeeded: {
+            if renameCommit?.id == commit.id { renameCommit?.readsSinceSent = 0 }
+        }, failed: {
+            if renameCommit?.id == commit.id { renameCommit = nil }
+        }) { client in
+            switch commit.item {
             case .tab(let tab):
-                try await client.renameTab(tab.tabID, to: name, on: tab.herdrMachine)
+                try await client.renameTab(tab.tabID, to: commit.name, on: tab.herdrMachine)
             case .pane(let pane):
-                try await client.renamePane(pane.paneID, to: name.isEmpty ? nil : name, on: pane.herdrMachine)
+                try await client.renamePane(pane.paneID, to: commit.name.isEmpty ? nil : commit.name, on: pane.herdrMachine)
             }
+        }
+    }
+
+    /// Counts a read of the herdr `renameCommit`'s item is on — the host's
+    /// own, or the herdr machine with the ID given — and lets the commit go
+    /// once that read ends it (see `TitleRenameCommit.afterRead(of:)`).
+    private func settleRenameCommit(onHerdrMachine herdrMachineID: String?, panes: [AgentSummary], tabs: [TabSummary]?) {
+        guard let commit = renameCommit, commit.item.herdrMachine?.id == herdrMachineID else { return }
+        let current: BoardItem? = switch commit.item {
+        case .pane(let pane): panes.first { $0.id == pane.id }.map(BoardItem.pane)
+        case .tab(let tab): tabs?.first { $0.id == tab.id }.map(BoardItem.tab)
+        }
+        let next = commit.afterRead(of: current)
+        if next != commit {
+            renameCommit = next
         }
     }
 
@@ -1019,8 +1029,14 @@ struct AgentBoardView: View {
     /// the monitor read everything again, so the change shows at once even
     /// where herdr reports no event for it (a pane renamed, a change on a
     /// herdr machine). A change to a pane or tab on a herdr machine goes
-    /// through the host, as every request to one does.
-    private func perform(failureTitle: String, _ change: @escaping (HerdrClient) async throws -> Void) {
+    /// through the host, as every request to one does. `succeeded` is told
+    /// before that read is asked for, `failed` before the failure is shown.
+    private func perform(
+        failureTitle: String,
+        succeeded: @escaping () -> Void = {},
+        failed: @escaping () -> Void = {},
+        _ change: @escaping (HerdrClient) async throws -> Void
+    ) {
         Task {
             do {
                 let current = try machineStore.currentMachine(matching: machine)
@@ -1034,8 +1050,10 @@ struct AgentBoardView: View {
                     throw error
                 }
                 await client.disconnect()
+                succeeded()
                 monitor.refreshNow()
             } catch {
+                failed()
                 actionFailure = ActionFailure(title: failureTitle, message: connectionFailureDescription(error))
             }
         }
@@ -1083,10 +1101,6 @@ struct AgentBoardView: View {
         } onCancel: {
             Task { await client.disconnect() }
         }
-    }
-
-    private var isRenaming: Binding<Bool> {
-        Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })
     }
 
     private var isClosing: Binding<Bool> {
@@ -1139,6 +1153,17 @@ struct AgentBoardView: View {
             browsers.reconcile(machineID: machine.id, herdrMachineID: group.id, panes: group.agents)
         }
         #endif
+        // A name typed into the window's title for a pane or tab on one of
+        // them, by what this round read of its machine, if it read it.
+        if let id = renameCommit?.item.herdrMachine?.id {
+            if let group = groups.first(where: { $0.id == id }) {
+                if group.error == nil && group.hasLoaded {
+                    settleRenameCommit(onHerdrMachine: id, panes: group.agents, tabs: group.tabs)
+                }
+            } else {
+                settleRenameCommit(onHerdrMachine: id, panes: [], tabs: [])
+            }
+        }
         guard let selected = selection, let machine = selected.herdrMachine else { return }
         guard let group = groups.first(where: { $0.id == machine.id }) else {
             selection = nil
@@ -1159,6 +1184,7 @@ struct AgentBoardView: View {
         // The browsers of panes that are no longer listed go with them.
         if !machine.isLocal { BrowserStore.shared.reconcile(machineID: machine.id, herdrMachineID: nil, panes: agents) }
         #endif
+        settleRenameCommit(onHerdrMachine: nil, panes: agents, tabs: tabs)
         // A selection on a herdr machine is `showHerdrMachines`'s to keep.
         guard let selected = selection, selected.herdrMachine == nil else { return }
         reselect(selected, in: agents, tabs: tabs)

@@ -7,12 +7,17 @@ struct AgentTerminalView: View {
     let machineStore: MachineStore
     var onOpenFile: ((FilePreviewRequest) -> Void)? = nil
     var onOpenWeb: ((TerminalWebLinkRequest) -> Void)? = nil
+    /// The title to show in place of the pane's own: a new name typed into
+    /// the window's title, until herdr reports it (see `TitleRenameCommit`).
+    /// The window's title is the one set here: it is taken over the one
+    /// `ContentView` sets around this column, and over a file preview's.
+    var title: String? = nil
 
     var body: some View {
         TerminalPaneFrame(isFocused: false) {
             PaneTerminalView(machine: machine, pane: agent, machineStore: machineStore, onOpenFile: onOpenFile, onOpenWeb: onOpenWeb)
         }
-        .navigationTitle(agent.title)
+        .navigationTitle(title ?? agent.title)
     }
 }
 
