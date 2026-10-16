@@ -41,7 +41,7 @@ not pass its GitHub token, or the keys the workflow gives it, to build plugins.
 2. Choose the version (the marketing version, like 0.3.2) and the numeric build number.
    **Do not use Git commit count:** this public history differs from the earlier private
    source history. 0.1 used build 21; 0.2.0 used build 22; 0.2.1 used build 23; 0.3.0 used
-   build 24; 0.3.1 used build 25; 0.3.2 used build 26; **0.3.3 uses build 27**. A new build number must be higher than the one in the
+   build 24; 0.3.1 used build 25; 0.3.2 used build 26; 0.3.3 used build 27; **0.4.0 uses build 28**. A new build number must be higher than the one in the
    published appcast.
 3. Write the release notes as `notes/<version>.md`. They are embedded in the appcast.
 
@@ -99,7 +99,7 @@ only once.
 Start `Release (macOS)` from the Actions tab on `main`, or:
 
 ```sh
-gh workflow run release-macos.yml --repo Bldg-7/shepherd -f version=0.3.3 -f build_number=27
+gh workflow run release-macos.yml --repo Bldg-7/shepherd -f version=0.4.0 -f build_number=28
 ```
 
 Approve the run when GitHub asks. It uploads a draft release. It also keeps the disk image,
