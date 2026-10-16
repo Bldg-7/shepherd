@@ -8,7 +8,8 @@ python3 Tests/Terminal/run-usability-tests.py --output /tmp/usability-FRESH \
 Private HOME/defaults/cache, bounded natural-exit stages, no user files, sockets,
 SSH, credentials or vendor calls. Compiles actual production block parsing,
 board selection declaration, snapshot/identity models, picker view, native detail
-controller, SwiftTerm and shared terminal frame.
+controller, SwiftTerm and shared terminal frame, and the new tab launcher's text
+field.
 
 - Machines: edit/delete slots stay in place but are visible/enabled only during
   row hover; local machine stays protected; context-menu alternatives and delete
@@ -20,6 +21,15 @@ controller, SwiftTerm and shared terminal frame.
   workspace is never taken for the host's of the same raw ID, a workspace no
   longer listed leaves only the machine picked, and nothing selected or a herdr
   no tab can be opened on falls back to asking from the start.
+- Launcher field: the new tab launcher's actual `LauncherField` in a never-shown
+  window, driven as a Korean input method drives it: committed text through
+  `insertText`, the syllable being composed through `setMarkedText`. The syllable
+  being composed stays in the field when a commit starts the next one and when
+  the launcher is redrawn. Return submits the whole word. Emptying the field
+  mid-word leaves both the field and the launcher's text empty. Only typing
+  changes the launcher's text, and the stage log, kept with
+  `OS_ACTIVITY_DT_MODE=1`, has no SwiftUI "Modifying state during view update"
+  warning. No input method, app or user GUI is involved.
 - Cmd-W: the File menu's Close is replaced and never closes the window. Cmd-W
   closes the selected tab (Group by Tab on) or pane (off, or a herdr too old to
   report tabs) after the sidebar's confirmation; Close Window stays, without a
