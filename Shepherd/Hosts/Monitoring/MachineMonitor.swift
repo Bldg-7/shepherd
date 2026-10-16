@@ -625,7 +625,7 @@ final class MachineMonitor {
     /// Nor is a pane with no agent in it: it has no status to change. An
     /// agent starting in one shows up the way a pane opening does, when the
     /// round ends.
-    static func waitForAnyPaneChange(client: HerdrClient, panes: [AgentSummary], timing: Timing = Timing()) async throws {
+    private static func waitForAnyPaneChange(client: HerdrClient, panes: [AgentSummary], timing: Timing) async throws {
         let agents = panes.filter(\.hasAgent)
         guard !agents.isEmpty else {
             try await Task.sleep(for: timing.noAgentRound)

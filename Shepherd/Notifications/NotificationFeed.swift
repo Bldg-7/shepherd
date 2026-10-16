@@ -28,11 +28,6 @@ final class NotificationFeed: MachineMonitorListener {
         seen = []
     }
 
-    /// A snapshot of the machine's own herdr.
-    func observe(_ snapshot: HerdrSnapshot) {
-        observe(panes: snapshot.panes, tabs: snapshot.tabs, workspaces: snapshot.workspaces, on: nil)
-    }
-
     /// A snapshot of the machine's own herdr, or of one of its herdr
     /// machines.
     func observe(panes: [AgentSummary], tabs: [TabSummary]?, workspaces: [WorkspaceSummary]?, on herdrMachine: HerdrMachine?) {
