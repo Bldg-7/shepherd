@@ -240,6 +240,15 @@ preparation; compatibility declarations never restore the old global behavior.
 5. Register accepted local snapshot endpoints so Claude child hooks can lazily
    prepare exactly the requested child. No registered/ambiguous pane means the
    original command is retained and reason-recorded; never use a parent URL.
+   For each pane, Shepherd keeps the runtime preferences
+   (`AgentRuntimePreferences`) it was registered with. A new pane is registered
+   at the next check. A pane already registered is registered again only when
+   the current preferences differ from those. That happens at the first check
+   after the preferences have not been saved for a second, because the "Browser
+   MCP servers to block" field saves them at every key. Saving unchanged
+   preferences registers nothing. Changing the browser port or installing the
+   agent runtime registers every pane again at the next check, without the
+   one-second wait.
    If registering a pane fails, or preparing the agent found in a pane's argv
    fails, Shepherd waits before trying that pane again: 30 seconds after the
    first failure, then 60, 120 and 240 seconds, then 5 minutes between later
