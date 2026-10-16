@@ -17,6 +17,14 @@ private actor SkillTransport: HerdrTransport {
     private var scopeFailure = false
     private var pending: CheckedContinuation<Void, Never>?
     private var started: CheckedContinuation<Void, Never>?
+    /// Each registerPane: the pane, the servers to block and the toggle.
+    private(set) var registrations: [String] = []
+    private var registrationHold: String?
+    private var heldRegistration: CheckedContinuation<Void, Never>?
+    private var registrationHeld: CheckedContinuation<Void, Never>?
+    func holdRegistration(of pane: String) { registrationHold = pane }
+    func waitForHeldRegistration() async { if heldRegistration == nil { await withCheckedContinuation { registrationHeld = $0 } } }
+    func releaseRegistration() { registrationHold = nil; heldRegistration?.resume(); heldRegistration = nil }
     func connect() {}
     func disconnect() { disconnects += 1 }
     func events() -> AsyncStream<JSONValue> { AsyncStream { $0.finish() } }
@@ -49,6 +57,18 @@ private actor SkillTransport: HerdrTransport {
             installs += 1
             if hold { await withCheckedContinuation { pending = $0; started?.resume(); started = nil } }
             value = installation
+        } else if script.contains("\"action\":\"registerPane\"") {
+            func field(_ name: String, _ end: Character) -> String {
+                guard let start = script.range(of: "\"\(name)\":") else { return "?" }
+                let rest = script[start.upperBound...]
+                return rest.firstIndex(of: end).map { String(rest[...$0]) } ?? String(rest)
+            }
+            let pane = field("paneID", ",")
+            if registrationHold.map({ pane.contains("\"\($0)\"") }) == true {
+                await withCheckedContinuation { heldRegistration = $0; registrationHeld?.resume(); registrationHeld = nil }
+            }
+            registrations.append(pane + " " + field("competingBrowserServers", "]") + " " + field("disableCompetingBrowsers", ","))
+            value = ["registered": true]
         } else if script.contains("\"action\":\"stagePi\"") {
             return Data("{\"ok\":false,\"error\":\"pi-package-unsupported\"}".utf8)
         } else if script.contains("\"action\":\"status\"") { statusScripts += 1; value = ["installation": installation] }
@@ -137,6 +157,84 @@ nonisolated private final class Fired: @unchecked Sendable {
         await checker.stop()
     }
 
+    /// Settings saved as they are typed register each pane again once, with
+    /// the value they settle on; a save during a registration is not lost.
+    private static func registrationFollowsSettings(fake: SkillTransport, machine: Machine, defaults: UserDefaults) async throws {
+        func json(_ text: String) throws -> JSONValue { try JSONDecoder().decode(JSONValue.self, from: Data(text.utf8)) }
+        let manager = FileManager.default
+        let root = manager.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("registration-" + UUID().uuidString)
+        try manager.createDirectory(at: root, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        defer { try? manager.removeItem(at: root) }
+        try Data(#"{"version":"synthetic","resourceDirectory":"/synthetic/resources","mode":"plugin","globalRegistrationVersion":null,"codexPluginKey":null,"codexPluginReady":false}"#.utf8)
+            .write(to: root.appendingPathComponent("installation.json"))
+        await fake.configure(hold: false)
+        let service = AgentLaunchService(context: { .init(root: root.path, resources: "/synthetic/resources", node: "/synthetic/node", claudeSettings: "/synthetic/claude/settings.json", claudeSkills: "/synthetic/claude/skills", codexHome: "/synthetic/codex", executionSearchPath: "/synthetic/bin:/usr/bin:/bin") }, defaults: defaults,
+                                         makeLocalClient: { _ in HerdrClient(transport: fake) })
+        ShepherdBrowserFeature.shared.isEnabled = true
+        service.update(machines: [machine]); service.start()
+        await wait { service.skillPreparation.state == .ready }
+        let panes = [AgentSummary(json: try json(#"{"pane_id":"w1:p1","terminal_id":"term_one","revision":1}"#))!,
+                     AgentSummary(json: try json(#"{"pane_id":"w1:p2","terminal_id":"term_two","revision":1}"#))!]
+        await fake.configure(agents: [], processes: [
+            "w1:p1": try json(#"{"pane_id":"w1:p1","shell_pid":10,"foreground_processes":[{"pid":10,"name":"zsh"}]}"#),
+            "w1:p2": try json(#"{"pane_id":"w1:p2","shell_pid":20,"foreground_processes":[{"pid":20,"name":"zsh"}]}"#)])
+        CDPProxy.shared.port = 9334; CDPProxy.shared.tokenFile = URL(fileURLWithPath: "/synthetic/agent-token-9334")
+        for pane in panes { MachineBrowserService.shared.resolvable[BrowserKey(machine: machine, pane: pane)] = pane.terminalID }
+        /// One check; the registrations it made.
+        func round() async -> [String] {
+            let before = await fake.disconnects, count = await fake.registrations.count
+            MachineBrowserService.shared.accept(panes, on: machine)
+            var finished = false
+            for _ in 0..<10000 { if await fake.disconnects > before { finished = true; break }; await Task.yield() }
+            precondition(finished, "browser check did not finish")
+            return Array(await fake.registrations.dropFirst(count))
+        }
+        /// What the Browser MCP servers field's binding does, which SwiftUI
+        /// calls about three times for each key typed.
+        func type(_ text: String) throws {
+            for _ in 0..<3 {
+                service.preferences.competingBrowserServers = text.split(separator: ",")
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+                try service.savePreferences()
+            }
+        }
+        let first = await round()
+        precondition(first.count == 2 && first.allSatisfy { $0.hasSuffix(" [] false,") }, "every pane is registered once: \(first)")
+        let unchanged = await round(); precondition(unchanged.isEmpty, "an unchanged check registers nothing: \(unchanged)")
+        service.preferences.disableCompetingBrowsers = true
+        let text = "playwright, chrome-devtools"
+        for length in 1...text.count {
+            try type(String(text.prefix(length)))
+            if length % 5 == 0 { let typing = await round(); precondition(typing.isEmpty, "no registration while typing: \(typing)") }
+        }
+        try await Task.sleep(for: .milliseconds(1100))
+        let settled = await round()
+        precondition(settled.count == 2 && settled.allSatisfy { $0.hasSuffix(#" ["playwright","chrome-devtools"] true,"#) },
+                     "each pane registered once with the settled value: \(settled)")
+        try type(text + ", ")
+        try await Task.sleep(for: .milliseconds(1100))
+        let same = await round(); precondition(same.isEmpty, "saving the same list registers nothing: \(same)")
+        // A save while a pane's registration runs: that pane is registered again.
+        // Held from before the first save, so a check that save starts at once
+        // is held too, and the steps below fail instead of waiting forever.
+        await fake.holdRegistration(of: "w1:p1")
+        service.preferences.disableCompetingBrowsers = false; try service.savePreferences()
+        try await Task.sleep(for: .milliseconds(1100))
+        let held = Task { await round() }
+        await fake.waitForHeldRegistration()
+        service.preferences.disableCompetingBrowsers = true; try service.savePreferences()
+        await fake.releaseRegistration()
+        _ = await held.value
+        try await Task.sleep(for: .milliseconds(1100))
+        let again = await round()
+        precondition(again.count == 1 && again[0].contains("\"w1:p1\"") && again[0].hasSuffix(" true,"),
+                     "the pane registered during the save is registered again with the saved value: \(again)")
+        let after = await round(); precondition(after.isEmpty, "and then left alone: \(after)")
+        CDPProxy.shared.port = nil; CDPProxy.shared.tokenFile = nil; MachineBrowserService.shared.resolvable = [:]
+        ShepherdBrowserFeature.shared.isEnabled = false
+        await service.stop()
+    }
+
     static func main() async throws {
         let suite = "shepherd-skills-synthetic-" + UUID().uuidString
         let defaults = UserDefaults(suiteName: suite)!
@@ -204,6 +302,7 @@ nonisolated private final class Fired: @unchecked Sendable {
         ShepherdBrowserFeature.shared.isEnabled = false
         await service.stop()
         try await browserCheck(fake: fake, machine: machine, defaults: defaults)
-        print("PASS real AgentLaunchService with synthetic native/transport seams: OFF no setup, ON automatic setup, shared/coalesced preparation, safe drain, legacy-global failure, explicit retry, Codex delivery distinction; no real CLI/herdr/GUI")
+        try await registrationFollowsSettings(fake: fake, machine: machine, defaults: defaults)
+        print("PASS real AgentLaunchService with synthetic native/transport seams: OFF no setup, ON automatic setup, shared/coalesced preparation, safe drain, legacy-global failure, explicit retry, Codex delivery distinction, panes registered again once when settings settle; no real CLI/herdr/GUI")
     }
 }

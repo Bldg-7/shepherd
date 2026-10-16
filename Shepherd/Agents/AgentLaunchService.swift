@@ -89,7 +89,10 @@ final class AgentLaunchService {
     private var preparationRetries: [AgentPaneIdentity: AgentDirectPreparation.Retry] = [:]
     private var registrationRetries: [AgentPaneIdentity: AgentDirectPreparation.Retry] = [:]
     private var piLaunches: [AgentPaneIdentity: PiLaunchCoordinator] = [:]
-    private var registered: Set<AgentPaneIdentity> = []
+    /// The settings each pane was last registered with.
+    private var registered: [AgentPaneIdentity: AgentRuntimePreferences] = [:]
+    /// When the settings were last saved: the field saves them as they are typed.
+    private var preferencesSaved: ContinuousClock.Instant?
     private var disappeared: Set<AgentPaneIdentity> = []
     private var failures: [AgentPaneIdentity: String] = [:]
     private var pending: Set<UUID> = []
@@ -192,9 +195,10 @@ final class AgentLaunchService {
         // Host-global registration is no longer an activation option.
         preferences.mode = .plugin
         defaults.set(try JSONEncoder().encode(preferences), forKey: "agentRuntimePreferences")
-        registered.removeAll()
+        // The browser check registers the panes again once these have stayed
+        // the same for a second, not at every key typed into the field.
+        preferencesSaved = ContinuousClock().now
         resetPreparationRetries()
-        scheduleConsumer()
     }
 
     /// The user changed or retried something: failed preparations are tried
@@ -567,7 +571,7 @@ final class AgentLaunchService {
             for old in Array(plans.keys) where moved(old) {
                 plans[current] = plans.removeValue(forKey: old)
                 failures[current] = failures.removeValue(forKey: old)
-                registered.remove(old)
+                registered[old] = nil
             }
             for old in Array(rejectedPreparations.keys) where moved(old) { rejectedPreparations[current] = rejectedPreparations.removeValue(forKey: old) }
             for old in Array(preparationRetries.keys) where moved(old) { preparationRetries[current] = preparationRetries.removeValue(forKey: old) }
@@ -644,6 +648,7 @@ final class AgentLaunchService {
             let host = try context(), runtime = host.runtime(using: client)
             let installed = try await runtime.installation(on: .thisMac)
             if let installed, installed != installation { installation = installed }
+            let settled = preferencesSaved.map { $0.duration(to: ContinuousClock().now) >= .seconds(1) } ?? true
             for pane in snapshot.panes {
                 guard !modeOperation, !skillPreparation.isBusy, let installed, snapshots[snapshot.machine.id]?.panes.contains(pane) == true,
                       let resolved = resolved(pane, on: snapshot.machine), let endpoint = CDPProxy.shared.endpoint(for: resolved.key) else { continue }
@@ -651,7 +656,11 @@ final class AgentLaunchService {
                 guard let inspection = inspections[identity] else { continue }
                 let process = inspection.process, observed = inspection.agent
                 var currentPreferences = preferences; currentPreferences.mode = installed.mode
-                if !registered.contains(identity) {
+                // A new pane is registered at once; a registered one again when
+                // the settings it was registered with changed and have settled.
+                // Recording the settings used, not just "registered", keeps a save
+                // made while this registration runs from being taken as done.
+                if registered[identity] != currentPreferences, registered[identity] == nil || settled {
                     // While a failed registration waits, this check stops here
                     // as the failure itself did.
                     if AgentDirectPreparation.isWaiting(registrationRetries[identity], argv: nil, now: ContinuousClock().now),
@@ -666,7 +675,7 @@ final class AgentLaunchService {
                             message: connectionFailureDescription(error), now: ContinuousClock().now)
                         throw error
                     }
-                    registered.insert(identity); registrationRetries[identity] = nil
+                    registered[identity] = currentPreferences; registrationRetries[identity] = nil
                 }
                 // Direct agents are checked with their actual argv/config. Unsafe or
                 // already injected registrations remain unknown, never called missing,
@@ -705,7 +714,7 @@ final class AgentLaunchService {
                       pending.isEmpty else { continue }
                 do {
                     try await runtime.cleanup(pane: identity, on: .thisMac)
-                    disappeared.remove(identity); registered.remove(identity); plans[identity] = nil
+                    disappeared.remove(identity); registered[identity] = nil; plans[identity] = nil
                     inspections[identity] = nil; failures[identity] = nil; rejectedPreparations[identity] = nil
                     preparationRetries[identity] = nil; registrationRetries[identity] = nil
                 } catch { reported = connectionFailureDescription(error) }

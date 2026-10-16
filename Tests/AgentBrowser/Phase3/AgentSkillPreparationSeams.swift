@@ -20,7 +20,12 @@ nonisolated struct BrowserEndpoint: Sendable {
     static let shared = CDPProxy()
     var activeConnections = 0
     var port: Int? = nil
-    func endpoint(for key: BrowserKey) -> BrowserEndpoint? { nil }
+    /// Set only by the registration check; without it no pane has an endpoint.
+    var tokenFile: URL?
+    func endpoint(for key: BrowserKey) -> BrowserEndpoint? {
+        guard let port, let tokenFile else { return nil }
+        return BrowserEndpoint(origin: .local, host: "127.0.0.1", port: port, path: "/v1/herdr/\(key.session)/pane/\(key.paneID)", tokenFile: tokenFile)
+    }
     func restart(port: Int) async { self.port = port }
 }
 @MainActor final class BrowserStore {
@@ -34,7 +39,11 @@ nonisolated struct BrowserEndpoint: Sendable {
     var errors: [UUID: String] = [:]
     var acceptedSnapshot: (@MainActor ([AgentSummary], Machine) -> Void)?
     func accept(_ panes: [AgentSummary], on machine: Machine) { acceptedSnapshot?(panes, machine) }
-    func resolve(_ route: CDPRoute) -> ResolvedPane? { nil }
+    /// Panes the registration check lets resolve; empty elsewhere.
+    var resolvable: [BrowserKey: String] = [:]
+    func resolve(_ route: CDPRoute) -> ResolvedPane? {
+        resolvable.first { $0.key.session == route.session && $0.key.paneID == route.pane }.map { ResolvedPane(key: $0.key, terminalID: $0.value) }
+    }
 }
 actor LocalHerdrTransport: HerdrTransport {
     nonisolated static let defaultSocketPath = "/synthetic/herdr.sock"
