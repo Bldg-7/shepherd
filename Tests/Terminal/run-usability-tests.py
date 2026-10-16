@@ -8,8 +8,8 @@ for n in ['home','tmp','cache']:(o/n).mkdir(mode=0o700)
 env=dict(os.environ,HOME=str(o/'home'),CFFIXED_USER_HOME=str(o/'home'),TMPDIR=str(o/'tmp'),CLANG_MODULE_CACHE_PATH=str(o/'cache'),DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer')
 products=a.swiftterm_products.resolve();shutil.copytree(products/'SwiftTerm_SwiftTerm.bundle',o/'SwiftTerm_SwiftTerm.bundle')
 checks=[]
-def stage(name,timeout,command):
- log=o/(name+'.log');subprocess.run([sys.executable,str(R/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(timeout),'--natural-exit-grace','10','--log',str(log),'--',*command],cwd=R,env=env,timeout=timeout+40,check=True)
+def stage(name,timeout,command,mirrorsLog=False):
+ log=o/(name+'.log');subprocess.run([sys.executable,str(R/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(timeout),'--natural-exit-grace','10','--log',str(log),'--',*command],cwd=R,env=dict(env,OS_ACTIVITY_DT_MODE='1') if mirrorsLog else env,timeout=timeout+40,check=True)
  j=json.loads(log.with_suffix('.stage.json').read_text());assert j['naturalExitConfirmed'] and j['cleanupVerified'] and not j['signalsSent'];checks.append(name)
 flags=['xcrun','swiftc','-swift-version','6','-default-isolation','MainActor','-target',platform.machine()+'-apple-macos26.6.2','-parse-as-library']
 markdown=['Shepherd/FilePreview/MarkdownPreview.swift','Shepherd/FilePreview/PreviewSyntaxHighlighter.swift','Shepherd/FilePreview/PreviewSyntaxRendering.swift','Tests/FilePreview/MarkdownParsingTests.swift']
@@ -28,12 +28,11 @@ close=models+['Tests/Terminal/CloseCommandTests.swift']
 stage('close-command-build',90,flags+close+[str(board),'-o',str(o/'close-command-tests')]);stage('close-command-tests',20,[str(o/'close-command-tests')])
 modal=['Shepherd/Hosts/Views/WorkspaceDetailSplitView.swift','Shepherd/Terminal/TerminalPaneFrame.swift','Shepherd/Terminal/TerminalHostView.swift','Shepherd/Terminal/TerminalFileGesture.swift','Shepherd/Terminal/TerminalWebLink.swift','Shepherd/FilePreview/TerminalFileHit.swift','Shepherd/FilePreview/FilePreviewLink.swift','Tests/Terminal/PreviewModalLayoutTests.swift']
 stage('modal-build',90,flags+['-I',str(products)]+modal+[str(products/'SwiftTerm.o'),'-framework','AppKit','-framework','QuartzCore','-framework','CoreText','-o',str(o/'modal-tests')]);stage('modal-tests',25,[str(o/'modal-tests')])
-(o/'source-hashes.json').write_text(json.dumps({n:hashlib.sha256((R/n).read_bytes()).hexdigest() for n in set(markdown+nav+preset+close+modal+['Shepherd/ContentView.swift','Shepherd/Shepherd.swift','Shepherd/Hosts/Views/MachinesSettingsView.swift','Shepherd/Hosts/Views/AgentBoardView.swift','Shepherd/Hosts/Views/NewTabLauncher.swift','Shepherd/FilePreview/FilePreviewPanel.swift','Shepherd/Terminal/AgentTerminalView.swift','Shepherd/Terminal/AgentTerminalViewModel.swift'])},indent=2))
+(o/'source-hashes.json').write_text(json.dumps({n:hashlib.sha256((R/n).read_bytes()).hexdigest() for n in set(markdown+nav+preset+close+modal+['Shepherd/ContentView.swift','Shepherd/Shepherd.swift','Shepherd/Hosts/Views/MachinesSettingsView.swift','Shepherd/Hosts/Views/AgentBoardView.swift','Shepherd/Hosts/Views/NewTabLauncher.swift','Shepherd/FilePreview/FilePreviewPanel.swift','Shepherd/Terminal/AgentTerminalView.swift','Shepherd/Terminal/AgentTerminalViewModel.swift','Tests/Terminal/LauncherFieldTests.swift'])},indent=2))
 # And the launcher's real field, driven as the Korean input method drives it. SwiftUI's faults go to the log, which must not say state was changed during a view update.
 text=(R/'Shepherd/Hosts/Views/NewTabLauncher.swift').read_text();start=text.index("/// The launcher's text field");end=text.index('#endif',start);launcherField=o/'LauncherField.swift';launcherField.write_text('import SwiftUI\nimport AppKit\n'+text[start:end].replace('private struct LauncherField','struct LauncherField',1))
-env['OS_ACTIVITY_DT_MODE']='1';stage('launcher-field-build',90,flags+[str(launcherField),'Tests/Terminal/LauncherFieldTests.swift','-framework','AppKit','-o',str(o/'launcher-field-tests')]);stage('launcher-field-tests',20,[str(o/'launcher-field-tests')]);del env['OS_ACTIVITY_DT_MODE']
+stage('launcher-field-build',90,flags+[str(launcherField),'Tests/Terminal/LauncherFieldTests.swift','-framework','AppKit','-o',str(o/'launcher-field-tests')]);stage('launcher-field-tests',20,[str(o/'launcher-field-tests')],mirrorsLog=True)
 assert 'Modifying state during view update' not in (o/'launcher-field-tests.log').read_text()
-hashes=json.loads((o/'source-hashes.json').read_text());hashes['Tests/Terminal/LauncherFieldTests.swift']=hashlib.sha256((R/'Tests/Terminal/LauncherFieldTests.swift').read_bytes()).hexdigest();(o/'source-hashes.json').write_text(json.dumps(hashes,indent=2))
 c=(R/'Shepherd/ContentView.swift').read_text();app=(R/'Shepherd/Shepherd.swift').read_text();m=(R/'Shepherd/Hosts/Views/MachinesSettingsView.swift').read_text()
 assert '.keyboardShortcut("p", modifiers: .command)' in app and '.focusedSceneValue(\\.isShowingPaneSwitcher' in c
 assert 'Window(Text(verbatim: "Shepherd"), id: "main")' in app and 'WindowGroup {' not in app and 'applicationShouldTerminateAfterLastWindowClosed' in app
