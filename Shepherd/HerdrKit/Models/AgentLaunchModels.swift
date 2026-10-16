@@ -63,13 +63,18 @@ nonisolated struct PaneProcessInfo: Decodable, Sendable {
         // launcher does not make a process name or copied argv an identity proof.
         guard kind.supportsLegacySessionInspection else { return nil }
         let matching = foregroundProcesses.filter {
-            AgentKind(herdrName: $0.name) == kind || $0.argv0.map { AgentKind(herdrName: URL(fileURLWithPath: $0).lastPathComponent) == kind } == true ||
-            $0.argv?.first.map { AgentKind(herdrName: URL(fileURLWithPath: $0).lastPathComponent) == kind } == true
+            AgentKind(herdrName: $0.name) == kind || $0.argv0.map { AgentKind(herdrName: Self.commandName($0)) == kind } == true ||
+            $0.argv?.first.map { AgentKind(herdrName: Self.commandName($0)) == kind } == true
         }
         guard matching.count == 1 else { return nil }
         guard let argv = matching[0].argv, let first = argv.first, !first.isEmpty else { return nil }
         return argv
     }
+
+    /// The last component of argv0, from the text alone. A URL would resolve
+    /// a relative argv0 against the current directory (getcwd), and this runs
+    /// for every pane the sidebar draws.
+    static func commandName(_ argv0: String) -> String { (argv0 as NSString).lastPathComponent }
 
     /// Requires actual shell PID in the foreground, not an empty process list.
     var isShellForeground: Bool {

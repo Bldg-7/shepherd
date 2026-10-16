@@ -58,7 +58,7 @@ nonisolated struct AgentPaneIdentity: Codable, Hashable, Sendable {
     let terminalID: String
 }
 
-nonisolated struct AgentRuntimeInstallation: Codable, Sendable {
+nonisolated struct AgentRuntimeInstallation: Codable, Equatable, Sendable {
     let version: String
     let resourceDirectory: String
     let mode: AgentInjectionMode
@@ -189,10 +189,36 @@ nonisolated struct AgentRuntime: Sendable {
         return try await run(action: "install", values: [:])
     }
 
+    /// Read without Node: the browser check calls this every two seconds.
     func installation(on host: AgentHost) async throws -> AgentRuntimeInstallation? {
         try requireLocal(host)
-        let status: Status = try await run(action: "status", values: [:])
-        return status.installation
+        return try Self.readInstallation(root: root)
+    }
+
+    /// What runtime.mjs's `status` action answers, with the same checks of
+    /// the runtime folder (`privateDirectory`) and the same error codes, but
+    /// a missing folder is left for the next install to create. Only install
+    /// writes installation.json, by rename, so a read sees a whole file.
+    static func readInstallation(root: String) throws -> AgentRuntimeInstallation? {
+        guard root.hasPrefix("/") else { throw AgentRuntimeError.rejected("invalid-runtime-root") }
+        var folder = stat()
+        guard lstat(root, &folder) == 0 else {
+            if errno == ENOENT { return nil }
+            throw AgentRuntimeError.rejected("runtime-failed")
+        }
+        guard folder.st_mode & S_IFMT == S_IFDIR, folder.st_uid == getuid(), folder.st_mode & 0o077 == 0 else {
+            throw AgentRuntimeError.rejected("unsafe-directory")
+        }
+        let file = (root as NSString).appendingPathComponent("installation.json")
+        guard FileManager.default.fileExists(atPath: file) else { return nil }
+        let data: Data
+        do { data = try Data(contentsOf: URL(fileURLWithPath: file)) }
+        catch { throw AgentRuntimeError.rejected("runtime-failed") }
+        guard let value = try? JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed) else {
+            throw AgentRuntimeError.rejected("runtime-failed")
+        }
+        if value is NSNull { return nil }
+        return try JSONDecoder().decode(AgentRuntimeInstallation.self, from: data)
     }
 
     func availability(of kind: AgentKind, executable: String, on host: AgentHost) async throws -> AgentCLIAvailability {
@@ -273,7 +299,6 @@ nonisolated struct AgentRuntime: Sendable {
     }
 
     private struct Scope: Decodable { let sessionOnly: Bool }
-    private struct Status: Decodable { let installation: AgentRuntimeInstallation? }
     private struct Cleanup: Decodable { let removed: Bool }
     private struct Registration: Decodable { let registered: Bool }
     private struct Envelope<T: Decodable>: Decodable { let ok: Bool; let result: T?; let error: String? }

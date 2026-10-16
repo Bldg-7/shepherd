@@ -153,6 +153,73 @@ actor LaunchTransport: HerdrTransport {
             try AgentSavedSession.verify(kind: .claude, sessionID: "actual-id", cwd: nil, configurationDirectory: "/owned/unavailable", process: process)
         }
         #endif
+        try retryAndReuse(agent: agent, row: row)
         print("AGENT LAUNCH API/STATE PASS")
+    }
+
+    /// The browser check's waits after failed preparations, and its reuse of
+    /// process information for unchanged agent panes.
+    static func retryAndReuse(agent: AgentSummary, row: JSONValue) throws {
+        typealias Preparation = AgentDirectPreparation
+        let start = ContinuousClock().now
+        let argv = ["claude"], other = ["claude", "--model", "opus"]
+        let failure = AgentRuntimeError.rejected("cli-missing")
+        check([1, 2, 3, 4, 5, 6, 12].map(Preparation.delay(attempts:)) == [30, 60, 120, 240, 300, 300, 300].map { Duration.seconds($0) },
+              "waits 30, 60, 120, 240 s, then 5 minutes")
+        let first = Preparation.nextRetry(after: nil, argv: argv, error: failure, message: "failed", now: start)!
+        check(first.attempts == 1 && first.notBefore == start + .seconds(30) && first.message == "failed", "first failure waits 30 s and keeps its message")
+        check(!Preparation.shouldPrepare(argv, rejected: nil, retry: first, now: start + .seconds(29)), "same argv waits")
+        check(Preparation.shouldPrepare(argv, rejected: nil, retry: first, now: start + .seconds(30)), "same argv tried again after the wait")
+        check(Preparation.shouldPrepare(other, rejected: nil, retry: first, now: start), "different argv tried at once")
+        check(Preparation.isWaiting(first, argv: argv, now: start) && !Preparation.isWaiting(first, argv: other, now: start), "waiting is per argv")
+        var retry = first
+        for seconds in [60, 120, 240, 300, 300] {
+            let at = retry.notBefore
+            retry = Preparation.nextRetry(after: retry, argv: argv, error: failure, message: "failed", now: at)!
+            check(retry.notBefore == at + .seconds(seconds), "failure \(retry.attempts) waits \(seconds) s")
+        }
+        let restarted = Preparation.nextRetry(after: retry, argv: other, error: failure, message: "other", now: start)!
+        check(restarted.attempts == 1 && restarted.notBefore == start + .seconds(30), "a different argv starts again at 30 s")
+        let busy = AgentRuntimeError.rejected("setup-busy")
+        check(Preparation.nextRetry(after: nil, argv: argv, error: busy, message: "busy", now: start) == nil, "setup-busy does not wait")
+        let expired = Preparation.nextRetry(after: first, argv: argv, error: busy, message: "busy", now: first.notBefore)
+        check(expired == first && Preparation.shouldPrepare(argv, rejected: nil, retry: expired, now: first.notBefore), "setup-busy keeps the count and no new wait")
+        check(Preparation.nextRetry(after: first, argv: other, error: busy, message: "busy", now: start) == nil, "setup-busy for different argv forgets the old wait")
+        check(!Preparation.shouldPrepare(argv, rejected: argv, retry: nil, now: start) && Preparation.isQuiet(AgentRuntimeError.rejected("duplicate-registration")),
+              "quiet rejection is remembered per argv as before")
+        let registration = Preparation.nextRetry(after: nil, argv: nil, error: HostScriptError(status: 1, message: "transport"), message: "register", now: start)!
+        check(Preparation.isWaiting(registration, argv: nil, now: start + .seconds(29)) && !Preparation.isWaiting(registration, argv: nil, now: start + .seconds(30)),
+              "a failed registration waits too")
+
+        // Reuse only for an agent pane whose pane and agent.list row are unchanged.
+        typealias Reuse = AgentInspectionReuse
+        let base = try JSONSerialization.jsonObject(with: JSONEncoder().encode(row)) as! [String: Any]
+        func summary(_ changes: [String: Any]) throws -> AgentSummary {
+            AgentSummary(json: try JSONDecoder().decode(JSONValue.self, from: JSONSerialization.data(withJSONObject: base.merging(changes) { _, new in new })))!
+        }
+        let pane = try summary(["revision": 4])
+        check(Reuse.canReuse(pane: pane, row: agent, previousPane: pane, previousRow: agent, processAge: .seconds(2)), "unchanged agent pane reuses its processes")
+        check(!Reuse.canReuse(pane: pane, row: agent, previousPane: pane, previousRow: agent, processAge: Reuse.maximumAge), "30 s old processes are read again")
+        check(!Reuse.canReuse(pane: pane, row: agent, previousPane: pane, previousRow: agent, processAge: nil), "never read is read")
+        for (key, value) in [("agent_status", "working" as Any), ("state_change_seq", 4), ("interactive_ready", false), ("terminal_id", "replaced"),
+                             ("launch_pending", true), ("agent_session", ["source": "hook", "agent": "claude", "kind": "id", "value": "next"])] {
+            check(!Reuse.canReuse(pane: pane, row: try summary([key: value]), previousPane: pane, previousRow: agent, processAge: .seconds(2)), "changed row \(key) is read again")
+        }
+        check(!Reuse.canReuse(pane: try summary(["revision": 5]), row: agent, previousPane: pane, previousRow: agent, processAge: .seconds(2)), "changed snapshot pane is read again")
+        let shell = AgentSummary(json: try json("{\"pane_id\":\"w1:p2\",\"terminal_id\":\"term_shell\",\"revision\":1}"))!
+        check(!Reuse.canReuse(pane: shell, row: nil, previousPane: shell, previousRow: nil, processAge: .seconds(1)), "pane with no agent is always read")
+        check(!Reuse.canReuse(pane: shell, row: shell, previousPane: shell, previousRow: shell, processAge: .seconds(1)), "row with no agent is always read")
+        check(!Reuse.canReuse(pane: pane, row: agent, previousPane: pane, previousRow: nil, processAge: .seconds(1)), "a row that just appeared is read")
+
+        // The basename no longer goes through URL (and getcwd).
+        for name in ["claude", "/a/b/claude", "./claude", "../bin/claude", "/a/claude/"] {
+            check(PaneProcessInfo.commandName(name) == URL(fileURLWithPath: name).lastPathComponent, "\(name) names the same command")
+        }
+        check(PaneProcessInfo.commandName("") == "", "empty argv0 names nothing, not the current folder")
+        for name in ["claude", "/a/b/claude", "./claude"] {
+            let info = try JSONDecoder().decode(PaneProcessInfo.self, from: JSONSerialization.data(withJSONObject: ["pane_id": "w1:p1",
+                "foreground_processes": [["pid": 2, "name": "node", "argv0": name, "argv": [name, "--resume"]]]]))
+            check(info.agentArguments(for: .claude) == [name, "--resume"] && info.agentArguments(for: .codex) == nil, "\(name) found by argv0")
+        }
     }
 }

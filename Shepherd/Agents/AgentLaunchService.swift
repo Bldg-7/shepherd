@@ -60,6 +60,10 @@ final class AgentLaunchService {
         let agent: AgentSummary
         let process: PaneProcessInfo
         let received: ContinuousClock.Instant
+        /// What `process` was read against (AgentInspectionReuse).
+        let pane: AgentSummary
+        let row: AgentSummary?
+        let processReceived: ContinuousClock.Instant
     }
 
     #if DEBUG
@@ -81,6 +85,9 @@ final class AgentLaunchService {
     private var plans: [AgentPaneIdentity: PreparedAgentLaunch] = [:]
     /// Direct-agent argv whose argv-only prepare was quietly rejected.
     private var rejectedPreparations: [AgentPaneIdentity: [String]] = [:]
+    /// Failed preparations and registrations wait before the next attempt.
+    private var preparationRetries: [AgentPaneIdentity: AgentDirectPreparation.Retry] = [:]
+    private var registrationRetries: [AgentPaneIdentity: AgentDirectPreparation.Retry] = [:]
     private var piLaunches: [AgentPaneIdentity: PiLaunchCoordinator] = [:]
     private var registered: Set<AgentPaneIdentity> = []
     private var disappeared: Set<AgentPaneIdentity> = []
@@ -143,7 +150,7 @@ final class AgentLaunchService {
                 } catch { await client.disconnect(); throw error }
             }
         } else { prepare = nil }
-        if retry { skillPreparation.retry(prepare: prepare) }
+        if retry { resetPreparationRetries(); skillPreparation.retry(prepare: prepare) }
         else { skillPreparation.enable(prepare: prepare) }
     }
 
@@ -176,7 +183,7 @@ final class AgentLaunchService {
         modeOperation = true; defer { modeOperation = false }
         defaults.set(port, forKey: "browserAgentPort")
         await CDPProxy.shared.restart(port: port)
-        registered.removeAll(); scheduleConsumer()
+        registered.removeAll(); resetPreparationRetries(); scheduleConsumer()
         if CDPProxy.shared.port == nil { throw AgentRuntimeError.rejected("browser-listener-not-ready") }
     }
 
@@ -186,12 +193,21 @@ final class AgentLaunchService {
         preferences.mode = .plugin
         defaults.set(try JSONEncoder().encode(preferences), forKey: "agentRuntimePreferences")
         registered.removeAll()
+        resetPreparationRetries()
         scheduleConsumer()
+    }
+
+    /// The user changed or retried something: failed preparations are tried
+    /// again on the next check instead of after their wait.
+    private func resetPreparationRetries() {
+        if !preparationRetries.isEmpty { preparationRetries.removeAll() }
+        if !registrationRetries.isEmpty { registrationRetries.removeAll() }
     }
 
     func check(using client: HerdrClient, on machine: Machine) async throws {
         guard ShepherdBrowserFeature.shared.isEnabled else { throw AgentRuntimeError.rejected("shepherd-browser-disabled") }
         guard machine.isLocal else { throw AgentRuntimeError.remoteUnavailable }
+        resetPreparationRetries()
         let host = try context(), runtime = host.runtime(using: client)
         installation = try await runtime.installation(on: .thisMac)
         if let installation, installation.mode != .plugin { throw AgentRuntimeError.rejected("legacy-global-registration-present") }
@@ -210,7 +226,7 @@ final class AgentLaunchService {
         let host = try context(), runtime = host.runtime(using: client)
         installation = try await runtime.install(on: .thisMac)
         try await check(using: client, on: machine)
-        registered.removeAll(); scheduleConsumer()
+        registered.removeAll(); resetPreparationRetries(); scheduleConsumer()
     }
 
     func setMode(_ mode: AgentInjectionMode, using client: HerdrClient, on machine: Machine) async throws {
@@ -554,6 +570,8 @@ final class AgentLaunchService {
                 registered.remove(old)
             }
             for old in Array(rejectedPreparations.keys) where moved(old) { rejectedPreparations[current] = rejectedPreparations.removeValue(forKey: old) }
+            for old in Array(preparationRetries.keys) where moved(old) { preparationRetries[current] = preparationRetries.removeValue(forKey: old) }
+            for old in Array(registrationRetries.keys) where moved(old) { registrationRetries[current] = registrationRetries.removeValue(forKey: old) }
         }
         scheduleConsumer()
     }
@@ -565,19 +583,24 @@ final class AgentLaunchService {
         consumer = Task {
             while consumerDirty && !stopping && !Task.isCancelled {
                 consumerDirty = false
-                reconciliationError = nil
+                // Kept until the round ends, and written only when it changes:
+                // every write recomputes whatever shows it.
+                var roundError: String?
                 for snapshot in Array(snapshots.values) {
-                    do { try await reconcile(snapshot) }
-                    catch { reconciliationError = connectionFailureDescription(error) }
+                    do { if let error = try await reconcile(snapshot) { roundError = error } }
+                    catch { roundError = connectionFailureDescription(error) }
                 }
+                if reconciliationError != roundError { reconciliationError = roundError }
             }
             consumer = nil
         }
     }
 
-    private func reconcile(_ snapshot: Snapshot) async throws {
+    /// Returns the last failure it reported and went on from, if any.
+    private func reconcile(_ snapshot: Snapshot) async throws -> String? {
         activityInspectionFailed.insert(snapshot.machine.id)
         let client = makeLocalClient(snapshot.machine)
+        var reported: String?
         do {
             try await client.connect()
             let agents = try await client.agentList()
@@ -585,26 +608,42 @@ final class AgentLaunchService {
             unsafeForeground[snapshot.machine.id] = true
             var unsafe = false
             var inspectedCount = 0
+            // Collected and written at once: the sidebar reads inspections.
+            var inspected: [AgentPaneIdentity: Inspection] = [:]
             // Liveness guards cannot depend on Node installation or a working
             // listener: a port conflict must remain recoverable for shell users.
-            for pane in snapshot.panes {
-                let process = try await client.processInfo(paneID: pane.paneID)
-                guard snapshots[snapshot.machine.id]?.panes.contains(where: { $0.paneID == pane.paneID && $0.terminalID == pane.terminalID }) == true else { continue }
-                unsafe = unsafe || !process.isShellForeground
-                inspectedCount += 1
-                let identity = AgentPaneIdentity(key: BrowserKey(machine: snapshot.machine, pane: pane), terminalID: pane.terminalID)
-                let observed = agents.first(where: { $0.paneID == pane.paneID && $0.terminalID == pane.terminalID }) ?? pane
-                inspections[identity] = Inspection(agent: observed, process: process, received: ContinuousClock().now)
+            do {
+                for pane in snapshot.panes {
+                    let identity = AgentPaneIdentity(key: BrowserKey(machine: snapshot.machine, pane: pane), terminalID: pane.terminalID)
+                    let row = agents.first(where: { $0.paneID == pane.paneID && $0.terminalID == pane.terminalID })
+                    let previous = inspections[identity]
+                    let process: PaneProcessInfo, processReceived: ContinuousClock.Instant
+                    if let previous, AgentInspectionReuse.canReuse(pane: pane, row: row, previousPane: previous.pane, previousRow: previous.row,
+                                                                   processAge: previous.processReceived.duration(to: ContinuousClock().now)) {
+                        process = previous.process; processReceived = previous.processReceived
+                    } else {
+                        process = try await client.processInfo(paneID: pane.paneID); processReceived = ContinuousClock().now
+                    }
+                    guard snapshots[snapshot.machine.id]?.panes.contains(where: { $0.paneID == pane.paneID && $0.terminalID == pane.terminalID }) == true else { continue }
+                    unsafe = unsafe || !process.isShellForeground
+                    inspectedCount += 1
+                    inspected[identity] = Inspection(agent: row ?? pane, process: process, received: ContinuousClock().now,
+                                                     pane: pane, row: row, processReceived: processReceived)
+                }
+            } catch {
+                if !inspected.isEmpty { inspections.merge(inspected) { _, new in new } }
+                throw error
             }
+            if !inspected.isEmpty { inspections.merge(inspected) { _, new in new } }
             if snapshots[snapshot.machine.id]?.panes.map(\.terminalID) == snapshot.panes.map(\.terminalID) {
                 unsafeForeground[snapshot.machine.id] = unsafe || inspectedCount != snapshot.panes.count
                 activityReceived[snapshot.machine.id] = ContinuousClock().now
                 activityInspectionFailed.remove(snapshot.machine.id)
             }
-            guard !modeOperation, !skillPreparation.isBusy else { await client.disconnect(); return }
+            guard !modeOperation, !skillPreparation.isBusy else { await client.disconnect(); return reported }
             let host = try context(), runtime = host.runtime(using: client)
             let installed = try await runtime.installation(on: .thisMac)
-            if let installed { installation = installed }
+            if let installed, installed != installation { installation = installed }
             for pane in snapshot.panes {
                 guard !modeOperation, !skillPreparation.isBusy, let installed, snapshots[snapshot.machine.id]?.panes.contains(pane) == true,
                       let resolved = resolved(pane, on: snapshot.machine), let endpoint = CDPProxy.shared.endpoint(for: resolved.key) else { continue }
@@ -613,23 +652,47 @@ final class AgentLaunchService {
                 let process = inspection.process, observed = inspection.agent
                 var currentPreferences = preferences; currentPreferences.mode = installed.mode
                 if !registered.contains(identity) {
-                    try await runtime.registerPane(identity, endpoint: AgentBrowserEndpoint(endpoint), preferences: currentPreferences,
-                        executables: ["claude": "claude", "codex": "codex"], codexHome: host.codexHome, claudeSettingsFile: host.claudeSettings, on: .thisMac)
-                    registered.insert(identity)
+                    // While a failed registration waits, this check stops here
+                    // as the failure itself did.
+                    if AgentDirectPreparation.isWaiting(registrationRetries[identity], argv: nil, now: ContinuousClock().now),
+                       let retry = registrationRetries[identity] {
+                        await client.disconnect(); return retry.message
+                    }
+                    do {
+                        try await runtime.registerPane(identity, endpoint: AgentBrowserEndpoint(endpoint), preferences: currentPreferences,
+                            executables: ["claude": "claude", "codex": "codex"], codexHome: host.codexHome, claudeSettingsFile: host.claudeSettings, on: .thisMac)
+                    } catch {
+                        registrationRetries[identity] = AgentDirectPreparation.nextRetry(after: registrationRetries[identity], argv: nil, error: error,
+                            message: connectionFailureDescription(error), now: ContinuousClock().now)
+                        throw error
+                    }
+                    registered.insert(identity); registrationRetries[identity] = nil
                 }
                 // Direct agents are checked with their actual argv/config. Unsafe or
                 // already injected registrations remain unknown, never called missing,
                 // and are prepared again only once the pane runs different argv.
-                if pending.isEmpty, !modeOperation, plans[identity] == nil, let kind = observed.agentName.flatMap(AgentKind.init(herdrName:)),
-                   kind.supportsLegacySessionInspection, let argv = process.agentArguments(for: kind), !argv.isEmpty, installed.mode == .plugin,
-                   AgentDirectPreparation.shouldPrepare(argv, rejected: rejectedPreparations[identity]) {
-                    do {
-                        plans[identity] = try await runtime.prepare(kind: kind, executable: kind.rawValue, pane: identity,
-                            endpoint: AgentBrowserEndpoint(endpoint), preferences: currentPreferences, arguments: Array(argv.dropFirst()),
-                            codexHome: host.codexHome, claudeSettingsFile: host.claudeSettings, on: .thisMac)
-                        rejectedPreparations[identity] = nil
-                    } catch let error where AgentDirectPreparation.isQuiet(error) { rejectedPreparations[identity] = argv }
-                    catch { reconciliationError = connectionFailureDescription(error) }
+                let kind = observed.agentName.flatMap(AgentKind.init(herdrName:))
+                let direct = kind.flatMap { process.agentArguments(for: $0) }
+                if preparationRetries[identity].map({ $0.argv != direct }) == true { preparationRetries[identity] = nil }
+                if pending.isEmpty, !modeOperation, plans[identity] == nil, let kind,
+                   kind.supportsLegacySessionInspection, let argv = direct, !argv.isEmpty, installed.mode == .plugin {
+                    if AgentDirectPreparation.shouldPrepare(argv, rejected: rejectedPreparations[identity], retry: preparationRetries[identity], now: ContinuousClock().now) {
+                        do {
+                            plans[identity] = try await runtime.prepare(kind: kind, executable: kind.rawValue, pane: identity,
+                                endpoint: AgentBrowserEndpoint(endpoint), preferences: currentPreferences, arguments: Array(argv.dropFirst()),
+                                codexHome: host.codexHome, claudeSettingsFile: host.claudeSettings, on: .thisMac)
+                            rejectedPreparations[identity] = nil; preparationRetries[identity] = nil
+                        } catch let error where AgentDirectPreparation.isQuiet(error) { rejectedPreparations[identity] = argv; preparationRetries[identity] = nil }
+                        catch {
+                            let message = connectionFailureDescription(error)
+                            preparationRetries[identity] = AgentDirectPreparation.nextRetry(after: preparationRetries[identity], argv: argv, error: error,
+                                message: message, now: ContinuousClock().now)
+                            reported = message
+                        }
+                    } else if argv != rejectedPreparations[identity], let retry = preparationRetries[identity] {
+                        // Waiting after a failure: Diagnostics keeps showing it.
+                        reported = retry.message
+                    }
                 }
             }
             for identity in Array(disappeared) where identity.machineID == snapshot.machine.id.uuidString && identity.session == BrowserKey.session(named: snapshot.machine.sessionName) {
@@ -644,9 +707,11 @@ final class AgentLaunchService {
                     try await runtime.cleanup(pane: identity, on: .thisMac)
                     disappeared.remove(identity); registered.remove(identity); plans[identity] = nil
                     inspections[identity] = nil; failures[identity] = nil; rejectedPreparations[identity] = nil
-                } catch { reconciliationError = connectionFailureDescription(error) }
+                    preparationRetries[identity] = nil; registrationRetries[identity] = nil
+                } catch { reported = connectionFailureDescription(error) }
             }
             await client.disconnect()
+            return reported
         } catch { await client.disconnect(); throw error }
     }
 

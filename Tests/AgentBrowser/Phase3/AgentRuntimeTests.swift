@@ -41,6 +41,7 @@ struct AgentRuntimeTests {
         let runtime = AgentRuntime(root: "/owned", resourceDirectory: "/owned/resources", scriptRunner: { _ in
             Data("{\"ok\":true,\"result\":{\"installation\":null}}".utf8)
         })
+        try await installationWithoutNode()
         let piBlocked = AgentRuntime(root: "/owned", resourceDirectory: "/owned", scriptRunner: { _ in fatalError("unqualified Pi must not invoke runtime") })
         do {
             _ = try await piBlocked.prepare(kind: .pi, executable: "pi",
@@ -49,13 +50,75 @@ struct AgentRuntimeTests {
                 codexHome: "/owned/codex", claudeSettingsFile: "/owned/claude/settings.json", on: .thisMac)
             fatalError("unqualified Pi prepared")
         } catch AgentRuntimeError.rejected(let code) { precondition(code == "pi-launch-unqualified") }
-        let status = try await runtime.installation(on: .thisMac)
-        precondition(status == nil)
         do { _ = try await runtime.install(on: .remote); fatalError("remote accepted") } catch AgentRuntimeError.remoteUnavailable {}
+        do { _ = try await runtime.installation(on: .remote); fatalError("remote status accepted") } catch AgentRuntimeError.remoteUnavailable {}
         let missingResult = AgentRuntime(root: "/owned", resourceDirectory: "/owned", scriptRunner: { _ in Data() })
         do { _ = try await missingResult.install(on: .thisMac); fatalError("empty exit-zero accepted") } catch {}
         let rejected = AgentRuntime(root: "/owned", resourceDirectory: "/owned", scriptRunner: { _ in Data("{\"ok\":false,\"error\":\"setup-busy\"}".utf8) })
         do { _ = try await rejected.install(on: .thisMac); fatalError("error accepted") } catch AgentRuntimeError.rejected(let code) { precondition(code == "setup-busy") }
-        print("PASS AgentRuntimeTests: argv detection, resume merge, shell quoting, empty result rejection, explicit remote fail-closed, status")
+        print("PASS AgentRuntimeTests: argv detection, resume merge, shell quoting, empty result rejection, explicit remote fail-closed, status without Node")
+    }
+
+    /// The installation is read the way runtime.mjs's status action read it,
+    /// in a private temporary folder, and never runs a script.
+    static func installationWithoutNode() async throws {
+        let manager = FileManager.default
+        let base = manager.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("runtime-status-" + UUID().uuidString)
+        try manager.createDirectory(at: base, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        defer { try? manager.removeItem(at: base) }
+        func runtime(_ root: String) -> AgentRuntime {
+            AgentRuntime(root: root, resourceDirectory: "/owned/resources", scriptRunner: { _ in fatalError("status must not run Node") })
+        }
+        func rejection(_ root: String) async -> String? {
+            do { _ = try await runtime(root).installation(on: .thisMac); return nil }
+            catch AgentRuntimeError.rejected(let code) { return code }
+            catch { return "other: \(error)" }
+        }
+        func folder(_ name: String, mode: Int = 0o700) throws -> URL {
+            let url = base.appendingPathComponent(name)
+            try manager.createDirectory(at: url, withIntermediateDirectories: false, attributes: [.posixPermissions: mode])
+            try manager.setAttributes([.posixPermissions: mode], ofItemAtPath: url.path)
+            return url
+        }
+        let missing = base.appendingPathComponent("missing")
+        let value1 = try await runtime(missing.path).installation(on: .thisMac)
+        precondition(value1 == nil, "missing runtime folder is no installation")
+        precondition(!manager.fileExists(atPath: missing.path), "reading the status does not create the runtime folder")
+        let empty = try folder("empty")
+        let value2 = try await runtime(empty.path).installation(on: .thisMac)
+        precondition(value2 == nil, "no installation.json is no installation")
+        let installed = try folder("installed")
+        let expected = AgentRuntimeInstallation(version: "2.0.0-owned", resourceDirectory: installed.path + "/versions/2.0.0-owned", mode: .plugin,
+                                                globalRegistrationVersion: nil, codexPluginKey: nil, codexPluginReady: false)
+        try Data("{\"version\":\"2.0.0-owned\",\"resourceDirectory\":\"\(expected.resourceDirectory)\",\"mode\":\"plugin\",\"globalRegistrationVersion\":null,\"codexPluginKey\":null,\"codexPluginReady\":false}".utf8)
+            .write(to: installed.appendingPathComponent("installation.json"))
+        let value3 = try await runtime(installed.path).installation(on: .thisMac)
+        precondition(value3 == expected, "installation.json decoded")
+        let value4 = try await runtime(installed.path + "/").installation(on: .thisMac)
+        precondition(value4 == expected, "trailing slash joins like path.join")
+        let nullFile = try folder("null")
+        try Data("null".utf8).write(to: nullFile.appendingPathComponent("installation.json"))
+        let value5 = try await runtime(nullFile.path).installation(on: .thisMac)
+        precondition(value5 == nil, "a null installation is none")
+        let shared = try folder("shared", mode: 0o755)
+        try Data("{}".utf8).write(to: shared.appendingPathComponent("installation.json"))
+        let value6 = await rejection(shared.path)
+        precondition(value6 == "unsafe-directory", "group/other access is unsafe")
+        let linked = base.appendingPathComponent("linked")
+        try manager.createSymbolicLink(at: linked, withDestinationURL: installed)
+        let value7 = await rejection(linked.path)
+        precondition(value7 == "unsafe-directory", "a symlinked runtime folder is unsafe")
+        let plainFile = base.appendingPathComponent("plain-file")
+        try Data().write(to: plainFile)
+        let value8 = await rejection(plainFile.path)
+        precondition(value8 == "unsafe-directory", "a file is not a runtime folder")
+        let broken = try folder("broken")
+        try Data("{\"version\":".utf8).write(to: broken.appendingPathComponent("installation.json"))
+        let value9 = await rejection(broken.path)
+        precondition(value9 == "runtime-failed", "broken JSON fails as Node's JSON.parse did")
+        let value10 = await rejection("relative/runtime")
+        precondition(value10 == "invalid-runtime-root", "relative root rejected")
+        let value11 = await rejection("")
+        precondition(value11 == "invalid-runtime-root", "empty root rejected")
     }
 }

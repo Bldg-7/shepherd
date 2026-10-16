@@ -51,7 +51,7 @@ nonisolated private func expect(_ value: Bool) { precondition(value) }
             try Data(("#!/bin/sh\n" + text).utf8).write(to: url)
             try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
         }
-        try executable(node, "IFS= read -r request || true\n[ \"$(claude --version)\" = 'synthetic-claude' ] || exit 31\n[ \"$(codex --version)\" = 'synthetic-codex' ] || exit 32\nprintf '%s\\n' '{\"ok\":true,\"result\":{\"installation\":null}}'\n")
+        try executable(node, "IFS= read -r request || true\n[ \"$(claude --version)\" = 'synthetic-claude' ] || exit 31\n[ \"$(codex --version)\" = 'synthetic-codex' ] || exit 32\nprintf '%s\\n' '{\"ok\":true,\"result\":{\"removed\":true}}'\n")
         try executable(agents.appendingPathComponent("claude"), "printf 'synthetic-claude'\n")
         try executable(agents.appendingPathComponent("codex"), "printf 'synthetic-codex'\n")
         let restricted = ["HOME":root.path, "PATH":empty.path]
@@ -64,17 +64,19 @@ nonisolated private func expect(_ value: Bool) { precondition(value) }
             try await LocalCommand.run(.init(executable: URL(fileURLWithPath: "/bin/sh"),
                 arguments: ["-c",script], environment: restricted), timeout: 10) { status, _ in SyntheticExit(status: status) }
         }
+        // installation(on:) reads its file without Node; cleanup is a script
+        // action, answered here by the synthetic Node only.
+        let pane = AgentPaneIdentity(machineID: "owned", herdrMachineID: nil, session: "default", paneID: "w1:p1", terminalID: "owned-terminal")
         let broken = AgentRuntime(root: root.path, resourceDirectory: root.path, scriptRunner: run)
-        do { _ = try await broken.installation(on: .thisMac); preconditionFailure("bare node unexpectedly found") }
+        do { try await broken.cleanup(pane: pane, on: .thisMac); preconditionFailure("bare node unexpectedly found") }
         catch let failure as SyntheticExit { precondition(failure.status == 127) }
         let fixed = AgentRuntime(root: root.path, resourceDirectory: root.path, nodeExecutable: resolution.node,
                                  executionSearchPath: resolution.searchPath, scriptRunner: run)
-        let status = try await fixed.installation(on: .thisMac)
-        precondition(status == nil)
+        try await fixed.cleanup(pane: pane, on: .thisMac)
         precondition(ProcessInfo.processInfo.environment["PATH"] == before, "parent PATH changed")
         let invalid = AgentRuntime(root: root.path, resourceDirectory: root.path, executionSearchPath: "/bad\0path",
                                    scriptRunner: { _ in preconditionFailure("invalid PATH reached shell") })
-        do { _ = try await invalid.installation(on: .thisMac); preconditionFailure("NUL accepted") }
+        do { try await invalid.cleanup(pane: pane, on: .thisMac); preconditionFailure("NUL accepted") }
         catch AgentRuntimeError.rejected(let code) { precondition(code == "invalid-executable-search-path") }
         print("PASS GUI executable discovery: PATH precedence, Homebrew/fnm/Volta/explicit managers, missing Node, canonical alias, quoted paths, baseline command-not-found, private child PATH for Node/Claude/Codex, unchanged parent environment")
     }

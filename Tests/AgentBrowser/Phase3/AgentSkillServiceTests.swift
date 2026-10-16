@@ -1,18 +1,40 @@
 import Foundation
+import Observation
 
 nonisolated private func expect(_ value: Bool) { precondition(value) }
 
 private actor SkillTransport: HerdrTransport {
     private(set) var installs = 0
     private(set) var scripts = 0
+    private(set) var statusScripts = 0
+    private(set) var disconnects = 0
+    private(set) var agentLists = 0
+    /// Pane IDs, in order, of every pane.process_info request.
+    private(set) var processReads: [String] = []
+    private var agentRows: [JSONValue] = []
+    private var processes: [String: JSONValue] = [:]
     private var hold = true
     private var scopeFailure = false
     private var pending: CheckedContinuation<Void, Never>?
     private var started: CheckedContinuation<Void, Never>?
     func connect() {}
-    func disconnect() {}
+    func disconnect() { disconnects += 1 }
     func events() -> AsyncStream<JSONValue> { AsyncStream { $0.finish() } }
-    func send(method: String, params: JSONValue) throws -> JSONValue { throw HostScriptError(status: 1, message: "native seam unavailable") }
+    func configure(agents: [JSONValue], processes: [String: JSONValue]) { agentRows = agents; self.processes = processes }
+    /// Only the browser check's requests; nothing that changes herdr.
+    func send(method: String, params: JSONValue) throws -> JSONValue {
+        switch method {
+        case "agent.list":
+            agentLists += 1
+            return .object(["type": .string("agent_list"), "agents": .array(agentRows)])
+        case "pane.process_info":
+            let pane = params["pane_id"]?.stringValue ?? ""
+            processReads.append(pane)
+            guard let info = processes[pane] else { throw HostScriptError(status: 1, message: "unknown synthetic pane") }
+            return .object(["type": .string("pane_process_info"), "process_info": info])
+        default: throw HostScriptError(status: 1, message: "native seam unavailable")
+        }
+    }
     func runHerdr(_ arguments: [String]) throws -> Data { throw HostScriptError(status: 1, message: "no real CLI") }
     func configure(hold: Bool, scopeFailure: Bool = false) { self.hold = hold; self.scopeFailure = scopeFailure }
     func waitForInstall() async { if pending == nil { await withCheckedContinuation { started = $0 } } }
@@ -29,7 +51,7 @@ private actor SkillTransport: HerdrTransport {
             value = installation
         } else if script.contains("\"action\":\"stagePi\"") {
             return Data("{\"ok\":false,\"error\":\"pi-package-unsupported\"}".utf8)
-        } else if script.contains("\"action\":\"status\"") { value = ["installation": installation] }
+        } else if script.contains("\"action\":\"status\"") { statusScripts += 1; value = ["installation": installation] }
         else if script.contains("\"action\":\"checkScope\"") {
             if scopeFailure { return Data("{\"ok\":false,\"error\":\"legacy-global-skill-present\"}".utf8) }
             value = ["sessionOnly": true]
@@ -42,11 +64,79 @@ private actor SkillTransport: HerdrTransport {
         return try JSONSerialization.data(withJSONObject: ["ok":true,"result":value])
     }
 }
+/// Set by an observation's change handler, which may run off the main actor.
+nonisolated private final class Fired: @unchecked Sendable {
+    private let lock = NSLock(); private var value = false
+    func set() { lock.lock(); value = true; lock.unlock() }
+    func take() -> Bool { lock.lock(); defer { value = false; lock.unlock() }; return value }
+}
 @main @MainActor struct AgentSkillServiceTests {
     static func wait(_ condition: () -> Bool) async {
         for _ in 0..<10000 { if condition() { return }; await Task.yield() }
         preconditionFailure("service did not settle")
     }
+    /// The two-second browser check: no Node for the installation, processes
+    /// read again only for shell panes and changed agent panes, and one
+    /// notification for a check that changed nothing.
+    private static func browserCheck(fake: SkillTransport, machine: Machine, defaults: UserDefaults) async throws {
+        func json(_ text: String) throws -> JSONValue { try JSONDecoder().decode(JSONValue.self, from: Data(text.utf8)) }
+        await fake.configure(hold: false)
+        let checker = AgentLaunchService(context: { .init(root: "/synthetic/runtime", resources: "/synthetic/resources", node: "/synthetic/node", claudeSettings: "/synthetic/claude/settings.json", claudeSkills: "/synthetic/claude/skills", codexHome: "/synthetic/codex", executionSearchPath: "/synthetic/bin:/usr/bin:/bin") }, defaults: defaults,
+                                         makeLocalClient: { _ in HerdrClient(transport: fake) })
+        ShepherdBrowserFeature.shared.isEnabled = true
+        checker.update(machines: [machine]); checker.start()
+        await wait { checker.skillPreparation.state == .ready }
+        let panes = [AgentSummary(json: try json(#"{"pane_id":"w1:p1","terminal_id":"term_agent","agent":"claude","agent_status":"idle","revision":3}"#))!,
+                     AgentSummary(json: try json(#"{"pane_id":"w1:p2","terminal_id":"term_shell","revision":1}"#))!]
+        let row = #"{"pane_id":"w1:p1","terminal_id":"term_agent","agent":"claude","agent_status":"idle","interactive_ready":true,"state_change_seq":7,"revision":3}"#
+        await fake.configure(agents: [try json(row)], processes: [
+            "w1:p1": try json(#"{"pane_id":"w1:p1","shell_pid":10,"foreground_processes":[{"pid":11,"name":"claude","argv":["claude"]}]}"#),
+            "w1:p2": try json(#"{"pane_id":"w1:p2","shell_pid":20,"foreground_processes":[{"pid":20,"name":"zsh"}]}"#)])
+        let fired = Fired()
+        func arm() {
+            withObservationTracking {
+                for pane in panes { _ = checker.status(for: pane, on: machine); _ = checker.failure(for: pane, on: machine); _ = checker.canResume(pane, on: machine) }
+                _ = checker.reconciliationError; _ = checker.installation
+            } onChange: { fired.set() }
+        }
+        /// One accepted snapshot and the check it starts; the pane IDs read.
+        func round() async -> (reads: [String], notifications: Int) {
+            let before = await fake.disconnects, read = await fake.processReads.count
+            var notifications = 0
+            _ = fired.take(); arm()
+            MachineBrowserService.shared.accept(panes, on: machine)
+            var finished = false
+            for _ in 0..<10000 {
+                if fired.take() { notifications += 1; arm() }
+                if await fake.disconnects > before { finished = true; break }
+                await Task.yield()
+            }
+            precondition(finished, "browser check did not finish")
+            // The round's end (its error) comes after the disconnect.
+            for _ in 0..<200 { if fired.take() { notifications += 1; arm() }; await Task.yield() }
+            return (Array(await fake.processReads.dropFirst(read)), notifications)
+        }
+        let lists = await fake.agentLists
+        let first = await round()
+        expect(first.reads == ["w1:p1", "w1:p2"])
+        let second = await round()
+        expect(second.reads == ["w1:p2"])
+        precondition(checker.status(for: panes[1], on: machine) == .shell, "shell pane still read every check")
+        let unchanged = await round()
+        expect(unchanged.reads == ["w1:p2"])
+        precondition(unchanged.notifications == 1, "a check that changed nothing notifies once, not \(unchanged.notifications) times")
+        await fake.configure(agents: [try json(row.replacingOccurrences(of: "\"state_change_seq\":7", with: "\"state_change_seq\":8"))], processes: [
+            "w1:p1": try json(#"{"pane_id":"w1:p1","shell_pid":10,"foreground_processes":[{"pid":11,"name":"claude","argv":["claude"]}]}"#),
+            "w1:p2": try json(#"{"pane_id":"w1:p2","shell_pid":20,"foreground_processes":[{"pid":20,"name":"zsh"}]}"#)])
+        let changed = await round()
+        expect(changed.reads == ["w1:p1", "w1:p2"])
+        expect(await fake.agentLists == lists + 4)
+        expect(await fake.statusScripts == 0)
+        precondition(checker.reconciliationError == nil && checker.installation == nil)
+        ShepherdBrowserFeature.shared.isEnabled = false
+        await checker.stop()
+    }
+
     static func main() async throws {
         let suite = "shepherd-skills-synthetic-" + UUID().uuidString
         let defaults = UserDefaults(suiteName: suite)!
@@ -113,6 +203,7 @@ private actor SkillTransport: HerdrTransport {
         expect(await fake.installs == failedCount + 1)
         ShepherdBrowserFeature.shared.isEnabled = false
         await service.stop()
+        try await browserCheck(fake: fake, machine: machine, defaults: defaults)
         print("PASS real AgentLaunchService with synthetic native/transport seams: OFF no setup, ON automatic setup, shared/coalesced preparation, safe drain, legacy-global failure, explicit retry, Codex delivery distinction; no real CLI/herdr/GUI")
     }
 }

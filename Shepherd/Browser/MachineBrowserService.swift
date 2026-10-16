@@ -56,11 +56,14 @@ final class MachineBrowserService {
                             let snapshot = try await client.snapshot()
                             try Task.checkCancellation()
                             accept(snapshot.panes, on: machine)
-                            errors[machine.id] = nil
+                            // Written only when it changes: every pane's
+                            // browser status reads it.
+                            if errors[machine.id] != nil { errors[machine.id] = nil }
                             delay = 2
                         } catch {
                             if Task.isCancelled { break }
-                            errors[machine.id] = "Local browser pane polling failed; last successful snapshot retained."
+                            let failure = "Local browser pane polling failed; last successful snapshot retained."
+                            if errors[machine.id] != failure { errors[machine.id] = failure }
                             delay = min(delay * 2, 30)
                         }
                         try? await Task.sleep(for: .seconds(delay))

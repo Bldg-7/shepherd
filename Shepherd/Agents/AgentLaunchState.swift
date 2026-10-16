@@ -55,11 +55,59 @@ nonisolated enum AgentResumeEligibility {
 /// gone, holds for as long as the same process runs: stay unknown, report
 /// nothing, and prepare again only for different argv in the pane.
 nonisolated enum AgentDirectPreparation {
-    static func shouldPrepare(_ argv: [String], rejected: [String]?) -> Bool { argv != rejected }
+    /// A failed preparation (argv) or pane registration (nil argv), and when
+    /// to try it again. Each failure in a row doubles the wait.
+    struct Retry: Equatable, Sendable {
+        let argv: [String]?
+        let attempts: Int
+        let notBefore: ContinuousClock.Instant
+        /// The failure's description, shown again while it waits.
+        let message: String
+    }
 
-    /// Any other failure is reported and retried on the next reconcile.
+    static func shouldPrepare(_ argv: [String], rejected: [String]?, retry: Retry? = nil,
+                              now: ContinuousClock.Instant = ContinuousClock().now) -> Bool {
+        argv != rejected && !isWaiting(retry, argv: argv, now: now)
+    }
+
+    /// Different argv is never held back by another argv's failure.
+    static func isWaiting(_ retry: Retry?, argv: [String]?, now: ContinuousClock.Instant) -> Bool {
+        guard let retry, retry.argv == argv else { return false }
+        return now < retry.notBefore
+    }
+
+    /// After a failure isQuiet does not cover. setup-busy is a passing lock
+    /// conflict: it is tried again at once and keeps the count it had.
+    static func nextRetry(after previous: Retry?, argv: [String]?, error: Error, message: String,
+                          now: ContinuousClock.Instant) -> Retry? {
+        let same = previous?.argv == argv ? previous : nil
+        if case AgentRuntimeError.rejected("setup-busy") = error { return same }
+        let attempts = (same?.attempts ?? 0) + 1
+        return Retry(argv: argv, attempts: attempts, notBefore: now.advanced(by: delay(attempts: attempts)), message: message)
+    }
+
+    /// 30 s, 60 s, 120 s, 240 s, then every 5 minutes.
+    static func delay(attempts: Int) -> Duration {
+        .seconds(min(30 << min(max(attempts - 1, 0), 4), 300))
+    }
+
+    /// Any other failure is reported and retried after `delay`.
     static func isQuiet(_ error: Error) -> Bool {
         guard case AgentRuntimeError.rejected(let code) = error else { return false }
         return code == "duplicate-registration" || code == "uninspectable-claude-registration"
+    }
+}
+
+/// The browser check asks herdr for every pane's processes every two
+/// seconds. An agent pane whose snapshot pane and agent.list row are both
+/// unchanged keeps the processes last read, for at most `maximumAge`; a pane
+/// with no agent is always read again.
+nonisolated enum AgentInspectionReuse {
+    static let maximumAge: Duration = .seconds(30)
+
+    static func canReuse(pane: AgentSummary, row: AgentSummary?, previousPane: AgentSummary?, previousRow: AgentSummary?,
+                         processAge: Duration?) -> Bool {
+        guard let row, row.hasAgent, let previousRow, let processAge else { return false }
+        return pane == previousPane && row == previousRow && processAge < maximumAge
     }
 }
