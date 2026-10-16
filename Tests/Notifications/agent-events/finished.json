@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "id": "d00e1c932e8753cc6f2e63b563cdb9ef",
+  "kind": "agent.finished",
+  "urgency": "info",
+  "observed_at": "2026-10-14T03:34:34Z",
+  "expires_at": "2026-10-14T04:34:34Z",
+  "subject": {
+    "herdr": {
+      "instance_id": "79763D9A-997B-4E75-A3FA-6EF5D0338479",
+      "scope": "device_local",
+      "session": "default"
+    },
+    "terminal_id": "term_65d9f3796d97b84",
+    "pane_id": "w1P:p1",
+    "tab_id": "w1P:t1",
+    "workspace_id": "w1P",
+    "agent": "claude",
+    "collapse_key": "9de82bb5b889509aad8c7b71d7dbd6d6"
+  },
+  "transition": {
+    "from": "working",
+    "to": "idle",
+    "state_change_seq": 418,
+    "worked_seconds": 754
+  },
+  "display": {
+    "agent_name": "claude",
+    "pane_title": "SHPHRD-17",
+    "tab_label": "Notifications",
+    "workspace_label": "shepherd",
+    "machine_label": "This Mac"
+  },
+  "producer": {
+    "kind": "shepherd-macos",
+    "version": "0.3.3",
+    "instance": "0C7A5D8E-2F43-4B1A-9E6D-5A1F3C2B7D90"
+  }
+}
