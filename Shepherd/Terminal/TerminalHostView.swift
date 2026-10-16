@@ -81,6 +81,49 @@ final class FocusReportingTerminalView: TerminalView {
     }
     private var fileGesture = TerminalFileGesture()
     private var capturedFileHandler: ((String) -> Void)?
+    private(set) var drawGate = TerminalDrawGate()
+
+    // While the window can't be seen, SwiftTerm still takes every byte and
+    // keeps its screen up to date, but what it asks to redraw is only noted
+    // (TerminalDrawGate). The view is never hidden, so it keeps the keyboard.
+    override func setNeedsDisplay(_ invalidRect: NSRect) {
+        guard drawGate.request() else { return }
+        super.setNeedsDisplay(invalidRect)
+    }
+
+    override var needsDisplay: Bool {
+        get { super.needsDisplay }
+        set {
+            if newValue, !drawGate.request() { return }
+            super.needsDisplay = newValue
+        }
+    }
+
+    /// Draws the whole terminal once when it becomes visible with redraws
+    /// held back.
+    func updateDrawing(visible: Bool) {
+        if drawGate.update(visible: visible) { super.setNeedsDisplay(bounds) }
+    }
+
+    @objc private func windowVisibilityChanged(_ notification: Notification) {
+        updateDrawing(visible: TerminalDrawGate.isVisible(inWindow: window != nil,
+            occlusionVisible: window?.occlusionState.contains(.visible) == true,
+            miniaturized: window?.isMiniaturized == true, applicationHidden: NSApp?.isHidden == true))
+    }
+
+    /// Follows the window the view is in now. The center drops these
+    /// selector observers by itself when the view goes away.
+    private func observeWindowVisibility() {
+        let center = NotificationCenter.default
+        let windowNames = [NSWindow.didChangeOcclusionStateNotification, NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification]
+        let applicationNames = [NSApplication.didHideNotification, NSApplication.didUnhideNotification]
+        for name in windowNames + applicationNames { center.removeObserver(self, name: name, object: nil) }
+        if let window {
+            for name in windowNames { center.addObserver(self, selector: #selector(windowVisibilityChanged(_:)), name: name, object: window) }
+            for name in applicationNames { center.addObserver(self, selector: #selector(windowVisibilityChanged(_:)), name: name, object: nil) }
+        }
+        windowVisibilityChanged(Notification(name: NSWindow.didChangeOcclusionStateNotification))
+    }
 
     /// Sends `text` to the program as a paste, the way other terminals send
     /// a drop: in one piece, and between the bracketed-paste markers when
@@ -199,6 +242,7 @@ final class FocusReportingTerminalView: TerminalView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        observeWindowVisibility()
         guard focusesWhenShown, window != nil else { return }
         focusesWhenShown = false
         // On the next turn of the run loop: the view lands in its window in
@@ -208,6 +252,36 @@ final class FocusReportingTerminalView: TerminalView {
             guard let self, let window = self.window else { return }
             window.makeFirstResponder(self)
         }
+    }
+}
+
+/// Whether a terminal draws what it is asked to redraw. A window that can't
+/// be seen — covered, on another Space, minimized, or its app hidden — gets
+/// no drawing; its redraw requests are remembered, and the first time it can
+/// be seen again the whole terminal is drawn once.
+nonisolated struct TerminalDrawGate: Equatable {
+    private(set) var visible = true
+    private(set) var pending = false
+
+    /// Outside a window AppKit draws nothing anyway; it then draws what the
+    /// view marked when the view lands in one.
+    static func isVisible(inWindow: Bool, occlusionVisible: Bool, miniaturized: Bool, applicationHidden: Bool) -> Bool {
+        !inWindow || (occlusionVisible && !miniaturized && !applicationHidden)
+    }
+
+    /// Whether a redraw request goes through now.
+    mutating func request() -> Bool {
+        if visible { return true }
+        pending = true
+        return false
+    }
+
+    /// Whether to redraw the whole terminal now.
+    mutating func update(visible: Bool) -> Bool {
+        self.visible = visible
+        guard visible, pending else { return false }
+        pending = false
+        return true
     }
 }
 
