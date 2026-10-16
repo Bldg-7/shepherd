@@ -5134,24 +5134,24 @@
         }
       }
     },
-    "Resume with Shepherd Browser (Experimental)" : {
+    "Resume with Shepherd Browser" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Resume with Shepherd Browser (Experimental)"
+            "value" : "Resume with Shepherd Browser"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd Browser で再開（実験的機能）"
+            "value" : "Shepherd Browser で再開"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd Browser로 재개 (실험적 기능)"
+            "value" : "Shepherd Browser로 재개"
           }
         }
       }
