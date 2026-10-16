@@ -77,7 +77,6 @@
     "Show Preview": {"localizations":{"ko":{"stringUnit":{"state":"translated","value":"미리보기 표시"}},"ja":{"stringUnit":{"state":"translated","value":"プレビューを表示"}}}},
     "Hide Preview": {"localizations":{"ko":{"stringUnit":{"state":"translated","value":"미리보기 숨기기"}},"ja":{"stringUnit":{"state":"translated","value":"プレビューを隠す"}}}},
     "Close Preview": {"localizations":{"ko":{"stringUnit":{"state":"translated","value":"미리보기 닫기"}},"ja":{"stringUnit":{"state":"translated","value":"プレビューを閉じる"}}}},
-    "Reload File": {"localizations":{"ko":{"stringUnit":{"state":"translated","value":"파일 다시 읽기"}},"ja":{"stringUnit":{"state":"translated","value":"ファイルを再読込"}}}},
     "Reading File…": {"localizations":{"ko":{"stringUnit":{"state":"translated","value":"파일 읽는 중…"}},"ja":{"stringUnit":{"state":"translated","value":"ファイルを読込中…"}}}},
     "Source": {"localizations":{"ko":{"stringUnit":{"state":"translated","value":"원본"}},"ja":{"stringUnit":{"state":"translated","value":"ソース"}}}},
     "Line %lld": {"localizations":{"ko":{"stringUnit":{"state":"translated","value":"%lld행"}},"ja":{"stringUnit":{"state":"translated","value":"%lld行"}}}},
@@ -140,40 +139,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@; 실행 전에는 로그인 상태를 알 수 없음"
-          }
-        }
-      }
-    },
-    "%lld panes" : {
-      "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld pane"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld panes"
-                }
-              }
-            }
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld 個の pane"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "pane %lld개"
           }
         }
       }
@@ -6408,22 +6373,6 @@
         }
       }
     },
-    "The machine wasn't added because its credential couldn't be stored. %@" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "認証情報を保存できなかったため、マシンを追加できませんでした。%@"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "자격 증명을 저장할 수 없어 머신을 추가하지 못했습니다. %@"
-          }
-        }
-      }
-    },
     "The page says:" : {
       "localizations" : {
         "ja" : {
@@ -7268,22 +7217,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "버전"
-          }
-        }
-      }
-    },
-    "Version %@ (%@)" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "バージョン %1$@ (%2$@)"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "버전 %1$@ (%2$@)"
           }
         }
       }
