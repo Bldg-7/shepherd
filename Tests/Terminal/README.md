@@ -45,6 +45,43 @@ keystrokes throughout. The `TerminalDrawGate` rules that decide visibility (a
 covered window, a window on another Space, a minimized window, a hidden app)
 are also tested directly, without a window.
 
+## Renaming in the title
+
+```sh
+python3 Tests/Terminal/run-title-rename-tests.py --output /tmp/shepherd-title-rename-FRESH
+```
+
+Needs no SwiftTerm build. It has three stages.
+
+- Model: the rules, without views. A rename starts with the current name, and
+  the automatic title as grey placeholder. Names are trimmed. An empty tab name
+  is refused. An empty pane name removes the name given to the pane, so it shows
+  its automatic title again. An unchanged name is not sent. Panes with the same
+  ID on different herdr machines are kept apart. The title shows the typed name
+  right after Return, until herdr's own snapshot shows it too or the rename
+  fails.
+- Field: the production title field in a never-shown window. It takes the
+  keyboard with the name selected and gives it back afterwards. While a syllable
+  is being composed, Return and Escape go to the input method. Once the syllable
+  is committed, Return submits the whole name, that syllable included.
+  Redrawing the board during composition keeps the same field, text and
+  composition. On an empty tab name Return is refused and editing goes on.
+  Losing the keyboard, or the field going away, saves the name typed so far
+  (an empty tab name is dropped), once, on the next turn of the run loop.
+- Toolbar: the production split views in a never-shown window. It checks that
+  the window's title is the selected terminal view's title, also while a file
+  preview is open. While renaming, the title is hidden and the field takes its
+  place, before the other toolbar items, and gets the keyboard. After Return the
+  title comes back.
+
+The field and toolbar stages also read the system log
+(`OS_ACTIVITY_DT_MODE=1`) and fail on SwiftUI's "Modifying state during view
+update" or AppKit's `layoutSubtreeIfNeeded` warning. Source checks: the board has
+no rename dialog, Cmd-W is ignored while renaming, the field's text is set only
+when the field is made, and Return and Escape are handled only when nothing is
+being composed. A real keyboard, input method, full screen and the installed app
+are not covered.
+
 ## Focus frame
 
 ```sh

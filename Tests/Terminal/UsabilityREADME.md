@@ -35,7 +35,8 @@ field.
   report tabs) after the sidebar's confirmation; Close Window stays, without a
   shortcut. Nothing selected disables it; the launcher, Settings, the pane
   switcher, an alert or an expanded preview over the terminal make it close
-  nothing, and the board ignores it over its own rename/close/failure dialogs.
+  nothing. The board also ignores it while a name is being typed into the
+  window's title, and while its own close or failure dialog is up.
 - Cmd-P: the window's focused-scene menu replaces Print. Search uses existing
   board snapshots, independent of sidebar filters/folded groups. Arrow keys,
   Return, Escape/cancel. Each word matches title/agent/paneID/cwd/location.
