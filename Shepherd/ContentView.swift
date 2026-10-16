@@ -76,6 +76,10 @@ struct ContentView: View {
     /// For each tab shown in this window (by `TerminalIdentity`), the pane in
     /// it the browser column follows: the one last given the keyboard.
     @State private var activatedPanes: [TerminalIdentity: String] = [:]
+    /// Whether the window is key, which it has to be for the selection to
+    /// count as looked at (see `viewedPanesNow`).
+    @Environment(\.controlActiveState) private var controlActiveState
+    @Environment(\.openWindow) private var openWindow
     #endif
 
     private func workspace(on machine: Machine?) -> some View {
@@ -278,9 +282,26 @@ struct ContentView: View {
                 owner: passwordManagerWindowID, browserEnabled: ShepherdBrowserFeature.shared.isEnabled) {
                 isShowingSettings = true
             }
+            // How a click on a notification brings the window back once it
+            // has been closed.
+            NotificationCoordinator.shared.openWindow = openWindow
         }
         .onDisappear {
             ShepherdBrowserFeature.shared.passwordManagers.endVisit(owner: passwordManagerWindowID)
+            // With the window closed, nothing is in front of the person.
+            NotificationCoordinator.shared.setViewedPanes([])
+        }
+        .onChange(of: viewedPanesNow, initial: true) { _, panes in
+            NotificationCoordinator.shared.setViewedPanes(panes)
+        }
+        // A clicked notification's pane, once there is a request for one,
+        // and again whenever the board lists something new until it is
+        // there.
+        .onChange(of: NotificationCoordinator.shared.navigationRequest, initial: true) {
+            navigateToNotifiedPane()
+        }
+        .onChange(of: paneDestinations) {
+            navigateToNotifiedPane()
         }
         // A Machine that is removed, or now uses another herdr session,
         // takes its panes' browsers with it.
@@ -426,6 +447,54 @@ struct ContentView: View {
     }
 
     #if os(macOS)
+    /// The panes in front of the person: the selected pane, or every pane of
+    /// the selected tab, while the window is key — as for marking an agent
+    /// seen (see `SeenMarking`). No notification is given about these.
+    private var viewedPanesNow: Set<NotificationPaneKey> {
+        guard controlActiveState == .key, let machine = machineStore.activeMachine,
+              let item = selection(on: machine).wrappedValue else { return [] }
+        let panes: [AgentSummary]
+        switch item {
+        case .pane(let pane): panes = [pane]
+        case .tab(let tab): panes = tab.panes
+        }
+        return Set(panes.map { NotificationPaneKey($0, on: machine.connectionIdentity) })
+    }
+
+    /// Goes to the pane of the notification last clicked: makes its machine
+    /// the active one if it isn't, and selects the pane once the board for
+    /// it lists the pane — the tab it is in, while the board shows tabs —
+    /// as the pane switcher would. Given up on when the machine is gone, or
+    /// when the active machine changes again after it was switched to.
+    private func navigateToNotifiedPane() {
+        let notifications = NotificationCoordinator.shared
+        guard var request = notifications.navigationRequest else { return }
+        guard let target = machineStore.allMachines.first(where: { $0.id == request.route.machineID }) else {
+            notifications.navigationRequest = nil
+            return
+        }
+        guard machineStore.activeMachineID == target.id else {
+            if request.switchedMachine {
+                notifications.navigationRequest = nil
+            } else {
+                request.switchedMachine = true
+                notifications.navigationRequest = request
+                machineStore.activeMachineID = target.id
+            }
+            return
+        }
+        guard let destination = paneDestinations.first(where: {
+            $0.pane.id == request.route.boardPaneID && $0.pane.terminalID == request.route.terminalID
+        }), destination.isAvailable else { return }
+        notifications.navigationRequest = nil
+        isShowingPaneSwitcher = false
+        launcherStart = nil
+        expandsFilePreview = false
+        justCreatedID = nil
+        selection = MachineSelection(connection: target.connectionIdentity, item: destination.item)
+        terminalPaneFocus = TerminalPaneFocus(paneID: destination.pane.id)
+    }
+
     /// The pane whose browser the browser column shows: the selected pane,
     /// or in a selected tab the pane last given the keyboard — until one
     /// has been, the pane herdr has focused in it (A2).

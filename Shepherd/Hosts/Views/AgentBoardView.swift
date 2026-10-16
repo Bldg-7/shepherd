@@ -315,6 +315,13 @@ struct AgentBoardView: View {
         .task(id: ConnectionRun(machineID: machine.id, retryCount: retryCount, refreshCount: refreshCount)) {
             await loadHerdrMachines()
         }
+        // For as long as the board is on screen, it is what tells the
+        // notifications about its machine, and the watcher leaves the
+        // machine alone. Not restarted with the tasks above: the board
+        // looks after its machine through every retry and refresh.
+        .task(id: machine.connectionIdentity) {
+            await NotificationCoordinator.shared.coverWithBoard(machine)
+        }
         // Started over only when the request changes — the selection moving
         // to another tab, its agent finishing or being seen, the window
         // becoming key or ceasing to be. A refresh that leaves it as it was
@@ -1317,6 +1324,7 @@ struct AgentBoardView: View {
 
     private func loadHerdrMachines() async {
         guard !Task.isCancelled else { return }
+        let notifications = NotificationFeed(machine: machine)
         await Self.keepHerdrMachinesUpToDate(
             makeClient: {
                 // Do not let an old board reconnect to a newly edited endpoint.
@@ -1324,7 +1332,15 @@ struct AgentBoardView: View {
                 let current = try machineStore.currentMachine(matching: machine)
                 return HerdrClient(transport: try machineStore.makeHerdrTransport(for: current))
             },
-            show: showHerdrMachines
+            show: { groups in
+                showHerdrMachines(groups)
+                // Only the machines listed this round: one that couldn't be
+                // reached still has the panes it last listed.
+                for group in groups where group.error == nil && group.hasLoaded {
+                    notifications.observe(panes: group.agents, tabs: group.tabs, workspaces: group.workspaces, on: group.machine)
+                }
+            },
+            connected: notifications.connected
         )
     }
 
@@ -1340,9 +1356,12 @@ struct AgentBoardView: View {
     /// what they last showed meanwhile. This one just backs off and starts
     /// over. A host whose herdr has no saved machines — or is too old to know
     /// about them — gives no groups, and the board stays a flat list.
+    /// `connected` is given each connection once it has been made, before
+    /// anything fetched over it is shown.
     static func keepHerdrMachinesUpToDate(
         makeClient: () throws -> HerdrClient?,
-        show: ([HerdrMachineGroup]) -> Void
+        show: ([HerdrMachineGroup]) -> Void,
+        connected: (HerdrClient) -> Void = { _ in }
     ) async {
         var groups: [HerdrMachineGroup] = []
         var retryDelay = firstReconnectDelay
@@ -1362,6 +1381,8 @@ struct AgentBoardView: View {
             let failed = await withTaskCancellationHandler {
                 do {
                     try await client.connect()
+                    try Task.checkCancellation()
+                    connected(client)
                     while true {
                         try Task.checkCancellation()
                         let machines = try await client.listHerdrMachines()
@@ -1443,6 +1464,7 @@ struct AgentBoardView: View {
         // succeed. `agents` is deliberately kept, so that returning shows the
         // last known list instead of flashing back to "Loading panes…".
         loadError = nil
+        let notifications = NotificationFeed(machine: machine)
         await Self.keepUpToDate(
             makeClient: {
                 // The machine as the store has it now, not as this view
@@ -1458,7 +1480,12 @@ struct AgentBoardView: View {
             pinHostKey: { fingerprint in
                 machineStore.pinHostKeyFingerprint(fingerprint, for: machine)
             },
-            show: show,
+            show: { snapshot in
+                show(snapshot)
+                if machineStore.isCurrentConnection(machine) {
+                    notifications.observe(snapshot)
+                }
+            },
             report: { error, willRetry in
                 loadError = connectionFailureDescription(error)
                 isRetrying = willRetry
@@ -1469,7 +1496,8 @@ struct AgentBoardView: View {
                 if agents.isEmpty && hasLoadedAgents {
                     hasLoadedAgents = false
                 }
-            }
+            },
+            connected: notifications.connected
         )
     }
 
@@ -1551,11 +1579,14 @@ struct AgentBoardView: View {
     /// - `show` receives every snapshot fetched, `report` every failure
     ///   that ends an attempt, together with whether another attempt will
     ///   follow by itself.
+    /// - `connected` receives each connection once it has been made, before
+    ///   anything fetched over it is shown.
     static func keepUpToDate(
         makeClient: () throws -> HerdrClient?,
         pinHostKey: (String) -> Void,
         show: (HerdrSnapshot) -> Void,
-        report: (any Error, _ willRetry: Bool) -> Void
+        report: (any Error, _ willRetry: Bool) -> Void,
+        connected: (HerdrClient) -> Void = { _ in }
     ) async {
         var reconnectDelay = firstReconnectDelay
         while !Task.isCancelled {
@@ -1590,6 +1621,7 @@ struct AgentBoardView: View {
                             try Task.checkCancellation()
                             pinHostKey(newFingerprint)
                         }
+                        connected(client)
                         var snapshot = try await client.snapshot()
                         try Task.checkCancellation()
                         show(snapshot)

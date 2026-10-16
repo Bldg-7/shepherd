@@ -1,15 +1,26 @@
 import SwiftUI
 
 @main struct ShepherdApp: App {
-    #if DEBUG && os(macOS)
-    @State private var machineStore = OwnedOperatorFixture.machineStore()
-    #else
-    @State private var machineStore = MachineStore()
-    #endif
+    @State private var machineStore: MachineStore
     #if os(macOS)
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var softwareUpdater = SoftwareUpdater()
     #endif
+
+    init() {
+        #if DEBUG && os(macOS)
+        let machineStore = OwnedOperatorFixture.machineStore()
+        #else
+        let machineStore = MachineStore()
+        #endif
+        _machineStore = State(initialValue: machineStore)
+        #if os(macOS)
+        // The notifications watch every machine whether or not the window
+        // is open, so they get the machines from here rather than from it.
+        // They start once the app has finished launching (see `AppDelegate`).
+        NotificationCoordinator.shared.machineStore = machineStore
+        #endif
+    }
 
     private var mainContent: some View {
         ContentView(machineStore: machineStore)
@@ -87,6 +98,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         #endif
+        // Before launching finishes, so that a click on a notification that
+        // launched the app gets to it.
+        NotificationCoordinator.shared.prepare()
         guard ShepherdBrowserFeature.shared.isEnabled else { return }
         AgentLaunchService.shared.start()
         Task {
@@ -103,6 +117,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #if DEBUG
         OwnedOperatorFixture.didLaunch()
         #endif
+        NotificationCoordinator.shared.start()
     }
 
     /// Closing the window is not quitting, which is what an app whose one

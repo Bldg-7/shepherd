@@ -820,6 +820,94 @@
         }
       }
     },
+    "%@ finished" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ finished"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ の作業が完了しました"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 작업 완료"
+          }
+        }
+      }
+    },
+    "%@ has an update" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ has an update"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ の状態が変わりました"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 상태 변경"
+          }
+        }
+      }
+    },
+    "%@ needs your attention" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ needs your attention"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ の確認が必要です"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 확인 필요"
+          }
+        }
+      }
+    },
+    "%@ needs your input" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ needs your input"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ が応答待ちです"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 응답 대기 중"
+          }
+        }
+      }
+    },
     "A file with that name is already there." : {
       "localizations" : {
         "en" : {
@@ -842,6 +930,72 @@
         }
       }
     },
+    "About Finished Notifications" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "About Finished Notifications"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "作業完了の通知について"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "작업 완료 알림 안내"
+          }
+        }
+      }
+    },
+    "About herdr's Own Notifications" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "About herdr's Own Notifications"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr 自身の通知について"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr 자체 알림 안내"
+          }
+        }
+      }
+    },
+    "About Needs Input Notifications" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "About Needs Input Notifications"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "応答待ちの通知について"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "응답 대기 알림 안내"
+          }
+        }
+      }
+    },
     "About Terminal File Drop" : {
       "localizations" : {
         "en" : {
@@ -860,6 +1014,182 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "터미널 파일 드롭 안내"
+          }
+        }
+      }
+    },
+    "Allow Notifications…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allow Notifications…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知を許可…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "알림 허용…"
+          }
+        }
+      }
+    },
+    "Allowed" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allowed"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "許可済み"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "허용됨"
+          }
+        }
+      }
+    },
+    "An agent finished" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An agent finished"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "agent の作業が完了しました"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "agent 작업 완료"
+          }
+        }
+      }
+    },
+    "An agent has an update" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An agent has an update"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "agent の状態が変わりました"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "agent 상태 변경"
+          }
+        }
+      }
+    },
+    "An agent has finished" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An agent has finished"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "agent が作業を終えたとき"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "agent가 작업을 마쳤을 때"
+          }
+        }
+      }
+    },
+    "An agent is waiting for your input" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An agent is waiting for your input"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "agent が応答を待っているとき"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "agent가 응답을 기다릴 때"
+          }
+        }
+      }
+    },
+    "An agent needs your attention" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An agent needs your attention"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "agent の確認が必要です"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "agent 확인 필요"
+          }
+        }
+      }
+    },
+    "An agent needs your input" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An agent needs your input"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "agent が応答待ちです"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "agent 응답 대기 중"
           }
         }
       }
@@ -2668,6 +2998,50 @@
         }
       }
     },
+    "herdr shows notifications of its own only while herdr itself is open in a terminal app, never through Shepherd. If you have it open there, you may get both: to keep only Shepherd's, set delivery = \"off\" under [ui.toast] in herdr's config.toml. Shepherd doesn't read or change herdr's settings." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr shows notifications of its own only while herdr itself is open in a terminal app, never through Shepherd. If you have it open there, you may get both: to keep only Shepherd's, set delivery = \"off\" under [ui.toast] in herdr's config.toml. Shepherd doesn't read or change herdr's settings."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr 自身の通知は、ターミナルアプリで herdr を直接開いているときにだけ表示され、Shepherd を通しては表示されません。そのように開いている場合は、両方の通知が届くことがあります。Shepherd の通知だけにするには、herdr の config.toml の [ui.toast] に delivery = \"off\" を設定してください。Shepherd は herdr の設定を読んだり変更したりしません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr 자체 알림은 터미널 앱에서 herdr를 직접 열어 두었을 때만 나오며, Shepherd를 통해서는 나오지 않습니다. 그렇게 열어 두었다면 두 알림을 모두 받을 수 있습니다. Shepherd 알림만 받으려면 herdr의 config.toml에서 [ui.toast] 아래에 delivery = \"off\"를 설정하세요. Shepherd는 herdr 설정을 읽거나 바꾸지 않습니다."
+          }
+        }
+      }
+    },
+    "herdr's own notifications" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr's own notifications"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr 自身の通知"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr 자체 알림"
+          }
+        }
+      }
+    },
     "herdr.sock closed the connection without responding" : {
       "localizations" : {
         "ja" : {
@@ -3885,6 +4259,72 @@
         }
       }
     },
+    "Notifications" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notifications"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "알림"
+          }
+        }
+      }
+    },
+    "Notifications from Shepherd" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notifications from Shepherd"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd からの通知"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd 알림"
+          }
+        }
+      }
+    },
+    "Notify Me When" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notify Me When"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知するタイミング"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다음 경우에 알림"
+          }
+        }
+      }
+    },
     "Off" : {
       "localizations" : {
         "en" : {
@@ -4039,6 +4479,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "설정 열기"
+          }
+        }
+      }
+    },
+    "Open System Settings" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open System Settings"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "システム設定を開く"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "시스템 설정 열기"
           }
         }
       }
@@ -5316,6 +5778,28 @@
         }
       }
     },
+    "Shepherd watches the agents on all of your machines, the active one and the others, for as long as it is running — with its window closed, too. A pane you are looking at doesn't notify." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd watches the agents on all of your machines, the active one and the others, for as long as it is running — with its window closed, too. A pane you are looking at doesn't notify."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd は実行中、アクティブなマシンとほかのマシンすべての agent を見守ります。ウインドウを閉じていても同じです。いま表示している pane については通知しません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd는 실행되는 동안 활성 머신과 다른 머신 모두의 agent를 지켜봅니다. 창을 닫아도 마찬가지입니다. 지금 보고 있는 pane은 알리지 않습니다."
+          }
+        }
+      }
+    },
     "Show Browser" : {
       "localizations" : {
         "ja" : {
@@ -6393,6 +6877,28 @@
         }
       }
     },
+    "Turned Off" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turned Off"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オフ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "꺼짐"
+          }
+        }
+      }
+    },
     "Turning this off preserves saved tabs, profiles, cookies, and runtime settings. An already initialized idle browser engine may remain resident until quit." : {
       "localizations" : {
         "en" : {
@@ -6864,6 +7370,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "pane 안에서 실행 중인 것은 agent를 포함해 모두 종료됩니다."
+          }
+        }
+      }
+    },
+    "When an agent that was working, or waiting for your input, goes idle or done. An agent that has only just started isn't reported." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When an agent that was working, or waiting for your input, goes idle or done. An agent that has only just started isn't reported."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "作業中、または応答待ちだった agent が待機中（idle）か完了（done）になったときです。起動したばかりの agent は通知しません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "작업 중이거나 응답을 기다리던 agent가 대기 중(idle)이나 완료(done)가 될 때입니다. 막 시작한 agent는 알리지 않습니다."
+          }
+        }
+      }
+    },
+    "When herdr reports an agent as blocked: waiting for an answer, or for your approval to go on. herdr doesn't recognize every prompt, and one it doesn't gets no notification." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When herdr reports an agent as blocked: waiting for an answer, or for your approval to go on. herdr doesn't recognize every prompt, and one it doesn't gets no notification."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr が agent を応答待ち（blocked）と報告したときです。回答や、続行の承認を待っている状態です。herdr はすべての確認を認識できるわけではなく、認識できなかった確認は通知されません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "herdr가 agent를 응답 대기(blocked)로 보고할 때입니다. 답이나, 계속 진행해도 되는지 승인을 기다리는 상태입니다. herdr가 모든 확인 요청을 알아보지는 못하며, 알아보지 못한 요청에는 알림이 오지 않습니다."
           }
         }
       }

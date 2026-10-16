@@ -10,6 +10,7 @@ struct MachinesSettingsView: View {
     @State private var isAddingMachine = false
     @State private var machineBeingEdited: Machine?
     #if os(macOS)
+    @State private var showsNotifications = false
     @State private var showsExperimentalFeatures = false
     @State private var hoveredMachineID: UUID?
     @State private var passwordManagerWindowID: UUID
@@ -42,6 +43,11 @@ struct MachinesSettingsView: View {
             } else if isAddingMachine {
                 AddMachineView(machineStore: machineStore) {
                     withAnimation(Self.pageAnimation) { isAddingMachine = false }
+                }
+                .transition(.move(edge: .trailing))
+            } else if showsNotifications {
+                NotificationSettingsView {
+                    withAnimation(Self.pageAnimation) { showsNotifications = false }
                 }
                 .transition(.move(edge: .trailing))
             } else if showsExperimentalFeatures {
@@ -111,6 +117,23 @@ struct MachinesSettingsView: View {
                     }
                 }
                 Section {
+                    Button {
+                        withAnimation(Self.pageAnimation) { showsNotifications = true }
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "bell")
+                                .foregroundStyle(.secondary)
+                                .frame(width: 24)
+                            Text("Notifications")
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.notifications")
                     Button {
                         withAnimation(Self.pageAnimation) { showsExperimentalFeatures = true }
                     } label: {
