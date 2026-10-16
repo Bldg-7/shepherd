@@ -129,6 +129,11 @@ its macOS convenience initializer accepts the existing `HerdrClient`.
   for legacy diagnostics. Install rejects legacy-global state. New installations
   set mode=plugin, codexPluginKey=null and codexPluginReady=false; new launches
   use the new immutable resource version without changing running sessions.
+  `installation(on:)` reads `<root>/installation.json` in Swift and starts no
+  Node process. It applies the same folder checks and error codes as runtime.mjs `status`
+  (`invalid-runtime-root`, `unsafe-directory`, `runtime-failed`), but returns
+  nil for a missing runtime folder instead of creating it. Every action that
+  runs Node still checks Node's version.
 - `availability(of: AgentKind, executable: String, on: AgentHost) async throws ->
   AgentCLIAvailability`: nodeVersion/nodeSupported/executable/version/readiness/
   sessionPlugin/sessionConfiguration/hookRewrite. `unsupportedPrerequisite` means
@@ -231,6 +236,18 @@ preparation; compatibility declarations never restore the old global behavior.
 5. Register accepted local snapshot endpoints so Claude child hooks can lazily
    prepare exactly the requested child. No registered/ambiguous pane means the
    original command is retained and reason-recorded; never use a parent URL.
+   If registering a pane fails, or preparing the agent found in a pane's argv
+   fails, Shepherd waits before trying that pane again: 30 seconds after the
+   first failure, then 60, 120 and 240 seconds, then 5 minutes between later
+   tries. A preparation wait belongs to the pane's current argv. Diagnostics
+   keeps showing the last error during the wait. Shepherd tries again at once
+   when the argv changes or the failure was `setup-busy`. These all cancel
+   every wait: Retry Preparation, Check Prerequisites Again, saving settings,
+   changing the port, and installing. As before this change, duplicate-
+   registration and uninspectable panes are not retried. On each two-second
+   check of accepted snapshots, an agent pane whose snapshot entry and
+   agent.list row match the previous check reuses its process info for up to
+   30 seconds; a pane without an agent has its process info read every time.
 6. On proven disappearance, terminate/await owned agents/MCP, then cleanup with
    terminal identity. On failed launch discard an unbound reservation, or cleanup
    a prepared one only after termination. App startup can reconcile existing

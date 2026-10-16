@@ -28,6 +28,23 @@ and ⇧⌘⌫ send Ctrl-U (0x15), with the kitty keyboard protocol pushed or not
 ⌫, ⌥⌫, ⌘←, ⌘→ and a letter send what SwiftTerm sent before. The private HOME
 keeps the user's own key bindings out.
 
+## Drawing while hidden
+
+```sh
+python3 Tests/Terminal/run-draw-gate-tests.py --output /tmp/shepherd-draw-gate-FRESH \
+  --swiftterm-products /path/to/DerivedData/Build/Products/Debug
+```
+
+Puts the production terminal view in a never-shown window, which macOS reports
+as not visible, and counts SwiftTerm's actual draws. Output fed while the
+window can't be seen reaches SwiftTerm's buffer but is not drawn. The test then
+tells the view it can be seen again, as the window's visibility notifications
+would: it is drawn once in full, and output after that is drawn as usual. The
+view's `isHidden` is never set, so it stays first responder and keeps getting
+keystrokes throughout. The `TerminalDrawGate` rules that decide visibility (a
+covered window, a window on another Space, a minimized window, a hidden app)
+are also tested directly, without a window.
+
 ## Focus frame
 
 ```sh
