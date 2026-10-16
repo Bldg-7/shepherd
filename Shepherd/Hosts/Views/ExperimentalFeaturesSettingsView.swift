@@ -14,7 +14,6 @@ struct ExperimentalFeaturesSettingsView: View {
     @State private var advancedExpanded = false
     @State private var checkingPrerequisites = false
     @AppStorage(TerminalFileDropFeature.preferenceKey) private var terminalFileDropEnabled = false
-    @Environment(\.dismiss) private var dismiss
 
     private var feature: ShepherdBrowserFeature { .shared }
     private var service: AgentLaunchService { .shared }
@@ -38,19 +37,9 @@ struct ExperimentalFeaturesSettingsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 6) {
-                Button(action: onBack) { Label("Machines", systemImage: "chevron.left") }
-                    .buttonStyle(.borderless)
-                    .keyboardShortcut(.cancelAction)
-                    .help("Back to Machines")
-                    .accessibilityIdentifier("settings.experimental-features.back")
-                Divider().frame(height: 14)
-                Text("Experimental Features").font(.headline)
-                Spacer()
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 16)
-            .padding(.bottom, 12)
+            SettingsPageHeader(title: "Experimental Features",
+                               backAccessibilityIdentifier: "settings.experimental-features.back",
+                               onBack: onBack)
 
             // This outer page stays alive when onboarding replaces the form.
             if showsOnboarding {
@@ -58,13 +47,7 @@ struct ExperimentalFeaturesSettingsView: View {
                                               owner: passwordManagerWindowID)
             } else {
                 featuresForm.formStyle(.grouped)
-                Divider()
-                HStack {
-                    Spacer()
-                    Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
+                SettingsPageFooter()
             }
         }
         .accessibilityIdentifier("settings.experimental-features.page")

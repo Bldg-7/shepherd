@@ -7,26 +7,15 @@ import SwiftUI
 /// go with herdr's own.
 struct NotificationSettingsView: View {
     let onBack: () -> Void
-    @Environment(\.dismiss) private var dismiss
 
     private var coordinator: NotificationCoordinator { .shared }
 
     var body: some View {
         @Bindable var preferences = coordinator.preferences
         VStack(spacing: 0) {
-            HStack(spacing: 6) {
-                Button(action: onBack) { Label("Machines", systemImage: "chevron.left") }
-                    .buttonStyle(.borderless)
-                    .keyboardShortcut(.cancelAction)
-                    .help("Back to Machines")
-                    .accessibilityIdentifier("settings.notifications.back")
-                Divider().frame(height: 14)
-                Text("Notifications").font(.headline)
-                Spacer()
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 16)
-            .padding(.bottom, 12)
+            SettingsPageHeader(title: "Notifications",
+                               backAccessibilityIdentifier: "settings.notifications.back",
+                               onBack: onBack)
 
             Form {
                 Section {
@@ -66,13 +55,7 @@ struct NotificationSettingsView: View {
                 }
             }
             .formStyle(.grouped)
-            Divider()
-            HStack {
-                Spacer()
-                Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
+            SettingsPageFooter()
         }
         .accessibilityIdentifier("settings.notifications.page")
         .onAppear { coordinator.refreshAuthorization() }

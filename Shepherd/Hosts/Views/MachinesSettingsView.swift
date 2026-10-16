@@ -117,40 +117,10 @@ struct MachinesSettingsView: View {
                     }
                 }
                 Section {
-                    Button {
-                        withAnimation(Self.pageAnimation) { showsNotifications = true }
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: "bell")
-                                .foregroundStyle(.secondary)
-                                .frame(width: 24)
-                            Text("Notifications")
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("settings.notifications")
-                    Button {
-                        withAnimation(Self.pageAnimation) { showsExperimentalFeatures = true }
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: "flask")
-                                .foregroundStyle(.secondary)
-                                .frame(width: 24)
-                            Text("Experimental Features")
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("settings.experimental-features")
+                    pageRow("Notifications", systemImage: "bell") { showsNotifications = true }
+                        .accessibilityIdentifier("settings.notifications")
+                    pageRow("Experimental Features", systemImage: "flask") { showsExperimentalFeatures = true }
+                        .accessibilityIdentifier("settings.experimental-features")
                 }
                 if let softwareUpdater, softwareUpdater.isAvailable {
                     updatesSection(softwareUpdater)
@@ -167,6 +137,26 @@ struct MachinesSettingsView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
         }
+    }
+
+    /// A row that opens another page of Settings in place of this list.
+    private func pageRow(_ title: LocalizedStringKey, systemImage: String, open: @escaping () -> Void) -> some View {
+        Button {
+            withAnimation(Self.pageAnimation) { open() }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: systemImage)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 24)
+                Text(title)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     /// Shepherd's own updates: whether Sparkle checks on its own, and a way
