@@ -5050,22 +5050,6 @@
         }
       }
     },
-    "Rename" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "名前を変更"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이름 변경"
-          }
-        }
-      }
-    },
     "Rename Pane" : {
       "localizations" : {
         "ja" : {
