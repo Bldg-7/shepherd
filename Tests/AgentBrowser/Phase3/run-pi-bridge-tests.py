@@ -13,7 +13,8 @@ for name in ['home','tmp','cache','package/Sources/Bridge']:(out/name).mkdir(par
 env = dict(os.environ, HOME=str(out/'home'), CFFIXED_USER_HOME=str(out/'home'), TMPDIR=str(out/'tmp'),
            CLANG_MODULE_CACHE_PATH=str(out/'cache'), DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer', SWIFTCI_USE_LOCAL_DEPS='1')
 sources = ['Shepherd/Agents/'+name+'.swift' for name in ['AgentRuntime','PiProcessIdentity','PiProcessLifetime','PiHostBridge','PiBridgeListener']]
-sources += ['Tests/AgentBrowser/Phase3/PiBridgeIntegrationTests.swift']
+sources += ['ShepherdKit/Sources/ShepherdKit/Agents/AgentKind.swift', 'ShepherdKit/Sources/ShepherdKit/Resources.swift',
+            'Tests/AgentBrowser/Phase3/PiBridgeIntegrationTests.swift']
 identity = sources + ['Tests/AgentBrowser/Phase3/PiBridgeClientFixture.mjs','Tests/AgentBrowser/Phase3/OwnedPiBridgePTY.py','Tests/AgentBrowser/Phase3/PiBridgeObserver.ts'] + [str(f.relative_to(ROOT)) for f in (ROOT/'Shepherd/Agents/AgentRuntime').glob('pi-*')]
 hashes={name:hashlib.sha256((ROOT/name).read_bytes()).hexdigest() for name in identity}
 (out/'source-hashes.json').write_text(json.dumps(hashes,indent=2))

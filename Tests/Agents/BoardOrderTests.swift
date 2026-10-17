@@ -2,7 +2,7 @@ import Foundation
 
 // Only AgentKind's runtime/launch dependencies are a seam; the production
 // pane, tab and snapshot models and the board's order are compiled intact.
-nonisolated enum AgentKind: String, Sendable {
+public nonisolated enum AgentKind: String, Sendable {
     case claude, codex, pi
     var supportsLegacySessionInspection: Bool { self != .pi }
 }

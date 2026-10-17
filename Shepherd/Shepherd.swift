@@ -19,6 +19,7 @@ import SwiftUI
         // is open, so they get the machines from here rather than from it.
         // They start once the app has finished launching (see `AppDelegate`).
         NotificationCoordinator.shared.machineStore = machineStore
+        MachineMonitors.shared.makeListener = { NotificationFeed(machine: $0) }
         #endif
     }
 

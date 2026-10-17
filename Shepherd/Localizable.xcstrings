@@ -101,11 +101,6 @@
     "Changing the hostname or port clears the saved host key. The new server will be trusted on first connection.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Changing the hostname or port clears the saved host key. The new server will be trusted on first connection."}}, "ja": {"stringUnit": {"state": "translated", "value": "ホスト名またはポートを変えると保存済みのホスト鍵を解除します。新しいサーバーは初回接続時に信頼されます。"}}, "ko": {"stringUnit": {"state": "translated", "value": "호스트 이름이나 포트를 바꾸면 저장된 호스트 키를 해제하고, 첫 연결에서 새 서버를 신뢰합니다."}}}},
     "Changing the session removes its old pane browsers and their isolated profiles.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Changing the session removes its old pane browsers and their isolated profiles."}}, "ja": {"stringUnit": {"state": "translated", "value": "セッションを変えると、以前の pane ブラウザとその分離プロファイルが削除されます。"}}, "ko": {"stringUnit": {"state": "translated", "value": "세션을 바꾸면 이전 pane 브라우저와 해당 격리 프로필이 삭제됩니다."}}}},
     "Enter the SSH hostname or IP address, without a username, scheme or port.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Enter the SSH hostname or IP address, without a username, scheme or port."}}, "ja": {"stringUnit": {"state": "translated", "value": "ユーザー名・スキーム・ポートを除いた SSH ホスト名または IP アドレスを入力してください。"}}, "ko": {"stringUnit": {"state": "translated", "value": "사용자 이름·주소 스킴·포트를 빼고 SSH 호스트 이름이나 IP 주소만 입력하세요."}}}},
-    "This machine cannot be edited or was removed.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "This machine cannot be edited or was removed."}}, "ja": {"stringUnit": {"state": "translated", "value": "このマシンは編集できないか、削除されています。"}}, "ko": {"stringUnit": {"state": "translated", "value": "수정할 수 없거나 삭제된 머신입니다."}}}},
-    "The machine settings changed. Reopen the machine and try again.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "The machine settings changed. Reopen the machine and try again."}}, "ja": {"stringUnit": {"state": "translated", "value": "マシンの設定が変更されました。開き直して再試行してください。"}}, "ko": {"stringUnit": {"state": "translated", "value": "머신 설정이 변경되었습니다. 다시 열어 수정해 주세요."}}}},
-    "Check the name, hostname, username, port and session.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Check the name, hostname, username, port and session."}}, "ja": {"stringUnit": {"state": "translated", "value": "名前、ホスト名、ユーザー名、ポート、セッションを確認してください。"}}, "ko": {"stringUnit": {"state": "translated", "value": "이름, 호스트 이름, 사용자 이름, 포트, 세션을 확인해 주세요."}}}},
-    "Enter a new credential when changing authentication.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Enter a new credential when changing authentication."}}, "ja": {"stringUnit": {"state": "translated", "value": "認証方式を変える場合は新しい認証情報を入力してください。"}}, "ko": {"stringUnit": {"state": "translated", "value": "인증 방식을 바꾸려면 새 인증 정보를 입력해 주세요."}}}},
-    "No saved SSH credential was found. Edit the machine to set up authentication.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "No saved SSH credential was found. Edit the machine to set up authentication."}}, "ja": {"stringUnit": {"state": "translated", "value": "保存済みの SSH 認証情報がありません。マシンを編集して認証を設定してください。"}}, "ko": {"stringUnit": {"state": "translated", "value": "저장된 SSH 인증 정보가 없습니다. 머신을 수정하여 인증을 설정해 주세요."}}}},
     "The machine couldn't be saved. %@": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "The machine couldn't be saved. %@"}}, "ja": {"stringUnit": {"state": "translated", "value": "マシンを保存できませんでした。%@"}}, "ko": {"stringUnit": {"state": "translated", "value": "머신을 저장하지 못했습니다. %@"}}}},
     "Pi": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Pi"}}, "ja": {"stringUnit": {"state": "translated", "value": "Pi"}}, "ko": {"stringUnit": {"state": "translated", "value": "Pi"}}}},
     "Pi package or version has not been qualified": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Pi package or version has not been qualified"}}, "ja": {"stringUnit": {"state": "translated", "value": "Pi のパッケージまたはバージョンは未検証です"}}, "ko": {"stringUnit": {"state": "translated", "value": "Pi 패키지 또는 버전이 검증되지 않았습니다"}}}},
@@ -755,110 +750,6 @@
         }
       }
     },
-    "Blocked" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "応答待ち"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "응답 대기"
-          }
-        }
-      }
-    },
-    "%@ finished" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ finished"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ の作業が完了しました"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 작업 완료"
-          }
-        }
-      }
-    },
-    "%@ has an update" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ has an update"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ の状態が変わりました"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 상태 변경"
-          }
-        }
-      }
-    },
-    "%@ needs your attention" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ needs your attention"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ の確認が必要です"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 확인 필요"
-          }
-        }
-      }
-    },
-    "%@ needs your input" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ needs your input"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ が応答待ちです"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 응답 대기 중"
-          }
-        }
-      }
-    },
     "A file with that name is already there." : {
       "localizations" : {
         "en" : {
@@ -1013,50 +904,6 @@
         }
       }
     },
-    "An agent finished" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "An agent finished"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "agent の作業が完了しました"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "agent 작업 완료"
-          }
-        }
-      }
-    },
-    "An agent has an update" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "An agent has an update"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "agent の状態が変わりました"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "agent 상태 변경"
-          }
-        }
-      }
-    },
     "An agent has finished" : {
       "localizations" : {
         "en" : {
@@ -1097,50 +944,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "agent가 응답을 기다릴 때"
-          }
-        }
-      }
-    },
-    "An agent needs your attention" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "An agent needs your attention"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "agent の確認が必要です"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "agent 확인 필요"
-          }
-        }
-      }
-    },
-    "An agent needs your input" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "An agent needs your input"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "agent が応答待ちです"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "agent 응답 대기 중"
           }
         }
       }
@@ -2087,38 +1890,6 @@
         }
       }
     },
-    "Connection refused" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "接続が拒否されました"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "연결이 거부됨"
-          }
-        }
-      }
-    },
-    "Connection reset" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "接続がリセットされました"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "연결이 재설정됨"
-          }
-        }
-      }
-    },
     "Connection setup is not implemented yet. 1Password requires a user-configured official op CLI and desktop integration; Bitwarden requires a user-configured official bw CLI. Node is an external prerequisite only for CLI distributions that require it. Nothing is installed or signed in automatically." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2276,54 +2047,6 @@
         }
       }
     },
-    "Couldn't connect to %@: %@." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$@ に接続できませんでした: %2$@。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$@에 연결할 수 없습니다: %2$@."
-          }
-        }
-      }
-    },
-    "Couldn't connect to %@." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ に接続できませんでした。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@에 연결할 수 없습니다."
-          }
-        }
-      }
-    },
-    "Couldn't find %@: the name doesn't resolve." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ が見つかりません。名前を解決できません。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 호스트를 찾을 수 없습니다. 이름을 조회할 수 없습니다."
-          }
-        }
-      }
-    },
     "Couldn't paste %@: the path has control characters in it." : {
       "localizations" : {
         "en" : {
@@ -2342,22 +2065,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@을(를) 붙여 넣지 못했습니다: 경로에 제어 문자가 있습니다."
-          }
-        }
-      }
-    },
-    "Couldn't reach herdr.sock: %@" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr.sock に接続できません: %@"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr.sock에 연결할 수 없습니다: %@"
           }
         }
       }
@@ -2933,22 +2640,6 @@
         }
       }
     },
-    "herdr exited with status %lld." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr がステータス %lld で終了しました。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr가 상태 %lld(으)로 종료되었습니다."
-          }
-        }
-      }
-    },
     "herdr shows notifications of its own only while herdr itself is open in a terminal app, never through Shepherd. If you have it open there, you may get both: to keep only Shepherd's, set delivery = \"off\" under [ui.toast] in herdr's config.toml. Shepherd doesn't read or change herdr's settings." : {
       "localizations" : {
         "en" : {
@@ -2993,54 +2684,6 @@
         }
       }
     },
-    "herdr.sock closed the connection without responding" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr.sock が応答せずに接続を閉じました"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr.sock이 응답 없이 연결을 닫았습니다"
-          }
-        }
-      }
-    },
-    "herdr.sock's path is too long for a Unix domain socket" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr.sock のパスが Unix ドメインソケットには長すぎます"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr.sock 경로가 Unix 도메인 소켓에 쓰기에는 너무 깁니다"
-          }
-        }
-      }
-    },
-    "herdr's answer didn't name the new tab." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr の応答に新しい tab が含まれていませんでした。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr의 응답에 새 tab이 없습니다."
-          }
-        }
-      }
-    },
     "Hide Browser" : {
       "localizations" : {
         "ja" : {
@@ -3073,22 +2716,6 @@
         }
       }
     },
-    "Host unreachable" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ホストに到達できません"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "호스트에 연결할 수 없음"
-          }
-        }
-      }
-    },
     "Hostname" : {
       "localizations" : {
         "ja" : {
@@ -3101,22 +2728,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "호스트 이름"
-          }
-        }
-      }
-    },
-    "Idle" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "待機中"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "대기 중"
           }
         }
       }
@@ -3313,22 +2924,6 @@
         }
       }
     },
-    "Key files with more than one key aren't supported" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "複数の鍵を含む鍵ファイルには対応していません"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "키가 두 개 이상 들어 있는 키 파일은 지원하지 않습니다"
-          }
-        }
-      }
-    },
     "Key Source" : {
       "localizations" : {
         "ja" : {
@@ -3341,38 +2936,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "키 출처"
-          }
-        }
-      }
-    },
-    "Keychain error %d" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "キーチェーンエラー %d"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "키체인 오류 %d"
-          }
-        }
-      }
-    },
-    "Keychain error %d: %@" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "キーチェーンエラー %1$d: %2$@"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "키체인 오류 %1$d: %2$@"
           }
         }
       }
@@ -3505,22 +3068,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "불러오는 중…"
-          }
-        }
-      }
-    },
-    "Logged in, but the machine wouldn't open a channel to herdr." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ログインしましたが、マシンが herdr へのチャンネルを開きませんでした。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "로그인했지만 머신이 herdr로 가는 채널을 열어 주지 않았습니다."
           }
         }
       }
@@ -3669,22 +3216,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "tab 이름을 입력하고 Return 키를 눌러 여십시오. 비워 두면 herdr가 번호를 붙입니다."
-          }
-        }
-      }
-    },
-    "Network unreachable" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ネットワークに到達できません"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "네트워크에 연결할 수 없음"
           }
         }
       }
@@ -3952,22 +3483,6 @@
         }
       }
     },
-    "No such file or directory" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ファイルまたはディレクトリがありません"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "해당 파일이나 디렉터리가 없음"
-          }
-        }
-      }
-    },
     "Node 20 or newer is required on This Mac. CLI capability checks do not verify login. Complete login in the CLI if agent readiness fails." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4067,22 +3582,6 @@
         }
       }
     },
-    "Not an OpenSSH PEM private key (expected -----BEGIN OPENSSH PRIVATE KEY-----)" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "OpenSSH PEM 形式の秘密鍵ではありません(-----BEGIN OPENSSH PRIVATE KEY----- で始まる必要があります)"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "OpenSSH PEM 개인 키가 아닙니다(-----BEGIN OPENSSH PRIVATE KEY-----로 시작해야 함)"
-          }
-        }
-      }
-    },
     "Not checked" : {
       "localizations" : {
         "en" : {
@@ -4123,22 +3622,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "설정되지 않음. 관리자를 선택해도 연결하거나 잠금을 해제하지 않습니다."
-          }
-        }
-      }
-    },
-    "Not connected to herdr yet" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "まだ herdr に接続されていません"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "아직 herdr에 연결되지 않았습니다"
           }
         }
       }
@@ -4495,22 +3978,6 @@
         }
       }
     },
-    "Passphrase-encrypted keys aren't supported yet — use an unencrypted key" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "パスフレーズで暗号化された鍵にはまだ対応していません。暗号化されていない鍵を使用してください"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "암호문으로 암호화된 키는 아직 지원하지 않습니다. 암호화되지 않은 키를 사용하십시오"
-          }
-        }
-      }
-    },
     "Password" : {
       "localizations" : {
         "ja" : {
@@ -4594,22 +4061,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "세션별 플러그인 (기본값)"
-          }
-        }
-      }
-    },
-    "Permission denied" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "アクセス権がありません"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "권한 없음"
           }
         }
       }
@@ -4842,22 +4293,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "읽기 접근을 확인했습니다. 다른 권한은 검증하지 않았습니다."
-          }
-        }
-      }
-    },
-    "read failed: %@" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "読み取りに失敗しました: %@"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "읽기 실패: %@"
           }
         }
       }
@@ -6064,38 +5499,6 @@
         }
       }
     },
-    "Terminal session hasn't started yet" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ターミナルセッションはまだ開始されていません"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "터미널 세션이 아직 시작되지 않았습니다"
-          }
-        }
-      }
-    },
-    "Terminal session was already started" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ターミナルセッションはすでに開始されています"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "터미널 세션이 이미 시작되었습니다"
-          }
-        }
-      }
-    },
     "The active machine's panes and agents are listed in the main window." : {
       "localizations" : {
         "ja" : {
@@ -6160,22 +5563,6 @@
         }
       }
     },
-    "The command exited with status %lld." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "コマンドがステータス %lld で終了しました。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "명령이 상태 %lld(으)로 종료되었습니다."
-          }
-        }
-      }
-    },
     "The connection closed" : {
       "localizations" : {
         "ja" : {
@@ -6188,22 +5575,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "연결이 종료되었습니다"
-          }
-        }
-      }
-    },
-    "The connection to the machine closed unexpectedly." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "マシンとの接続が予期せず切断されました。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "머신과의 연결이 예기치 않게 끊어졌습니다."
           }
         }
       }
@@ -6241,54 +5612,6 @@
         }
       }
     },
-    "The host command exceeded its deadline; the operation did not complete successfully." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ホストのコマンドが制限時間を超えました。操作は正常に完了していません。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "호스트 명령이 제한 시간을 초과했습니다. 작업이 정상 완료되지 않았습니다."
-          }
-        }
-      }
-    },
-    "The key data is malformed" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "鍵のデータが不正です"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "키 데이터의 형식이 잘못되었습니다"
-          }
-        }
-      }
-    },
-    "The machine didn't answer in time." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "マシンから時間内に応答がありませんでした。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "머신이 제시간에 응답하지 않았습니다."
-          }
-        }
-      }
-    },
     "The machine didn't confirm the upload." : {
       "localizations" : {
         "en" : {
@@ -6307,70 +5630,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "머신이 업로드 완료를 확인해 주지 않았습니다."
-          }
-        }
-      }
-    },
-    "The machine doesn't accept key logins." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このマシンは鍵によるログインを受け付けていません。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이 머신은 키 로그인을 허용하지 않습니다."
-          }
-        }
-      }
-    },
-    "The machine doesn't accept password logins. Set the machine up with a key instead." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このマシンはパスワードによるログインを受け付けていません。代わりに鍵を使うように設定してください。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이 머신은 암호 로그인을 허용하지 않습니다. 대신 키를 사용하도록 머신을 설정하십시오."
-          }
-        }
-      }
-    },
-    "The machine doesn't accept this kind of login." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このマシンはこの方式のログインを受け付けていません。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이 머신은 이 방식의 로그인을 허용하지 않습니다."
-          }
-        }
-      }
-    },
-    "The machine turned the login down: the password is wrong, or the key isn't in that account's ~/.ssh/authorized_keys." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "マシンがログインを拒否しました。パスワードが間違っているか、鍵がそのアカウントの ~/.ssh/authorized_keys に登録されていません。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "머신이 로그인을 거부했습니다. 암호가 틀렸거나, 키가 해당 계정의 ~/.ssh/authorized_keys에 등록되어 있지 않습니다."
           }
         }
       }
@@ -6578,22 +5837,6 @@
         }
       }
     },
-    "This host's SSH key doesn't match the one we pinned on first connect (expected %@, got %@). This usually means the server was reinstalled — but it's also exactly what a man-in-the-middle attack looks like, so this connection was refused rather than silently trusting it." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このホストの SSH 鍵が、最初の接続時に固定した鍵と一致しません(期待値: %1$@、実際: %2$@)。通常はサーバの再インストールが原因ですが、中間者攻撃もまったく同じように見えるため、黙って信頼せずに接続を拒否しました。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이 호스트의 SSH 키가 처음 연결할 때 고정한 키와 일치하지 않습니다(예상: %1$@, 실제: %2$@). 보통은 서버를 다시 설치해서 생기는 일이지만, 중간자 공격도 정확히 이렇게 보이므로 그대로 신뢰하지 않고 연결을 거부했습니다."
-          }
-        }
-      }
-    },
     "This Mac" : {
       "localizations" : {
         "ja" : {
@@ -6748,38 +5991,6 @@
       "comment" : "Error message displayed when a saved conversation cannot be verified.",
       "isCommentAutoGenerated" : true
     },
-    "Timed out" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "タイムアウトしました"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "시간 초과"
-          }
-        }
-      }
-    },
-    "Too many open files" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "開いているファイルが多すぎます"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "열린 파일이 너무 많음"
-          }
-        }
-      }
-    },
     "Trying again automatically." : {
       "localizations" : {
         "ja" : {
@@ -6896,22 +6107,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "지원하지 않는 CLI 버전입니다. 대상은 op 2.32.0과 bw 2025.11.0이며 실제 공급업체 호환성은 검증하지 않았습니다."
-          }
-        }
-      }
-    },
-    "Unsupported key type '%@'" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "対応していない鍵の種類 '%@'"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "지원하지 않는 키 유형 '%@'"
           }
         }
       }
@@ -7337,22 +6532,6 @@
         }
       }
     },
-    "Working" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "作業中"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "작업 중"
-          }
-        }
-      }
-    },
     "Workspace" : {
       "localizations" : {
         "ja" : {
@@ -7381,22 +6560,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "workspace 이름"
-          }
-        }
-      }
-    },
-    "write failed: %@" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "書き込みに失敗しました: %@"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "쓰기 실패: %@"
           }
         }
       }

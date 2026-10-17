@@ -19,14 +19,14 @@ env = dict(os.environ, DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer
            HOME=str(out / 'home'), CFFIXED_USER_HOME=str(out / 'home'),
            TMPDIR=str(out / 'tmp'), CLANG_MODULE_CACHE_PATH=str(out / 'cache'))
 sources = ['Shepherd/Agents/' + name + '.swift' for name in [
-    'AgentRuntime', 'PiProcessIdentity', 'AgentHostExecutables', 'AgentSkillPreparation', 'AgentLaunchService', 'ExperimentalSettingsDiagnostics', 'AgentSavedSession',
+    'AgentRuntime', 'PiProcessIdentity', 'AgentHostExecutables', 'AgentSkillPreparation', 'AgentLaunchService', 'PiShimPreflight', 'ExperimentalSettingsDiagnostics', 'AgentSavedSession',
     'AgentIdleStopPolicy', 'AgentLaunchState', 'AgentResumeConfirmation', 'AgentBrowserAdapter']]
-sources += ['Shepherd/Hosts/Models/Machine.swift', 'Shepherd/Hosts/Models/AgentSkillSetup.swift',
+sources += ['ShepherdKit/Sources/ShepherdKit/Agents/AgentKind.swift', 'ShepherdKit/Sources/ShepherdKit/Machines/Machine.swift', 'Shepherd/Hosts/Models/AgentSkillSetup.swift',
             'Shepherd/Hosts/Views/AgentSkillRows.swift', 'Shepherd/Hosts/Views/InfoButton.swift',
             'Shepherd/Browser/BrowserKey.swift',
-            'Shepherd/Browser/CDPPolicy.swift', 'Shepherd/HerdrKit/HerdrClient.swift',
-            'Shepherd/HerdrKit/Transport/HerdrTransport.swift', 'Shepherd/HerdrKit/Terminal/ShellQuoting.swift']
-sources += [str(x.relative_to(ROOT)) for x in sorted((ROOT / 'Shepherd/HerdrKit/Models').glob('*.swift'))]
+            'Shepherd/Browser/CDPPolicy.swift', 'ShepherdKit/Sources/ShepherdKit/HerdrKit/HerdrClient.swift',
+            'ShepherdKit/Sources/ShepherdKit/HerdrKit/Transport/HerdrTransport.swift', 'ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/ShellQuoting.swift']
+sources += [str(x.relative_to(ROOT)) for x in sorted((ROOT / 'ShepherdKit/Sources/ShepherdKit/HerdrKit/Models').glob('*.swift'))]
 sources += ['Tests/AgentBrowser/Phase3/AgentSkillPreparationSeams.swift', 'Tests/AgentBrowser/Phase3/AgentSkillServiceTests.swift']
 identity = sources + ['Tests/AgentBrowser/Phase3/AgentSkillPreparationTests.swift', 'Tests/AgentBrowser/Phase3/RuntimeCoreTests.mjs']
 identity += [str(x.relative_to(ROOT)) for x in (ROOT / 'Shepherd/Agents/AgentRuntime').glob('*.mjs')]
@@ -35,7 +35,7 @@ identity += ['Shepherd/Agents/AgentRuntime/skill/SKILL.md',
              'Shepherd/Agents/AgentRuntime/pi-entry.ts',
              'Tests/AgentBrowser/Phase3/PiIntegrationTests.mjs',
              'Tests/AgentBrowser/Phase3/PiMcpRegistrationTests.mjs',
-             'Shepherd/HerdrKit/Terminal/LocalCommand.swift',
+             'ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/LocalCommand.swift',
              'Tests/AgentBrowser/Phase3/AgentHostExecutablesTests.swift',
              'Tests/AgentBrowser/Phase3/ExperimentalSettingsDiagnosticsTests.swift']
 (out / 'source-hashes.json').write_text(json.dumps({s: hashlib.sha256((ROOT / s).read_bytes()).hexdigest() for s in identity}, indent=2))
@@ -51,15 +51,15 @@ def stage(name, seconds, command):
     if code or not record['naturalExitConfirmed'] or record['signalsSent'] or not record['cleanupVerified']:
         raise RuntimeError(name + ' failed; see retained log')
 
-swift = ['/usr/bin/xcrun', 'swiftc', '-swift-version', '6', '-default-isolation', 'MainActor', '-parse-as-library']
+swift = ['/usr/bin/xcrun', 'swiftc','ShepherdKit/Sources/ShepherdKit/Resources.swift', '-swift-version', '6', '-default-isolation', 'MainActor', '-parse-as-library']
 stage('node-runtime', 120, ['node', 'Tests/AgentBrowser/Phase3/RuntimeCoreTests.mjs'])
 stage('pi-foundation', 60, ['node', '--test', 'Tests/AgentBrowser/Phase3/PiIntegrationTests.mjs'])
 stage('pi-mcp-registration', 30, ['node', '--test', 'Tests/AgentBrowser/Phase3/PiMcpRegistrationTests.mjs'])
-stage('executable-lookup-build', 60, [*swift, 'Shepherd/Agents/AgentRuntime.swift',
-    'Shepherd/Agents/AgentHostExecutables.swift', 'Shepherd/HerdrKit/Terminal/LocalCommand.swift',
+stage('executable-lookup-build', 60, [*swift, 'Shepherd/Agents/AgentRuntime.swift','ShepherdKit/Sources/ShepherdKit/Agents/AgentKind.swift',
+    'Shepherd/Agents/AgentHostExecutables.swift', 'ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/LocalCommand.swift',
     'Tests/AgentBrowser/Phase3/AgentHostExecutablesTests.swift', '-o', str(out / 'executable-lookup-tests')])
 stage('executable-lookup-tests', 30, [str(out / 'executable-lookup-tests'), str(out / 'node-fixture')])
-stage('diagnostics-build', 60, [*swift, 'Shepherd/Agents/AgentRuntime.swift',
+stage('diagnostics-build', 60, [*swift, 'Shepherd/Agents/AgentRuntime.swift','ShepherdKit/Sources/ShepherdKit/Agents/AgentKind.swift',
     'Shepherd/Agents/ExperimentalSettingsDiagnostics.swift',
     'Tests/AgentBrowser/Phase3/ExperimentalSettingsDiagnosticsTests.swift', '-o', str(out / 'diagnostics-tests')])
 stage('diagnostics-tests', 20, [str(out / 'diagnostics-tests')])
@@ -68,7 +68,7 @@ stage('preparation-build', 60, [*swift, 'Shepherd/Agents/AgentSkillPreparation.s
 stage('preparation-tests', 20, [str(out / 'preparation-tests')])
 stage('service-ui-build', 90, [*swift, *sources, '-o', str(out / 'service-tests')])
 stage('service-tests', 30, [str(out / 'service-tests')])
-stage('swift-runtime-build', 60, [*swift, 'Shepherd/Agents/AgentRuntime.swift',
+stage('swift-runtime-build', 60, [*swift, 'Shepherd/Agents/AgentRuntime.swift','ShepherdKit/Sources/ShepherdKit/Agents/AgentKind.swift',
                                  'Tests/AgentBrowser/Phase3/AgentRuntimeTests.swift', '-o', str(out / 'runtime-tests')])
 stage('swift-runtime-tests', 20, [str(out / 'runtime-tests')])
 (out / 'validation.json').write_text(json.dumps({'passed': True, 'stages': len(records),

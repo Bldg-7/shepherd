@@ -8,20 +8,20 @@ for n in ['home','tmp','cache','renders']:(out/n).mkdir(mode=0o700)
 env=dict(os.environ,DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer',HOME=str(out/'home'),CFFIXED_USER_HOME=str(out/'home'),TMPDIR=str(out/'tmp'),CLANG_MODULE_CACHE_PATH=str(out/'cache'))
 page,agents,passwords='Shepherd/Hosts/Views/ExperimentalFeaturesSettingsView.swift','Shepherd/Hosts/Views/AgentSkillRows.swift','Shepherd/PasswordManagers/PasswordManagerSettingsRows.swift'
 # The launch service's own stand-ins, as in Phase3's run-managed-skill-tests.py.
-service=['Shepherd/Agents/'+n+'.swift' for n in ['AgentRuntime','PiProcessIdentity','AgentHostExecutables','AgentSkillPreparation','AgentLaunchService','ExperimentalSettingsDiagnostics','AgentSavedSession','AgentIdleStopPolicy','AgentLaunchState','AgentResumeConfirmation','AgentBrowserAdapter']]
-service+=['Shepherd/Hosts/Models/Machine.swift','Shepherd/Hosts/Models/AgentSkillSetup.swift','Shepherd/Browser/BrowserKey.swift','Shepherd/Browser/CDPPolicy.swift','Shepherd/HerdrKit/HerdrClient.swift','Shepherd/HerdrKit/Transport/HerdrTransport.swift','Shepherd/HerdrKit/Terminal/ShellQuoting.swift']
-service+=[str(x.relative_to(ROOT)) for x in sorted((ROOT/'Shepherd/HerdrKit/Models').glob('*.swift'))]+['Tests/AgentBrowser/Phase3/AgentSkillPreparationSeams.swift']
+service=['Shepherd/Agents/'+n+'.swift' for n in ['AgentRuntime','PiProcessIdentity','AgentHostExecutables','AgentSkillPreparation','AgentLaunchService','PiShimPreflight','ExperimentalSettingsDiagnostics','AgentSavedSession','AgentIdleStopPolicy','AgentLaunchState','AgentResumeConfirmation','AgentBrowserAdapter']]
+service+=['ShepherdKit/Sources/ShepherdKit/Agents/AgentKind.swift','ShepherdKit/Sources/ShepherdKit/Machines/Machine.swift','Shepherd/Hosts/Models/AgentSkillSetup.swift','Shepherd/Browser/BrowserKey.swift','Shepherd/Browser/CDPPolicy.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/HerdrClient.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Transport/HerdrTransport.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/ShellQuoting.swift']
+service+=[str(x.relative_to(ROOT)) for x in sorted((ROOT/'ShepherdKit/Sources/ShepherdKit/HerdrKit/Models').glob('*.swift'))]+['Tests/AgentBrowser/Phase3/AgentSkillPreparationSeams.swift']
 # The password manager rows, as in Phase3's run-password-selection-tests.py.
 credentials=['Shepherd/CredentialBroker/CredentialBrokerContracts.swift','Shepherd/CredentialBroker/CredentialBroker.swift','Shepherd/CredentialBroker/Interface/CredentialCLIService.swift','Shepherd/CredentialBroker/Interface/CredentialGrantView.swift']
 credentials+=['Shepherd/PasswordManagers/'+n+'.swift' for n in ['PasswordManagerProviderID','PasswordManagerPreferences','PasswordManagerProvider','PasswordManagerCommandExecutor','BitwardenUnlockCommand','CLICredentialProvider','PasswordManagerConnectionCoordinator','PasswordManagerConnectionSetupView']]
-credentials+=['Shepherd/HerdrKit/Terminal/LocalCommand.swift']
+credentials+=['ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/LocalCommand.swift']
 sources=service+credentials+[page,agents,passwords,'Shepherd/Hosts/Views/SettingsPageChrome.swift','Shepherd/Hosts/Views/InfoButton.swift','Shepherd/FileDrop/TerminalFileDropFeature.swift','Tests/Settings/ExperimentalFeaturesLayoutTests.swift']
 (out/'source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in sources},indent=2))
 def stage(name,seconds,args):
  log=out/(name+'.log')
  code=subprocess.run([sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(seconds),'--natural-exit-grace','10','--log',str(log),'--',*args],cwd=ROOT,env=env,timeout=seconds+40).returncode
  j=json.loads(log.with_suffix('.stage.json').read_text());assert code==0 and j['naturalExitConfirmed'] and not j['signalsSent'] and j['cleanupVerified'],name
-stage('build',300,['xcrun','swiftc','-swift-version','6','-default-isolation','MainActor','-target',platform.machine()+'-apple-macos26.6.2','-parse-as-library',*sources,'-o',str(out/'layout-tests')])
+stage('build',300,['xcrun','swiftc','ShepherdKit/Sources/ShepherdKit/Resources.swift','-swift-version','6','-default-isolation','MainActor','-target',platform.machine()+'-apple-macos26.6.2','-parse-as-library',*sources,'-o',str(out/'layout-tests')])
 stage('tests',90,[str(out/'layout-tests'),str(out/'renders')])
 # What the renders cannot reach (a remote machine, an open connection setup):
 # the browser's rows are rows, and the page has one Section per feature.

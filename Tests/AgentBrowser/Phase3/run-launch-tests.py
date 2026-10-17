@@ -50,11 +50,11 @@ def main():
     try:
         for selected in args.stage:
             if selected == 'api':
-                sources = ['Shepherd/Agents/AgentRuntime.swift', 'Shepherd/Agents/AgentSavedSession.swift', 'Shepherd/Agents/AgentIdleStopPolicy.swift', 'Shepherd/Agents/AgentLaunchState.swift', 'Shepherd/Agents/PiShimPreflight.swift', 'Shepherd/HerdrKit/HerdrClient.swift', 'Shepherd/HerdrKit/Transport/HerdrTransport.swift', 'Shepherd/HerdrKit/Terminal/ShellQuoting.swift'] + [str(p.relative_to(ROOT)) for p in sorted((ROOT / 'Shepherd/HerdrKit/Models').glob('*.swift'))]
-                stage('api-build', 60, ['xcrun', 'swiftc', '-swift-version', '6', '-parse-as-library', *sources, 'Tests/AgentBrowser/Phase3/AgentLaunchAPITests.swift', '-o', str(out / 'AgentLaunchAPITests')])
+                sources = ['Shepherd/Agents/AgentRuntime.swift','ShepherdKit/Sources/ShepherdKit/Agents/AgentKind.swift', 'Shepherd/Agents/AgentSavedSession.swift', 'Shepherd/Agents/AgentIdleStopPolicy.swift', 'Shepherd/Agents/AgentLaunchState.swift', 'Shepherd/Agents/PiShimPreflight.swift', 'ShepherdKit/Sources/ShepherdKit/HerdrKit/HerdrClient.swift', 'ShepherdKit/Sources/ShepherdKit/HerdrKit/Transport/HerdrTransport.swift', 'ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/ShellQuoting.swift'] + [str(p.relative_to(ROOT)) for p in sorted((ROOT / 'ShepherdKit/Sources/ShepherdKit/HerdrKit/Models').glob('*.swift'))]
+                stage('api-build', 60, ['xcrun', 'swiftc','ShepherdKit/Sources/ShepherdKit/Resources.swift', '-swift-version', '6', '-parse-as-library', *sources, 'Tests/AgentBrowser/Phase3/AgentLaunchAPITests.swift', '-o', str(out / 'AgentLaunchAPITests')])
                 stage('api-state', 20, [str(out / 'AgentLaunchAPITests')])
             elif selected == 'transport':
-                stage('local-command-build', 60, ['xcrun', 'swiftc', '-swift-version', '6', '-parse-as-library', 'Shepherd/HerdrKit/Terminal/LocalCommand.swift', 'Tests/AgentBrowser/Phase3/LocalCommandTests.swift', '-o', str(out / 'LocalCommandTests')])
+                stage('local-command-build', 60, ['xcrun', 'swiftc','ShepherdKit/Sources/ShepherdKit/Resources.swift', '-swift-version', '6', '-parse-as-library', 'ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/LocalCommand.swift', 'Tests/AgentBrowser/Phase3/LocalCommandTests.swift', '-o', str(out / 'LocalCommandTests')])
                 stage('local-command', 45, [str(out / 'LocalCommandTests')])
             elif selected in ['herdr', 'resume-safety']:
                 if args.app is None: parser.error('--app required for actual integrated service fixture')

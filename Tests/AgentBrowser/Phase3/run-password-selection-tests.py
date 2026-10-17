@@ -37,7 +37,7 @@ def main():
               'Shepherd/PasswordManagers/BitwardenUnlockCommand.swift',
               'Shepherd/PasswordManagers/CLICredentialProvider.swift',
               'Shepherd/PasswordManagers/PasswordManagerConnectionCoordinator.swift',
-              'Shepherd/HerdrKit/Terminal/LocalCommand.swift']
+              'ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/LocalCommand.swift']
     feature = 'Shepherd/Browser/ShepherdBrowserFeature.swift'
     selection = 'Tests/AgentBrowser/Phase3/PasswordManagerSelectionTests.swift'
     existing = 'Tests/AgentBrowser/Phase3/ShepherdBrowserFeatureTests.swift'
@@ -58,7 +58,7 @@ def main():
         if code or not record['naturalExitConfirmed'] or record['signalsSent'] or not record['cleanupVerified']:
             raise RuntimeError(name + ' failed; forced cleanup is not a healthy pass')
 
-    swift = ['/usr/bin/xcrun', 'swiftc', '-swift-version', '6']
+    swift = ['/usr/bin/xcrun', 'swiftc','ShepherdKit/Sources/ShepherdKit/Resources.swift', '-swift-version', '6']
     binary = output / 'selection-tests'
     stage('selection-build', 60, [*swift, '-parse-as-library', feature, *common, selection, '-o', str(binary)])
     stage('selection-tests', 20, [str(binary)])

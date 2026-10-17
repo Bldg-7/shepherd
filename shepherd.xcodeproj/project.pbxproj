@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		D01600000000000000000002 /* Shepherd.icon in Resources */ = {isa = PBXBuildFile; fileRef = D01600000000000000000001 /* Shepherd.icon */; platformFilters = (macos, ); };
 		9B506EAF306E7247005B40C9 /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = 9B506EAE306E7247005B40C9 /* Citadel */; };
+		5A11000000000000000000A1 /* ShepherdKit in Frameworks */ = {isa = PBXBuildFile; productRef = 5A11000000000000000000A2 /* ShepherdKit */; };
 		9B506EB7306F4D21005B40C9 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 9B506EB6306F4D21005B40C9 /* SwiftTerm */; };
 		A63E1D0D20AA408AA2C0C024 /* Shepherd/Agents/AgentRuntime in Resources */ = {isa = PBXBuildFile; fileRef = 403320BAC8DC4590AAED06E2 /* Shepherd/Agents/AgentRuntime */; platformFilters = (macos, ); };
 		C0CB00000000000000000030 /* NIOSSL in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = C0CB00000000000000000040 /* NIOSSL */; };
@@ -91,6 +92,7 @@
 				C0CD00000000000000000033 /* NIOWebSocket in Frameworks */,
 				9B506EB7306F4D21005B40C9 /* SwiftTerm in Frameworks */,
 				9B506EAF306E7247005B40C9 /* Citadel in Frameworks */,
+				5A11000000000000000000A1 /* ShepherdKit in Frameworks */,
 				EB28238D51316AC7C2A3FB0D /* Sparkle in Frameworks */,
 			);
 		};
@@ -164,6 +166,7 @@
 				C0CD00000000000000000042 /* NIOHTTP1 */,
 				C0CD00000000000000000043 /* NIOWebSocket */,
 				9B506EAE306E7247005B40C9 /* Citadel */,
+				5A11000000000000000000A2 /* ShepherdKit */,
 				9B506EB6306F4D21005B40C9 /* SwiftTerm */,
 				50A33A9511F4A8743DB7A373 /* Sparkle */,
 			);
@@ -202,6 +205,7 @@
 				C0CB00000000000000000051 /* XCRemoteSwiftPackageReference "swift-certificates" */,
 				C0CD00000000000000000050 /* XCRemoteSwiftPackageReference "swift-nio" */,
 				9B506EAC306E7049005B40C9 /* XCLocalSwiftPackageReference "Vendor/Citadel" */,
+				5A11000000000000000000A3 /* XCLocalSwiftPackageReference "ShepherdKit" */,
 				9B506EB5306F4D21005B40C9 /* XCRemoteSwiftPackageReference "SwiftTerm" */,
 				CB4A131C8950B74B444757D8 /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
@@ -492,6 +496,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Vendor/Citadel;
 		};
+		5A11000000000000000000A3 /* XCLocalSwiftPackageReference "ShepherdKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ShepherdKit;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -547,6 +555,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 9B506EAC306E7049005B40C9 /* XCLocalSwiftPackageReference "Vendor/Citadel" */;
 			productName = Citadel;
+		};
+		5A11000000000000000000A2 /* ShepherdKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5A11000000000000000000A3 /* XCLocalSwiftPackageReference "ShepherdKit" */;
+			productName = ShepherdKit;
 		};
 		9B506EB6306F4D21005B40C9 /* SwiftTerm */ = {
 			isa = XCSwiftPackageProductDependency;
