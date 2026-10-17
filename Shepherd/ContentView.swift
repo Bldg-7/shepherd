@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 /// App root: sidebar is the active Machine's panes and the agents in them,
 /// or its tabs; detail is the selected pane's terminal, or every terminal of
@@ -62,6 +65,17 @@ struct ContentView: View {
     @State private var closeRequests = 0
     @State private var filePreview: FilePreviewRequest?
     @State private var webLinkFailure: TerminalWebLinkError?
+    /// Where links open, as set in Settings (see `LinkDestinationPolicy`).
+    @AppStorage(LinkDestinationPolicy.preferenceKey) private var linkDestination: LinkDestinationPolicy.Preference = .ask
+    /// A clicked link the person is being asked where to open, while the
+    /// prompt for it is up.
+    @State private var linkChoice: LinkChoice?
+    /// A word on a link that went to the default browser because Shepherd
+    /// Browser couldn't show it, while it is shown.
+    @State private var linkNotice: LinkNotice?
+    /// The terminal column's frame in the window, so that the prompt for a
+    /// link can be put where the link was clicked.
+    @State private var terminalColumnFrame = CGRect.zero
     @State private var isShowingPaneSwitcher = false
     @State private var paneDestinations: [PaneDestination] = []
     @State private var switcherConnection: Machine.ConnectionIdentity?
@@ -237,6 +251,7 @@ struct ContentView: View {
                 self.titleRename = nil
             }
             renameCommit = nil
+            linkChoice = nil
             #if os(macOS)
             showsFilePreview = false
             activatedPanes = [:]
@@ -258,6 +273,7 @@ struct ContentView: View {
                 endTitleRename(titleRename, .left)
             }
             filePreview = nil
+            linkChoice = nil
             #if os(macOS)
             showsFilePreview = false
             #endif
@@ -456,7 +472,7 @@ struct ContentView: View {
             selection: machine.flatMap { selection(on: $0).wrappedValue },
             showsTabs: showsTabs && AgentBoardView.offersTabs,
             coversTerminal: launcherStart != nil || isShowingSettings || isShowingPaneSwitcher
-                || (showsFilePreview && expandsFilePreview) || webLinkFailure != nil
+                || (showsFilePreview && expandsFilePreview) || webLinkFailure != nil || linkChoice != nil
         )
     }
     #endif
@@ -491,7 +507,49 @@ struct ContentView: View {
         }
         .onAppear { isDetailColumnVisible = true }
         .onDisappear { isDetailColumnVisible = false }
+        #if os(macOS)
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { terminalColumnFrame = $0 }
+        // Where to open a clicked link, over the link itself.
+        .popover(item: $linkChoice, attachmentAnchor: linkChoiceAnchor, arrowEdge: .top) { choice in
+            LinkDestinationPrompt(url: choice.url) { destination, remember in
+                resolveLinkChoice(choice, destination: destination, remember: remember)
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if let linkNotice {
+                LinkOpenedNotice(text: linkNotice.text)
+                    .environment(\.colorScheme, .dark)
+                    .task(id: linkNotice.id) {
+                        try? await Task.sleep(for: .seconds(6))
+                        if self.linkNotice?.id == linkNotice.id { self.linkNotice = nil }
+                    }
+            }
+        }
+        #endif
     }
+
+    /// A link whose browser is being asked for.
+    private struct LinkChoice: Identifiable {
+        let request: TerminalWebLinkRequest
+        /// `request.rawURL`, validated.
+        let url: String
+        var id: String { request.terminalID + " " + url }
+    }
+
+    private struct LinkNotice: Equatable {
+        let id = UUID()
+        let text: String
+    }
+
+    #if os(macOS)
+    /// The clicked link's place in the terminal column, or the column's top
+    /// for a click whose place isn't known.
+    private var linkChoiceAnchor: PopoverAttachmentAnchor {
+        guard let point = linkChoice?.request.click.windowPoint else { return .point(.top) }
+        let local = CGPoint(x: point.x - terminalColumnFrame.minX, y: point.y - terminalColumnFrame.minY)
+        return .rect(.rect(CGRect(x: local.x - 1, y: local.y - 1, width: 2, height: 2)))
+    }
+    #endif
 
     private func previewBelongsToSelection(_ request: FilePreviewRequest) -> Bool {
         guard machineStore.isCurrentConnection(request.machine),
@@ -524,21 +582,72 @@ struct ContentView: View {
         case .tab(let tab): panes = tab.panes
         }
         guard let pane = request.pane(in: panes, on: request.machine) else { return }
-        do {
-            guard let url = try TerminalWebLink.urlToOpen(request.rawURL, contextMatches: true,
-                browserEnabled: ShepherdBrowserFeature.shared.isEnabled, engineAvailable: BrowserEngine.isAvailable) else { return }
-            BrowserStore.shared.openBrowser(for: BrowserKey(machine: request.machine, pane: pane), terminalID: pane.terminalID, url: url)
-            if case .tab = selected.item {
-                let identity = TerminalIdentity(connection: selected.connection, itemID: selected.item.id)
-                activatedPanes[identity] = pane.paneID
+        let url: String
+        do { url = try TerminalWebLink.validatedURL(request.rawURL) }
+        catch let failure as TerminalWebLinkError { webLinkFailure = failure; return }
+        catch { webLinkFailure = .invalidURL; return }
+        // The same validation whichever browser it goes to; only Shepherd
+        // Browser has conditions of its own, and a link it can't show goes
+        // to the default browser.
+        let browserAvailable = ShepherdBrowserFeature.shared.isEnabled && BrowserEngine.isAvailable
+        let commandHeld = request.click.commandHeld
+        switch LinkDestinationPolicy.destination(preference: linkDestination, commandHeld: commandHeld, browserAvailable: browserAvailable) {
+        case .ask:
+            linkChoice = LinkChoice(request: request, url: url)
+        case .system:
+            openInDefaultBrowser(url, fellBack: LinkDestinationPolicy.fallsBackToSystem(
+                preference: linkDestination, commandHeld: commandHeld, browserAvailable: browserAvailable))
+        case .shepherd:
+            openInShepherdBrowser(url, in: pane, on: request.machine, selected: selected)
+        }
+    }
+
+    /// Opens a link the prompt was up for, as answered. The link's pane is
+    /// looked up again: the board can have changed while the prompt was up.
+    private func resolveLinkChoice(_ choice: LinkChoice, destination: LinkDestinationPolicy.Preference, remember: Bool) {
+        linkChoice = nil
+        if remember { linkDestination = destination }
+        switch destination {
+        case .system:
+            openInDefaultBrowser(choice.url, fellBack: false)
+        case .shepherd, .ask:
+            guard let selected = selection, selected.connection == choice.request.machine.connectionIdentity,
+                  machineStore.isCurrentConnection(choice.request.machine) else { return }
+            let panes: [AgentSummary]
+            switch selected.item {
+            case .pane(let pane): panes = [pane]
+            case .tab(let tab): panes = tab.panes
             }
-            // Only switch presentation. Existing profiles/tabs and agent grants
-            // stay intact; opening a human URL does not register an agent.
-            showsFilePreview = false
-            expandsFilePreview = false
-            showsBrowser = true
-        } catch let failure as TerminalWebLinkError { webLinkFailure = failure }
-        catch { webLinkFailure = .invalidURL }
+            guard let pane = choice.request.pane(in: panes, on: choice.request.machine) else { return }
+            openInShepherdBrowser(choice.url, in: pane, on: choice.request.machine, selected: selected)
+        }
+    }
+
+    /// Opens `url`, validated, in a new tab of `pane`'s Shepherd Browser,
+    /// and shows the browser column.
+    private func openInShepherdBrowser(_ url: String, in pane: AgentSummary, on machine: Machine, selected: MachineSelection) {
+        BrowserStore.shared.openBrowser(for: BrowserKey(machine: machine, pane: pane), terminalID: pane.terminalID, url: url)
+        if case .tab = selected.item {
+            let identity = TerminalIdentity(connection: selected.connection, itemID: selected.item.id)
+            activatedPanes[identity] = pane.paneID
+        }
+        // Only switch presentation. Existing profiles/tabs and agent grants
+        // stay intact; opening a human URL does not register an agent.
+        showsFilePreview = false
+        expandsFilePreview = false
+        showsBrowser = true
+    }
+
+    /// Opens `url`, validated, in the Mac's default browser. `fellBack` says
+    /// it goes there only because Shepherd Browser can't show it, which is
+    /// said in a notice over the terminal.
+    private func openInDefaultBrowser(_ url: String, fellBack: Bool) {
+        guard let target = URL(string: url) else { webLinkFailure = .invalidURL; return }
+        NSWorkspace.shared.open(target)
+        guard fellBack else { return }
+        linkNotice = LinkNotice(text: ShepherdBrowserFeature.shared.isEnabled
+            ? String(localized: "Shepherd Browser isn't available on this Mac, so the link opened in the default browser.")
+            : String(localized: "Shepherd Browser is off, so the link opened in the default browser."))
     }
 
     private func previewPanel(_ request: FilePreviewRequest) -> some View {

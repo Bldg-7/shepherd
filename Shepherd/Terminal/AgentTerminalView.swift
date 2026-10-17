@@ -40,7 +40,7 @@ struct PaneTerminalView: View {
     private let paneID: String
     private let focusesWhenShown: Bool
     private let onFocusChange: ((Bool) -> Void)?
-    private let onOpenLink: (String) -> Void
+    private let onOpenLink: (String, TerminalLinkClick) -> Void
 
     /// `focusesWhenShown` and `onFocusChange` are `TerminalHostView`'s.
     init(
@@ -55,11 +55,11 @@ struct PaneTerminalView: View {
         self.paneID = pane.id
         self.focusesWhenShown = focusesWhenShown
         self.onFocusChange = onFocusChange
-        self.onOpenLink = { link in
+        self.onOpenLink = { link, click in
             guard machineStore.isCurrentConnection(machine) else { return }
             let raw = link.lowercased().hasPrefix("file:") ? link : link.trimmingCharacters(in: .whitespaces)
             if TerminalWebLink.isWebLink(raw) {
-                onOpenWeb?(TerminalWebLinkRequest(machine: machine, pane: pane, url: raw))
+                onOpenWeb?(TerminalWebLinkRequest(machine: machine, pane: pane, url: raw, click: click))
                 return
             }
             do {

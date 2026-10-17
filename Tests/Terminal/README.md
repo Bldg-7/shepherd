@@ -8,10 +8,12 @@ OSC8 file targets are claimed on plain or Cmd mouse-down: zero remote input
 bytes, one local preview on release. Plain-text paths, source locations and
 `file://` URIs are not links: with or without Cmd they stay TUI input. Drag cancellation, invalid
 host/read failure and missing callbacks stay local. Callback ownership is captured
-at press; modifier or pane changes cannot redirect a release. HTTP(S) URLs (implicit text or OSC8) are claimed the same way and dispatched to
-the clicked pane's Shepherd browser, not a remote opener. Browser OFF/unavailable,
-invalid URLs and stale ownership never fall back or auto-enable browsing. URL
-validation rejects credentials, control characters and unsupported schemes.
+at press; modifier or pane changes cannot redirect a release. HTTP(S) URLs (implicit text or OSC8) are claimed the same way and dispatched,
+with ⌘ as held at release and the click's place, to the window, which opens them in
+the clicked pane's Shepherd browser or the Mac's default browser as the Open links
+in setting says (`run-web-link-tests.py`), never a remote opener. Invalid URLs and
+stale ownership never fall back or auto-enable browsing. URL validation rejects
+credentials, control characters and unsupported schemes.
 Non-link clicks retain the complete remote TUI press/release gesture. No user GUI or SSH server is
 operated. Live remote acceptance remains separate.
 
