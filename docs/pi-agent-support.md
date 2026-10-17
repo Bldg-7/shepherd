@@ -48,10 +48,24 @@ extension/skill/append 지침 인자를 준비한다. 셸 인자로 token 값은
 `pi-launch.mjs`는 실제 Pi를 import하기 전에 native host의 bind 승인을 기다린다.
 패키지가 선언한 실제 bin과 버전을 다시 확인하며 잘못된 인자/cwd/신원에서는 종료한다.
 
-`PiLaunchCoordinator`는 `agent.start`와 다른 Herdr connection으로 같은 pane/terminal의
+shim은 `AgentLaunchService.launchPi`가 **절대 경로로** pane의 셸에 타이핑한다(`HerdrClient.runCommand`,
+Herdr `pane.send_input` = `herdr pane run`과 같은 요청: 인자마다 따옴표를 치고 Enter까지 한 번에 보낸다).
+Herdr `agent.start`를 쓰지 않는 이유: `agent.start`는 kind의 실행 파일 이름 `pi`만 타이핑하고 셸이 PATH로
+찾게 한다. 그 셸은 대화형이라 startup 파일(`~/.zshrc` 등)이 먼저 실행되는데, 그 파일이 `~/.bun/bin`이나
+`~/.local/bin`을 PATH 앞에 다시 붙이면 `pi`는 거기 설치된 CLI가 되고 shim은 실행되지 않는다. 그러면 bind가
+끝내 오지 않아 20초 뒤 `pi-foreground-binding-lost`로 실패한다. Herdr 0.9.1~0.9.5의 `agent.start`에는
+실행 파일 경로나 env를 주는 방법이 없고, `tab.create`의 env로는 startup 파일 뒤의 PATH 순서를 바꿀 수 없다.
+절대 경로로 실행해도 최종 foreground 프로세스(`process.title = "pi"`인 node)는 같으므로 Herdr의 감지도 같다.
+stage된 PATH는 Pi의 자식 프로세스를 위해 그대로 pane env로 간다.
+
+`agent.start`를 쓰지 않으므로 Herdr가 agent.start한 agent에만 주는 live agent 이름(`pi-<id>`)과
+`interactive_ready`는 없다. Shepherd는 agent를 pane ID로만 다루고, Pi의 준비 상태는 아래 native MCP
+소유권으로 판단하므로 둘 다 쓰지 않는다.
+
+`PiLaunchCoordinator`는 이 타이핑과 다른 Herdr connection으로 같은 pane/terminal의
 foreground 프로세스를 관찰한다. Pi가 아직 시작을 기다리는 동안 전체 argv를 pin할 수 있으므로
 Herdr readiness와 Pi session_start가 서로 기다리는 교착이나 짧은 argv 수집 경쟁을 피한다.
-`AgentLaunchService`는 실제 Herdr interactive-ready/not-pending과 native MCP 소유권을 모두 기다린다.
+`AgentLaunchService`는 Herdr가 같은 pane/terminal에서 `pi`를 감지한 것과 native MCP 소유권을 차례로 기다린다.
 실패해도 선택한 pane은 남기며 재실행·다른 CLI·Shell로 우회하지 않는다.
 
 ### 프로세스와 제어 채널

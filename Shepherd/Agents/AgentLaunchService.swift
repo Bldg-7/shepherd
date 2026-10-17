@@ -322,8 +322,14 @@ final class AgentLaunchService {
             try await coordinator.prepare()
             _ = try await waitForShell(created.pane, on: machine, client: client)
             preparingPanes.remove(pane); launchingPanes.insert(pane)
-            let result = try await client.agentStart(name: "pi-" + String(stage.id.prefix(8)), kind: .pi, paneID: pane.paneID, arguments: stage.arguments)
-            guard result.agent.terminalID == pane.terminalID else { throw PiBridgeFailure.identity }
+            // The shim by its absolute path, typed into the shell. `agent.start`
+            // would type the bare `pi`, which the shell looks up through the
+            // PATH its startup files leave: a `~/.zshrc` that puts `~/.bun/bin`
+            // back in front runs the Pi installed there, the bridge never
+            // binds, and the launch fails 20 seconds later with
+            // `pi-foreground-binding-lost`. The staged PATH still goes to the
+            // pane (`stage.environment`), for Pi's own children.
+            try await client.runCommand(paneID: pane.paneID, argv: [stage.shim] + stage.arguments)
             try await waitForAgent(kind: .pi, pane: pane, on: machine, client: client)
             try await coordinator.waitUntilReady()
             failures[pane] = nil
@@ -345,8 +351,12 @@ final class AgentLaunchService {
             }
             let agents = try await client.agentList()
             agentObservations[machine.id] = agents
+            // herdr marks interactive readiness only on an agent it started
+            // itself. Pi is typed in by Shepherd (`launchPi`), so for Pi this
+            // is herdr's detection of the process in the same pane, and Pi's
+            // readiness is the bridge's (`PiLaunchCoordinator.waitUntilReady`).
             if let current = agents.first(where: { $0.paneID == pane.paneID && $0.terminalID == pane.terminalID }),
-               current.interactiveReady == true, current.launchPending != true,
+               kind == .pi || current.interactiveReady == true, current.launchPending != true,
                current.agentName.flatMap(AgentKind.init(herdrName:)) == kind { return }
             try await Task.sleep(for: .milliseconds(250))
         }

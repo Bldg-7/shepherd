@@ -84,9 +84,10 @@ try{
   const rows=await cli(['agent','list']);
   fs.writeFileSync(path.join(output,'readiness-poll.json'),JSON.stringify(rows),{mode:0o600});
   const agent=rows.result.agents.find(a=>a.pane_id===selected.pane&&a.terminal_id===selected.terminal);
-  return agent?.agent==='pi' && agent.interactive_ready===true && agent.launch_pending!==true;
+  // interactive_ready is herdr's for agents it started itself; the shim is typed in by launchPi, so herdr only detects it.
+  return agent?.agent==='pi' && agent.launch_pending!==true;
  },20000);
- console.log('PASS owned Herdr interactive readiness + pre-import binding + real Pi MCP ownership');
+ console.log('PASS owned Herdr detection of the typed shim + pre-import binding + real Pi MCP ownership');
  fs.writeFileSync(path.join(output,'pre-prompt-agents.json'),JSON.stringify(await cli(['agent','list'])),{mode:0o600});
  fs.writeFileSync(path.join(output,'pre-prompt-process.json'),JSON.stringify(await cli(['pane','process-info','--pane',selected.pane])),{mode:0o600});
  fs.writeFileSync(path.join(output,'pre-prompt-snapshot.json'),JSON.stringify(await cli(['api','snapshot'])),{mode:0o600});

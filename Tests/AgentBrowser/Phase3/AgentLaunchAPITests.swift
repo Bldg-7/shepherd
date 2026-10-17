@@ -153,7 +153,29 @@ actor LaunchTransport: HerdrTransport {
         }
         #endif
         try retryAndReuse(agent: agent, row: row)
+        try await typedPiShim(client: client, transport: transport)
         print("AGENT LAUNCH API/STATE PASS")
+    }
+
+    /// Pi's shim by its absolute path (`launchPi`): typed as `herdr pane run`
+    /// types, every word quoted, Enter in the same request.
+    static func typedPiShim(client: HerdrClient, transport: LaunchTransport) async throws {
+        let shim = "/Users/owned/Library/Application Support/Shepherd/pi/1/bin/pi"
+        check(try HerdrClient.commandLine([shim, "--session-dir", "/a b/sessions", "it's"]) == "'\(shim)' '--session-dir' '/a b/sessions' 'it'\\''s'",
+              "a command line keeps spaces and quotes inside their words")
+        for argv in [[], [""], ["pi", "a\nb"], ["pi", "tab\there"], ["pi", "\u{1b}[200~"]] {
+            do { _ = try HerdrClient.commandLine(argv); preconditionFailure("accepted \(argv)") }
+            catch { print("PASS: \(argv.debugDescription) is refused before anything is typed") }
+        }
+        await transport.configure(.object(["type": .string("ok")]))
+        try await client.runCommand(paneID: "w1:p1", argv: [shim, "--extension", "/owned/pi-entry.ts"])
+        let typed = await transport.lastRequest()!
+        check(typed.0 == "pane.send_input" && typed.1["pane_id"]?.stringValue == "w1:p1" && typed.1["keys"]?.arrayValue?.map { $0.stringValue } == ["enter"]
+              && typed.1["text"]?.stringValue == "'\(shim)' '--extension' '/owned/pi-entry.ts'", "exact pane.send_input wire params")
+        await transport.configure(.object(["type": .string("agent_started")]))
+        await rejects("a typed command without herdr's ok rejected") { try await client.runCommand(paneID: "w1:p1", argv: [shim]) }
+        let stage = try JSONDecoder().decode(PiStagedLaunch.self, from: Data(#"{"id":"1","sessionID":"s","folder":"/owned/pi/1","manifest":"m","bootstrap":"b","cli":"c","node":"n","entry":"e","resources":"r","arguments":[],"environment":{}}"#.utf8))
+        check(stage.shim == "/owned/pi/1/bin/pi", "the staged shim is the stage folder's bin/pi")
     }
 
     /// The browser check's waits after failed preparations, and its reuse of
