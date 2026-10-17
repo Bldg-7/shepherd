@@ -16,7 +16,8 @@ struct TerminalHostView {
     /// macOS only: on iOS that would also bring the on-screen keyboard up
     /// over it unasked.
     var focusesWhenShown = false
-    var onOpenLink: ((String) -> Void)? = nil
+    /// Told a link clicked in the terminal, with how it was clicked.
+    var onOpenLink: ((String, TerminalLinkClick) -> Void)? = nil
     /// Told the files dropped from Finder on the terminal. While this is
     /// nil the terminal takes no drops at all, and a drag over it goes back
     /// where it came from, as it always did.
@@ -25,9 +26,9 @@ struct TerminalHostView {
     final class Coordinator: NSObject, TerminalViewDelegate {
         let onInput: (ArraySlice<UInt8>) -> Void
         let onResize: (Int, Int) -> Void
-        var onOpenLink: ((String) -> Void)?
+        var onOpenLink: ((String, TerminalLinkClick) -> Void)?
 
-        init(onInput: @escaping (ArraySlice<UInt8>) -> Void, onResize: @escaping (Int, Int) -> Void, onOpenLink: ((String) -> Void)?) {
+        init(onInput: @escaping (ArraySlice<UInt8>) -> Void, onResize: @escaping (Int, Int) -> Void, onOpenLink: ((String, TerminalLinkClick) -> Void)?) {
             self.onInput = onInput
             self.onResize = onResize
             self.onOpenLink = onOpenLink
@@ -44,7 +45,7 @@ struct TerminalHostView {
         func setTerminalTitle(source: TerminalView, title: String) {}
         func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
         func scrolled(source: TerminalView, position: Double) {}
-        func requestOpenLink(source: TerminalView, link: String, params: [String: String]) { onOpenLink?(link) }
+        func requestOpenLink(source: TerminalView, link: String, params: [String: String]) { onOpenLink?(link, .unknown) }
         func rangeChanged(source: TerminalView, startY: Int, endY: Int) {}
     }
 
@@ -67,7 +68,7 @@ struct TerminalHostView {
 final class FocusReportingTerminalView: TerminalView {
     var onFocusChange: ((Bool) -> Void)?
     var focusesWhenShown = false
-    var onOpenFileGesture: ((String) -> Void)?
+    var onOpenFileGesture: ((String, TerminalLinkClick) -> Void)?
     /// See `TerminalHostView.onDropFiles`. Setting it registers the view
     /// for file drags, or stops it taking them.
     var onDropFiles: (([URL]) -> Void)? {
@@ -80,7 +81,7 @@ final class FocusReportingTerminalView: TerminalView {
         }
     }
     private var fileGesture = TerminalFileGesture()
-    private var capturedFileHandler: ((String) -> Void)?
+    private var capturedFileHandler: ((String, TerminalLinkClick) -> Void)?
     private(set) var drawGate = TerminalDrawGate()
 
     // While the window can't be seen, SwiftTerm still takes every byte and
@@ -207,7 +208,12 @@ final class FocusReportingTerminalView: TerminalView {
             let handler = capturedFileHandler
             capturedFileHandler = nil
             if let link = fileGesture.end(at: convert(event.locationInWindow, from: nil)) {
-                handler?(link)
+                // ⌘ is read at release, like the link: it is the one
+                // modifier the xterm mouse protocol doesn't carry to the
+                // program, so the claimed click is the only thing it means
+                // anything to (see `LinkDestinationPolicy`).
+                handler?(link, TerminalLinkClick(commandHeld: event.modifierFlags.contains(.command),
+                                                 windowPoint: topLeftWindowPoint(event.locationInWindow)))
             }
             return // failure/drag never replays this gesture to the remote TUI
         }
@@ -229,6 +235,15 @@ final class FocusReportingTerminalView: TerminalView {
         linkHighlightMode = .alwaysWithModifier
         defer { linkHighlightMode = highlighting }
         super.mouseUp(with: release)
+    }
+
+    /// `point`, given in the window's coordinates with the origin at the
+    /// bottom left as AppKit has it, with the origin at the top left of the
+    /// window's content as SwiftUI's global coordinate space has it. Nil
+    /// while the view isn't in a window.
+    private func topLeftWindowPoint(_ point: NSPoint) -> CGPoint? {
+        guard let content = window?.contentView else { return nil }
+        return CGPoint(x: point.x, y: content.bounds.height - point.y)
     }
 
     override var hasFocus: Bool {

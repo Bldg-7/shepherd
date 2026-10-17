@@ -31,8 +31,23 @@ nonisolated enum TerminalWebLink {
         return isWebLink(token) ? token : nil
     }
 
+    /// `raw` as a link Shepherd Browser can open: valid (`validatedURL`),
+    /// with the browser on and able to run here. Nil for a click that isn't
+    /// the pane's own any more.
     static func urlToOpen(_ raw: String, contextMatches: Bool, browserEnabled: Bool, engineAvailable: Bool) throws -> String? {
         guard contextMatches else { return nil }
+        let url = try validatedURL(raw)
+        guard browserEnabled else { throw TerminalWebLinkError.browserDisabled }
+        guard engineAvailable else { throw TerminalWebLinkError.engineUnavailable }
+        return url
+    }
+
+    /// `raw` as a link to open, wherever it opens: `http` or `https`, with a
+    /// host and without credentials, control characters or whitespace, and
+    /// at most 8 KB. The same whether it goes to Shepherd Browser or to the
+    /// Mac's default browser; only the former has conditions of its own
+    /// (`urlToOpen`).
+    static func validatedURL(_ raw: String) throws -> String {
         guard raw.utf8.count <= 8192, !raw.isEmpty,
               !raw.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) || CharacterSet.whitespacesAndNewlines.contains($0) }),
               let url = URLComponents(string: raw),
@@ -40,8 +55,6 @@ nonisolated enum TerminalWebLink {
               let host = url.host, !host.isEmpty, url.user == nil, url.password == nil,
               url.url != nil,
               url.port == nil || (1...65535).contains(url.port!) else { throw TerminalWebLinkError.invalidURL }
-        guard browserEnabled else { throw TerminalWebLinkError.browserDisabled }
-        guard engineAvailable else { throw TerminalWebLinkError.engineUnavailable }
         return raw
     }
 }

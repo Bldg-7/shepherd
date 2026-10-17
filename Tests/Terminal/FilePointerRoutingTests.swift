@@ -21,14 +21,14 @@ import Darwin
         let view = FocusReportingTerminalView(frame: NSRect(x: 0, y: 0, width: 960, height: 420))
         window.contentView = view
         view.linkHighlightMode = .always
-        var sent: [UInt8] = [], opened: [String] = [], failures = 0
+        var sent: [UInt8] = [], opened: [String] = [], clicks: [TerminalLinkClick] = [], failures = 0
         let coordinator = TerminalHostView.Coordinator(onInput: { bytes in
             sent += bytes
             let copied = Array(bytes)
             copied.withUnsafeBytes { buffer in precondition(Darwin.write(master, buffer.baseAddress, buffer.count) == buffer.count) }
-        }, onResize: { _,_ in }, onOpenLink: { opened.append("delegate:" + $0) })
+        }, onResize: { _,_ in }, onOpenLink: { link, _ in opened.append("delegate:" + link) })
         view.terminalDelegate = coordinator
-        view.onOpenFileGesture = { opened.append($0) }
+        view.onOpenFileGesture = { link, click in opened.append(link); clicks.append(click) }
         func populate() {
             view.feed(text: "\u{1b}[2J\u{1b}[HREADME.md:42\r\ndocs/guide.md\r\nfile:///remote/uri.md#L9\r\n\u{1b}]8;;file://owned.invalid/remote/osc.md\u{7}explicit\u{1b}]8;;\u{7}\r\n\u{1b}]8;;/remote/no-extension\u{7}relative\u{1b}]8;;\u{7}\r\n\u{1b}]8;;https://example.invalid/index\u{7}web\u{1b}]8;;\u{7}\r\nnormal control\r\n\u{1b}]8;;file://foreign.invalid/remote/wrong.md\u{7}wrong-host\u{1b}]8;;\u{7}\r\nhttps://example.invalid/query?q=one%20two#fragment\r\n\u{1b}]8;;https://user:synthetic@example.invalid/\u{7}invalid-web\u{1b}]8;;\u{7}\r\n\u{1b}]8;;ssh://example.invalid/\u{7}unsupported\u{1b}]8;;\u{7}\r\n\u{1b}]8;;README.md:42\u{7}source\u{1b}]8;;\u{7}\r\n\u{1b}]8;;file:///remote/uri.md#L9\u{7}uri\u{1b}]8;;\u{7}\r\n/remote/plain.md\r\n~/Projects/tf-post\r\n\u{1b}[?1003h\u{1b}[?1006h")
         }
@@ -83,10 +83,19 @@ import Darwin
             sent = []; opened = []; _ = received(); click(8, command: command)
             check(opened == ["https://example.invalid/query?q=one%20two#fragment"] && sent.isEmpty && received().isEmpty, "implicit HTTP(S) link opens locally once with zero PTY input")
         }
+        // How the link was clicked goes with it: ⌘ as held at release, and
+        // the click's place in the window, with the origin at the top left.
+        for command in [false, true] {
+            view.onOpenFileGesture = { link, click in opened.append(link); clicks.append(click) }
+            sent = []; opened = []; clicks = []; _ = received(); click(11, command: command)
+            check(opened.count == 1 && clicks.count == 1 && clicks[0].commandHeld == command && sent.isEmpty && received().isEmpty, "⌘ at release is reported with the link")
+            let place = clicks[0].windowPoint
+            check(place != nil && place!.x >= 0 && place!.x <= view.bounds.width && place!.y >= 0 && place!.y <= view.bounds.height, "the click's place is in the window, from the top left")
+        }
         let start = point(11), moved = CGPoint(x: start.x + 40, y: start.y)
         for command in [false, true] {
             // Drag-out/modifier changes never replay a claimed file gesture.
-            view.onOpenFileGesture = { opened.append($0) }
+            view.onOpenFileGesture = { link, click in opened.append(link); clicks.append(click) }
             sent = []; opened = []; _ = received()
             view.mouseDown(with: event(.leftMouseDown, start, command: command))
             view.mouseDragged(with: event(.leftMouseDragged, moved, command: !command))
@@ -94,12 +103,12 @@ import Darwin
             check(sent.isEmpty && received().isEmpty && opened.isEmpty, "plain/Cmd claimed drag-out must neither replay to TUI nor open a file")
             // Capture the callback at press, not the replacement pane's callback.
             sent = []; opened = []; _ = received()
-            view.onOpenFileGesture = { opened.append("old:" + $0) }
+            view.onOpenFileGesture = { link, _ in opened.append("old:" + link) }
             view.mouseDown(with: event(.leftMouseDown, start, command: command))
-            view.onOpenFileGesture = { opened.append("new:" + $0) }
+            view.onOpenFileGesture = { link, _ in opened.append("new:" + link) }
             view.mouseUp(with: event(.leftMouseUp, start, command: !command))
             check(opened == ["old:README.md:42"] && sent.isEmpty && received().isEmpty, "owner at plain/Cmd press must be preserved through release")
-            view.onOpenFileGesture = { _ in failures += 1 }
+            view.onOpenFileGesture = { _, _ in failures += 1 }
             let before = failures
             sent = []; opened = []; _ = received(); click(7, command: command)
             check(failures == before + 1 && sent.isEmpty && received().isEmpty && opened.isEmpty, "preview/host-validation failure must not fall back to remote file opener")

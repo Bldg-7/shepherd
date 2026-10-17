@@ -7420,6 +7420,182 @@
           }
         }
       }
+    },
+    "Open links in" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リンクを開く場所"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "링크 여는 곳"
+          }
+        }
+      }
+    },
+    "Ask first" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最初に確認"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "처음에 묻기"
+          }
+        }
+      }
+    },
+    "Default Browser" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "デフォルトブラウザ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "기본 브라우저"
+          }
+        }
+      }
+    },
+    "About opening links" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リンクを開く場所について"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "링크 열기 정보"
+          }
+        }
+      }
+    },
+    "Where http and https links clicked in a terminal open. ⌘-click opens a link in the other browser. With Shepherd Browser off, or unavailable on this Mac, links open in the default browser." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ターミナルでクリックした http、https リンクを開く場所です。⌘を押しながらクリックすると、もう一方のブラウザで開きます。Shepherd Browser がオフか、この Mac で使えない場合はデフォルトブラウザで開きます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "터미널에서 클릭한 http, https 링크를 여는 곳입니다. ⌘를 누른 채 클릭하면 다른 쪽 브라우저에서 열립니다. Shepherd Browser가 꺼져 있거나 이 Mac에서 쓸 수 없으면 기본 브라우저에서 열립니다."
+          }
+        }
+      }
+    },
+    "Open in Shepherd Browser" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd Browser で開く"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd Browser에서 열기"
+          }
+        }
+      }
+    },
+    "Open in Default Browser" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "デフォルトブラウザで開く"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "기본 브라우저에서 열기"
+          }
+        }
+      }
+    },
+    "Don't ask again" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今後は確認しない"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다음부터 묻지 않기"
+          }
+        }
+      }
+    },
+    "⌘-click opens a link in the other browser." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⌘を押しながらクリックすると、もう一方のブラウザで開きます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⌘를 누른 채 클릭하면 다른 쪽 브라우저에서 열립니다."
+          }
+        }
+      }
+    },
+    "Shepherd Browser is off, so the link opened in the default browser." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd Browser がオフのため、デフォルトブラウザで開きました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shepherd Browser가 꺼져 있어 기본 브라우저에서 열었습니다."
+          }
+        }
+      }
+    },
+    "Shepherd Browser isn't available on this Mac, so the link opened in the default browser." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この Mac では Shepherd Browser を使えないため、デフォルトブラウザで開きました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Mac에서는 Shepherd Browser를 쓸 수 없어 기본 브라우저에서 열었습니다."
+          }
+        }
+      }
     }
   },
   "version" : "1.1"

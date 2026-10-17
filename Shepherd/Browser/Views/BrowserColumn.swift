@@ -1,4 +1,5 @@
 #if os(macOS)
+import AppKit
 import SwiftUI
 
 /// The browser column beside the terminal: the browser of the pane the
@@ -251,6 +252,14 @@ private struct BrowserToolbar: View {
             }
             .pickerStyle(.inline)
             Divider()
+            // The page this browser shows, in the Mac's default browser:
+            // for one that is better read there, with its passwords and
+            // extensions. The tab here stays as it is.
+            Button("Open in Default Browser") {
+                if let url = Self.webURL(of: browser.selectedTab) { NSWorkspace.shared.open(url) }
+            }
+            .disabled(Self.webURL(of: browser.selectedTab) == nil)
+            Divider()
             Button("Close Browser") {
                 BrowserStore.shared.closeBrowser(for: browser.key)
             }
@@ -260,6 +269,14 @@ private struct BrowserToolbar: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .help("Browser")
+    }
+
+    /// The page `tab` shows, as an `http` or `https` URL another browser
+    /// can be given, or nil for no tab, a blank one or any other scheme.
+    private static func webURL(of tab: BrowserTab?) -> URL? {
+        guard let tab, let url = URL(string: tab.url), let scheme = url.scheme,
+              ["http", "https"].contains(scheme.lowercased()) else { return nil }
+        return url
     }
 
     /// What the address field shows for a page's address: nothing for a

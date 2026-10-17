@@ -67,11 +67,11 @@ import SwiftTerm
         precondition(proseHit(9, 10) == "https://example.invalid/pull/16048" && proseHit(9, 39) == nil && proseHit(9, 41) == nil, "URL ends at its particle")
         precondition(proseHit(10, 3) == "https://example.invalid/wiki/서울", "Hangul after a slash stays in the URL")
         var clicked: String?
-        let host = TerminalHostView(onCreate: { _ in }, onInput: { _ in }, onResize: { _,_ in }, onOpenLink: { clicked = $0 })
+        let host = TerminalHostView(onCreate: { _ in }, onInput: { _ in }, onResize: { _,_ in }, onOpenLink: { link, _ in clicked = link })
         let coordinator = host.makeCoordinator()
         coordinator.requestOpenLink(source: view, link: "file:///owned/explicit.md", params: [:])
         precondition(clicked == "file:///owned/explicit.md")
-        coordinator.onOpenLink = { clicked = "fresh:" + $0 }
+        coordinator.onOpenLink = { link, _ in clicked = "fresh:" + link }
         coordinator.requestOpenLink(source: view, link: "./current.md", params: [:])
         precondition(clicked == "fresh:./current.md", "coordinator must use latest pane callback")
         print("PASS 26 actual SwiftTerm cell/link/wide/wrap/BiDi/OSC8/plain-path/prose/coordinator checks; owned windowless views, no GUI input")

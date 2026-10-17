@@ -31,3 +31,15 @@ nonisolated struct TerminalFileGesture {
 
     mutating func cancel() { link = nil; dragged = false }
 }
+
+/// How a link was clicked, for whoever opens it: whether ⌘ was held, which
+/// opens it in the other browser (see `LinkDestinationPolicy`), and where,
+/// in the window's coordinates with the origin at the top left as SwiftUI's
+/// global coordinate space has it, so that a prompt can be put there. Nil
+/// where a click's place isn't known, as for one SwiftTerm reports itself.
+nonisolated struct TerminalLinkClick: Equatable, Sendable {
+    var commandHeld = false
+    var windowPoint: CGPoint? = nil
+
+    static let unknown = TerminalLinkClick()
+}

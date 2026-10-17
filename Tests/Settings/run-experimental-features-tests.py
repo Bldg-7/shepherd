@@ -15,7 +15,7 @@ service+=[str(x.relative_to(ROOT)) for x in sorted((ROOT/'Shepherd/HerdrKit/Mode
 credentials=['Shepherd/CredentialBroker/CredentialBrokerContracts.swift','Shepherd/CredentialBroker/CredentialBroker.swift','Shepherd/CredentialBroker/Interface/CredentialCLIService.swift','Shepherd/CredentialBroker/Interface/CredentialGrantView.swift']
 credentials+=['Shepherd/PasswordManagers/'+n+'.swift' for n in ['PasswordManagerProviderID','PasswordManagerPreferences','PasswordManagerProvider','PasswordManagerCommandExecutor','BitwardenUnlockCommand','CLICredentialProvider','PasswordManagerConnectionCoordinator','PasswordManagerConnectionSetupView']]
 credentials+=['Shepherd/HerdrKit/Terminal/LocalCommand.swift']
-sources=service+credentials+[page,agents,passwords,'Shepherd/Hosts/Views/SettingsPageChrome.swift','Shepherd/Hosts/Views/InfoButton.swift','Shepherd/FileDrop/TerminalFileDropFeature.swift','Tests/Settings/ExperimentalFeaturesLayoutTests.swift']
+sources=service+credentials+[page,agents,passwords,'Shepherd/Hosts/Views/SettingsPageChrome.swift','Shepherd/Hosts/Views/InfoButton.swift','Shepherd/FileDrop/TerminalFileDropFeature.swift','Shepherd/Terminal/LinkDestinationPolicy.swift','Tests/Settings/ExperimentalFeaturesLayoutTests.swift']
 (out/'source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in sources},indent=2))
 def stage(name,seconds,args):
  log=out/(name+'.log')
