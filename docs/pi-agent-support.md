@@ -63,12 +63,6 @@ startup 파일 뒤의 PATH 순서를 바꿀 수 없다. 절대 경로로 실행�
 `interactive_ready`는 없다. Shepherd는 agent를 pane ID로만 다루고, Pi의 준비 상태는 아래 native MCP
 소유권으로 판단하므로 둘 다 쓰지 않는다.
 
-절대 경로 타이핑보다 먼저 들어온 `PiShimPreflight`는 아직 그대로 돈다: `launchPi`는 pane을 만들기 전에
-같은 종류의 셸(계정의 로그인 셸, `-ic`)을 stage된 PATH로 띄워 `command -v pi`를 묻고, shim이 아닌 다른
-경로가 나오면 런치를 바로 거절하며 런처에 그 경로와 `pi-shim-shadowed-by-shell-path`를 보여 준다. 이 검사는
-사용자의 startup 파일을 읽거나 고치지 않는다. 그러나 shim을 절대 경로로 타이핑하는 지금은 셸의 PATH 순서가
-어느 pi가 실행되는지를 더 이상 정하지 않으므로, 이 검사는 정상 동작할 런치를 거절한다. 제거는 별도 변경이다.
-
 `PiLaunchCoordinator`는 이 타이핑과 다른 Herdr connection으로 같은 pane/terminal의
 foreground 프로세스를 관찰한다. Pi가 아직 시작을 기다리는 동안 전체 argv를 pin할 수 있으므로
 Herdr readiness와 Pi session_start가 서로 기다리는 교착이나 짧은 argv 수집 경쟁을 피한다.
