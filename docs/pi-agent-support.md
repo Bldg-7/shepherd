@@ -53,14 +53,21 @@ Herdr `pane.send_input` = `herdr pane run`과 같은 요청: 인자마다 따옴
 Herdr `agent.start`를 쓰지 않는 이유: `agent.start`는 kind의 실행 파일 이름 `pi`만 타이핑하고 셸이 PATH로
 찾게 한다. 그 셸은 대화형이라 startup 파일(`~/.zshrc` 등)이 먼저 실행되는데, 그 파일이 `~/.bun/bin`이나
 `~/.local/bin`을 PATH 앞에 다시 붙이면 `pi`는 거기 설치된 CLI가 되고 shim은 실행되지 않는다. 그러면 bind가
-끝내 오지 않아 20초 뒤 `pi-foreground-binding-lost`로 실패한다. Herdr 0.9.1~0.9.5의 `agent.start`에는
-실행 파일 경로나 env를 주는 방법이 없고, `tab.create`의 env로는 startup 파일 뒤의 PATH 순서를 바꿀 수 없다.
-절대 경로로 실행해도 최종 foreground 프로세스(`process.title = "pi"`인 node)는 같으므로 Herdr의 감지도 같다.
-stage된 PATH는 Pi의 자식 프로세스를 위해 그대로 pane env로 간다.
+끝내 오지 않아 20초 뒤 `pi-foreground-binding-lost`로 실패하고, 그 실패는 남겨진 pane에 붙은 채로 남는다.
+Herdr 0.9.1~0.9.5의 `agent.start`에는 실행 파일 경로나 env를 주는 방법이 없고, `tab.create`의 env로는
+startup 파일 뒤의 PATH 순서를 바꿀 수 없다. 절대 경로로 실행해도 최종 foreground 프로세스
+(`process.title = "pi"`인 node)는 같으므로 Herdr의 감지도 같다. stage된 PATH는 Pi의 자식 프로세스를 위해
+그대로 pane env로 간다.
 
 `agent.start`를 쓰지 않으므로 Herdr가 agent.start한 agent에만 주는 live agent 이름(`pi-<id>`)과
 `interactive_ready`는 없다. Shepherd는 agent를 pane ID로만 다루고, Pi의 준비 상태는 아래 native MCP
 소유권으로 판단하므로 둘 다 쓰지 않는다.
+
+절대 경로 타이핑보다 먼저 들어온 `PiShimPreflight`는 아직 그대로 돈다: `launchPi`는 pane을 만들기 전에
+같은 종류의 셸(계정의 로그인 셸, `-ic`)을 stage된 PATH로 띄워 `command -v pi`를 묻고, shim이 아닌 다른
+경로가 나오면 런치를 바로 거절하며 런처에 그 경로와 `pi-shim-shadowed-by-shell-path`를 보여 준다. 이 검사는
+사용자의 startup 파일을 읽거나 고치지 않는다. 그러나 shim을 절대 경로로 타이핑하는 지금은 셸의 PATH 순서가
+어느 pi가 실행되는지를 더 이상 정하지 않으므로, 이 검사는 정상 동작할 런치를 거절한다. 제거는 별도 변경이다.
 
 `PiLaunchCoordinator`는 이 타이핑과 다른 Herdr connection으로 같은 pane/terminal의
 foreground 프로세스를 관찰한다. Pi가 아직 시작을 기다리는 동안 전체 argv를 pin할 수 있으므로
