@@ -38,7 +38,7 @@ struct MachinesView: View {
                 BoardView(machine: machine, machineStore: machineStore)
             }
             .navigationDestination(for: PaneDestination.self) { destination in
-                PaneOutputView(destination: destination, machineStore: machineStore)
+                ConversationView(destination: destination, machineStore: machineStore)
             }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {

@@ -25,12 +25,16 @@ struct PaneDestination: Hashable {
     let paneID: String
     let herdrMachine: HerdrMachine?
     let title: String
+    /// The agent herdr recognised in the pane when it was chosen, or nil
+    /// for a plain terminal, which can be read but not prompted.
+    let agentName: String?
 
     init(machine: Machine, pane: AgentSummary) {
         self.machine = machine
         self.paneID = pane.paneID
         self.herdrMachine = pane.herdrMachine
         self.title = pane.title
+        self.agentName = pane.agentName
     }
 }
 

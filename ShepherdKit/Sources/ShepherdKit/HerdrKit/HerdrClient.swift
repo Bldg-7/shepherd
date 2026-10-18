@@ -197,9 +197,60 @@ public actor HerdrClient {
     }
 
     /// Supported agent input, never arbitrary shell text or a process-name kill.
-    public func agentSendKeys(paneID: String, keys: [String]) async throws {
-        let result = try await agentRequest(method: "agent.send_keys", params: ["target": .string(paneID), "keys": .array(keys.map(JSONValue.string))], cli: ["agent", "send-keys", paneID] + keys, on: nil, deadlineMs: 5_000)
+    public func agentSendKeys(paneID: String, keys: [String], on machine: HerdrMachine? = nil) async throws {
+        let result = try await agentRequest(method: "agent.send_keys", params: ["target": .string(paneID), "keys": .array(keys.map(JSONValue.string))], cli: ["agent", "send-keys", paneID] + keys, on: machine, deadlineMs: 5_000)
         guard result["type"]?.stringValue == "ok" else { throw Self.agentResponseError() }
+    }
+
+    // MARK: Driving an agent from afar (docs/mobile-design.md, section 3)
+
+    /// The agent in a pane, as herdr has it now. Throws herdr's
+    /// `agent_not_found` for a pane with no agent in it.
+    public func agentGet(paneID: String, on machine: HerdrMachine? = nil) async throws -> AgentSummary {
+        let result = try await agentRequest(method: "agent.get", params: ["target": .string(paneID)], cli: ["agent", "get", paneID], on: machine, deadlineMs: 5_000)
+        return try Self.agent(in: result, paneID: paneID, on: machine)
+    }
+
+    /// Waits until the agent is in one of `states`, or `timeoutMs` passes,
+    /// and returns the agent as it then is. herdr waits for a state, not a
+    /// transition: a pane already in one of `states` matches at once (herdr
+    /// 0.9.1, read live). Throws a `HerdrErrorPayload` with the code
+    /// "timeout" when the time runs out, and "agent_not_found" when the pane
+    /// has gone or has no agent.
+    public func agentWait(paneID: String, until states: [AgentState], timeoutMs: Int, on machine: HerdrMachine? = nil) async throws -> AgentSummary {
+        let names = states.map(\.rawValue)
+        let result = try await agentRequest(
+            method: "agent.wait",
+            params: ["target": .string(paneID), "until": .array(names.map(JSONValue.string)), "timeout_ms": .number(Double(timeoutMs))],
+            cli: ["agent", "wait", paneID, "--timeout", String(timeoutMs)] + names.flatMap { ["--until", $0] },
+            on: machine, deadlineMs: timeoutMs + 5_000)
+        return try Self.agent(in: result, paneID: paneID, on: machine)
+    }
+
+    /// Submits `text` to the agent: the text and then Enter, as one ordered
+    /// submission, the pane's bracketed-paste mode honoured. Returns once
+    /// both have been written, which says nothing yet about the agent
+    /// taking it up. herdr turns the submission down with `agent_blocked`,
+    /// before writing anything, while the agent waits at a question or an
+    /// approval. The text may be the person's instructions: never log it.
+    public func agentPrompt(paneID: String, text: String, on machine: HerdrMachine? = nil) async throws {
+        _ = try await agentRequest(method: "agent.prompt", params: ["target": .string(paneID), "text": .string(text)],
+                                   cli: ["agent", "prompt", paneID, text], on: machine, deadlineMs: 30_000)
+    }
+
+    /// Writes `text` to the pane as it is, with no Enter after it: for
+    /// answering, in words, a question the agent put. The text may be the
+    /// person's words: never log it.
+    public func paneSendText(paneID: String, text: String, on machine: HerdrMachine? = nil) async throws {
+        _ = try await agentRequest(method: "pane.send_text", params: ["pane_id": .string(paneID), "text": .string(text)],
+                                   cli: ["pane", "send-text", paneID, text], on: machine, deadlineMs: 5_000)
+    }
+
+    private static func agent(in result: JSONValue, paneID: String, on machine: HerdrMachine?) throws -> AgentSummary {
+        guard let row = result["agent"], let agent = AgentSummary(json: row, on: machine), agent.paneID == paneID else {
+            throw agentResponseError()
+        }
+        return agent
     }
 
     /// What a pane's terminal shows, as text. `source` picks the screen
@@ -278,6 +329,12 @@ public actor HerdrClient {
         if let machine {
             let output = try await transport.runHerdr(["--machine", machine.id] + cli)
             let response = try JSONDecoder().decode(JSONValue.self, from: output)
+            // The CLI prints herdr's error in the same envelope as the socket
+            // API, and exits as if nothing were wrong (herdr 0.9.1, read
+            // live), so the envelope is where the error is.
+            if let error = response["error"], let message = error["message"]?.stringValue {
+                throw HerdrErrorPayload(code: error["code"]?.stringValue, message: message)
+            }
             return response["result"] ?? .object([:])
         }
         return try await transport.send(method: method, params: .object(params))
