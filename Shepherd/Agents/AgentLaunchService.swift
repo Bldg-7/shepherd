@@ -352,11 +352,13 @@ final class AgentLaunchService {
             let agents = try await client.agentList()
             agentObservations[machine.id] = agents
             // herdr marks interactive readiness only on an agent it started
-            // itself. Pi is typed in by Shepherd (`launchPi`), so for Pi this
-            // is herdr's detection of the process in the same pane, and Pi's
-            // readiness is the bridge's (`PiLaunchCoordinator.waitUntilReady`).
+            // itself, once it sees that agent idle in the pane. Pi is typed in
+            // by Shepherd (`launchPi`), so for Pi the same two facts are read
+            // directly: herdr's detection of Pi in the same pane, and an idle
+            // state for it. Until herdr has read Pi's screen once the state is
+            // unknown, and a prompt sent then goes unobserved by herdr.
             if let current = agents.first(where: { $0.paneID == pane.paneID && $0.terminalID == pane.terminalID }),
-               kind == .pi || current.interactiveReady == true, current.launchPending != true,
+               kind == .pi ? current.state.isQuiescent : current.interactiveReady == true, current.launchPending != true,
                current.agentName.flatMap(AgentKind.init(herdrName:)) == kind { return }
             try await Task.sleep(for: .milliseconds(250))
         }

@@ -8,13 +8,16 @@
 범위는 npm caret과 같아 `1.y.z` 정식 버전만 받는다. 2.x, 0.x, pre-release(`1.3.0-beta.1`)는
 `pi-package-unsupported`로 거절한다.
 
-실제로 확인한 Pi는 **1.1.0과 1.2.0**이다.
+실제로 확인한 Pi는 **1.1.0, 1.2.0, 1.3.0**이다.
 
 - Pi 1.1.0: 기본 MCP와 **pi-mcp-adapter 5.1.0** 모두 실제 `AgentLaunchService.launch` 경로에서
   Herdr → Pi → MCP → native CEF 페이지 이동/내용 확인 → 권한 폐기 → 자연 종료를 검증했다.
 - Pi 1.2.0: Shepherd가 쓰는 CLI 인자, 확장 API, 진입부가 1.1.0과 같은 것을 확인하고
   `run-pi-bridge-tests.py`로 실제 TUI 기동 → 확장 → native bridge → MCP metadata → 자연 종료를 검증했다.
   native CEF 경로(`run-pi-native-tests.py`)는 아직 실행하지 않았다.
+- Pi 1.3.0: shim을 절대 경로로 타이핑하는 런치로 `run-pi-native-tests.py`(기본 MCP)를 실행해
+  Herdr → Pi → MCP → native CEF 페이지 이동/내용 확인 → 권한 폐기 → 자연 종료를 검증했다. 이 실행의
+  private HOME에는 진짜 Pi를 PATH 앞에 두는 `.zshrc`가 있다(아래 검증 절).
 
 로그인 확인이나 실제 비밀정보 입력이 완료되었다는 뜻은 아니다.
 
@@ -125,6 +128,11 @@ terminal 변경으로 권한을 넘기지 않는다. 불확실한 cleanup은 새
 - `run-pi-bridge-tests.py`: 실제 Unix peer/PID/exec lifetime와 실제 Pi CLI boot barrier 및 MCP metadata.
 - `run-pi-native-tests.py`: 실제 public launch service, Herdr/owned PTY, Pi fullscreen, MCP, CEF,
   폐기된 경로의 실제 HTTP upgrade 거부와 자연 종료. 기본 MCP/adapter 모두 별도 실행한다.
+  private HOME의 `.zshrc`가 진짜 Pi의 폴더를 PATH 앞에 붙이므로, pane 셸에서 bare `pi`는 shim이 아니다.
+  이 조건에서 `agent.start`로 시작하던 이전 런치는 실패하고(preflight가 있던 a37fcf6은
+  `pi-shim-shadowed-by-shell-path`로 거절), 절대 경로 타이핑은 통과한다.
+  Pi readiness 판정은 Herdr가 같은 pane에서 `pi`를 감지하고 상태가 idle/done인 것이다. `interactive_ready`는
+  Herdr가 `agent.start`한 agent에만 붙으므로 보지 않는다.
 - native 테스트는 private HOME/agentDir의 **정상 설정 로딩**으로 사용자 지침/확장이 유지되는지 확인한다.
   모델은 loopback fake provider만 사용한다. adapter credential store는 테스트 전용 memory이며
   실제 Keychain, Vendor 로그인, Vault, 사용자 프로필을 사용하지 않는다.
