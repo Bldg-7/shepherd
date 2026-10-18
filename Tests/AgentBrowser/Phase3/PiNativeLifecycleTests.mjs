@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import http from 'node:http';
 import assert from 'node:assert/strict';
-import {spawn,once} from '../../../Spikes/agent-browser-phase2/fixture-process.mjs';
+import {spawn,once} from './fixture-process.mjs';
 
 const [app,output,piCLI,adapterEntry]=process.argv.slice(2);assert(app&&output&&piCLI);
 fs.mkdirSync(output,{recursive:true,mode:0o700});
@@ -10,6 +10,8 @@ const root=fs.realpathSync(fs.mkdtempSync('/tmp/shp-pi-native-'));fs.chmodSync(r
 const home=path.join(root,'home'),bin=path.join(root,'bin'),profile=path.join(root,'profile');
 for(const p of [home,bin,profile,path.join(home,'.pi-agent')])fs.mkdirSync(p,{mode:0o700});
 fs.symlinkSync(fs.realpathSync(piCLI),path.join(bin,'pi'));
+// A ~/.zshrc like one that puts a bun or npm bin first: the pane's interactive shell runs it after the staged PATH, so a bare `pi` would be this real Pi, not the session shim.
+fs.writeFileSync(path.join(home,'.zshrc'),'export PATH='+JSON.stringify(bin+':$PATH')+'\n',{mode:0o600});
 fs.copyFileSync('Tests/AgentBrowser/Phase3/OwnedPiNativeTool.ts',path.join(root,'OwnedPiNativeTool.ts'));
 if(adapterEntry){
  // Any adapter 5.x from 5.1.0 (^5.1.0); a plain release only.
@@ -84,9 +86,10 @@ try{
   const rows=await cli(['agent','list']);
   fs.writeFileSync(path.join(output,'readiness-poll.json'),JSON.stringify(rows),{mode:0o600});
   const agent=rows.result.agents.find(a=>a.pane_id===selected.pane&&a.terminal_id===selected.terminal);
-  return agent?.agent==='pi' && agent.interactive_ready===true && agent.launch_pending!==true;
+  // interactive_ready is herdr's for agents it started itself, set once it sees them idle; the shim is typed in by launchPi, so read that idle state directly.
+  return agent?.agent==='pi' && (agent.agent_status==='idle'||agent.agent_status==='done') && agent.launch_pending!==true;
  },20000);
- console.log('PASS owned Herdr interactive readiness + pre-import binding + real Pi MCP ownership');
+ console.log('PASS owned Herdr detection of the typed shim + pre-import binding + real Pi MCP ownership');
  fs.writeFileSync(path.join(output,'pre-prompt-agents.json'),JSON.stringify(await cli(['agent','list'])),{mode:0o600});
  fs.writeFileSync(path.join(output,'pre-prompt-process.json'),JSON.stringify(await cli(['pane','process-info','--pane',selected.pane])),{mode:0o600});
  fs.writeFileSync(path.join(output,'pre-prompt-snapshot.json'),JSON.stringify(await cli(['api','snapshot'])),{mode:0o600});

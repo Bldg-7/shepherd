@@ -174,6 +174,34 @@ actor HerdrClient {
         return AgentStartResult(agent: agent, arguments: values.compactMap(\.stringValue))
     }
 
+    /// Types `argv` into the pane's shell and submits it, as `herdr pane run`
+    /// does: `pane.send_input` with Enter, one write, bracketed paste and all.
+    /// Unlike `agent.start`, whose executable is the kind's bare name for the
+    /// shell to look up through whatever PATH its startup files left, the
+    /// executable is what `argv[0]` names — an absolute path runs that file.
+    /// herdr takes no further part: it names nothing and waits for nothing,
+    /// and shows an agent in the pane once it detects one, as it does for
+    /// anything the user types.
+    func runCommand(paneID: String, argv: [String]) async throws {
+        let line = try Self.commandLine(argv)
+        let result = try await agentRequest(method: "pane.send_input",
+            params: ["pane_id": .string(paneID), "text": .string(line), "keys": .array([.string("enter")])],
+            cli: ["pane", "run", paneID, line], on: nil, deadlineMs: 5_000)
+        guard result["type"]?.stringValue == "ok" else { throw Self.agentResponseError() }
+    }
+
+    /// `argv` as one line for a POSIX shell: every word in single quotes
+    /// (`shellQuoted`), so a path with spaces stays one word. A control
+    /// character is refused, as herdr's own `agent.start` refuses it: a
+    /// newline would submit the line early.
+    nonisolated static func commandLine(_ argv: [String]) throws -> String {
+        guard let first = argv.first, !first.isEmpty,
+              !argv.contains(where: { $0.unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) } }) else {
+            throw HerdrErrorPayload(code: "invalid_command", message: "The command is empty or has a control character in it.")
+        }
+        return argv.map(shellQuoted).joined(separator: " ")
+    }
+
     func processInfo(paneID: String, on machine: HerdrMachine? = nil) async throws -> PaneProcessInfo {
         let result = try await agentRequest(method: "pane.process_info", params: ["pane_id": .string(paneID)], cli: ["pane", "process-info", "--pane", paneID], on: machine, deadlineMs: 5_000)
         guard result["type"]?.stringValue == "pane_process_info", let value = result["process_info"] else { throw Self.agentResponseError() }

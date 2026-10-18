@@ -153,7 +153,29 @@ actor LaunchTransport: HerdrTransport {
         }
         #endif
         try retryAndReuse(agent: agent, row: row)
+        try await typedPiShim(client: client, transport: transport)
         print("AGENT LAUNCH API/STATE PASS")
+    }
+
+    /// Pi's shim by its absolute path (`launchPi`): typed as `herdr pane run`
+    /// types, every word quoted, Enter in the same request.
+    static func typedPiShim(client: HerdrClient, transport: LaunchTransport) async throws {
+        let shim = "/Users/owned/Library/Application Support/Shepherd/pi/1/bin/pi"
+        check(try HerdrClient.commandLine([shim, "--session-dir", "/a b/sessions", "it's"]) == "'\(shim)' '--session-dir' '/a b/sessions' 'it'\\''s'",
+              "a command line keeps spaces and quotes inside their words")
+        for argv in [[], [""], ["pi", "a\nb"], ["pi", "tab\there"], ["pi", "\u{1b}[200~"]] {
+            do { _ = try HerdrClient.commandLine(argv); preconditionFailure("accepted \(argv)") }
+            catch { print("PASS: \(argv.debugDescription) is refused before anything is typed") }
+        }
+        await transport.configure(.object(["type": .string("ok")]))
+        try await client.runCommand(paneID: "w1:p1", argv: [shim, "--extension", "/owned/pi-entry.ts"])
+        let typed = await transport.lastRequest()!
+        check(typed.0 == "pane.send_input" && typed.1["pane_id"]?.stringValue == "w1:p1" && typed.1["keys"]?.arrayValue?.map { $0.stringValue } == ["enter"]
+              && typed.1["text"]?.stringValue == "'\(shim)' '--extension' '/owned/pi-entry.ts'", "exact pane.send_input wire params")
+        await transport.configure(.object(["type": .string("agent_started")]))
+        await rejects("a typed command without herdr's ok rejected") { try await client.runCommand(paneID: "w1:p1", argv: [shim]) }
+        let stage = try JSONDecoder().decode(PiStagedLaunch.self, from: Data(#"{"id":"1","sessionID":"s","folder":"/owned/pi/1","manifest":"m","bootstrap":"b","cli":"c","node":"n","entry":"e","resources":"r","arguments":[],"environment":{}}"#.utf8))
+        check(stage.shim == "/owned/pi/1/bin/pi", "the staged shim is the stage folder's bin/pi")
     }
 
     /// The browser check's waits after failed preparations, and its reuse of
@@ -219,61 +241,6 @@ actor LaunchTransport: HerdrTransport {
             let info = try JSONDecoder().decode(PaneProcessInfo.self, from: JSONSerialization.data(withJSONObject: ["pane_id": "w1:p1",
                 "foreground_processes": [["pid": 2, "name": "node", "argv0": name, "argv": [name, "--resume"]]]]))
             check(info.agentArguments(for: .claude) == [name, "--resume"] && info.agentArguments(for: .codex) == nil, "\(name) found by argv0")
-        }
-
-        try shimPreflight()
-    }
-
-    /// The shell's answer to `command -v pi` has to be the staged shim, as
-    /// found through the staged PATH by a real interactive `sh`, startup
-    /// noise and all.
-    static func shimPreflight() throws {
-        typealias Preflight = PiShimPreflight
-        let script = Preflight.script(path: "/owned/stage/bin:/usr/bin:/bin", shell: "/bin/zsh")
-        check(script == "PATH='/owned/stage/bin:/usr/bin:/bin' exec '/bin/zsh' -ic 'command -v pi'", "preflight script quotes PATH and the shell")
-        check(Preflight.script(path: "/a b/c'd", shell: "/bin/sh").hasPrefix("PATH='/a b/c'\\''d' "), "spaces and quotes in PATH stay one word")
-        check(Preflight.resolvedPath(in: Data("Welcome\r\n\n  /owned/stage/bin/pi \n\n".utf8)) == "/owned/stage/bin/pi", "the shell's last line is the answer, trimmed")
-        check(Preflight.resolvedPath(in: Data()) == "", "no output resolves nothing")
-        try Preflight.check(output: Data("/owned/stage/bin/pi\n".utf8), shim: "/owned/stage/bin/pi")
-        do {
-            try Preflight.check(output: Data("motd\n/Users/owned/.bun/bin/pi\n".utf8), shim: "/owned/stage/bin/pi"); preconditionFailure("shadowed shim accepted")
-        } catch let error as PiShimPreflightError {
-            let text = error.errorDescription ?? ""
-            check(error.resolved == "/Users/owned/.bun/bin/pi" && text.contains("/Users/owned/.bun/bin/pi") && text.contains("/owned/stage/bin/pi")
-                  && text.contains(Preflight.rejectionCode), "a shadowed shim is refused with both paths and the code")
-        }
-        do { try Preflight.check(output: Data("alias pi='pi --no-session'\n".utf8), shim: "/owned/stage/bin/pi"); preconditionFailure("alias accepted") }
-        catch is PiShimPreflightError { print("PASS: an alias for pi is refused too") }
-        check(Preflight.loginShell(environment: [:]).hasPrefix("/"), "the login shell is an absolute path")
-
-        // The script run as `runScript` runs it, with sh as the login shell,
-        // and two folders that each have a pi.
-        let manager = FileManager.default
-        let base = manager.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("shim-preflight-" + UUID().uuidString)
-        defer { try? manager.removeItem(at: base) }
-        for folder in ["stage/bin", "other bin"] {
-            let directory = base.appendingPathComponent(folder)
-            try manager.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-            let pi = directory.appendingPathComponent("pi")
-            try Data("#!/bin/sh\nexit 0\n".utf8).write(to: pi)
-            try manager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: pi.path)
-        }
-        let shim = base.appendingPathComponent("stage/bin/pi").path
-        func run(_ path: String) throws -> Data {
-            let process = Process(); process.executableURL = URL(fileURLWithPath: "/bin/sh")
-            process.arguments = ["-c", Preflight.script(path: path, shell: "/bin/sh")]
-            process.environment = ["HOME": base.path, "ENV": "/nonexistent"]
-            let pipe = Pipe(); process.standardOutput = pipe; process.standardError = FileHandle.nullDevice; process.standardInput = FileHandle.nullDevice
-            try process.run(); process.waitUntilExit()
-            return pipe.fileHandleForReading.readDataToEndOfFile()
-        }
-        let staged = base.appendingPathComponent("stage/bin").path + ":/usr/bin:/bin"
-        try Preflight.check(output: try run(staged), shim: shim)
-        print("PASS: a real interactive sh finds the staged shim first")
-        let shadowed = base.appendingPathComponent("other bin").path + ":" + staged
-        do { try Preflight.check(output: try run(shadowed), shim: shim); preconditionFailure("shadowing folder accepted") }
-        catch let error as PiShimPreflightError {
-            check(error.resolved == base.appendingPathComponent("other bin/pi").path, "a real shell's other pi is what the refusal names")
         }
     }
 }

@@ -89,6 +89,10 @@ nonisolated struct PiStagedLaunch: Codable, Sendable {
     let resources: String
     let arguments: [String]
     let environment: [String: String]
+
+    /// The session shim `stagePi` wrote: run by this path, so that the pane's
+    /// shell needn't find it through PATH.
+    var shim: String { folder + "/bin/pi" }
 }
 
 /// Immutable launch plan. Pass arguments as argv to agent.start, not as shell

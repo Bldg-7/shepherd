@@ -1,8 +1,8 @@
 #if os(macOS)
 import Foundation
 
-/// A separate Herdr connection observes startup while agent.start waits for TUI
-/// readiness. The session-only shim waits for this binding before importing Pi.
+/// A separate Herdr connection observes startup while `launchPi` waits for herdr
+/// to see Pi in the pane. The session-only shim waits for this binding before importing Pi.
 @MainActor final class PiLaunchCoordinator {
     private final class Admission {
         let owner: AgentPaneIdentity

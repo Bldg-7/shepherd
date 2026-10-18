@@ -5,7 +5,7 @@ import path from 'node:path';
 import http from 'node:http';
 import crypto from 'node:crypto';
 import assert from 'node:assert/strict';
-import {spawn, once, execFileSync} from '../../../Spikes/agent-browser-phase2/fixture-process.mjs';
+import {spawn, once, execFileSync} from './fixture-process.mjs';
 
 const [appPath, output, ...options] = process.argv.slice(2);
 assert(appPath && output);

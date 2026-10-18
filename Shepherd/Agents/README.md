@@ -36,8 +36,11 @@ though its dedicated launch path is enabled.
 `stagePi` prepares a session-local executable shim, extension, skill and appended
 guidance. `pi-launch.mjs` waits for an authenticated foreground binding before
 importing the real CLI, closing the startup race with Pi's argv/title rewrite.
+`AgentLaunchService.launchPi` types the shim by its absolute path into the pane
+(`pane.send_input`, as `herdr pane run` does) rather than through `agent.start`,
+whose bare `pi` the shell resolves through the PATH its startup files leave.
 `PiLaunchCoordinator` observes the exact Herdr pane/terminal on a separate
-connection while agent.start is pending. `PiBrowserLeaseProvider` composes the
+connection while that typed launch is pending. `PiBrowserLeaseProvider` composes the
 real CDP proxy: per-epoch route leases deny unleased fallback and old-route replay,
 recheck live process authority before dispatch, and wait for native detach.
 
