@@ -22,30 +22,34 @@ struct ConversationView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            output
-            if destination.agentName != nil {
-                Divider()
-                if model.agentState == .blocked {
-                    ResponseBar(model: model)
-                } else {
-                    Composer(model: model)
+        output
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                // Liquid Glass over the output, which scrolls on beneath it.
+                if destination.agentName != nil {
+                    if model.agentState == .blocked {
+                        ResponseBar(model: model)
+                    } else {
+                        Composer(model: model)
+                    }
                 }
             }
-        }
-        .navigationTitle(destination.title)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            if let state = model.agentState {
-                ToolbarItem(placement: .topBarTrailing) {
-                    StateBadge(state: state)
+            .navigationTitle(destination.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if let state = model.agentState {
+                    // A status, not a control: without the glass background
+                    // the toolbar would give it, which reads as a button.
+                    ToolbarItem(placement: .topBarTrailing) {
+                        StateBadge(state: state)
+                            .accessibilityAddTraits(.isStaticText)
+                    }
+                    .sharedBackgroundVisibility(.hidden)
                 }
             }
-        }
-        .task { await model.run() }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active { Task { await model.cameBack() } }
-        }
+            .task { await model.run() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { Task { await model.cameBack() } }
+            }
     }
 
     private var output: some View {
@@ -86,29 +90,40 @@ private struct Composer: View {
     @Bindable var model: ConversationModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if let note = model.submissionNote {
-                Text(note)
-                    .font(.footnote)
-                    .foregroundStyle(model.submission == .stalled ? .orange : .secondary)
-            }
-            HStack(alignment: .bottom, spacing: 8) {
-                TextField("Prompt", text: $model.draft, axis: .vertical)
-                    .lineLimit(1...6)
-                    .textFieldStyle(.roundedBorder)
-                    .disabled(model.isSending)
-                Button {
-                    Task { await model.send() }
-                } label: {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.title)
+        GlassEffectContainer(spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
+                if let note = model.submissionNote {
+                    Text(note)
+                        .font(.footnote)
+                        .foregroundStyle(model.submission == .stalled ? .orange : .secondary)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .glassEffect(.regular, in: .capsule)
                 }
-                .disabled(!model.canSend)
-                .accessibilityLabel("Send")
+                HStack(alignment: .bottom, spacing: 10) {
+                    TextField("Prompt", text: $model.draft, axis: .vertical)
+                        .lineLimit(1...6)
+                        .textFieldStyle(.plain)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22))
+                        .disabled(model.isSending)
+                    Button {
+                        Task { await model.send() }
+                    } label: {
+                        Image(systemName: "arrow.up")
+                            .font(.body.weight(.semibold))
+                            .frame(width: 22, height: 22)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .buttonBorderShape(.circle)
+                    .disabled(!model.canSend)
+                    .accessibilityLabel("Send")
+                }
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
         }
-        .padding(.horizontal)
-        .padding(.vertical, 8)
     }
 }
 
@@ -121,32 +136,43 @@ private struct ResponseBar: View {
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("The agent is waiting for an answer. Read the screen above, then answer it.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(["y", "n"], id: \.self) { letter in
-                        Button(letter) { Task { await model.respond(text: letter) } }
+        GlassEffectContainer(spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("The agent is waiting for an answer. Read the screen above, then answer it.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .glassEffect(.regular, in: .rect(cornerRadius: 16))
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(["y", "n"], id: \.self) { letter in
+                            Button(letter) { Task { await model.respond(text: letter) } }
+                                .buttonBorderShape(.circle)
+                        }
+                        ForEach(Self.keys, id: \.key) { item in
+                            Button(item.label) { Task { await model.respond(keys: [item.key]) } }
+                        }
                     }
-                    ForEach(Self.keys, id: \.key) { item in
-                        Button(item.label) { Task { await model.respond(keys: [item.key]) } }
-                    }
+                    .buttonStyle(.glass)
+                    .padding(.horizontal, 2)
                 }
-                .buttonStyle(.bordered)
+                HStack(alignment: .bottom, spacing: 10) {
+                    TextField("Answer in words", text: $model.draft, axis: .vertical)
+                        .lineLimit(1...4)
+                        .textFieldStyle(.plain)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22))
+                    Button("Type") { Task { await model.respondWithDraft() } }
+                        .buttonStyle(.glassProminent)
+                        .disabled(model.draft.isEmpty || model.isSending)
+                }
             }
-            HStack(alignment: .bottom, spacing: 8) {
-                TextField("Answer in words", text: $model.draft, axis: .vertical)
-                    .lineLimit(1...4)
-                    .textFieldStyle(.roundedBorder)
-                Button("Type") { Task { await model.respondWithDraft() } }
-                    .disabled(model.draft.isEmpty || model.isSending)
-            }
+            .disabled(model.isSending)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
         }
-        .disabled(model.isSending)
-        .padding(.horizontal)
-        .padding(.vertical, 8)
     }
 }
 
