@@ -22,7 +22,7 @@ struct LinkDestinationPrompt: View {
                 .truncationMode(.middle)
                 .textSelection(.enabled)
             HStack(spacing: 8) {
-                Button("Open in Shepherd Browser") { onChoose(.shepherd, remember) }
+                Button("Open in hrdrhrdrhrdr Browser") { onChoose(.shepherd, remember) }
                     .keyboardShortcut(.defaultAction)
                 Button("Open in Default Browser") { onChoose(.system, remember) }
             }

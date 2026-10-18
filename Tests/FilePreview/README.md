@@ -28,12 +28,12 @@ Coverage:
 ## Product behavior
 
 File OSC8 links (for example from `ls --hyperlink`) use plain click or Cmd-click
-for Shepherd preview. Plain text is never a file link, even when it looks like a
+for hrdrhrdrhrdr preview. Plain text is never a file link, even when it looks like a
 path, a source location (`path:line:column`), `~/…` or a `file://` URI: its click
 is TUI input like any other text, with or without Cmd. File intent is claimed at
 mouse-down before any remote input. HTTP(S) links, plain text or OSC8, are also
 claimed and routed, as the Open links in setting says, to the clicked pane's
-Shepherd browser or the Mac's default browser, with ⌘ for the other one and a
+hrdrhrdrhrdr browser or the Mac's default browser, with ⌘ for the other one and a
 prompt the first time; non-link clicks remain TUI input, not a second preview on
 release. Browser OFF/unavailable sends links to the default browser; invalid web
 URLs show a local error, without remote or automatic-enable fallback. Localhost URLs resolve on this Mac;

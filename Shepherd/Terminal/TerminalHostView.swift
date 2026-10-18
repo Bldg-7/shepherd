@@ -322,7 +322,7 @@ extension TerminalHostView: NSViewRepresentable {
 #Preview {
     TerminalHostView(
         onCreate: { view in
-            view.feed(text: "Shepherd\r\n$ echo hello\r\nhello\r\n$ ")
+            view.feed(text: "hrdrhrdrhrdr\r\n$ echo hello\r\nhello\r\n$ ")
         },
         onInput: { _ in },
         onResize: { _, _ in }

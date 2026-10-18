@@ -260,24 +260,24 @@
         }
       }
     },
-    "About Shepherd Browser" : {
+    "About hrdrhrdrhrdr Browser" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "About Shepherd Browser"
+            "value" : "About hrdrhrdrhrdr Browser"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd Browser について"
+            "value" : "hrdrhrdrhrdr Browser について"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd Browser 안내"
+            "value" : "hrdrhrdrhrdr Browser 안내"
           }
         }
       }
@@ -499,24 +499,24 @@
         }
       }
     },
-    "An existing global Shepherd registration must be removed explicitly before session-only integration can be prepared." : {
+    "An existing global hrdrhrdrhrdr registration must be removed explicitly before session-only integration can be prepared." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "An existing global Shepherd registration must be removed explicitly before session-only integration can be prepared."
+            "value" : "An existing global hrdrhrdrhrdr registration must be removed explicitly before session-only integration can be prepared."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "セッション専用連携を準備する前に、既存のグローバルな Shepherd 登録を明示的に削除してください。"
+            "value" : "セッション専用連携を準備する前に、既存のグローバルな hrdrhrdrhrdr 登録を明示的に削除してください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "세션 전용 연결을 준비하려면 기존 Shepherd 전역 등록을 명시적으로 제거해야 합니다."
+            "value" : "세션 전용 연결을 준비하려면 기존 hrdrhrdrhrdr 전역 등록을 명시적으로 제거해야 합니다."
           }
         }
       }
@@ -1327,24 +1327,24 @@
         }
       }
     },
-    "Built-in Personal, Private, Employee and default Shared vaults cannot be granted to a Service Account. Use a separate vault. Shepherd does not create accounts or change provider permissions." : {
+    "Built-in Personal, Private, Employee and default Shared vaults cannot be granted to a Service Account. Use a separate vault. hrdrhrdrhrdr does not create accounts or change provider permissions." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Built-in Personal, Private, Employee and default Shared vaults cannot be granted to a Service Account. Use a separate vault. Shepherd does not create accounts or change provider permissions."
+            "value" : "Built-in Personal, Private, Employee and default Shared vaults cannot be granted to a Service Account. Use a separate vault. hrdrhrdrhrdr does not create accounts or change provider permissions."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "組み込みの Personal・Private・Employee および既定の Shared 保管庫は対象外です。別の保管庫を使用してください。Shepherd はアカウント作成や提供元の権限変更を行いません。"
+            "value" : "組み込みの Personal・Private・Employee および既定の Shared 保管庫は対象外です。別の保管庫を使用してください。hrdrhrdrhrdr はアカウント作成や提供元の権限変更を行いません。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "기본 Personal·Private·Employee 및 기본 Shared Vault는 대상이 아닙니다. 별도 Vault를 사용하세요. Shepherd는 계정을 만들거나 Provider 권한을 변경하지 않습니다."
+            "value" : "기본 Personal·Private·Employee 및 기본 Shared Vault는 대상이 아닙니다. 별도 Vault를 사용하세요. hrdrhrdrhrdr는 계정을 만들거나 Provider 권한을 변경하지 않습니다."
           }
         }
       }
@@ -1866,24 +1866,24 @@
         }
       }
     },
-    "Comma-separated names from your agent's MCP configuration. This does not rename Shepherd's MCP server." : {
+    "Comma-separated names from your agent's MCP configuration. This does not rename hrdrhrdrhrdr's MCP server." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Comma-separated names from your agent's MCP configuration. This does not rename Shepherd's MCP server."
+            "value" : "Comma-separated names from your agent's MCP configuration. This does not rename hrdrhrdrhrdr's MCP server."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "エージェントの MCP 設定にある名前をコンマで区切って指定します。Shepherd の MCP サーバー名を変更するものではありません。"
+            "value" : "エージェントの MCP 設定にある名前をコンマで区切って指定します。hrdrhrdrhrdr の MCP サーバー名を変更するものではありません。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "에이전트의 MCP 설정에 있는 이름을 쉼표로 구분해 입력합니다. Shepherd MCP 서버의 이름을 바꾸는 설정이 아닙니다."
+            "value" : "에이전트의 MCP 설정에 있는 이름을 쉼표로 구분해 입력합니다. hrdrhrdrhrdr MCP 서버의 이름을 바꾸는 설정이 아닙니다."
           }
         }
       }
@@ -2500,19 +2500,19 @@
         }
       }
     },
-    "Disable competing browser tools for Shepherd launches" : {
+    "Disable competing browser tools for hrdrhrdrhrdr launches" : {
       "extractionState" : "stale",
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherdで起動する際に他のブラウザーツールを無効にする"
+            "value" : "hrdrhrdrhrdrで起動する際に他のブラウザーツールを無効にする"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd로 실행할 때 다른 브라우저 도구 끄기"
+            "value" : "hrdrhrdrhrdr로 실행할 때 다른 브라우저 도구 끄기"
           }
         }
       }
@@ -2947,24 +2947,24 @@
         }
       }
     },
-    "herdr shows notifications of its own only while herdr itself is open in a terminal app, never through Shepherd. If you have it open there, you may get both: to keep only Shepherd's, set delivery = \"off\" under [ui.toast] in herdr's config.toml. Shepherd doesn't read or change herdr's settings." : {
+    "herdr shows notifications of its own only while herdr itself is open in a terminal app, never through hrdrhrdrhrdr. If you have it open there, you may get both: to keep only hrdrhrdrhrdr's, set delivery = \"off\" under [ui.toast] in herdr's config.toml. hrdrhrdrhrdr doesn't read or change herdr's settings." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr shows notifications of its own only while herdr itself is open in a terminal app, never through Shepherd. If you have it open there, you may get both: to keep only Shepherd's, set delivery = \"off\" under [ui.toast] in herdr's config.toml. Shepherd doesn't read or change herdr's settings."
+            "value" : "herdr shows notifications of its own only while herdr itself is open in a terminal app, never through hrdrhrdrhrdr. If you have it open there, you may get both: to keep only hrdrhrdrhrdr's, set delivery = \"off\" under [ui.toast] in herdr's config.toml. hrdrhrdrhrdr doesn't read or change herdr's settings."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr 自身の通知は、ターミナルアプリで herdr を直接開いているときにだけ表示され、Shepherd を通しては表示されません。そのように開いている場合は、両方の通知が届くことがあります。Shepherd の通知だけにするには、herdr の config.toml の [ui.toast] に delivery = \"off\" を設定してください。Shepherd は herdr の設定を読んだり変更したりしません。"
+            "value" : "herdr 自身の通知は、ターミナルアプリで herdr を直接開いているときにだけ表示され、hrdrhrdrhrdr を通しては表示されません。そのように開いている場合は、両方の通知が届くことがあります。hrdrhrdrhrdr の通知だけにするには、herdr の config.toml の [ui.toast] に delivery = \"off\" を設定してください。hrdrhrdrhrdr は herdr の設定を読んだり変更したりしません。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr 자체 알림은 터미널 앱에서 herdr를 직접 열어 두었을 때만 나오며, Shepherd를 통해서는 나오지 않습니다. 그렇게 열어 두었다면 두 알림을 모두 받을 수 있습니다. Shepherd 알림만 받으려면 herdr의 config.toml에서 [ui.toast] 아래에 delivery = \"off\"를 설정하세요. Shepherd는 herdr 설정을 읽거나 바꾸지 않습니다."
+            "value" : "herdr 자체 알림은 터미널 앱에서 herdr를 직접 열어 두었을 때만 나오며, hrdrhrdrhrdr를 통해서는 나오지 않습니다. 그렇게 열어 두었다면 두 알림을 모두 받을 수 있습니다. hrdrhrdrhrdr 알림만 받으려면 herdr의 config.toml에서 [ui.toast] 아래에 delivery = \"off\"를 설정하세요. hrdrhrdrhrdr는 herdr 설정을 읽거나 바꾸지 않습니다."
           }
         }
       }
@@ -3170,19 +3170,19 @@
         }
       }
     },
-    "Installs the shepherd-browser skill from Bldg-7/shepherd on GitHub on the active machine, and registers its browser tools with Claude Code and Codex there. Agents started after that can use the browser Shepherd shows beside their pane." : {
+    "Installs the shepherd-browser skill from Bldg-7/shepherd on GitHub on the active machine, and registers its browser tools with Claude Code and Codex there. Agents started after that can use the browser hrdrhrdrhrdr shows beside their pane." : {
       "extractionState" : "stale",
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "GitHub の Bldg-7/shepherd から shepherd-browser スキルをアクティブなマシンにインストールし、そのマシンの Claude Code と Codex にブラウザツールを登録します。その後に起動した agent は、Shepherd が pane の横に表示するブラウザを使えます。"
+            "value" : "GitHub の Bldg-7/shepherd から shepherd-browser スキルをアクティブなマシンにインストールし、そのマシンの Claude Code と Codex にブラウザツールを登録します。その後に起動した agent は、hrdrhrdrhrdr が pane の横に表示するブラウザを使えます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "GitHub의 Bldg-7/shepherd에서 shepherd-browser 스킬을 받아 활성 머신에 설치하고, 그 머신의 Claude Code와 Codex에 브라우저 도구를 등록합니다. 그 뒤에 시작한 agent는 Shepherd가 pane 옆에 표시하는 브라우저를 쓸 수 있습니다."
+            "value" : "GitHub의 Bldg-7/shepherd에서 shepherd-browser 스킬을 받아 활성 머신에 설치하고, 그 머신의 Claude Code와 Codex에 브라우저 도구를 등록합니다. 그 뒤에 시작한 agent는 hrdrhrdrhrdr가 pane 옆에 표시하는 브라우저를 쓸 수 있습니다."
           }
         }
       }
@@ -3279,18 +3279,18 @@
       "comment" : "A label for the item ID of a password.",
       "isCommentAutoGenerated" : true
     },
-    "Its SSH key or password is deleted from the Keychain. A key Shepherd generated can't be recovered: adding the machine again means authorizing a new key on it." : {
+    "Its SSH key or password is deleted from the Keychain. A key hrdrhrdrhrdr generated can't be recovered: adding the machine again means authorizing a new key on it." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "このマシンの SSH 鍵またはパスワードはキーチェーンから削除されます。Shepherd が生成した鍵は復元できないため、マシンを再度追加するにはそのマシンに新しい鍵を登録する必要があります。"
+            "value" : "このマシンの SSH 鍵またはパスワードはキーチェーンから削除されます。hrdrhrdrhrdr が生成した鍵は復元できないため、マシンを再度追加するにはそのマシンに新しい鍵を登録する必要があります。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "키체인에서 이 머신의 SSH 키나 암호가 삭제됩니다. Shepherd가 생성한 키는 복구할 수 없으므로, 머신을 다시 추가하려면 해당 머신에 새 키를 등록해야 합니다."
+            "value" : "키체인에서 이 머신의 SSH 키나 암호가 삭제됩니다. hrdrhrdrhrdr가 생성한 키는 복구할 수 없으므로, 머신을 다시 추가하려면 해당 머신에 새 키를 등록해야 합니다."
           }
         }
       }
@@ -4230,24 +4230,24 @@
         }
       }
     },
-    "Notifications from Shepherd" : {
+    "Notifications from hrdrhrdrhrdr" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Notifications from Shepherd"
+            "value" : "Notifications from hrdrhrdrhrdr"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd からの通知"
+            "value" : "hrdrhrdrhrdr からの通知"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd 알림"
+            "value" : "hrdrhrdrhrdr 알림"
           }
         }
       }
@@ -4334,24 +4334,24 @@
         }
       }
     },
-    "Only affects future Shepherd launches. Keeps agents from using competing browser tools; does not change global CLI settings. Pi isn't covered: Pi agents keep all of their MCP servers." : {
+    "Only affects future hrdrhrdrhrdr launches. Keeps agents from using competing browser tools; does not change global CLI settings. Pi isn't covered: Pi agents keep all of their MCP servers." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Only affects future Shepherd launches. Keeps agents from using competing browser tools; does not change global CLI settings. Pi isn't covered: Pi agents keep all of their MCP servers."
+            "value" : "Only affects future hrdrhrdrhrdr launches. Keeps agents from using competing browser tools; does not change global CLI settings. Pi isn't covered: Pi agents keep all of their MCP servers."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "今後 Shepherd から起動するセッションだけに適用します。他のブラウザツールの使用を抑止し、グローバルな CLI 設定は変更しません。Pi には適用されず、Pi エージェントはすべての MCP サーバーをそのまま使います。"
+            "value" : "今後 hrdrhrdrhrdr から起動するセッションだけに適用します。他のブラウザツールの使用を抑止し、グローバルな CLI 設定は変更しません。Pi には適用されず、Pi エージェントはすべての MCP サーバーをそのまま使います。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "앞으로 Shepherd에서 실행할 세션에만 적용합니다. 다른 브라우저 도구 사용을 막으며 전역 CLI 설정은 변경하지 않습니다. Pi에는 적용되지 않으며, Pi 에이전트는 모든 MCP 서버를 그대로 사용합니다."
+            "value" : "앞으로 hrdrhrdrhrdr에서 실행할 세션에만 적용합니다. 다른 브라우저 도구 사용을 막으며 전역 CLI 설정은 변경하지 않습니다. Pi에는 적용되지 않으며, Pi 에이전트는 모든 MCP 서버를 그대로 사용합니다."
           }
         }
       }
@@ -4697,47 +4697,47 @@
         }
       }
     },
-    "Prepared automatically for Shepherd sessions. Claude uses a session skill plugin; Codex receives MCP and instructions; Pi uses a session-only TUI extension and skill. Requires Node 20+ (Pi: 22.19+). Preparation does not verify login." : {
+    "Prepared automatically for hrdrhrdrhrdr sessions. Claude uses a session skill plugin; Codex receives MCP and instructions; Pi uses a session-only TUI extension and skill. Requires Node 20+ (Pi: 22.19+). Preparation does not verify login." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Prepared automatically for Shepherd sessions. Claude uses a session skill plugin; Codex receives MCP and instructions; Pi uses a session-only TUI extension and skill. Requires Node 20+ (Pi: 22.19+). Preparation does not verify login."
+            "value" : "Prepared automatically for hrdrhrdrhrdr sessions. Claude uses a session skill plugin; Codex receives MCP and instructions; Pi uses a session-only TUI extension and skill. Requires Node 20+ (Pi: 22.19+). Preparation does not verify login."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd セッション用に自動準備します。Claude はスキルプラグイン、Codex は MCP と指示、Pi はセッション限定の TUI 拡張とスキルを使用します。Node 20 以降（Pi は 22.19 以降）が必要です。準備完了はログイン確認を意味しません。"
+            "value" : "hrdrhrdrhrdr セッション用に自動準備します。Claude はスキルプラグイン、Codex は MCP と指示、Pi はセッション限定の TUI 拡張とスキルを使用します。Node 20 以降（Pi は 22.19 以降）が必要です。準備完了はログイン確認を意味しません。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd 세션용으로 자동 준비합니다. Claude는 스킬 플러그인, Codex는 MCP와 지침, Pi는 세션 전용 TUI 확장과 스킬을 사용합니다. Node 20 이상(Pi는 22.19 이상)이 필요하며, 준비 완료는 로그인 확인을 의미하지 않습니다."
+            "value" : "hrdrhrdrhrdr 세션용으로 자동 준비합니다. Claude는 스킬 플러그인, Codex는 MCP와 지침, Pi는 세션 전용 TUI 확장과 스킬을 사용합니다. Node 20 이상(Pi는 22.19 이상)이 필요하며, 준비 완료는 로그인 확인을 의미하지 않습니다."
           }
         }
       }
     },
-    "Prepared automatically while Shepherd Browser is on. Only agents launched or explicitly resumed by Shepherd receive this integration." : {
+    "Prepared automatically while hrdrhrdrhrdr Browser is on. Only agents launched or explicitly resumed by hrdrhrdrhrdr receive this integration." : {
       "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Prepared automatically while Shepherd Browser is on. Only agents launched or explicitly resumed by Shepherd receive this integration."
+            "value" : "Prepared automatically while hrdrhrdrhrdr Browser is on. Only agents launched or explicitly resumed by hrdrhrdrhrdr receive this integration."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd Browser がオンの間に自動準備します。Shepherd から起動または明示的に再開したエージェントだけに連携を追加します。"
+            "value" : "hrdrhrdrhrdr Browser がオンの間に自動準備します。hrdrhrdrhrdr から起動または明示的に再開したエージェントだけに連携を追加します。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd Browser가 켜져 있으면 자동으로 준비합니다. Shepherd에서 실행하거나 명시적으로 재개한 에이전트에만 연결합니다."
+            "value" : "hrdrhrdrhrdr Browser가 켜져 있으면 자동으로 준비합니다. hrdrhrdrhrdr에서 실행하거나 명시적으로 재개한 에이전트에만 연결합니다."
           }
         }
       }
@@ -5134,41 +5134,41 @@
         }
       }
     },
-    "Resume with Shepherd Browser" : {
+    "Resume with hrdrhrdrhrdr Browser" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Resume with Shepherd Browser"
+            "value" : "Resume with hrdrhrdrhrdr Browser"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd Browser で再開"
+            "value" : "hrdrhrdrhrdr Browser で再開"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd Browser로 재개"
+            "value" : "hrdrhrdrhrdr Browser로 재개"
           }
         }
       }
     },
-    "Resume with Shepherd Browser is unavailable" : {
+    "Resume with hrdrhrdrhrdr Browser is unavailable" : {
       "extractionState" : "stale",
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherdブラウザーでのセッション再開は利用できません"
+            "value" : "hrdrhrdrhrdrブラウザーでのセッション再開は利用できません"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd 브라우저로 세션 이어가기를 사용할 수 없습니다"
+            "value" : "hrdrhrdrhrdr 브라우저로 세션 이어가기를 사용할 수 없습니다"
           }
         }
       }
@@ -5595,140 +5595,140 @@
         }
       }
     },
-    "Shepherd Browser" : {
+    "hrdrhrdrhrdr Browser" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd Browser"
+            "value" : "hrdrhrdrhrdr Browser"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd Browser"
+            "value" : "hrdrhrdrhrdr Browser"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd Browser"
+            "value" : "hrdrhrdrhrdr Browser"
           }
         }
       }
     },
-    "Shepherd Browser cannot be disabled while an agent, browser connection, or launch is active, or activity cannot be confirmed. Wait until all local sessions are inactive and try again." : {
+    "hrdrhrdrhrdr Browser cannot be disabled while an agent, browser connection, or launch is active, or activity cannot be confirmed. Wait until all local sessions are inactive and try again." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd Browser cannot be disabled while an agent, browser connection, or launch is active, or activity cannot be confirmed. Wait until all local sessions are inactive and try again."
+            "value" : "hrdrhrdrhrdr Browser cannot be disabled while an agent, browser connection, or launch is active, or activity cannot be confirmed. Wait until all local sessions are inactive and try again."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "エージェント、ブラウザ接続、起動処理が動作中の場合、または動作状況を確認できない場合は、Shepherd Browser をオフにできません。すべてのローカルセッションが非アクティブになるまで待ってから、もう一度お試しください。"
+            "value" : "エージェント、ブラウザ接続、起動処理が動作中の場合、または動作状況を確認できない場合は、hrdrhrdrhrdr Browser をオフにできません。すべてのローカルセッションが非アクティブになるまで待ってから、もう一度お試しください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "에이전트, 브라우저 연결, 실행 작업이 활성 상태이거나 활동 여부를 확인할 수 없으면 Shepherd Browser를 끌 수 없습니다. 모든 로컬 세션이 비활성 상태가 된 뒤 다시 시도하세요."
+            "value" : "에이전트, 브라우저 연결, 실행 작업이 활성 상태이거나 활동 여부를 확인할 수 없으면 hrdrhrdrhrdr Browser를 끌 수 없습니다. 모든 로컬 세션이 비활성 상태가 된 뒤 다시 시도하세요."
           }
         }
       }
     },
-    "Shepherd browser skill" : {
+    "hrdrhrdrhrdr browser skill" : {
       "extractionState" : "stale",
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd ブラウザスキル"
+            "value" : "hrdrhrdrhrdr ブラウザスキル"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd 브라우저 스킬"
+            "value" : "hrdrhrdrhrdr 브라우저 스킬"
           }
         }
       }
     },
-    "Shepherd generated a key on this device. Run this on %@ to authorize it:" : {
+    "hrdrhrdrhrdr generated a key on this device. Run this on %@ to authorize it:" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd がこのデバイスで鍵を生成しました。%@ で次のコマンドを実行して鍵を登録してください:"
+            "value" : "hrdrhrdrhrdr がこのデバイスで鍵を生成しました。%@ で次のコマンドを実行して鍵を登録してください:"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd가 이 기기에서 키를 생성했습니다. %@에서 다음 명령어를 실행해 키를 등록하십시오:"
+            "value" : "hrdrhrdrhrdr가 이 기기에서 키를 생성했습니다. %@에서 다음 명령어를 실행해 키를 등록하십시오:"
           }
         }
       }
     },
-    "Shepherd generated a key on this device. Run this on the machine to authorize it:" : {
+    "hrdrhrdrhrdr generated a key on this device. Run this on the machine to authorize it:" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd がこのデバイスで鍵を生成しました。そのマシンで次のコマンドを実行して鍵を登録してください:"
+            "value" : "hrdrhrdrhrdr がこのデバイスで鍵を生成しました。そのマシンで次のコマンドを実行して鍵を登録してください:"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd가 이 기기에서 키를 생성했습니다. 해당 머신에서 다음 명령어를 실행해 키를 등록하십시오:"
+            "value" : "hrdrhrdrhrdr가 이 기기에서 키를 생성했습니다. 해당 머신에서 다음 명령어를 실행해 키를 등록하십시오:"
           }
         }
       }
     },
-    "Shepherd session resources" : {
+    "hrdrhrdrhrdr session resources" : {
       "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd session resources"
+            "value" : "hrdrhrdrhrdr session resources"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd セッション用リソース"
+            "value" : "hrdrhrdrhrdr セッション用リソース"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd 세션용 리소스"
+            "value" : "hrdrhrdrhrdr 세션용 리소스"
           }
         }
       }
     },
-    "Shepherd watches the agents on all of your machines, the active one and the others, for as long as it is running — with its window closed, too. A pane you are looking at doesn't notify." : {
+    "hrdrhrdrhrdr watches the agents on all of your machines, the active one and the others, for as long as it is running — with its window closed, too. A pane you are looking at doesn't notify." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd watches the agents on all of your machines, the active one and the others, for as long as it is running — with its window closed, too. A pane you are looking at doesn't notify."
+            "value" : "hrdrhrdrhrdr watches the agents on all of your machines, the active one and the others, for as long as it is running — with its window closed, too. A pane you are looking at doesn't notify."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd は実行中、アクティブなマシンとほかのマシンすべての agent を見守ります。ウインドウを閉じていても同じです。いま表示している pane については通知しません。"
+            "value" : "hrdrhrdrhrdr は実行中、アクティブなマシンとほかのマシンすべての agent を見守ります。ウインドウを閉じていても同じです。いま表示している pane については通知しません。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd는 실행되는 동안 활성 머신과 다른 머신 모두의 agent를 지켜봅니다. 창을 닫아도 마찬가지입니다. 지금 보고 있는 pane은 알리지 않습니다."
+            "value" : "hrdrhrdrhrdr는 실행되는 동안 활성 머신과 다른 머신 모두의 agent를 지켜봅니다. 창을 닫아도 마찬가지입니다. 지금 보고 있는 pane은 알리지 않습니다."
           }
         }
       }
@@ -6126,18 +6126,18 @@
         }
       }
     },
-    "The browser engine didn't start. Another copy of Shepherd may be using the browser." : {
+    "The browser engine didn't start. Another copy of hrdrhrdrhrdr may be using the browser." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ブラウザエンジンを起動できませんでした。別の Shepherd がブラウザを使用している可能性があります。"
+            "value" : "ブラウザエンジンを起動できませんでした。別の hrdrhrdrhrdr がブラウザを使用している可能性があります。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "브라우저 엔진이 시작되지 않았습니다. 다른 Shepherd가 브라우저를 쓰고 있을 수 있습니다."
+            "value" : "브라우저 엔진이 시작되지 않았습니다. 다른 hrdrhrdrhrdr가 브라우저를 쓰고 있을 수 있습니다."
           }
         }
       }
@@ -6559,19 +6559,19 @@
         }
       }
     },
-    "This explicitly updates only Shepherd-owned registrations and skill links on This Mac. Plugin and global injection cannot be combined. Other settings are preserved." : {
+    "This explicitly updates only hrdrhrdrhrdr-owned registrations and skill links on This Mac. Plugin and global injection cannot be combined. Other settings are preserved." : {
       "extractionState" : "stale",
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "このMacでShepherdが所有する登録とスキルリンクだけを明示的に更新します。プラグイン方式とグローバル方式は併用できません。他の設定は保持されます。"
+            "value" : "このMacでhrdrhrdrhrdrが所有する登録とスキルリンクだけを明示的に更新します。プラグイン方式とグローバル方式は併用できません。他の設定は保持されます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "이 Mac에서 Shepherd가 소유한 등록 및 스킬 링크만 명시적으로 갱신합니다. 플러그인 방식과 전역 방식을 함께 사용할 수 없습니다. 다른 설정은 유지됩니다."
+            "value" : "이 Mac에서 hrdrhrdrhrdr가 소유한 등록 및 스킬 링크만 명시적으로 갱신합니다. 플러그인 방식과 전역 방식을 함께 사용할 수 없습니다. 다른 설정은 유지됩니다."
           }
         }
       }
@@ -7485,34 +7485,34 @@
         }
       }
     },
-    "Where http and https links clicked in a terminal open. ⌘-click opens a link in the other browser. With Shepherd Browser off, or unavailable on this Mac, links open in the default browser." : {
+    "Where http and https links clicked in a terminal open. ⌘-click opens a link in the other browser. With hrdrhrdrhrdr Browser off, or unavailable on this Mac, links open in the default browser." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ターミナルでクリックした http、https リンクを開く場所です。⌘を押しながらクリックすると、もう一方のブラウザで開きます。Shepherd Browser がオフか、この Mac で使えない場合はデフォルトブラウザで開きます。"
+            "value" : "ターミナルでクリックした http、https リンクを開く場所です。⌘を押しながらクリックすると、もう一方のブラウザで開きます。hrdrhrdrhrdr Browser がオフか、この Mac で使えない場合はデフォルトブラウザで開きます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "터미널에서 클릭한 http, https 링크를 여는 곳입니다. ⌘를 누른 채 클릭하면 다른 쪽 브라우저에서 열립니다. Shepherd Browser가 꺼져 있거나 이 Mac에서 쓸 수 없으면 기본 브라우저에서 열립니다."
+            "value" : "터미널에서 클릭한 http, https 링크를 여는 곳입니다. ⌘를 누른 채 클릭하면 다른 쪽 브라우저에서 열립니다. hrdrhrdrhrdr Browser가 꺼져 있거나 이 Mac에서 쓸 수 없으면 기본 브라우저에서 열립니다."
           }
         }
       }
     },
-    "Open in Shepherd Browser" : {
+    "Open in hrdrhrdrhrdr Browser" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd Browser で開く"
+            "value" : "hrdrhrdrhrdr Browser で開く"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd Browser에서 열기"
+            "value" : "hrdrhrdrhrdr Browser에서 열기"
           }
         }
       }
@@ -7565,34 +7565,34 @@
         }
       }
     },
-    "Shepherd Browser is off, so the link opened in the default browser." : {
+    "hrdrhrdrhrdr Browser is off, so the link opened in the default browser." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd Browser がオフのため、デフォルトブラウザで開きました。"
+            "value" : "hrdrhrdrhrdr Browser がオフのため、デフォルトブラウザで開きました。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shepherd Browser가 꺼져 있어 기본 브라우저에서 열었습니다."
+            "value" : "hrdrhrdrhrdr Browser가 꺼져 있어 기본 브라우저에서 열었습니다."
           }
         }
       }
     },
-    "Shepherd Browser isn't available on this Mac, so the link opened in the default browser." : {
+    "hrdrhrdrhrdr Browser isn't available on this Mac, so the link opened in the default browser." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "この Mac では Shepherd Browser を使えないため、デフォルトブラウザで開きました。"
+            "value" : "この Mac では hrdrhrdrhrdr Browser を使えないため、デフォルトブラウザで開きました。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "이 Mac에서는 Shepherd Browser를 쓸 수 없어 기본 브라우저에서 열었습니다."
+            "value" : "이 Mac에서는 hrdrhrdrhrdr Browser를 쓸 수 없어 기본 브라우저에서 열었습니다."
           }
         }
       }

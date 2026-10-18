@@ -275,7 +275,7 @@ struct MachinesSettingsView: View {
     }
 
     private var removalMessage: LocalizedStringKey {
-        "Its SSH key or password is deleted from the Keychain. A key Shepherd generated can't be recovered: adding the machine again means authorizing a new key on it."
+        "Its SSH key or password is deleted from the Keychain. A key hrdrhrdrhrdr generated can't be recovered: adding the machine again means authorizing a new key on it."
     }
 
     @ViewBuilder

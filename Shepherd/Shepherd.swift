@@ -35,7 +35,7 @@ import SwiftUI
     var body: some Scene {
         // The app has one window. A `Window` rather than a `WindowGroup`:
         // there is no New Window to make another with, and no window tabs.
-        Window(Text(verbatim: "Shepherd"), id: "main") {
+        Window(Text(verbatim: "hrdrhrdrhrdr"), id: "main") {
             #if DEBUG && os(macOS)
             if ProcessInfo.processInfo.environment["SHEPHERD_BROWSER_FEATURE_FIXTURE"] != nil ||
                 ProcessInfo.processInfo.environment["SHEPHERD_AGENT_LAUNCH_FIXTURE"] != nil ||

@@ -92,7 +92,7 @@ extension MachineStore { var activeMachine: Machine? { LayoutFixture.machine } }
         // Cards: runs, down one column inside the cards' left padding, of
         // pixels that differ from the Form's own background.
         guard let scroll = descendants(of: host).first(where: { $0 is NSScrollView }),
-              let anchor = lines.first(where: { $0.text.contains("Shepherd Browser") }) else {
+              let anchor = lines.first(where: { $0.text.contains("hrdrhrdrhrdr Browser") }) else {
             check(false, "the Form and its first card's toggle are drawn"); return Render(cards: [], lines: lines)
         }
         var frame = host.convert(scroll.bounds, from: scroll)
@@ -141,7 +141,7 @@ extension MachineStore { var activeMachine: Machine? { LayoutFixture.machine } }
                 print("\(name): \(rows)")
 
                 check(result.cards.count == 2, "\(name): the Form draws exactly two cards")
-                check(card("Shepherd Browser") == 0, "\(name): Shepherd Browser's toggle is in the first card")
+                check(card("hrdrhrdrhrdr Browser") == 0, "\(name): hrdrhrdrhrdr Browser's toggle is in the first card")
                 check(card("Terminal File Drop") == 1, "\(name): Terminal File Drop's toggle is in the second card")
                 // Its ⓘ may read as a line of its own, on the same row.
                 check(result.cards.count == 2 && result.lines.filter { result.cards[1].contains($0.rect.midY) }
@@ -151,7 +151,7 @@ extension MachineStore { var activeMachine: Machine? { LayoutFixture.machine } }
                     for row in ["Password Manager", "Preparation", "Advanced"] {
                         check(card(row) == 0, "\(name): \(row) is in the browser's card")
                     }
-                    check(top("Shepherd Browser") < top("Password Manager") && top("Password Manager") < top("Preparation")
+                    check(top("hrdrhrdrhrdr Browser") < top("Password Manager") && top("Password Manager") < top("Preparation")
                           && top("Preparation") < top("Advanced"), "\(name): toggle, Password Manager, Preparation, Advanced in that order")
                 } else {
                     for row in ["Password Manager", "Preparation", "Advanced"] {
@@ -160,7 +160,7 @@ extension MachineStore { var activeMachine: Machine? { LayoutFixture.machine } }
                 }
                 if diagnostics {
                     check(card("Diagnostics") == 0 && card("Synthetic diagnostic message") == 0, "\(name): Diagnostics is in the browser's card")
-                    let last = browser ? top("Advanced") : top("Shepherd Browser")
+                    let last = browser ? top("Advanced") : top("hrdrhrdrhrdr Browser")
                     check(last < top("Diagnostics") && top("Diagnostics") < top("Synthetic diagnostic message"),
                           "\(name): Diagnostics comes last, its label row first and its messages shown")
                 } else {

@@ -755,7 +755,7 @@ struct AgentBoardView: View {
             Button("Rename Pane…") { beginRenaming(.pane(agent)) }
             #if os(macOS)
             if ShepherdBrowserFeature.shared.isEnabled && agent.hasAgent {
-                Button("Resume with Shepherd Browser") {
+                Button("Resume with hrdrhrdrhrdr Browser") {
                     Task {
                         do {
                             let client = HerdrClient(transport: try machineStore.makeHerdrTransport(for: machine))

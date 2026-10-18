@@ -1,8 +1,8 @@
-# Shepherd for herdr
+# hrdrhrdrhrdr for herdr
 
 A native macOS workspace for Herdr terminals and coding agents.
 
-[Download Shepherd](https://github.com/Bldg-7/shepherd/releases/latest/download/Shepherd.dmg) · [Website](https://bldg-7.github.io/shepherd/) · [Releases](https://github.com/Bldg-7/shepherd/releases)
+[Download hrdrhrdrhrdr](https://github.com/Bldg-7/shepherd/releases/latest/download/hrdrhrdrhrdr.dmg) · [Website](https://bldg-7.github.io/shepherd/) · [Releases](https://github.com/Bldg-7/shepherd/releases)
 
 This repository contains the **macOS application source**, its required shared dependencies, website and signed releases. Mobile application branches and development evidence are not included. The existing public repository history is preserved.
 
@@ -18,7 +18,7 @@ The browser is **OFF by default**. Enable it in **Settings → Experimental Feat
 
 Resources are bundled and injected into the new session only. No global MCP/skill installation, runtime npm download, automatic trust approval or replacement of user instructions/extensions is performed. The authenticated native browser endpoint is pane-scoped.
 
-**Do not run the old `npx skills … --global` / `setup.sh` instructions.** Those legacy entry points now refuse installation. Previously installed global Shepherd registrations must be reviewed and removed explicitly by their owner; the app does not silently edit them.
+**Do not run the old `npx skills … --global` / `setup.sh` instructions.** Those legacy entry points now refuse installation. Previously installed global hrdrhrdrhrdr registrations must be reviewed and removed explicitly by their owner; the app does not silently edit them.
 
 Pi supports fresh local managed TUI sessions. Exact saved-session resume, browser-enabled child/headless processes, automatic reauthorization after session-ID/file changes and competing-MCP dispatch suppression remain unsupported. Because of that, "Block other browser tools" is not applied to Pi: Pi still launches when the setting is on, and keeps all of its MCP servers. See [Pi support](docs/pi-agent-support.md).
 
@@ -28,7 +28,7 @@ Password-manager connection does not imply credential-fill authorization. Native
 
 Edit registered machines in Settings → Machines. Existing SSH credentials stay unchanged unless Change Authentication is explicitly enabled.
 
-Click an OSC8 file link (for example from `ls --hyperlink`) to open the read-only preview beside the terminal; Command-click also works. Plain text is not a file link even when it looks like a path, `path:line` or `file://` URL: clicking it goes to the TUI like any other text. Code wraps automatically and uses basic native syntax highlighting; Markdown has rendered/source modes. Remote files are read over SFTP on the clicked machine, not opened by a remote editor or resolved against the Mac. File gestures are claimed before terminal mouse reporting and kept local, with or without Command. HTTP(S) URLs, plain text or OSC8, are also captured locally; non-link clicks still belong to the TUI. Settings → Experimental Features → Open links in says whether they open in a new tab of the clicked pane's Shepherd Browser or in the Mac's default browser; until you choose, the first click asks. ⌘-click opens a link in the other browser, and the Shepherd Browser's ⋯ menu sends the page it shows to the default browser. With Shepherd Browser OFF or unavailable, links open in the default browser; the browser is never turned on for a link. `localhost` URLs refer to the Mac, not an automatic SSH tunnel. Nested Herdr-machine file routing is not supported.
+Click an OSC8 file link (for example from `ls --hyperlink`) to open the read-only preview beside the terminal; Command-click also works. Plain text is not a file link even when it looks like a path, `path:line` or `file://` URL: clicking it goes to the TUI like any other text. Code wraps automatically and uses basic native syntax highlighting; Markdown has rendered/source modes. Remote files are read over SFTP on the clicked machine, not opened by a remote editor or resolved against the Mac. File gestures are claimed before terminal mouse reporting and kept local, with or without Command. HTTP(S) URLs, plain text or OSC8, are also captured locally; non-link clicks still belong to the TUI. Settings → Experimental Features → Open links in says whether they open in a new tab of the clicked pane's hrdrhrdrhrdr Browser or in the Mac's default browser; until you choose, the first click asks. ⌘-click opens a link in the other browser, and the hrdrhrdrhrdr Browser's ⋯ menu sends the page it shows to the default browser. With hrdrhrdrhrdr Browser OFF or unavailable, links open in the default browser; the browser is never turned on for a link. `localhost` URLs refer to the Mac, not an automatic SSH tunnel. Nested Herdr-machine file routing is not supported.
 
 The preview and experimental browser share the side-panel slot; switching visibility preserves browser tabs/profiles. The preview has a circular Liquid Glass close button and no header refresh button. Browser integration uses pane-scoped status icons; Group by Tab hides unknown/unavailable captions and pane counts. Pi automatic title prefixes are hidden for display only.
 

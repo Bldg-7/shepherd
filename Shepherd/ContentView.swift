@@ -646,8 +646,8 @@ struct ContentView: View {
         NSWorkspace.shared.open(target)
         guard fellBack else { return }
         linkNotice = LinkNotice(text: ShepherdBrowserFeature.shared.isEnabled
-            ? String(localized: "Shepherd Browser isn't available on this Mac, so the link opened in the default browser.")
-            : String(localized: "Shepherd Browser is off, so the link opened in the default browser."))
+            ? String(localized: "hrdrhrdrhrdr Browser isn't available on this Mac, so the link opened in the default browser.")
+            : String(localized: "hrdrhrdrhrdr Browser is off, so the link opened in the default browser."))
     }
 
     private func previewPanel(_ request: FilePreviewRequest) -> some View {

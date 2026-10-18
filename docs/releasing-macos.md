@@ -179,8 +179,8 @@ using.
 
 The draft release holds these assets:
 
-- `Shepherd-<version>.zip` (Sparkle update archive)
-- `Shepherd-<version>.dmg` and `Shepherd.dmg` (installation image)
+- `hrdrhrdrhrdr-<version>.zip` (Sparkle update archive)
+- `hrdrhrdrhrdr-<version>.dmg` and `hrdrhrdrhrdr.dmg` (installation image)
 - `appcast.xml` and any delta files it references
 
 The draft targets the exact already-pushed source commit. Creating it changes neither

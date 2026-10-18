@@ -40,7 +40,7 @@ actor StubTerminalSession: TerminalSessionProviding {
         return AsyncStream { continuation in
             self.continuation = continuation
             var buffer = ByteBuffer()
-            buffer.writeString("Shepherd preview terminal (\(columns)x\(rows))\r\n$ ")
+            buffer.writeString("hrdrhrdrhrdr preview terminal (\(columns)x\(rows))\r\n$ ")
             continuation.yield(buffer)
         }
     }

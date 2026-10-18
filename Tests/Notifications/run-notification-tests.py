@@ -65,7 +65,7 @@ assert 'controlActiveState == .key' in content and 'setViewedPanes(panes)' in co
 assert '.onChange(of: NotificationCoordinator.shared.navigationRequest, initial: true)' in content and '.onChange(of: paneDestinations)' in content
 shep=(ROOT/'Shepherd/Shepherd.swift').read_text()
 assert shep.index('NotificationCoordinator.shared.prepare()')<shep.index('guard ShepherdBrowserFeature.shared.isEnabled else { return }')<shep.index('func applicationDidFinishLaunching')<shep.index('NotificationCoordinator.shared.start()')
-assert 'Window(Text(verbatim: "Shepherd"), id: "main")' in shep and 'WindowGroup {' not in shep
+assert 'Window(Text(verbatim: "hrdrhrdrhrdr"), id: "main")' in shep and 'WindowGroup {' not in shep
 assert not (ROOT/'Shepherd/Notifications/MachineWatcher.swift').exists()
 coordinator=(ROOT/'Shepherd/Notifications/NotificationCoordinator.swift').read_text()
 assert 'confirmationDelay: Duration = .milliseconds(1500)' in coordinator and 'SHEPHERD_OWNED_OPERATOR_ROOT' in coordinator

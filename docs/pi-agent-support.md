@@ -12,7 +12,7 @@
 
 - Pi 1.1.0: 기본 MCP와 **pi-mcp-adapter 5.1.0** 모두 실제 `AgentLaunchService.launch` 경로에서
   Herdr → Pi → MCP → native CEF 페이지 이동/내용 확인 → 권한 폐기 → 자연 종료를 검증했다.
-- Pi 1.2.0: Shepherd가 쓰는 CLI 인자, 확장 API, 진입부가 1.1.0과 같은 것을 확인하고
+- Pi 1.2.0: hrdrhrdrhrdr가 쓰는 CLI 인자, 확장 API, 진입부가 1.1.0과 같은 것을 확인하고
   `run-pi-bridge-tests.py`로 실제 TUI 기동 → 확장 → native bridge → MCP metadata → 자연 종료를 검증했다.
   native CEF 경로(`run-pi-native-tests.py`)는 아직 실행하지 않았다.
 - Pi 1.3.0: shim을 절대 경로로 타이핑하는 런치로 `run-pi-native-tests.py`(기본 MCP)를 실행해
@@ -63,7 +63,7 @@ startup 파일 뒤의 PATH 순서를 바꿀 수 없다. 절대 경로로 실행�
 그대로 pane env로 간다.
 
 `agent.start`를 쓰지 않으므로 Herdr가 agent.start한 agent에만 주는 live agent 이름(`pi-<id>`)과
-`interactive_ready`는 없다. Shepherd는 agent를 pane ID로만 다루고, Pi의 준비 상태는 아래 native MCP
+`interactive_ready`는 없다. hrdrhrdrhrdr는 agent를 pane ID로만 다루고, Pi의 준비 상태는 아래 native MCP
 소유권으로 판단하므로 둘 다 쓰지 않는다.
 
 `PiLaunchCoordinator`는 이 타이핑과 다른 Herdr connection으로 같은 pane/terminal의

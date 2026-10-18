@@ -54,7 +54,7 @@ final class ShepherdBrowserFeature {
         guard !isTransitioning else { return false }
         guard enabled != isEnabled else { return true }
         guard enabled || canDisable() else {
-            refusal = String(localized: "Shepherd Browser cannot be disabled while an agent, browser connection, or launch is active, or activity cannot be confirmed. Wait until all local sessions are inactive and try again.")
+            refusal = String(localized: "hrdrhrdrhrdr Browser cannot be disabled while an agent, browser connection, or launch is active, or activity cannot be confirmed. Wait until all local sessions are inactive and try again.")
             return false
         }
         isTransitioning = true

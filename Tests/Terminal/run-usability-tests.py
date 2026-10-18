@@ -35,7 +35,7 @@ stage('launcher-field-build',90,flags+[str(launcherField),'Tests/Terminal/Launch
 assert 'Modifying state during view update' not in (o/'launcher-field-tests.log').read_text()
 c=(R/'Shepherd/ContentView.swift').read_text();app=(R/'Shepherd/Shepherd.swift').read_text();m=(R/'Shepherd/Hosts/Views/MachinesSettingsView.swift').read_text()
 assert '.keyboardShortcut("p", modifiers: .command)' in app and '.focusedSceneValue(\\.isShowingPaneSwitcher' in c
-assert 'Window(Text(verbatim: "Shepherd"), id: "main")' in app and 'WindowGroup {' not in app and 'applicationShouldTerminateAfterLastWindowClosed' in app
+assert 'Window(Text(verbatim: "hrdrhrdrhrdr"), id: "main")' in app and 'WindowGroup {' not in app and 'applicationShouldTerminateAfterLastWindowClosed' in app
 assert 'CommandGroup(replacing: .newItem)' in app and app.index('show(.blank)')<app.index('.keyboardShortcut("n")')<app.index('show(.currentWorkspace)')<app.index('.keyboardShortcut("t")')
 assert '.focusedSceneValue(\\.launcherStart' in c and 'LaunchPreset.current(for: selection(on: machine).wrappedValue, in: launchTargets)' in c
 assert 'paneDestinations = []' in c and 'PaneDestination.resolve' in c and 'onDismiss: navigateToPendingPane' in c
