@@ -4,7 +4,7 @@ This component consumes `CDPProxy.endpoint(for:)` and the accepted
 `BrowserKey`/terminal identity. It never uses a CEF debugging socket. Remote
 capability is intentionally unavailable.
 
-## Current policy: automatic, Shepherd-session-only
+## Current policy: automatic, hrdrhrdrhrdr-session-only
 
 Browser ON (including persisted-ON startup) schedules one shared app-private
 resource preparation when This Mac becomes available. Settings shows waiting,
@@ -20,7 +20,7 @@ The pinned Codex 0.160.1 CLI/schema has no equivalent per-launch plugin-director
 option; marketplace install support must not be reported as that capability.
 
 No operation writes user CLI settings, user skill folders, or the Codex plugin
-cache. Existing global Shepherd skills/MCP/enabled plugins cause explicit
+cache. Existing global hrdrhrdrhrdr skills/MCP/enabled plugins cause explicit
 rejection, not automatic deletion or migration. Old `setupCodex`/`setMode` RPCs
 return `session-only-policy`; the MCP `--global` entry point is disabled.
 
@@ -231,7 +231,7 @@ preparation; compatibility declarations never restore the old global behavior.
 
 1. Confirm This Mac, establish local client, locate Node/agent CLIs, choose a
    private runtime root (for example Application Support/AgentRuntime), install
-   bundled resources automatically and check that no global Shepherd registration
+   bundled resources automatically and check that no global hrdrhrdrhrdr registration
    conflicts. Do not install a Codex marketplace/plugin into its user home.
 2. **Before creating the pane**, call reserveLaunch and pass its environment to
    `tab.create` / `workspace.create`. herdr `agent.start` accepts argv, not env.
@@ -243,7 +243,7 @@ preparation; compatibility declarations never restore the old global behavior.
 5. Register accepted local snapshot endpoints so Claude child hooks can lazily
    prepare exactly the requested child. No registered/ambiguous pane means the
    original command is retained and reason-recorded; never use a parent URL.
-   For each pane, Shepherd keeps the runtime preferences
+   For each pane, hrdrhrdrhrdr keeps the runtime preferences
    (`AgentRuntimePreferences`) it was registered with. A new pane is registered
    at the next check. A pane already registered is registered again only when
    the current preferences differ from those. That happens at the first check
@@ -253,10 +253,10 @@ preparation; compatibility declarations never restore the old global behavior.
    agent runtime registers every pane again at the next check, without the
    one-second wait.
    If registering a pane fails, or preparing the agent found in a pane's argv
-   fails, Shepherd waits before trying that pane again: 30 seconds after the
+   fails, hrdrhrdrhrdr waits before trying that pane again: 30 seconds after the
    first failure, then 60, 120 and 240 seconds, then 5 minutes between later
    tries. A preparation wait belongs to the pane's current argv. Diagnostics
-   keeps showing the last error during the wait. Shepherd tries again at once
+   keeps showing the last error during the wait. hrdrhrdrhrdr tries again at once
    when the argv changes or the failure was `setup-busy`. These all cancel
    every wait: Retry Preparation, Check Prerequisites Again, saving settings,
    changing the port, and installing. As before this change, duplicate-
@@ -325,8 +325,8 @@ owned disposable fixtures; no credentials or production accounts are copied.
 
 Real versions tested: Claude Code 2.1.288 and Codex 0.154.0. Provider captures are
 per-invocation, attributed at HTTP request arrival; each Codex plugin/config/
-global/existing-pane/resume process must expose its own Shepherd navigation tools
-and the selected user/override plus Shepherd developer instructions. Provider
+global/existing-pane/resume process must expose its own hrdrhrdrhrdr navigation tools
+and the selected user/override plus hrdrhrdrhrdr developer instructions. Provider
 completion alone is not MCP readiness and cannot borrow earlier Claude evidence.
 Existing-session resume uses an actual session ID and the CLI's documented
 noninteractive exec resume form in a disposable non-Git home. MCP-to-B evidence

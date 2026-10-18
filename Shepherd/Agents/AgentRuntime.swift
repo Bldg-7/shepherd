@@ -165,9 +165,9 @@ nonisolated enum AgentRuntimeError: Error, LocalizedError, Sendable {
     var errorDescription: String? {
         switch self {
         case .remoteUnavailable: "Remote browser agent setup is not available yet."
-        case .missingBundledResources: "Bundled Shepherd agent resources are unavailable."
+        case .missingBundledResources: "Bundled hrdrhrdrhrdr agent resources are unavailable."
         case .nodeUnavailable: String(localized: "Node.js was not found in the app's PATH or supported install locations. Node 20 or newer is required.")
-        case .rejected(let code): "Shepherd agent runtime rejected the operation (\(code))."
+        case .rejected(let code): "hrdrhrdrhrdr agent runtime rejected the operation (\(code))."
         }
     }
 }

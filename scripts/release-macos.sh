@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Builds Shepherd for macOS, signs it with Developer ID, has Apple notarize
+# Builds hrdrhrdrhrdr for macOS, signs it with Developer ID, has Apple notarize
 # it, and uploads a draft GitHub release. Publish/mark latest separately
 # after artifact verification; only then does Sparkle see the new feed. docs/releasing-macos.md has the one-time setup this expects.
 #
@@ -54,11 +54,11 @@ UPDATES="$ROOT/build/updates"
 STAGE="$WORK/updates"
 DERIVED="$ROOT/build/DerivedData"
 SPARKLE_BIN="$ROOT/build/SourcePackages/artifacts/sparkle/Sparkle/bin"
-ARCHIVE="$WORK/Shepherd.xcarchive"
-APP="$WORK/export/Shepherd.app"
+ARCHIVE="$WORK/hrdrhrdrhrdr.xcarchive"
+APP="$WORK/export/hrdrhrdrhrdr.app"
 TAG="v$VERSION"
-ZIP="Shepherd-$VERSION.zip"
-DMG="Shepherd-$VERSION.dmg"
+ZIP="hrdrhrdrhrdr-$VERSION.zip"
+DMG="hrdrhrdrhrdr-$VERSION.dmg"
 DOWNLOAD_PREFIX="https://github.com/$REPO/releases/download/$TAG/"
 # The public source history differs from the earlier private history. Never
 # derive Sparkle's monotonic build number from the number of Git commits.
@@ -189,7 +189,7 @@ PY
 fi
 step "Signing pinned CEF framework and helper inputs"
 python3 "$ROOT/scripts/sign-cef.py" --identity "$SIGN_IDENTITY"
-step "Archiving Shepherd $VERSION ($BUILD_NUMBER)"
+step "Archiving hrdrhrdrhrdr $VERSION ($BUILD_NUMBER)"
 mkdir -p "$WORK"
 xcodebuild archive -quiet \
     -project "$ROOT/shepherd.xcodeproj" -scheme Shepherd -configuration Release \
@@ -234,14 +234,14 @@ fi
 # Applications to drag it onto. It is signed with the very certificate the
 # app is (this Mac has two of the same name, and codesign won't pick one by
 # name), and notarized too, so that Gatekeeper lets it open. A copy named
-# Shepherd.dmg goes into every release, so that
-# releases/latest/download/Shepherd.dmg is always the newest.
+# hrdrhrdrhrdr.dmg goes into every release, so that
+# releases/latest/download/hrdrhrdrhrdr.dmg is always the newest.
 step "Making the disk image"
 rm -rf "$WORK/dmg"
 mkdir -p "$WORK/dmg"
-ditto "$APP" "$WORK/dmg/Shepherd.app"
+ditto "$APP" "$WORK/dmg/hrdrhrdrhrdr.app"
 ln -s /Applications "$WORK/dmg/Applications"
-hdiutil create -quiet -volname Shepherd -srcfolder "$WORK/dmg" -fs HFS+ -format UDZO -ov "$WORK/$DMG"
+hdiutil create -quiet -volname hrdrhrdrhrdr -srcfolder "$WORK/dmg" -fs HFS+ -format UDZO -ov "$WORK/$DMG"
 codesign --display --extract-certificates="$WORK/signer" "$APP" 2>/dev/null
 codesign --sign "$(shasum -a 1 "$WORK/signer0" | cut -d' ' -f1)" --timestamp "$WORK/$DMG"
 if [[ -z "$SKIP_NOTARIZE" ]]; then
@@ -249,7 +249,7 @@ if [[ -z "$SKIP_NOTARIZE" ]]; then
     xcrun stapler staple "$WORK/$DMG"
     spctl --assess --type open --context context:primary-signature --verbose "$WORK/$DMG"
 fi
-cp "$WORK/$DMG" "$WORK/Shepherd.dmg"
+cp "$WORK/$DMG" "$WORK/hrdrhrdrhrdr.dmg"
 
 step "Adding $VERSION to the appcast"
 mkdir -p "$UPDATES"
@@ -292,7 +292,7 @@ if [[ -n "$SKIP_PUBLISH" ]]; then
 fi
 
 step "Publishing $TAG to $REPO"
-notes_args=(--notes "Shepherd $VERSION")
+notes_args=(--notes "hrdrhrdrhrdr $VERSION")
 if [[ -n "$NOTES" ]]; then
     notes_args=(--notes-file "$NOTES")
 fi
@@ -300,12 +300,12 @@ fi
 # (releases/latest/download/appcast.xml), so this one is marked latest.
 # Upload as a draft first. Publishing/latest is a separate explicit action
 # after download, signature and artifact checks; never change the live feed here.
-gh release create "$TAG" --repo "$REPO" --target "$(git -C "$ROOT" rev-parse HEAD)" --title "Shepherd $VERSION" --draft \
-    "${notes_args[@]}" "${uploads[@]}" "$STAGE/appcast.xml" "$WORK/$DMG" "$WORK/Shepherd.dmg"
+gh release create "$TAG" --repo "$REPO" --target "$(git -C "$ROOT" rev-parse HEAD)" --title "hrdrhrdrhrdr $VERSION" --draft \
+    "${notes_args[@]}" "${uploads[@]}" "$STAGE/appcast.xml" "$WORK/$DMG" "$WORK/hrdrhrdrhrdr.dmg"
 # The published-update cache and source tag are finalized only after the
 # operator verifies and publishes the draft. Failed/draft outputs stay in WORK.
 
 step "Draft uploaded — verify downloads before publishing and marking latest"
 printf 'Feed (unchanged until publication): https://github.com/%s/releases/latest/download/appcast.xml\n' "$REPO"
-printf 'Download: https://github.com/%s/releases/latest/download/Shepherd.dmg\n' "$REPO"
+printf 'Download: https://github.com/%s/releases/latest/download/hrdrhrdrhrdr.dmg\n' "$REPO"
 printf 'Tagged the commit it was built from as %s.\n' "$TAG"

@@ -68,8 +68,8 @@ struct ExperimentalFeaturesSettingsView: View {
                     set: { enabled in Task { await feature.setEnabled(enabled, presentationOwner: passwordManagerWindowID) } }
                 )) {
                     HStack {
-                        Text("Shepherd Browser")
-                        InfoButton(accessibilityLabel: "About Shepherd Browser",
+                        Text("hrdrhrdrhrdr Browser")
+                        InfoButton(accessibilityLabel: "About hrdrhrdrhrdr Browser",
                                    explanation: "An in-app pane browser. Codex resume confirmation may wait until the first user turn; live agents are never restarted automatically.")
                     }
                 }
@@ -81,13 +81,13 @@ struct ExperimentalFeaturesSettingsView: View {
                 // on again.
                 Picker(selection: $linkDestination) {
                     Text("Ask first").tag(LinkDestinationPolicy.Preference.ask)
-                    Text("Shepherd Browser").tag(LinkDestinationPolicy.Preference.shepherd)
+                    Text("hrdrhrdrhrdr Browser").tag(LinkDestinationPolicy.Preference.shepherd)
                     Text("Default Browser").tag(LinkDestinationPolicy.Preference.system)
                 } label: {
                     HStack {
                         Text("Open links in")
                         InfoButton(accessibilityLabel: "About opening links",
-                                   explanation: "Where http and https links clicked in a terminal open. ⌘-click opens a link in the other browser. With Shepherd Browser off, or unavailable on this Mac, links open in the default browser.")
+                                   explanation: "Where http and https links clicked in a terminal open. ⌘-click opens a link in the other browser. With hrdrhrdrhrdr Browser off, or unavailable on this Mac, links open in the default browser.")
                     }
                 }
                 .accessibilityIdentifier("settings.experimental-features.link-destination")
@@ -140,7 +140,7 @@ struct ExperimentalFeaturesSettingsView: View {
                     saveAgentPreferences()
                 }
             ))
-            .help("Only affects future Shepherd launches. Keeps agents from using competing browser tools; does not change global CLI settings. Pi isn't covered: Pi agents keep all of their MCP servers.")
+            .help("Only affects future hrdrhrdrhrdr launches. Keeps agents from using competing browser tools; does not change global CLI settings. Pi isn't covered: Pi agents keep all of their MCP servers.")
             if service.preferences.disableCompetingBrowsers {
                 TextField("Browser MCP servers to block", text: Binding(
                     get: { service.preferences.competingBrowserServers.joined(separator: ", ") },
@@ -150,7 +150,7 @@ struct ExperimentalFeaturesSettingsView: View {
                         saveAgentPreferences()
                     }
                 ), prompt: Text(verbatim: "playwright, chrome-devtools"))
-                .help("Comma-separated names from your agent's MCP configuration. This does not rename Shepherd's MCP server.")
+                .help("Comma-separated names from your agent's MCP configuration. This does not rename hrdrhrdrhrdr's MCP server.")
                 .accessibilityIdentifier("settings.experimental-features.competing-servers")
             }
         }
@@ -165,7 +165,7 @@ struct ExperimentalFeaturesSettingsView: View {
             ForEach(messages, id: \.self) { message in
                 Text(message).font(.caption).foregroundStyle(.red).textSelection(.enabled)
                     .help(message.contains("global") || message.contains("duplicate-registration")
-                        ? Text("An existing global Shepherd registration must be removed explicitly before session-only integration can be prepared.")
+                        ? Text("An existing global hrdrhrdrhrdr registration must be removed explicitly before session-only integration can be prepared.")
                         : Text(verbatim: message))
             }
             if feature.isEnabled {

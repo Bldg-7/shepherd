@@ -418,7 +418,7 @@ enum BrowserSelfTest {
         // are, through SwiftUI's hosting of the browser's place.
         setManualAccessibility(true)
         let paneD = pane("selftest:p4", terminal: "selftest-term-4")
-        store.openBrowser(for: key(paneD), terminalID: paneD.terminalID, url: "data:text/html,<h1>Accessibility</h1><button>Shepherd test button</button>")
+        store.openBrowser(for: key(paneD), terminalID: paneD.terminalID, url: "data:text/html,<h1>Accessibility</h1><button>hrdrhrdrhrdr test button</button>")
         let accessibilityWindow = NSWindow(
             contentRect: NSRect(x: 80, y: 200, width: 600, height: 400),
             styleMask: [.titled],
@@ -433,7 +433,7 @@ enum BrowserSelfTest {
         if let tabD = store.browser(for: key(paneD))?.selectedTab, await loaded(tabD, containing: "data:") {
             var button: AnyObject?
             let reached = await wait(10) {
-                button = findAccessibilityElement(in: host, role: .button, named: "Shepherd test button")
+                button = findAccessibilityElement(in: host, role: .button, named: "hrdrhrdrhrdr test button")
                 return button != nil
             }
             check("A18 page content reachable", reached)
@@ -444,7 +444,7 @@ enum BrowserSelfTest {
                     ?? (button as? NSView)?.accessibilityFrame()
                     ?? (button.value(forKey: "accessibilityFrame") as? NSValue)?.rectValue ?? .zero
                 let hit = host.accessibilityHitTest(NSPoint(x: frame.midX, y: frame.midY))
-                check("A18 hit test reaches the page", accessibilityText(of: hit as AnyObject).contains("Shepherd test button"),
+                check("A18 hit test reaches the page", accessibilityText(of: hit as AnyObject).contains("hrdrhrdrhrdr test button"),
                       accessibilityText(of: hit as AnyObject))
             }
         } else {

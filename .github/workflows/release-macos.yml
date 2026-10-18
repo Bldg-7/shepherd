@@ -1,4 +1,4 @@
-# Builds Shepherd for macOS on a GitHub-hosted runner, signs it with Developer
+# Builds hrdrhrdrhrdr for macOS on a GitHub-hosted runner, signs it with Developer
 # ID, has Apple notarize it and uploads a draft release — what
 # scripts/release-macos.sh does on a Mac, with the keys taken from the
 # "release" environment's secrets instead of a Keychain.
@@ -105,7 +105,7 @@ jobs:
           gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases \
               --limit 5 --json tagName --jq '.[].tagName' |
             while IFS= read -r tag; do
-              gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern 'Shepherd-*.zip' --dir build/updates
+              gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern 'Shepherd-*.zip' --pattern 'hrdrhrdrhrdr-*.zip' --dir build/updates
             done
           ls -l build/updates
 
@@ -214,7 +214,7 @@ jobs:
         if: ${{ !cancelled() && steps.release.conclusion != 'skipped' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: Shepherd-${{ inputs.version }}-${{ inputs.build_number }}
+          name: hrdrhrdrhrdr-${{ inputs.version }}-${{ inputs.build_number }}
           path: |
             build/release/${{ inputs.version }}/Shepherd-${{ inputs.version }}.dmg
             build/release/${{ inputs.version }}/updates/appcast.xml

@@ -384,7 +384,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				"HEADER_SEARCH_PATHS[sdk=macosx*]" = "$(SRCROOT)/Vendor/CEF/out";
 				"INFOPLIST_FILE[sdk=macosx*]" = "Config/Info-macOS.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = Shepherd;
+				INFOPLIST_KEY_CFBundleDisplayName = hrdrhrdrhrdr;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
@@ -394,7 +394,7 @@
 					"$(SRCROOT)/Vendor/CEF/out/lib/$(CONFIGURATION)/libcef_dll_wrapper.a",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "com.bldg-7.shepherd";
-				PRODUCT_NAME = Shepherd;
+				PRODUCT_NAME = hrdrhrdrhrdr;
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = macosx;
 				SPARKLE_FEED_URL = "";
@@ -440,7 +440,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				"HEADER_SEARCH_PATHS[sdk=macosx*]" = "$(SRCROOT)/Vendor/CEF/out";
 				"INFOPLIST_FILE[sdk=macosx*]" = "Config/Info-macOS.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = Shepherd;
+				INFOPLIST_KEY_CFBundleDisplayName = hrdrhrdrhrdr;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
@@ -450,7 +450,7 @@
 					"$(SRCROOT)/Vendor/CEF/out/lib/$(CONFIGURATION)/libcef_dll_wrapper.a",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "com.bldg-7.shepherd";
-				PRODUCT_NAME = Shepherd;
+				PRODUCT_NAME = hrdrhrdrhrdr;
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = macosx;
 				SPARKLE_FEED_URL = "https://github.com/Bldg-7/shepherd/releases/latest/download/appcast.xml";

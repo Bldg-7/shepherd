@@ -19,7 +19,7 @@ struct NotificationSettingsView: View {
 
             Form {
                 Section {
-                    LabeledContent("Notifications from Shepherd") {
+                    LabeledContent("Notifications from hrdrhrdrhrdr") {
                         permission
                     }
                 }
@@ -43,14 +43,14 @@ struct NotificationSettingsView: View {
                 } header: {
                     Text("Notify Me When")
                 } footer: {
-                    Text("Shepherd watches the agents on all of your machines, the active one and the others, for as long as it is running — with its window closed, too. A pane you are looking at doesn't notify.")
+                    Text("hrdrhrdrhrdr watches the agents on all of your machines, the active one and the others, for as long as it is running — with its window closed, too. A pane you are looking at doesn't notify.")
                         .foregroundStyle(.secondary)
                 }
                 Section {
                     HStack {
                         Text("herdr's own notifications")
                         InfoButton(accessibilityLabel: "About herdr's Own Notifications",
-                                   explanation: "herdr shows notifications of its own only while herdr itself is open in a terminal app, never through Shepherd. If you have it open there, you may get both: to keep only Shepherd's, set delivery = \"off\" under [ui.toast] in herdr's config.toml. Shepherd doesn't read or change herdr's settings.")
+                                   explanation: "herdr shows notifications of its own only while herdr itself is open in a terminal app, never through hrdrhrdrhrdr. If you have it open there, you may get both: to keep only hrdrhrdrhrdr's, set delivery = \"off\" under [ui.toast] in herdr's config.toml. hrdrhrdrhrdr doesn't read or change herdr's settings.")
                     }
                 }
             }

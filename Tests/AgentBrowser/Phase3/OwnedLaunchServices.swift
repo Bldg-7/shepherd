@@ -41,7 +41,7 @@ guard input.arguments.isEmpty,
 let bundlePath = try OwnedOperatorPaths.existing(input.bundle)
 let executable = try OwnedOperatorPaths.existing(input.executable)
 let bundleURL = URL(fileURLWithPath: bundlePath, isDirectory: true)
-guard bundlePath.hasSuffix("/Shepherd.app"), executable == bundlePath + "/Contents/MacOS/Shepherd",
+guard bundlePath.hasSuffix("/hrdrhrdrhrdr.app"), executable == bundlePath + "/Contents/MacOS/hrdrhrdrhrdr",
       Bundle(url: bundleURL)?.bundleIdentifier == "com.bldg-7.shepherd.operator-fixture",
       NSRunningApplication.runningApplications(withBundleIdentifier: "com.bldg-7.shepherd.operator-fixture").isEmpty else { fail("Unique nonrunning owned bundle required") }
 @MainActor func executableHash(_ path: String) throws -> String {

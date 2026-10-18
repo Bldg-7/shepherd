@@ -114,7 +114,7 @@ def main():
                 code = 128 + interrupted[0] if interrupted else 124
                 record['interruptedBy'] = interrupted
                 for pid, identity in observe().items():
-                    if '/Shepherd.app/Contents/MacOS/Shepherd' in identity[3]:
+                    if '/hrdrhrdrhrdr.app/Contents/MacOS/hrdrhrdrhrdr' in identity[3]:
                         try:
                             subprocess.run(['/usr/bin/sample', str(pid), '1', '-file', str(args.log.with_suffix(f'.{pid}.sample.txt'))],
                                            stdout=output, stderr=output, timeout=5)

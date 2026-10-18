@@ -263,9 +263,9 @@ struct AddMachineView: View {
         VStack(alignment: .leading, spacing: 8) {
             Group {
                 if hostname.isEmpty {
-                    Text("Shepherd generated a key on this device. Run this on the machine to authorize it:")
+                    Text("hrdrhrdrhrdr generated a key on this device. Run this on the machine to authorize it:")
                 } else {
-                    Text("Shepherd generated a key on this device. Run this on \(hostname) to authorize it:")
+                    Text("hrdrhrdrhrdr generated a key on this device. Run this on \(hostname) to authorize it:")
                 }
             }
             .font(.caption)

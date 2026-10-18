@@ -29,7 +29,7 @@ struct PasswordManagerConnectionSetupView: View {
                 .accessibilityIdentifier("password-manager.onepassword.authentication")
                 if metadata.onePasswordAuthentication == .serviceAccount {
                     Text("Vault permissions are configured in 1Password, not here.")
-                        .help("Built-in Personal, Private, Employee and default Shared vaults cannot be granted to a Service Account. Use a separate vault. Shepherd does not create accounts or change provider permissions.")
+                        .help("Built-in Personal, Private, Employee and default Shared vaults cannot be granted to a Service Account. Use a separate vault. hrdrhrdrhrdr does not create accounts or change provider permissions.")
                 } else {
                     Text("Authenticate with the 1Password app.")
                         .help("Enable desktop CLI integration yourself. Vendor approval may appear. This method uses your account permissions.")

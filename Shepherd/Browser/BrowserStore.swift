@@ -413,7 +413,7 @@ final class BrowserStore {
             // The engine's own messages are English only.
             engineError = switch (error as? BrowserEngineError)?.code {
             case .loadFailed: String(localized: "The browser engine couldn't be loaded.")
-            default: String(localized: "The browser engine didn't start. Another copy of Shepherd may be using the browser.")
+            default: String(localized: "The browser engine didn't start. Another copy of hrdrhrdrhrdr may be using the browser.")
             }
             logger.error("The browser engine didn't start: \(error.localizedDescription, privacy: .public)")
             return false

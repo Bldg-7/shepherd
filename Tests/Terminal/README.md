@@ -10,7 +10,7 @@ bytes, one local preview on release. Plain-text paths, source locations and
 host/read failure and missing callbacks stay local. Callback ownership is captured
 at press; modifier or pane changes cannot redirect a release. HTTP(S) URLs (implicit text or OSC8) are claimed the same way and dispatched,
 with ⌘ as held at release and the click's place, to the window, which opens them in
-the clicked pane's Shepherd browser or the Mac's default browser as the Open links
+the clicked pane's hrdrhrdrhrdr browser or the Mac's default browser as the Open links
 in setting says (`run-web-link-tests.py`), never a remote opener. Invalid URLs and
 stale ownership never fall back or auto-enable browsing. URL validation rejects
 credentials, control characters and unsupported schemes.

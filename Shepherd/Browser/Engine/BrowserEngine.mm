@@ -333,7 +333,7 @@ CefScopedLibraryLoader *gLibraryLoader = nullptr;
   if (!CefInitialize(args, settings, new EngineApp(), nullptr)) {
     if (error) {
       *error = EngineError(SHBEngineErrorStartFailed,
-                           @"The browser engine didn't start. Another copy of Shepherd may be using the browser.");
+                           @"The browser engine didn't start. Another copy of hrdrhrdrhrdr may be using the browser.");
     }
     return NO;
   }
