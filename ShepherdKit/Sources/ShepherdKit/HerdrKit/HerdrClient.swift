@@ -202,6 +202,30 @@ public actor HerdrClient {
         guard result["type"]?.stringValue == "ok" else { throw Self.agentResponseError() }
     }
 
+    /// What a pane's terminal shows, as text. `source` picks the screen
+    /// (`visible`) or the recent rows of scrollback, with (`recent`) or
+    /// without (`recentUnwrapped`) the terminal's soft wrapping: 80 rows
+    /// unless `lines` says otherwise, and 1000 at most — `truncated` says
+    /// when older rows were left out (herdr 0.9.1, read live). For a pane on
+    /// a herdr machine the CLI prints the text itself, with no envelope and
+    /// no word on truncation.
+    public func readPane(_ paneID: String, source: PaneReadSource = .recent, lines: Int? = nil, on machine: HerdrMachine? = nil) async throws -> PaneRead {
+        if let machine {
+            var arguments = ["--machine", machine.id, "pane", "read", paneID, "--source", source.cliName, "--format", "text"]
+            if let lines { arguments += ["--lines", String(lines)] }
+            let output = try await transport.runHerdr(arguments)
+            return PaneRead(text: String(decoding: output, as: UTF8.self), truncated: false)
+        }
+        var params: [String: JSONValue] = ["pane_id": .string(paneID), "source": .string(source.rawValue), "format": .string("text")]
+        if let lines { params["lines"] = .number(Double(lines)) }
+        let result = try await agentRequest(method: "pane.read", params: params, cli: [], on: nil, deadlineMs: 5_000)
+        guard result["type"]?.stringValue == "pane_read", let read = result["read"], read["pane_id"]?.stringValue == paneID,
+              let text = read["text"]?.stringValue else { throw Self.agentResponseError() }
+        var truncated = false
+        if case .bool(let flag) = read["truncated"] { truncated = flag }
+        return PaneRead(text: text, truncated: truncated)
+    }
+
     public func visiblePaneANSI(paneID: String) async throws -> String {
         let result = try await agentRequest(method: "pane.read", params: ["pane_id": .string(paneID), "source": .string("visible"), "format": .string("ansi")], cli: [], on: nil, deadlineMs: 5_000)
         guard result["type"]?.stringValue == "pane_read", result["read"]?["pane_id"]?.stringValue == paneID,
@@ -356,4 +380,21 @@ public actor HerdrClient {
             return false
         }
     }
+}
+
+/// Which of a pane's text `HerdrClient.readPane` reads. The raw value is
+/// the socket API's name; the CLI spells the same source with a dash.
+public nonisolated enum PaneReadSource: String, Sendable {
+    case visible
+    case recent
+    case recentUnwrapped = "recent_unwrapped"
+
+    var cliName: String { rawValue.replacingOccurrences(of: "_", with: "-") }
+}
+
+/// What `HerdrClient.readPane` read.
+public nonisolated struct PaneRead: Sendable {
+    public let text: String
+    /// Whether rows older than `text` were left out.
+    public let truncated: Bool
 }

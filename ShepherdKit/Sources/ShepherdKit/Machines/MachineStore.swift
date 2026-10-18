@@ -79,9 +79,15 @@ public final class MachineStore {
     }
 
     /// The built-in local entry (macOS only) followed by every registered
-    /// Machine, in the order they were added.
+    /// Machine, in the order they were added. On another platform there is
+    /// no herdr of the device's own to list, so only the registered
+    /// Machines — and whatever local entry a test supplies.
     public var allMachines: [Machine] {
-        [suppliedLocalMachine ?? Self.localMachine] + machines
+        #if os(macOS)
+        return [suppliedLocalMachine ?? Self.localMachine] + machines
+        #else
+        return (suppliedLocalMachine.map { [$0] } ?? []) + machines
+        #endif
     }
 
     public var activeMachine: Machine? {
