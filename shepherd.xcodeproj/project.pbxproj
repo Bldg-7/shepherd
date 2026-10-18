@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		D01600000000000000000002 /* Shepherd.icon in Resources */ = {isa = PBXBuildFile; fileRef = D01600000000000000000001 /* Shepherd.icon */; platformFilters = (macos, ); };
+		5A11000000000000000000C1 /* Shepherd.icon in Resources */ = {isa = PBXBuildFile; fileRef = D01600000000000000000001 /* Shepherd.icon */; platformFilters = (ios, ); };
 		9B506EAF306E7247005B40C9 /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = 9B506EAE306E7247005B40C9 /* Citadel */; };
 		5A11000000000000000000A1 /* ShepherdKit in Frameworks */ = {isa = PBXBuildFile; productRef = 5A11000000000000000000A2 /* ShepherdKit */; };
 		5A11000000000000000000B8 /* ShepherdKit in Frameworks */ = {isa = PBXBuildFile; productRef = 5A11000000000000000000B6 /* ShepherdKit */; };
@@ -263,6 +264,7 @@
 		5A11000000000000000000B5 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
+				5A11000000000000000000C1 /* Shepherd.icon in Resources */,
 			);
 		};
 		000000000000000140000000 /* Resources */ = {
@@ -525,6 +527,8 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = SYZS4D43Z6;
+				ASSETCATALOG_COMPILER_APPICON_NAME = Shepherd;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Config/Info-iOS.plist";
@@ -558,6 +562,8 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = SYZS4D43Z6;
+				ASSETCATALOG_COMPILER_APPICON_NAME = Shepherd;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Config/Info-iOS.plist";
