@@ -105,18 +105,16 @@ private struct Composer: View {
                         .lineLimit(1...6)
                         .textFieldStyle(.plain)
                         .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22))
+                        .frame(minHeight: GlassBar.height)
+                        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: GlassBar.height / 2))
                         .disabled(model.isSending)
                     Button {
                         Task { await model.send() }
                     } label: {
                         Image(systemName: "arrow.up")
                             .font(.body.weight(.semibold))
-                            .frame(width: 22, height: 22)
                     }
-                    .buttonStyle(.glassProminent)
-                    .buttonBorderShape(.circle)
+                    .buttonStyle(GlassBar.ProminentCircle())
                     .disabled(!model.canSend)
                     .accessibilityLabel("Send")
                 }
@@ -162,16 +160,50 @@ private struct ResponseBar: View {
                         .lineLimit(1...4)
                         .textFieldStyle(.plain)
                         .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22))
+                        .frame(minHeight: GlassBar.height)
+                        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: GlassBar.height / 2))
                     Button("Type") { Task { await model.respondWithDraft() } }
-                        .buttonStyle(.glassProminent)
+                        .buttonStyle(GlassBar.ProminentCapsule())
                         .disabled(model.draft.isEmpty || model.isSending)
                 }
             }
             .disabled(model.isSending)
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
+        }
+    }
+}
+
+/// What the input bars are built from: one height for a one-line field
+/// and the button beside it, so that the two line up, and the button
+/// styles that keep to it. `.glassProminent` sets its own padding, which
+/// made the button taller than the field.
+private enum GlassBar {
+    static let height: CGFloat = 46
+
+    struct ProminentCircle: ButtonStyle {
+        @Environment(\.isEnabled) private var isEnabled
+
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .foregroundStyle(.white)
+                .frame(width: height, height: height)
+                .glassEffect(.regular.tint(isEnabled ? .accentColor : .gray).interactive(), in: .circle)
+                .opacity(configuration.isPressed ? 0.7 : 1)
+        }
+    }
+
+    struct ProminentCapsule: ButtonStyle {
+        @Environment(\.isEnabled) private var isEnabled
+
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 18)
+                .frame(height: height)
+                .glassEffect(.regular.tint(isEnabled ? .accentColor : .gray).interactive(), in: .capsule)
+                .opacity(configuration.isPressed ? 0.7 : 1)
         }
     }
 }
