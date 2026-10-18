@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import http from 'node:http';
 import assert from 'node:assert/strict';
-import {spawn,once} from '../../../Spikes/agent-browser-phase2/fixture-process.mjs';
+import {spawn,once} from './fixture-process.mjs';
 
 const [app,output,piCLI,adapterEntry]=process.argv.slice(2);assert(app&&output&&piCLI);
 fs.mkdirSync(output,{recursive:true,mode:0o700});
