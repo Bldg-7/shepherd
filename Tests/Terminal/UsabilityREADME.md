@@ -46,9 +46,9 @@ field.
   Focus is presentation-only, with no attach recreation for an already-open tab.
 - Quit with a sheet up: the runner checks in the source that the Cmd-P pane
   switcher's sheet and the Settings sheet both carry
-  `.presentationPreventsAppTermination(false)`. Without that modifier, Cmd-Q,
-  logging out or an update's Install and Relaunch only beeps while either sheet
-  is open. The runner does not try quitting.
+  `.presentationPreventsAppTermination(false)`. Without that modifier, Cmd-Q or
+  an update's Install and Relaunch only beeps while either sheet is open. The
+  runner does not try quitting.
 - Markdown: bounded native heading/inline/list/task/table/fence/quote rendering.
   Document-leading closed YAML `---` / `...` and TOML `+++` frontmatter becomes
   display-only metadata rows, retaining nested/multiline/raw values. Unclosed or
