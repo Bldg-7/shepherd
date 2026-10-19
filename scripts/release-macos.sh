@@ -255,8 +255,10 @@ step "Adding $VERSION to the appcast"
 mkdir -p "$UPDATES"
 cp -R "$UPDATES" "$STAGE"
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$STAGE/$ZIP"
+# generate_appcast takes as an archive's notes only the file named like it
+# (hrdrhrdrhrdr-1.2.md beside hrdrhrdrhrdr-1.2.zip).
 if [[ -n "$NOTES" ]]; then
-    cp "$NOTES" "$STAGE/Shepherd-$VERSION.md"
+    cp "$NOTES" "$STAGE/${ZIP%.zip}.md"
 fi
 # One version per appcast: every file it names is then in this release, so
 # one download prefix covers them all — the new archive, and the deltas
@@ -284,6 +286,15 @@ signature='{http://www.andymatuschak.org/xml-namespaces/sparkle}edSignature'
 signed=[e for e in ET.parse(sys.argv[1]).iter('enclosure') if e.get('url')==sys.argv[2] and e.get(signature)]
 assert signed, "The update isn't signed: Sparkle's key doesn't match the app's SUPublicEDKey"
 PY
+# Nor does it say anything when it finds no notes for the archive; the update
+# would then be offered with none.
+if [[ -n "$NOTES" ]]; then
+    python3 - "$STAGE/appcast.xml" "$DOWNLOAD_PREFIX$ZIP" <<'PY' || fail "the appcast offers $ZIP without the release notes in $NOTES"
+import sys,xml.etree.ElementTree as ET
+items=[i for i in ET.parse(sys.argv[1]).iter('item') if sys.argv[2] in [e.get('url') for e in i.findall('enclosure')]]
+sys.exit(0 if any((i.findtext('description') or '').strip() for i in items) else 1)
+PY
+fi
 
 if [[ -n "$SKIP_PUBLISH" ]]; then
     step "Stopped before publishing"

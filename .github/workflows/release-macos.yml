@@ -216,9 +216,9 @@ jobs:
         with:
           name: hrdrhrdrhrdr-${{ inputs.version }}-${{ inputs.build_number }}
           path: |
-            build/release/${{ inputs.version }}/Shepherd-${{ inputs.version }}.dmg
+            build/release/${{ inputs.version }}/hrdrhrdrhrdr-${{ inputs.version }}.dmg
             build/release/${{ inputs.version }}/updates/appcast.xml
-            build/release/${{ inputs.version }}/updates/Shepherd-${{ inputs.version }}.zip
+            build/release/${{ inputs.version }}/updates/hrdrhrdrhrdr-${{ inputs.version }}.zip
             build/release/${{ inputs.version }}/updates/*.delta
             build/release/${{ inputs.version }}/notarize-*.json
           if-no-files-found: ignore
