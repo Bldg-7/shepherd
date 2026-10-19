@@ -1,4 +1,4 @@
-Third-party notices for hrdrhrdrhrdr 0.4.0
+Third-party notices for hrdrhrdrhrdr 0.5.0
 
 
 ========================================================================
