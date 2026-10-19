@@ -39,6 +39,9 @@ importing the real CLI, closing the startup race with Pi's argv/title rewrite.
 `AgentLaunchService.launchPi` types the shim by its absolute path into the pane
 (`pane.send_input`, as `herdr pane run` does) rather than through `agent.start`,
 whose bare `pi` the shell resolves through the PATH its startup files leave.
+The New Tab launcher closes as soon as the shim is typed (`launch(started:)`).
+The launch then waits for herdr to see Pi idle in the pane, and for Pi's MCP.
+That wait, and any failure after it, show only in the sidebar.
 `PiLaunchCoordinator` observes the exact Herdr pane/terminal on a separate
 connection while that typed launch is pending. `PiBrowserLeaseProvider` composes the
 real CDP proxy: per-epoch route leases deny unleased fallback and old-route replay,
@@ -240,6 +243,14 @@ preparation; compatibility declarations never restore the old global behavior.
    means no browser launch; do not invent a port, token or remote route.
 4. Call prepare with the reservation and actual endpoint. Environment is unchanged
    from step 2. Start through typed herdr agent.start with its `arguments`.
+   Over herdr's socket API, `agent.start` answers as soon as the command is
+   typed, before Claude Code or Codex is ready. So the launch then waits until
+   herdr marks the agent `interactive_ready` and no longer `launch_pending`
+   (`AgentLaunchReadiness`, up to 30 seconds). Right after the start, the launch
+   calls `started` (`launch(started:)`), and the New Tab launcher closes. This is
+   the hand-off. From then on, a working agent also counts as ready, since the
+   user may already have sent it a prompt. The wait, and any failure after the
+   hand-off, show only in the sidebar.
 5. Register accepted local snapshot endpoints so Claude child hooks can lazily
    prepare exactly the requested child. No registered/ambiguous pane means the
    original command is retained and reason-recorded; never use a parent URL.

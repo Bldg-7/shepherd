@@ -9,7 +9,7 @@ Private HOME/defaults/cache, bounded natural-exit stages, no user files, sockets
 SSH, credentials or vendor calls. Compiles actual production block parsing,
 board selection declaration, snapshot/identity models, picker view, native detail
 controller, SwiftTerm and shared terminal frame, and the new tab launcher's text
-field.
+field and launch attempt.
 
 - Machines: edit/delete slots stay in place but are visible/enabled only during
   row hover; local machine stays protected; context-menu alternatives and delete
@@ -30,6 +30,17 @@ field.
   changes the launcher's text, and the stage log, kept with
   `OS_ACTIVITY_DT_MODE=1`, has no SwiftUI "Modifying state during view update"
   warning. No input method, app or user GUI is involved.
+- Launch attempt: the launcher's actual `LaunchAttempt`, extracted together
+  with `CreatedPaneLaunchError` and wired as the launcher wires it. An agent's
+  tab is handed off once its start command is in the pane, and the launcher
+  closes then, once. After that, the launch's success or failure does not show
+  in the launcher and does not close it. It does not close a launcher opened
+  again meanwhile either. The same holds for a launcher closed before the
+  hand-off, whether by Esc, a click outside, the app going to the background,
+  or the window taking it down (the pane switcher coming up, another machine
+  picked). A failure before the hand-off shows in the launcher, with Show
+  Created Pane only for `CreatedPaneLaunchError`. A shell's tab is never handed
+  off; the launcher closes once the tab is made.
 - Cmd-W: the File menu's Close is replaced and never closes the window. Cmd-W
   closes the selected tab (Group by Tab on) or pane (off, or a herdr too old to
   report tabs) after the sidebar's confirmation; Close Window stays, without a

@@ -69,7 +69,9 @@ startup 파일 뒤의 PATH 순서를 바꿀 수 없다. 절대 경로로 실행�
 `PiLaunchCoordinator`는 이 타이핑과 다른 Herdr connection으로 같은 pane/terminal의
 foreground 프로세스를 관찰한다. Pi가 아직 시작을 기다리는 동안 전체 argv를 pin할 수 있으므로
 Herdr readiness와 Pi session_start가 서로 기다리는 교착이나 짧은 argv 수집 경쟁을 피한다.
-`AgentLaunchService`는 Herdr가 같은 pane/terminal에서 `pi`를 감지한 것과 native MCP 소유권을 차례로 기다린다.
+`AgentLaunchService`는 shim을 타이핑한 직후 New Tab launcher를 닫게 한다. 이 시점을 hand-off라 한다.
+그 뒤 두 가지를 차례로 기다린다. 먼저 Herdr가 같은 pane/terminal에서 `pi`를 감지하는 것이고, 다음은 native MCP 소유권이다.
+hand-off 뒤의 대기와 실패는 launcher가 아니라 사이드바에만 보인다("Waiting for agent readiness…", "Agent launch failed").
 실패해도 선택한 pane은 남기며 재실행·다른 CLI·Shell로 우회하지 않는다.
 
 ### 프로세스와 제어 채널
@@ -131,8 +133,11 @@ terminal 변경으로 권한을 넘기지 않는다. 불확실한 cleanup은 새
   private HOME의 `.zshrc`가 진짜 Pi의 폴더를 PATH 앞에 붙이므로, pane 셸에서 bare `pi`는 shim이 아니다.
   이 조건에서 `agent.start`로 시작하던 이전 런치는 실패하고(preflight가 있던 a37fcf6은
   `pi-shim-shadowed-by-shell-path`로 거절), 절대 경로 타이핑은 통과한다.
-  Pi readiness 판정은 Herdr가 같은 pane에서 `pi`를 감지하고 상태가 idle/done인 것이다. `interactive_ready`는
-  Herdr가 `agent.start`한 agent에만 붙으므로 보지 않는다.
+  Pi readiness 판정(`AgentLaunchReadiness`)은 Herdr가 같은 pane에서 `pi`를 감지하고, 상태가 idle/done이며
+  `launch_pending`이 아닌 것이다. hand-off 뒤에는 사용자가 이미 prompt를 보냈을 수 있으므로 working도 준비로 친다.
+  blocked와 unknown은 준비가 아니다. Pi는 `agent.start`가 아니라 타이핑으로 시작하므로, Herdr가 `agent.start`한
+  agent에만 붙이는 `interactive_ready`는 판정에 쓰지 않는다. fixture는 두 파일을 남긴다. `started.json`에는
+  hand-off 시각, 그때의 사이드바 상태, 그때의 Herdr agent 행을 남기고, `ready.json`의 `returnedAt`에는 launch가 끝난 시각을 남긴다.
 - native 테스트는 private HOME/agentDir의 **정상 설정 로딩**으로 사용자 지침/확장이 유지되는지 확인한다.
   모델은 loopback fake provider만 사용한다. adapter credential store는 테스트 전용 memory이며
   실제 Keychain, Vendor 로그인, Vault, 사용자 프로필을 사용하지 않는다.
