@@ -61,8 +61,12 @@ field.
   No terminal/panel reparent or duplicate reader. Normal frame/divider proportion
   and preview source state survive contraction. Clicks on the covered terminal
   land on the modal surface; keyboard focus leaves terminal, Escape contracts,
-  close dismisses preview. Native tests repeatedly check actual terminal frame,
-  grid, resize callback count, owned PTY, keyboard and pointer hit testing.
+  close dismisses preview. Selecting another pane or tab ends the expansion: the
+  preview stays with its pane, at the side, and the keyboard is not handed back
+  to the left pane's terminal, which is no longer in the window. Selecting the
+  pane again shows its preview at the side, not expanded. Native tests
+  repeatedly check actual terminal frame, grid, resize callback count, owned
+  PTY, keyboard and pointer hit testing.
 
 Source/tree checks and whole macOS/iOS builds are separate from installed-app,
 live SSH or real user keyboard/hover acceptance, which this runner does not claim.

@@ -24,6 +24,15 @@ Coverage:
   Korean wide characters, soft wraps, OSC8 file links vs plain paths that open
   nothing, BiDi fallback denial, prose run on after a path or URL and current
   coordinator callback. **Not GUI click automation.**
+- Pane previews: the actual per-pane store with the actual pane and tab models,
+  and the actual panel in an owned never-shown window. Selecting pane P, then Q,
+  then P again keeps each pane's loaded file, source choice and scroll place
+  without reading the file again, and never carries one pane's scroll place to
+  another pane's file. A preview closed and shown again reads its file again.
+  Selecting a pane again opens no SSH connection and reads no Keychain item, and
+  a read that was cancelled when its pane was left starts again when the pane is
+  selected again. The window's log has no SwiftUI "Modifying state during view
+  update" warning.
 
 ## Product behavior
 
@@ -43,9 +52,20 @@ recognizers can emit a tap/drag. Non-file gestures remain native TUI behavior. M
 resolve against the displayed file's parent directory. Relative OSC8 file links
 resolve against the clicked pane's reported cwd, not the app's cwd.
 
-macOS: browser/preview are mutually exclusive columns. Switching hides the
-browser region, not the browser feature or its tabs/profiles/agent connection.
-The last file can be reopened via the toolbar. Files and file contents are
+macOS: the preview and the browser share one side-panel column. Each pane, or
+each tab with Group by Tab on, keeps its own preview while another one is
+selected. Selecting it again shows the same file, already loaded, in the same
+source or rendered view and at the same scroll place. Closing the preview and
+showing it again with the toolbar's Show Preview reads the file again, and so
+does Retry. A shown preview covers the browser column in its own pane only;
+other panes show the browser column if Show Browser is on. Choosing Show Browser
+in a pane that shows a preview closes the preview but keeps its file, so Show
+Preview can bring it back. Switching between the preview and the browser hides
+the browser region, not the browser feature or its tabs/profiles/agent
+connection. Moving to another pane or tab while the preview is expanded ends the
+expansion. Previews stay through a machine switch. A pane's preview is dropped
+when a herdr that answered no longer lists the pane, or when the pane's Machine
+is removed or edited to connect differently. Files and file contents are
 window-local memory state, not SceneStorage or global shared state.
 
 iPhone: Navigation push. iPad: a detail-area width of 760 points or greater
