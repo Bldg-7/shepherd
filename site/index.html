@@ -186,6 +186,29 @@
   .chip { border: 1px solid var(--line2); padding: 1px 7px; color: var(--ink); }
   .caret { display: inline-block; width: 7px; height: 14px; background: var(--spot); vertical-align: -2px; animation: blink 1s step-end infinite; }
   @keyframes blink { 50% { opacity: 0; } }
+  /* Updating is the app's, not a command's: its app menu open on Check for
+     Updates…, under About, where the app keeps it, and the answer Sparkle
+     gives, with the app icon (the white Shepherd.icon, drawn from the same
+     path) — in the system font, as on a Mac. */
+  .card.mac {
+    --m-bar: rgba(255, 255, 255, .04); --m-bg: #1c0a3a; --m-open: rgba(255, 255, 255, .12); --m-shadow: rgba(0, 0, 0, .55);
+    padding: 0; overflow: hidden; color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, system-ui, var(--body); font-size: 13px; line-height: 1.35;
+  }
+  .mac-bar { display: flex; align-items: center; height: 28px; padding: 0 6px; background: var(--m-bar); border-bottom: 1px solid var(--line2); color: var(--dim); white-space: nowrap; overflow: hidden; }
+  .mac-bar > * { padding: 2px 7px; border-radius: 5px; }
+  .mac-bar b { font-weight: 700; color: var(--ink); background: var(--m-open); }
+  .mac-desk { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px 18px; padding: 0 16px 16px 6px; }
+  .mac-menu { flex: none; width: 232px; margin-top: 3px; padding: 5px; background: var(--m-bg); border: 1px solid var(--line2); border-radius: 9px; box-shadow: 0 14px 30px -10px var(--m-shadow); }
+  .mac-item { display: flex; justify-content: space-between; gap: 12px; padding: 3px 9px; border-radius: 5px; }
+  .mac-item.on { background: var(--spot); color: var(--spot-ink); }
+  .mac-item kbd { font: inherit; color: var(--faint); }
+  .mac-sep { height: 1px; margin: 5px 9px; background: var(--line2); }
+  .mac-alert { flex: 1 1 200px; display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--m-bg); border: 1px solid var(--line2); border-radius: 12px; box-shadow: 0 14px 30px -10px var(--m-shadow); }
+  .mac-alert b { display: block; font-weight: 700; }
+  .mac-alert small { display: block; color: var(--dim); font-size: 12px; }
+  .mac-icon { flex: none; width: 34px; height: 34px; border-radius: 8px; overflow: hidden; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .35); }
+  .mac-icon svg { display: block; width: 100%; height: 100%; fill: #000; }
 
   /* closing */
   .close { padding: 80px 0 60px; position: relative; }
@@ -342,6 +365,8 @@
   [data-theme="paper"] .win .dot.working { background: #74a9ff; } [data-theme="paper"] .win .dot.done { background: #69db7c; } [data-theme="paper"] .win .dot.idle { background: #6b7a99; }
   [data-theme="paper"] .num { -webkit-text-stroke-color: rgba(29, 78, 216, .55); text-shadow: none; }
   [data-theme="paper"] .card { box-shadow: none; }
+  [data-theme="paper"] .card.mac { --m-bar: rgba(15, 29, 58, .03); --m-bg: #fff; --m-open: rgba(15, 29, 58, .08); --m-shadow: rgba(15, 29, 58, .22); }
+  [data-theme="paper"] .mac-icon { box-shadow: 0 0 0 1px rgba(15, 29, 58, .12), 0 1px 3px rgba(15, 29, 58, .2); }
   [data-theme="paper"] .layout .a { border-color: var(--spot); box-shadow: none; }
   [data-theme="paper"] .caret { background: var(--spot); box-shadow: none; }
   [data-theme="paper"] .close { background: none; }
@@ -519,10 +544,20 @@
         <p data-lang="ko">서명과 공증을 거쳤고, 업데이트도 스스로 합니다. 새 버전을 알아서 확인하고 바뀐 부분만 내려받습니다. 재시작해도 agent는 그대로입니다.</p>
         <p data-lang="ja">署名・公証済みで、アップデートも自動です。新しいバージョンを自分で確認し、変わった部分だけをダウンロードします。再起動してもagentはそのままです。</p>
       </div>
-      <div class="card">
-        <div class="r"><span><span class="hl">$</span> Check for Updates…</span><span></span></div>
-        <div class="r"><span class="muted">github.com/Bldg-7/shepherd</span><span></span></div>
-        <div class="r"><span>hrdrhrdrhrdr <span class="ver">0.1</span></span><span><i class="dot done"></i>up to date</span></div>
+      <div class="card mac" role="img" aria-label="hrdrhrdrhrdr's app menu open on Check for Updates…, and the app's answer: You’re up to date!">
+        <div class="mac-bar"><b>hrdrhrdrhrdr</b><span>File</span><span>Edit</span><span>View</span><span>Window</span><span>Help</span></div>
+        <div class="mac-desk">
+          <div class="mac-menu">
+            <div class="mac-item">About hrdrhrdrhrdr</div>
+            <div class="mac-item on">Check for Updates…</div>
+            <div class="mac-sep"></div>
+            <div class="mac-item">Settings…<kbd>⌘,</kbd></div>
+          </div>
+          <div class="mac-alert">
+            <span class="mac-icon"><svg viewBox="0 0 1024 1024"><use href="#dog-mark-body" transform="matrix(-2.1 0 0 2.1 1160.2 -442.4)"/></svg></span>
+            <span><b>You’re up to date!</b><small>hrdrhrdrhrdr <span class="ver">0.1</span></small></span>
+          </div>
+        </div>
       </div>
     </div>
   </div>
