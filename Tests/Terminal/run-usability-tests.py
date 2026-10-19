@@ -28,7 +28,7 @@ close=models+['Tests/Terminal/CloseCommandTests.swift']
 stage('close-command-build',90,flags+close+[str(board),'-o',str(o/'close-command-tests')]);stage('close-command-tests',20,[str(o/'close-command-tests')])
 modal=['Shepherd/Hosts/Views/WorkspaceDetailSplitView.swift','Shepherd/Terminal/TerminalPaneFrame.swift','Shepherd/Terminal/TerminalHostView.swift','Shepherd/Terminal/TerminalFileGesture.swift','Shepherd/Terminal/TerminalWebLink.swift','Shepherd/FilePreview/TerminalFileHit.swift','Shepherd/FilePreview/FilePreviewLink.swift','Tests/Terminal/PreviewModalLayoutTests.swift']
 stage('modal-build',90,flags+['-I',str(products)]+modal+[str(products/'SwiftTerm.o'),'-framework','AppKit','-framework','QuartzCore','-framework','CoreText','-o',str(o/'modal-tests')]);stage('modal-tests',25,[str(o/'modal-tests')])
-(o/'source-hashes.json').write_text(json.dumps({n:hashlib.sha256((R/n).read_bytes()).hexdigest() for n in set(markdown+nav+preset+close+modal+['Shepherd/ContentView.swift','Shepherd/Shepherd.swift','Shepherd/Hosts/Views/MachinesSettingsView.swift','Shepherd/Hosts/Views/AgentBoardView.swift','Shepherd/Hosts/Views/NewTabLauncher.swift','Shepherd/FilePreview/FilePreviewPanel.swift','Shepherd/Terminal/AgentTerminalView.swift','Shepherd/Terminal/AgentTerminalViewModel.swift','Tests/Terminal/LauncherFieldTests.swift'])},indent=2))
+(o/'source-hashes.json').write_text(json.dumps({n:hashlib.sha256((R/n).read_bytes()).hexdigest() for n in set(markdown+nav+preset+close+modal+['Shepherd/ContentView.swift','Shepherd/Shepherd.swift','Shepherd/Hosts/Views/MachinesSettingsView.swift','Shepherd/Hosts/Views/AgentBoardView.swift','Shepherd/Hosts/Views/NewTabLauncher.swift','Shepherd/FilePreview/FilePreviewPanel.swift','Shepherd/FilePreview/FilePreviewPaneStates.swift','Shepherd/Terminal/AgentTerminalView.swift','Shepherd/Terminal/AgentTerminalViewModel.swift','Tests/Terminal/LauncherFieldTests.swift'])},indent=2))
 # And the launcher's real field, driven as the Korean input method drives it. SwiftUI's faults go to the log, which must not say state was changed during a view update.
 text=(R/'Shepherd/Hosts/Views/NewTabLauncher.swift').read_text();start=text.index("/// The launcher's text field");end=text.index('#endif',start);launcherField=o/'LauncherField.swift';launcherField.write_text('import SwiftUI\nimport AppKit\n'+text[start:end].replace('private struct LauncherField','struct LauncherField',1))
 stage('launcher-field-build',90,flags+[str(launcherField),'Tests/Terminal/LauncherFieldTests.swift','-framework','AppKit','-o',str(o/'launcher-field-tests')]);stage('launcher-field-tests',20,[str(o/'launcher-field-tests')],mirrorsLog=True)
@@ -41,12 +41,29 @@ assert '.focusedSceneValue(\\.launcherStart' in c and 'LaunchPreset.current(for:
 assert 'paneDestinations = []' in c and 'PaneDestination.resolve' in c and 'onDismiss: navigateToPendingPane' in c
 assert m.count('.disabled(machine.isLocal || hoveredMachineID != machine.id)')==2 and '.onHover' in m
 assert m.index('Label("Active", systemImage: "checkmark.circle.fill")')>m.index('Image(systemName: "trash")')
-assert 'panelCoversTerminal: showsFilePreview && expandsFilePreview' in c and '.previewExpansion' in c
+assert 'panelCoversTerminal: coversTerminal' in c and '.accessibilityHidden(coversTerminal)' in c and '.previewExpansion' in c
+# The file preview of each pane or tab is kept while another is selected, and
+# comes back as it was, at the side (see Tests/FilePreview's pane stages).
+assert 'filePreview =' not in c and 'showsFilePreview' not in c and 'expandsFilePreview' not in c
+sel=c[c.index('        .onChange(of: selection?.item.id) {'):c.index('        .onChange(of: shownPreviewItem(on: machine))')]
+assert 'filePreviews.' not in sel and 'expandedPreview = nil' in sel,'selecting another item keeps previews and only ends an expansion'
+mach=c[c.index('        .onChange(of: machine?.connectionIdentity) {'):c.index('        .onChange(of: stalePreview(on: machine))')]
+assert 'filePreviews.' not in mach,'switching machines keeps the previews'
+assert 'if let item { filePreviews.forget(item) }' in c
+assert 'filePreviews.forgetPanes(on: machine.connectionIdentity,\n                                         notIn: paneDestinations.filter(\\.isAvailable).map(\\.pane))' in c
+assert 'filePreviews.forgetConnections(notIn: Set(machines.map(\\.connectionIdentity)))' in c
+openFile=c[c.index('    private func openFile('):c.index('    private func openWeb(')]
+assert 'filePreviews.open(request, for: TerminalIdentity(connection: selected.connection, itemID: selected.item.id))' in openFile and 'showsBrowser' not in openFile,'opening a file leaves the browser column on for the other panes'
+assert 'if let shownPreview { filePreviews.hide(shownPreview.item) }\n                            showsBrowser = true' in c and 'Label(browserShown ? "Hide Browser" : "Show Browser"' in c
+assert 'showsPanel: shownPreview != nil || browserShown' in c and 'let browserShown = shownPreview == nil && ShepherdBrowserFeature.shared.isEnabled && showsBrowser' in c
+assert 'FilePreviewPanel(request: entry.request, model: entry.model, machineStore: machineStore' in c and '.id(entry.model.id)' in c
+fp=(R/'Shepherd/FilePreview/FilePreviewPanel.swift').read_text()
+assert '@State private var model' not in fp and 'await model.loadIfNeeded(request, store: machineStore)' in fp and 'showsSource = false' not in fp
 b=(R/'Shepherd/Hosts/Views/AgentBoardView.swift').read_text();s=json.loads((R/'Shepherd/Localizable.xcstrings').read_text())['strings']
 assert 'CommandGroup(replacing: .saveItem)' in app and 'CloseCommands()' in app and app.count('.keyboardShortcut("w")')==1
 assert app.index('Button("Close Window")')<app.index('performClose')<app.index('"Close Tab" : "Close Pane"')<app.index('.keyboardShortcut("w")')
 assert '.focusedSceneValue(\\.closeCommand' in c and 'closeRequests: closeRequests' in c
-assert 'coversTerminal: launcherStart != nil || isShowingSettings || isShowingPaneSwitcher\n                || (showsFilePreview && expandsFilePreview) || webLinkFailure != nil' in c
+assert 'coversTerminal: launcherStart != nil || isShowingSettings || isShowingPaneSwitcher\n                || previewCoversTerminal(on: machine) || webLinkFailure != nil' in c
 assert 'guard renaming == nil, closing == nil, actionFailure == nil else { return }\n            closing = selection' in b
 assert all(s['Close Window']['localizations'][l]['stringUnit']['state']=='translated' for l in ['ko','ja'])
 # The pane switcher and Settings close for a quit, an update's Install and Relaunch included, instead of stopping it with a beep.

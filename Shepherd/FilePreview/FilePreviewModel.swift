@@ -7,35 +7,66 @@ struct FilePreviewRequest: Identifiable {
     let paneID: String
     let terminalID: String
     let directory: String?
+    /// `HerdrMachine.id` of the herdr machine the pane is on, or nil for the
+    /// host's own herdr: `paneID` alone means nothing outside one herdr.
+    let herdrMachineID: String?
     let nestedMachine: Bool
     let rawLink: String
 
     init(machine: Machine, pane: AgentSummary, link: String) {
         self.machine = machine; paneID = pane.paneID; terminalID = pane.terminalID
-        directory = pane.workingDirectory; nestedMachine = pane.herdrMachine != nil; rawLink = link
+        directory = pane.workingDirectory; herdrMachineID = pane.herdrMachine?.id
+        nestedMachine = pane.herdrMachine != nil; rawLink = link
     }
 
     func following(_ link: String, directory: String) -> Self {
-        Self(machine: machine, paneID: paneID, terminalID: terminalID,
-             directory: directory, nestedMachine: nestedMachine, rawLink: link)
+        Self(machine: machine, paneID: paneID, terminalID: terminalID, directory: directory,
+             herdrMachineID: herdrMachineID, nestedMachine: nestedMachine, rawLink: link)
     }
 
-    private init(machine: Machine, paneID: String, terminalID: String, directory: String?, nestedMachine: Bool, rawLink: String) {
+    private init(machine: Machine, paneID: String, terminalID: String, directory: String?, herdrMachineID: String?, nestedMachine: Bool, rawLink: String) {
         self.machine = machine; self.paneID = paneID; self.terminalID = terminalID
-        self.directory = directory; self.nestedMachine = nestedMachine; self.rawLink = rawLink
+        self.directory = directory; self.herdrMachineID = herdrMachineID
+        self.nestedMachine = nestedMachine; self.rawLink = rawLink
     }
 }
 
-@MainActor @Observable final class FilePreviewModel {
+/// One preview's file, read, and how it is being looked at. It is kept with
+/// the pane or tab it was opened from (see `FilePreviewPaneStates`), so all
+/// of this comes back when that pane is selected again.
+@MainActor @Observable final class FilePreviewModel: Identifiable {
     enum State { case loading, loaded(FilePreviewDocument), failed(String) }
+    /// One for each time a preview is opened or shown again: the panel that
+    /// shows it is made anew for each.
+    let id = UUID()
     private(set) var state = State.loading
     private(set) var link: FilePreviewLink?
+    /// Whether a Markdown file shows its source rather than its rendering.
+    /// Each new read starts with the rendering, or with the source for a
+    /// link to a line.
+    var showsSource = false
+    /// Where the preview was scrolled to, to put it back there when it is
+    /// shown again. Not observed: it is written on every scroll, and nothing
+    /// on screen follows it.
+    @ObservationIgnored var scrollOffset: CGPoint?
+    /// The request whose read has ended, loaded or failed. A read that was
+    /// cancelled hasn't, and is made again (see `loadIfNeeded`).
+    @ObservationIgnored private(set) var finishedRequestID: UUID?
     private var generation = UUID()
+
+    /// Reads the file unless this request's read has already ended: a
+    /// preview that comes back with its pane shows what was read, without
+    /// connecting to the machine again. Retry reads again with `load`.
+    func loadIfNeeded(_ request: FilePreviewRequest, store: MachineStore) async {
+        guard finishedRequestID != request.id else { return }
+        await load(request, store: store)
+    }
 
     func load(_ request: FilePreviewRequest, store: MachineStore) async {
         let epoch = UUID()
         generation = epoch
         state = .loading; link = nil
+        finishedRequestID = nil; showsSource = false; scrollOffset = nil
         let reader = FilePreviewReader()
         do {
             try Task.checkCancellation()
@@ -72,10 +103,13 @@ struct FilePreviewRequest: Identifiable {
             _ = try store.currentMachine(matching: request.machine)
             guard generation == epoch else { return }
             state = .loaded(try FilePreviewDocument(data: data, path: resolved.path))
+            if resolved.line != nil { showsSource = true }
+            finishedRequestID = request.id
         } catch {
             await reader.cancel()
             guard generation == epoch, !Task.isCancelled else { return }
             state = .failed(error.localizedDescription)
+            finishedRequestID = request.id
         }
     }
 }

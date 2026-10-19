@@ -13,6 +13,9 @@ import Darwin
 }
 private struct ModalTerminal: View {
     let probe: ModalProbe
+    /// The selected pane: `ContentView` makes a terminal view of its own for
+    /// each (`TerminalIdentity`), as this does for each key.
+    var key = 0
     var body: some View {
         TerminalPaneFrame(isFocused: false) {
             TerminalHostView(onCreate: { probe.terminal = $0; probe.creations += 1 }, onInput: { _ in }, onResize: { cols, rows in
@@ -21,6 +24,7 @@ private struct ModalTerminal: View {
                 precondition(ioctl(probe.slave, TIOCSWINSZ, &size) == 0)
             })
         }
+        .id(key)
     }
 }
 @main @MainActor enum PreviewModalLayoutTests {
@@ -74,6 +78,25 @@ private struct ModalTerminal: View {
         }
         controller.showPanel(false); controller.presentPanelAsModal(false); drain(controller.view)
         check(controller.terminalHost.view.frame == controller.view.bounds && probe.creations == 1, "closing preview fills viewport without reattaching terminal")
+
+        // Another pane is selected while a preview is expanded: its terminal
+        // takes the old one's place under the cover, and the expansion ends,
+        // as `ContentView` ends it on any change of selection. The keyboard
+        // isn't handed back to a terminal that has left the window.
+        controller.showPanel(true); drain(controller.view)
+        window.makeFirstResponder(terminal)
+        controller.presentPanelAsModal(true); drain(controller.view)
+        check(window.firstResponder !== terminal && surface.frame == controller.view.bounds, "expanded over the first pane's terminal")
+        let other = ModalProbe(slave: slave)
+        controller.terminalHost.rootView = WorkspaceInheritedContent(content: ModalTerminal(probe: other, key: 1), values: EnvironmentValues())
+        drain(controller.view)
+        check(other.creations == 1 && other.terminal !== terminal && terminal.window == nil, "the other pane's own terminal, the first one gone")
+        controller.presentPanelAsModal(false); drain(controller.view)
+        check(surface.frame.minX > 0 && surface.frame.width < controller.view.bounds.width, "the preview is back at the side")
+        check(other.terminal!.convert(other.terminal!.bounds, to: controller.view) == before, "the other pane's terminal fills the place the first one had")
+        check(window.firstResponder !== terminal, "the keyboard isn't given to the terminal that left")
+        check(controller.panelHost.view === panel, "the same single panel host throughout")
+        check(window.makeFirstResponder(other.terminal!) && window.firstResponder === other.terminal, "the other pane's terminal can take the keyboard")
         print("PASS \(checks) actual SwiftTerm/single native modal panel/frame/grid/keyboard/owned kernelPTY checks; unshown owned window, no SSH/user GUI")
     }
 }

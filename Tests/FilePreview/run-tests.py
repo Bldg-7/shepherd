@@ -8,9 +8,9 @@ for name in ['home','tmp','cache','files']:(out/name).mkdir(mode=0o700)
 env=dict(os.environ,DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer',HOME=str(out/'home'),CFFIXED_USER_HOME=str(out/'home'),TMPDIR=str(out/'tmp'),CLANG_MODULE_CACHE_PATH=str(out/'cache'))
 sources=['Shepherd/FilePreview/FilePreviewLink.swift','Shepherd/FilePreview/FilePreviewReader.swift','Shepherd/FilePreview/MarkdownPreview.swift','Shepherd/FilePreview/PreviewSyntaxHighlighter.swift','Shepherd/FilePreview/PreviewSyntaxRendering.swift','Shepherd/Hosts/Models/Machine.swift','Tests/FilePreview/FilePreviewTests.swift']
 (out/'source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in sources},indent=2))
-def stage(name,seconds,args):
+def stage(name,seconds,args,mirrorsLog=False):
  log=out/(name+'.log')
- code=subprocess.run([sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(seconds),'--natural-exit-grace','10','--log',str(log),'--',*args],cwd=ROOT,env=env,timeout=seconds+40).returncode
+ code=subprocess.run([sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(seconds),'--natural-exit-grace','10','--log',str(log),'--',*args],cwd=ROOT,env=dict(env,OS_ACTIVITY_DT_MODE='1') if mirrorsLog else env,timeout=seconds+40).returncode
  v=json.loads(log.with_suffix('.stage.json').read_text());assert code==0 and v['naturalExitConfirmed'] and not v['signalsSent'] and v['cleanupVerified'],name
 stage('preview-build',90,['xcrun','swiftc','-target',platform.machine()+'-apple-macos26.6.2','-swift-version','6','-default-isolation','MainActor','-parse-as-library',*sources,'-o',str(out/'preview-tests')])
 stage('preview-tests',20,[str(out/'preview-tests'),str(out/'files')])
@@ -29,6 +29,22 @@ model=['Shepherd/FilePreview/FilePreviewLink.swift','Shepherd/FilePreview/FilePr
 stage('preview-model-build',90,['xcrun','swiftc','-target',platform.machine()+'-apple-macos26.6.2','-swift-version','6','-default-isolation','MainActor','-parse-as-library','-I',str(modules),'-L',str(modules),'-lCitadel','-lNIOCore','-lNIOConcurrencyHelpers','-Xlinker','-rpath','-Xlinker',str(modules),*model,'-o',str(out/'preview-model-tests')])
 stage('preview-model-tests',40,[str(out/'preview-model-tests'),str(out/'files')])
 (out/'model-source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in model},indent=2))
+# The file preview of each pane or tab, kept while another one is selected:
+# the actual store, request and model with the actual pane and tab models.
+paneModels=['Shepherd/HerdrKit/Models/JSONValue.swift','Shepherd/HerdrKit/Models/AgentModels.swift','Shepherd/HerdrKit/Models/AgentLaunchModels.swift','Shepherd/HerdrKit/Models/AgentTitleDisplay.swift','Shepherd/HerdrKit/Models/TabModels.swift','Shepherd/HerdrKit/Models/HerdrMachine.swift']
+paneStates=['Shepherd/FilePreview/FilePreviewLink.swift','Shepherd/FilePreview/FilePreviewReader.swift','Shepherd/FilePreview/FilePreviewModel.swift','Shepherd/FilePreview/FilePreviewPaneStates.swift','Shepherd/Hosts/Models/Machine.swift','Shepherd/Hosts/Models/MachineStore.swift','Shepherd/Hosts/Models/KeychainStore.swift']+paneModels
+stage('pane-states-build',90,['xcrun','swiftc','-target',platform.machine()+'-apple-macos26.6.2','-swift-version','6','-default-isolation','MainActor','-parse-as-library',*paneStates,'Tests/FilePreview/PaneStatesTests.swift','-o',str(out/'pane-states-tests')])
+stage('pane-states-tests',20,[str(out/'pane-states-tests')])
+# And the actual panel in an owned window that is never shown: P, Q and back
+# to P, each with its own read, source choice and scroll place. SwiftUI's
+# faults go to the log, which must not say state was changed during a view
+# update.
+panel=paneStates+['Shepherd/FilePreview/FilePreviewPanel.swift','Shepherd/FilePreview/MarkdownPreview.swift','Shepherd/FilePreview/SourceFilePreview.swift','Shepherd/FilePreview/PreviewSyntaxHighlighter.swift','Shepherd/FilePreview/PreviewSyntaxRendering.swift']
+(out/'panel-files').mkdir(mode=0o700)
+stage('panel-window-build',120,['xcrun','swiftc','-target',platform.machine()+'-apple-macos26.6.2','-swift-version','6','-default-isolation','MainActor','-parse-as-library',*panel,'Tests/FilePreview/PanelWindowTests.swift','-framework','AppKit','-o',str(out/'panel-window-tests')])
+stage('panel-window-tests',60,[str(out/'panel-window-tests'),str(out/'panel-files')],mirrorsLog=True)
+assert 'Modifying state during view update' not in (out/'panel-window-tests.log').read_text()
+(out/'pane-source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in panel+['Tests/FilePreview/PaneStatesTests.swift','Tests/FilePreview/PanelWindowTests.swift']},indent=2))
 if args.swiftterm_products:
  import shutil
  products=args.swiftterm_products.resolve()
@@ -38,4 +54,4 @@ if args.swiftterm_products:
  stage('terminal-link-build',90,['xcrun','swiftc','-target',platform.machine()+'-apple-macos26.6.2','-swift-version','6','-default-isolation','MainActor','-parse-as-library','-I',str(products),*native,str(products/'SwiftTerm.o'),'-framework','AppKit','-framework','QuartzCore','-framework','CoreText','-o',str(out/'terminal-link-tests')])
  stage('terminal-link-tests',20,[str(out/'terminal-link-tests')])
  (out/'native-source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in native},indent=2))
-(out/'validation.json').write_text(json.dumps({'passed':True,'userFilesRead':False,'realKeychainAccess':False,'networkAccess':False,'actualSwiftTerm':bool(args.swiftterm_products),'stages':11 if args.swiftterm_products else 9},indent=2))
+(out/'validation.json').write_text(json.dumps({'passed':True,'userFilesRead':False,'realKeychainAccess':False,'networkAccess':False,'actualSwiftTerm':bool(args.swiftterm_products),'stages':15 if args.swiftterm_products else 13},indent=2))

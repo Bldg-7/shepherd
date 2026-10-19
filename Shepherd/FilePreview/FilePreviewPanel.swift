@@ -3,14 +3,16 @@ import ImageIO
 
 struct FilePreviewPanel: View {
     let request: FilePreviewRequest
+    /// The preview's read and how it is being looked at, which outlive this
+    /// view: they are kept with the pane the preview is for (see
+    /// `FilePreviewPaneStates`), and this view is made anew for each preview.
+    let model: FilePreviewModel
     let machineStore: MachineStore
     var onClose: () -> Void
     var onFileLink: (FilePreviewRequest) -> Void
     var isExpanded = false
     var onToggleExpanded: (() -> Void)? = nil
-    @State private var model = FilePreviewModel()
     @State private var reload = 0
-    @State private var showsSource = false
     #if os(macOS)
     @FocusState private var panelFocused: Bool
     #endif
@@ -38,7 +40,12 @@ struct FilePreviewPanel: View {
                 Text(verbatim: title).font(.headline).lineLimit(1)
                 Spacer(minLength: 8)
                 if case .loaded(let document) = model.state, case .text(_, let markdown) = document.content, markdown {
-                    Toggle("Source", isOn: $showsSource).toggleStyle(.button)
+                    // The other view of the file starts at its top, as it
+                    // always did, not at the place the one left was at.
+                    Toggle("Source", isOn: Binding(get: { model.showsSource }, set: { shows in
+                        model.scrollOffset = nil
+                        model.showsSource = shows
+                    })).toggleStyle(.button)
                 }
                 #if os(macOS)
                 if let onToggleExpanded {
@@ -91,10 +98,14 @@ struct FilePreviewPanel: View {
             if isExpanded { onToggleExpanded?() } else { onClose() }
         }
         #endif
+        // A preview shown again with its pane has been read already; only
+        // Retry, or a read that was cancelled when its pane was left, reads.
         .task(id: "\(request.id)-\(reload)") {
-            showsSource = false
-            await model.load(request, store: machineStore)
-            if model.link?.line != nil { showsSource = true }
+            if reload > 0 {
+                await model.load(request, store: machineStore)
+            } else {
+                await model.loadIfNeeded(request, store: machineStore)
+            }
         }
         // All links in native Markdown are explicitly routed. External URLs,
         // scripts and images never cause automatic network or app launching.
@@ -116,11 +127,13 @@ struct FilePreviewPanel: View {
                 if text.count > renderCharacters {
                     Text("Preview truncated to 120,000 characters.").font(.caption).foregroundStyle(.secondary).padding(8)
                 }
-                if markdown && !showsSource {
+                if markdown && !model.showsSource {
                     ScrollView { MarkdownPreview(text: rendered) }
+                        .modifier(PreviewScrollPlace(restoring: model.scrollOffset, onScroll: keepScrollOffset))
                 } else {
                     SourceFilePreview(text: rendered, selectedLine: model.link?.line,
-                                      language: .filename(model.link?.path))
+                                      language: .filename(model.link?.path),
+                                      restoredOffset: model.scrollOffset, onScroll: keepScrollOffset)
                 }
             }
         case .image(let data):
@@ -130,10 +143,15 @@ struct FilePreviewPanel: View {
                     Image(decorative: image, scale: 1).resizable()
                         .frame(width: Double(image.width) * scale, height: Double(image.height) * scale).padding()
                 }
+                .modifier(PreviewScrollPlace(restoring: model.scrollOffset, onScroll: keepScrollOffset))
             } else {
                 ContentUnavailableView("Cannot Preview File", systemImage: "photo", description: Text("This file type or text encoding cannot be previewed."))
             }
         }
+    }
+
+    private func keepScrollOffset(_ offset: CGPoint) {
+        model.scrollOffset = offset
     }
 
     private func thumbnail(_ data: Data) -> CGImage? {

@@ -15,7 +15,10 @@ stage('web-link-tests',30,[str(out/'web-link-tests')])
 content=(ROOT/'Shepherd/ContentView.swift').read_text();route=content[content.index('    private func openWeb('):content.index('    private func previewPanel(')]
 assert 'isCurrentConnection' in route and 'selected.connection' in route and 'request.pane(in:' in route
 assert 'BrowserKey(machine: machine, pane: pane)' in route and 'terminalID: pane.terminalID, url: url' in route
-assert 'activatedPanes[identity] = pane.paneID' in route and 'showsFilePreview = false' in route and 'showsBrowser = true' in route
+assert 'activatedPanes[identity] = pane.paneID' in route and 'showsBrowser = true' in route
+# A preview in the browser column's place makes way for the link's page, in
+# that pane or tab only; its file is kept for the toolbar.
+assert 'filePreviews.hide(identity)' in route and 'expandedPreview = nil' in route and 'showsFilePreview' not in route
 # Every link is validated the same way first, and only then sent where the
 # policy says; the default browser gets a validated URL and nothing else.
 assert route.index('TerminalWebLink.validatedURL(request.rawURL)')<route.index('LinkDestinationPolicy.destination(')

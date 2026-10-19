@@ -25,18 +25,6 @@ struct ContentView: View {
         let item: BoardItem
     }
 
-    /// What makes one terminal view a different one from another.
-    /// `AgentTerminalView` builds its session once, when the view is created,
-    /// so a view that outlived a change of pane or machine would stay attached
-    /// to the old pane while showing the new one's title. Tying the view's
-    /// identity to this value gives every (machine, pane or tab) its own view,
-    /// and tears the previous one down along with its sessions.
-    private nonisolated struct TerminalIdentity: Hashable {
-        let connection: Machine.ConnectionIdentity
-        /// `BoardItem.id`: the pane or tab, qualified by its herdr machine.
-        let itemID: String
-    }
-
     @State private var selection: MachineSelection?
     /// The board's tab setting (see `AgentBoardView.showsTabsKey`).
     @AppStorage(AgentBoardView.showsTabsKey) private var showsTabs = false
@@ -63,7 +51,9 @@ struct ContentView: View {
     /// Goes up to have the board close the selection (see
     /// `AgentBoardView.closeRequests`).
     @State private var closeRequests = 0
-    @State private var filePreview: FilePreviewRequest?
+    /// The file preview of each pane or tab, kept while another one is
+    /// selected (see `FilePreviewPaneStates`).
+    @State private var filePreviews = FilePreviewPaneStates()
     @State private var webLinkFailure: TerminalWebLinkError?
     /// Where links open, as set in Settings (see `LinkDestinationPolicy`).
     @AppStorage(LinkDestinationPolicy.preferenceKey) private var linkDestination: LinkDestinationPolicy.Preference = .ask
@@ -90,10 +80,14 @@ struct ContentView: View {
     @State private var renameCommit: TitleRenameCommit?
     #if os(macOS)
     @State private var passwordManagerWindowID = UUID()
-    /// Whether the window shows the browser column beside the terminal.
+    /// Whether the window shows the browser column beside the terminal: in
+    /// every pane but one whose file preview is shown, which takes the
+    /// column's place.
     @SceneStorage("ContentView.showsBrowser") private var showsBrowser = false
-    @State private var showsFilePreview = false
-    @State private var expandsFilePreview = false
+    /// The pane or tab whose file preview is expanded over the terminal. Only
+    /// the selected one's can be: a preview selected again comes back at the
+    /// side.
+    @State private var expandedPreview: TerminalIdentity?
     /// For each tab shown in this window (by `TerminalIdentity`), the pane in
     /// it the browser column follows: the one last given the keyboard.
     @State private var activatedPanes: [TerminalIdentity: String] = [:]
@@ -104,7 +98,13 @@ struct ContentView: View {
     #endif
 
     private func workspace(on machine: Machine?) -> some View {
-        WorkspaceNavigationSplitView {
+        // The selected pane's or tab's file preview, kept or shown, and
+        // whether the browser column is in its place.
+        let keptPreview = keptPreview(on: machine)
+        let shownPreview = keptPreview?.entry.isShown == true ? keptPreview : nil
+        let browserShown = shownPreview == nil && ShepherdBrowserFeature.shared.isEnabled && showsBrowser
+        let coversTerminal = previewCoversTerminal(on: machine)
+        return WorkspaceNavigationSplitView {
             Group {
                 if let machine {
                     // One board per machine: its pane list, connection and
@@ -162,21 +162,21 @@ struct ContentView: View {
             // pane or tab, the browser column only switches which pane's
             // browser it shows (plan item A1).
             WorkspaceDetailSplitView(
-                showsPanel: (showsFilePreview && filePreview != nil) || (!showsFilePreview && ShepherdBrowserFeature.shared.isEnabled && showsBrowser),
-                panelMinimum: showsFilePreview ? 320 : 360,
-                panelIdeal: showsFilePreview ? 560 : 640,
-                panelCoversTerminal: showsFilePreview && expandsFilePreview
+                showsPanel: shownPreview != nil || browserShown,
+                panelMinimum: shownPreview != nil ? 320 : 360,
+                panelIdeal: shownPreview != nil ? 560 : 640,
+                panelCoversTerminal: coversTerminal
             ) {
                 terminalColumn(on: machine)
-                    .accessibilityHidden(showsFilePreview && expandsFilePreview)
+                    .accessibilityHidden(coversTerminal)
                     .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
                     .modifier(WorkspaceSidebarDetailLayout())
             } panel: {
-                if showsFilePreview, let filePreview {
-                    previewPanel(filePreview)
+                if let shownPreview {
+                    previewPanel(shownPreview.entry, for: shownPreview.item)
                         .frame(minWidth: 320, idealWidth: 560, maxWidth: .infinity, maxHeight: .infinity)
                         .modifier(WorkspaceSidebarDetailLayout())
-                } else if ShepherdBrowserFeature.shared.isEnabled && showsBrowser {
+                } else if browserShown {
                     BrowserColumn(target: browserTarget(on: machine))
                         .frame(minWidth: 360, idealWidth: 640, maxWidth: .infinity, maxHeight: .infinity)
                         .modifier(WorkspaceSidebarDetailLayout())
@@ -206,24 +206,33 @@ struct ContentView: View {
                 if ShepherdBrowserFeature.shared.isEnabled {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
-                        if !showsBrowser { showsFilePreview = false; expandsFilePreview = false }
-                        showsBrowser.toggle()
+                        if browserShown {
+                            showsBrowser = false
+                        } else {
+                            // In a pane whose preview is in the browser's
+                            // place, the preview makes way for it.
+                            if let shownPreview { filePreviews.hide(shownPreview.item) }
+                            showsBrowser = true
+                        }
                     } label: {
-                        Label(showsBrowser ? "Hide Browser" : "Show Browser", systemImage: "globe")
+                        Label(browserShown ? "Hide Browser" : "Show Browser", systemImage: "globe")
                     }
                     .keyboardShortcut("b", modifiers: [.command, .option])
-                    .help(showsBrowser ? "Hide Browser (⌥⌘B)" : "Show Browser (⌥⌘B)")
+                    .help(browserShown ? "Hide Browser (⌥⌘B)" : "Show Browser (⌥⌘B)")
                 }
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
-                        if !showsFilePreview { showsBrowser = false }
-                        showsFilePreview.toggle()
-                        if !showsFilePreview { expandsFilePreview = false }
+                        guard let keptPreview else { return }
+                        if keptPreview.entry.isShown {
+                            filePreviews.hide(keptPreview.item)
+                        } else {
+                            filePreviews.show(keptPreview.item)
+                        }
                     } label: {
-                        Label(showsFilePreview ? "Hide Preview" : "Show Preview", systemImage: "doc.text")
+                        Label(shownPreview != nil ? "Hide Preview" : "Show Preview", systemImage: "doc.text")
                     }
-                    .disabled(filePreview == nil)
+                    .disabled(keptPreview == nil)
                     .help("File Preview")
                 }
             }
@@ -243,7 +252,9 @@ struct ContentView: View {
             isShowingPaneSwitcher = false
             justCreatedID = nil
             launcherStart = nil
-            filePreview = nil
+            // The file previews stay with their panes, and come back when a
+            // pane is selected again on this machine. Those of a connection
+            // that is gone go with it (see `machineStore.allMachines`).
             // A name typed for the other machine's board isn't sent, and the
             // keyboard is left alone: a pane ID means nothing on its own.
             if let titleRename {
@@ -253,17 +264,13 @@ struct ContentView: View {
             renameCommit = nil
             linkChoice = nil
             #if os(macOS)
-            showsFilePreview = false
             activatedPanes = [:]
             #endif
         }
-        .onChange(of: filePreview.map(previewBelongsToSelection) ?? true) { _, valid in
-            if !valid {
-                filePreview = nil
-                #if os(macOS)
-                showsFilePreview = false
-                #endif
-            }
+        // A kept preview whose pane has left the selected tab, or whose pane
+        // ID now names another terminal, has nothing left to show.
+        .onChange(of: stalePreview(on: machine)) { _, item in
+            if let item { filePreviews.forget(item) }
         }
         .onChange(of: selection?.item.id) { _, id in
             // The title isn't the renamed item's any more: as if the
@@ -272,15 +279,17 @@ struct ContentView: View {
             if let titleRename, titleRename.item.id != id {
                 endTitleRename(titleRename, .left)
             }
-            filePreview = nil
+            // The preview stays with the pane or tab that was selected, as
+            // it was, but at the side: going to another one reveals its
+            // terminal, and coming back reveals this one's.
             linkChoice = nil
             #if os(macOS)
-            showsFilePreview = false
+            expandedPreview = nil
             #endif
         }
         #if os(macOS)
-        .onChange(of: showsFilePreview) { _, visible in
-            if !visible { expandsFilePreview = false }
+        .onChange(of: shownPreviewItem(on: machine)) { _, item in
+            if expandedPreview != item { expandedPreview = nil }
         }
         #endif
         .environment(\.terminalPaneFocus, terminalPaneFocus)
@@ -372,10 +381,17 @@ struct ContentView: View {
         }
         .onChange(of: paneDestinations) {
             navigateToNotifiedPane()
+            // The file previews of panes the board no longer lists go with
+            // them; those on a herdr it couldn't read are kept.
+            if let machine = machineStore.activeMachine {
+                filePreviews.forgetPanes(on: machine.connectionIdentity,
+                                         notIn: paneDestinations.filter(\.isAvailable).map(\.pane))
+            }
         }
         // A Machine that is removed, or now uses another herdr session,
-        // takes its panes' browsers with it.
+        // takes its panes' browsers with it, and its file previews.
         .onChange(of: machineStore.allMachines, initial: true) { _, machines in
+            filePreviews.forgetConnections(notIn: Set(machines.map(\.connectionIdentity)))
             AgentLaunchService.shared.update(machines: machines)
             #if DEBUG
             let paths = OwnedOperatorFixture.configuration.map { [$0.machine.id: $0.socket] } ?? [:]
@@ -472,8 +488,21 @@ struct ContentView: View {
             selection: machine.flatMap { selection(on: $0).wrappedValue },
             showsTabs: showsTabs && AgentBoardView.offersTabs,
             coversTerminal: launcherStart != nil || isShowingSettings || isShowingPaneSwitcher
-                || (showsFilePreview && expandsFilePreview) || webLinkFailure != nil || linkChoice != nil
+                || previewCoversTerminal(on: machine) || webLinkFailure != nil || linkChoice != nil
         )
+    }
+
+    /// The pane or tab whose file preview is shown, if the selected one's is.
+    private func shownPreviewItem(on machine: Machine?) -> TerminalIdentity? {
+        guard let kept = keptPreview(on: machine), kept.entry.isShown else { return nil }
+        return kept.item
+    }
+
+    /// Whether the selected pane's or tab's file preview is shown expanded
+    /// over the terminal.
+    private func previewCoversTerminal(on machine: Machine?) -> Bool {
+        guard let item = shownPreviewItem(on: machine) else { return false }
+        return expandedPreview == item
     }
     #endif
 
@@ -554,23 +583,38 @@ struct ContentView: View {
     private func previewBelongsToSelection(_ request: FilePreviewRequest) -> Bool {
         guard machineStore.isCurrentConnection(request.machine),
               let selected = selection, selected.connection == request.machine.connectionIdentity else { return false }
-        let panes: [AgentSummary]
-        switch selected.item {
-        case .pane(let pane): panes = [pane]
-        case .tab(let tab): panes = tab.panes
+        return request.belongs(to: Self.panes(of: selected.item))
+    }
+
+    private static func panes(of item: BoardItem) -> [AgentSummary] {
+        switch item {
+        case .pane(let pane): [pane]
+        case .tab(let tab): tab.panes
         }
-        return panes.contains { $0.paneID == request.paneID && $0.terminalID == request.terminalID }
+    }
+
+    /// The file preview kept for the pane or tab selected on `machine`, if
+    /// it still belongs to it, shown or closed.
+    private func keptPreview(on machine: Machine?) -> (item: TerminalIdentity, entry: FilePreviewPaneStates.Entry)? {
+        guard let machine, let selected = selection(on: machine).wrappedValue else { return nil }
+        let item = TerminalIdentity(connection: machine.connectionIdentity, itemID: selected.id)
+        return filePreviews.entry(for: item, panes: Self.panes(of: selected)).map { (item, $0) }
+    }
+
+    /// The pane or tab selected on `machine`, if the preview kept for it
+    /// belongs to it no longer.
+    private func stalePreview(on machine: Machine?) -> TerminalIdentity? {
+        guard let machine, let selected = selection(on: machine).wrappedValue else { return nil }
+        let item = TerminalIdentity(connection: machine.connectionIdentity, itemID: selected.id)
+        return filePreviews.isStale(item, panes: Self.panes(of: selected)) ? item : nil
     }
 
     private func openFile(_ request: FilePreviewRequest) {
-        guard previewBelongsToSelection(request) else { return }
-        filePreview = request
-        #if os(macOS)
-        // Presentation only: don't disable the feature, discard a browser,
-        // revoke agent authority, or delete profiles when switching columns.
-        showsBrowser = false
-        showsFilePreview = true
-        #endif
+        guard previewBelongsToSelection(request), let selected = selection else { return }
+        // Only in the selected pane or tab, where it takes the browser
+        // column's place; the column stays on for the other panes. Nothing
+        // is done to a browser, its profiles or an agent's connection to it.
+        filePreviews.open(request, for: TerminalIdentity(connection: selected.connection, itemID: selected.item.id))
     }
 
     private func openWeb(_ request: TerminalWebLinkRequest) {
@@ -627,14 +671,15 @@ struct ContentView: View {
     /// and shows the browser column.
     private func openInShepherdBrowser(_ url: String, in pane: AgentSummary, on machine: Machine, selected: MachineSelection) {
         BrowserStore.shared.openBrowser(for: BrowserKey(machine: machine, pane: pane), terminalID: pane.terminalID, url: url)
+        let identity = TerminalIdentity(connection: selected.connection, itemID: selected.item.id)
         if case .tab = selected.item {
-            let identity = TerminalIdentity(connection: selected.connection, itemID: selected.item.id)
             activatedPanes[identity] = pane.paneID
         }
         // Only switch presentation. Existing profiles/tabs and agent grants
-        // stay intact; opening a human URL does not register an agent.
-        showsFilePreview = false
-        expandsFilePreview = false
+        // stay intact; opening a human URL does not register an agent. A
+        // preview in the column's place makes way for it, keeping its file.
+        filePreviews.hide(identity)
+        expandedPreview = nil
         showsBrowser = true
     }
 
@@ -650,13 +695,19 @@ struct ContentView: View {
             : String(localized: "hrdrhrdrhrdr Browser is off, so the link opened in the default browser."))
     }
 
-    private func previewPanel(_ request: FilePreviewRequest) -> some View {
-        FilePreviewPanel(request: request, machineStore: machineStore, onClose: {
-            showsFilePreview = false
+    /// The preview of `item`, the selected pane or tab. A view of its own for
+    /// each preview: what one is scrolled to, or has the keyboard, is never
+    /// carried over to another pane's file.
+    private func previewPanel(_ entry: FilePreviewPaneStates.Entry, for item: TerminalIdentity) -> some View {
+        FilePreviewPanel(request: entry.request, model: entry.model, machineStore: machineStore, onClose: {
+            filePreviews.hide(item)
         }, onFileLink: openFile)
         #if os(macOS)
-        .previewExpansion(isExpanded: expandsFilePreview, onToggle: { expandsFilePreview.toggle() })
+        .previewExpansion(isExpanded: expandedPreview == item, onToggle: {
+            expandedPreview = expandedPreview == item ? nil : item
+        })
         #endif
+        .id(entry.model.id)
     }
 
     /// Resolve again after native sheet dismissal, never route a stale item
@@ -667,7 +718,7 @@ struct ContentView: View {
               let current = PaneDestination.resolve(requested, in: paneDestinations,
                 contextMatches: switcherConnection == machine.connectionIdentity && machineStore.isCurrentConnection(machine)) else { return }
         #if os(macOS)
-        expandsFilePreview = false
+        expandedPreview = nil
         #endif
         justCreatedID = nil
         selection = MachineSelection(connection: machine.connectionIdentity, item: current.item)
@@ -717,7 +768,7 @@ struct ContentView: View {
         notifications.navigationRequest = nil
         isShowingPaneSwitcher = false
         launcherStart = nil
-        expandsFilePreview = false
+        expandedPreview = nil
         justCreatedID = nil
         selection = MachineSelection(connection: target.connectionIdentity, item: destination.item)
         terminalPaneFocus = TerminalPaneFocus(paneID: destination.pane.id)

@@ -173,7 +173,7 @@ struct PaneTerminalView: View {
                     EmptyView()
                 case .failed(let message):
                     // Selecting the same pane again doesn't make a new view
-                    // (see `ContentView.TerminalIdentity`), so without a
+                    // (see `TerminalIdentity`), so without a
                     // button here the only way to try again would be to go
                     // to another pane or machine and come back.
                     ContentUnavailableView {

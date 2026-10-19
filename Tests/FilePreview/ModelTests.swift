@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 import Citadel
 import NIOConcurrencyHelpers
 
@@ -17,8 +18,9 @@ struct AgentSummary {
     let paneID: String
     let terminalID: String
     let workingDirectory: String?
-    let herdrMachine: String?
+    let herdrMachine: OwnedHerdrMachine?
 }
+struct OwnedHerdrMachine { let id: String }
 final class OwnedSecrets: MachineSecretStore {
     var values: [String: Data] = [:]
     var loads = 0
@@ -29,7 +31,7 @@ final class OwnedSecrets: MachineSecretStore {
 
 @main @MainActor enum ModelTests {
     static var checks = 0
-    static func check(_ b: Bool) { precondition(b); checks += 1 }
+    static func check(_ b: Bool, line: Int = #line) { precondition(b, "check at line \(line)"); checks += 1 }
     static func main() async throws {
         let directory = ProcessInfo.processInfo.arguments[1]
         let suite = "owned-preview-" + UUID().uuidString
@@ -49,10 +51,31 @@ final class OwnedSecrets: MachineSecretStore {
         check(model.link?.path == path)
         let next = request.following("next.md", directory: directory)
         check(next.id != request.id && next.paneID == request.paneID && next.machine.connectionIdentity == request.machine.connectionIdentity)
-        let nested = AgentSummary(paneID: "owned-pane", terminalID: "owned-terminal", workingDirectory: directory, herdrMachine: "nested")
-        await model.load(FilePreviewRequest(machine: local, pane: nested, link: "model.md"), store: store)
+        check(request.herdrMachineID == nil && next.herdrMachineID == nil)
+        let nested = AgentSummary(paneID: "owned-pane", terminalID: "owned-terminal", workingDirectory: directory, herdrMachine: OwnedHerdrMachine(id: "nested"))
+        let nestedRequest = FilePreviewRequest(machine: local, pane: nested, link: "model.md")
+        check(nestedRequest.herdrMachineID == "nested" && nestedRequest.following("x.md", directory: directory).herdrMachineID == "nested")
+        await model.load(nestedRequest, store: store)
         if case .failed = model.state { checks += 1 } else { preconditionFailure("nested must not read local") }
         check(secrets.loads == 0)
+        // A failure is kept for its pane too: shown again, the preview is
+        // not read again; Retry (`load`) reads.
+        await model.loadIfNeeded(nestedRequest, store: store)
+        if case .failed = model.state { checks += 1 } else { preconditionFailure("kept failure") }
+        // Source or rendering: each read starts with the rendering, a link
+        // to a line with the source; a preview shown again keeps the choice.
+        let lined = FilePreviewModel()
+        let linedRequest = FilePreviewRequest(machine: local, pane: pane, link: "model.md:1")
+        await lined.load(linedRequest, store: store)
+        check(lined.showsSource && lined.link?.line == 1)
+        lined.showsSource = false; lined.scrollOffset = CGPoint(x: 0, y: 40)
+        await lined.loadIfNeeded(linedRequest, store: store)
+        check(!lined.showsSource && lined.scrollOffset == CGPoint(x: 0, y: 40))
+        await lined.load(linedRequest, store: store)
+        check(lined.showsSource && lined.scrollOffset == nil)
+        let plain = FilePreviewModel()
+        await plain.load(request, store: store)
+        check(!plain.showsSource)
         let remote = Machine(displayName: "Owned Remote", hostname: "owned.invalid", username: "owned", authMethod: .password)
         try store.addMachine(remote, password: "synthetic-only")
         let remoteRequest = FilePreviewRequest(machine: remote, pane: pane, link: "/remote/a.md")
@@ -66,6 +89,28 @@ final class OwnedSecrets: MachineSecretStore {
         let pins = await OwnedSFTP.shared.pins
         check(pins == ["owned-pin"])
         check(secrets.loads == 1)
+        // Shown again with its pane, a remote preview that was read is not
+        // read again: no SSH connection, no Keychain read.
+        let connectsBefore = await OwnedSFTP.shared.connects
+        await model.loadIfNeeded(remoteRequest, store: store)
+        if case .loaded = model.state { checks += 1 } else { preconditionFailure("kept remote read") }
+        let connectsAfter = await OwnedSFTP.shared.connects
+        check(connectsAfter == connectsBefore && secrets.loads == 1)
+        // A read cancelled when its pane was left is made again on return.
+        let returning = FilePreviewModel()
+        await OwnedSFTP.shared.plan(Array("# Returned".utf8), heldRead: true)
+        let left = Task { await returning.loadIfNeeded(remoteRequest, store: store) }
+        while !(await OwnedSFTP.shared.waitingRead) { await Task.yield() }
+        left.cancel()
+        await left.value
+        if case .loading = returning.state { checks += 1 } else { preconditionFailure("cancelled read must not publish") }
+        await OwnedSFTP.shared.plan(Array("# Returned".utf8))
+        await returning.loadIfNeeded(remoteRequest, store: store)
+        if case .loaded(let doc) = returning.state, case .text(let value, _) = doc.content { check(value == "# Returned") }
+        else { preconditionFailure("read again after a cancelled read") }
+        // (`plan` counts from zero.)
+        let connectsReturned = await OwnedSFTP.shared.connects
+        check(connectsReturned == 1)
         // A late completion must not replace a newer local preview or its path.
         await OwnedSFTP.shared.plan(Array("# Late".utf8), heldConnect: true)
         let old = Task { await model.load(remoteRequest, store: store) }

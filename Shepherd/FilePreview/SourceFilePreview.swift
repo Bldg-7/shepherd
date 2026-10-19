@@ -7,6 +7,11 @@ struct SourceFilePreview: View {
     let text: String
     var selectedLine: Int?
     var language: PreviewSyntaxLanguage = .plain
+    /// Where to put the scroll view as it comes up, in place of the selected
+    /// line: where it was left, for a preview that comes back with its pane.
+    var restoredOffset: CGPoint? = nil
+    /// Told where the scroll view is, each time it scrolls.
+    var onScroll: ((CGPoint) -> Void)? = nil
     @State private var cache = PreviewSyntaxCache()
     @Environment(\.colorScheme) private var scheme
     @ScaledMetric(relativeTo: .callout) private var baseGutter: CGFloat = 42
@@ -38,7 +43,8 @@ struct SourceFilePreview: View {
                 .padding(.vertical, 12)
                 .textSelection(.enabled)
             }
-            .onAppear { scrollToLine(proxy) }
+            .modifier(PreviewScrollPlace(restoring: restoredOffset, onScroll: onScroll))
+            .onAppear { if restoredOffset == nil { scrollToLine(proxy) } }
             .onChange(of: selectedLine) { _, _ in scrollToLine(proxy) }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -47,5 +53,26 @@ struct SourceFilePreview: View {
 
     private func scrollToLine(_ proxy: ScrollViewProxy) {
         if let selectedLine { proxy.scrollTo(selectedLine, anchor: .topLeading) }
+    }
+}
+
+/// Puts a preview's scroll view back where it was left as it comes up, and
+/// reports where it is as it scrolls, for a preview that is shown again when
+/// its pane is selected again.
+struct PreviewScrollPlace: ViewModifier {
+    let onScroll: ((CGPoint) -> Void)?
+    @State private var position: ScrollPosition
+
+    init(restoring offset: CGPoint?, onScroll: ((CGPoint) -> Void)?) {
+        self.onScroll = onScroll
+        _position = State(initialValue: offset.map { ScrollPosition(point: $0) } ?? ScrollPosition())
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .scrollPosition($position)
+            .onScrollGeometryChange(for: CGPoint.self) { $0.contentOffset } action: { _, offset in
+                onScroll?(offset)
+            }
     }
 }
