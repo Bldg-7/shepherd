@@ -41,7 +41,7 @@ not pass its GitHub token, or the keys the workflow gives it, to build plugins.
 2. Choose the version (the marketing version, like 0.3.2) and the numeric build number.
    **Do not use Git commit count:** this public history differs from the earlier private
    source history. 0.1 used build 21; 0.2.0 used build 22; 0.2.1 used build 23; 0.3.0 used
-   build 24; 0.3.1 used build 25; 0.3.2 used build 26; 0.3.3 used build 27; **0.4.0 uses build 28**. A new build number must be higher than the one in the
+   build 24; 0.3.1 used build 25; 0.3.2 used build 26; 0.3.3 used build 27; 0.4.0 used build 28; **0.5.0 uses build 29**. A new build number must be higher than the one in the
    published appcast.
 3. Write the release notes as `notes/<version>.md`. They are embedded in the appcast.
 
@@ -99,7 +99,7 @@ only once.
 Start `Release (macOS)` from the Actions tab on `main`, or:
 
 ```sh
-gh workflow run release-macos.yml --repo Bldg-7/shepherd -f version=0.4.0 -f build_number=28
+gh workflow run release-macos.yml --repo Bldg-7/shepherd -f version=0.5.0 -f build_number=29
 ```
 
 Approve the run when GitHub asks. It uploads a draft release. It also keeps the disk image,
@@ -114,7 +114,9 @@ need the version's release notes to exist yet.
 ### Steps only the workflow has
 
 - It downloads the published appcast and the full update archives of the five latest
-  releases into `build/updates`. The script checks the build number against that appcast and
+  releases into `build/updates`. Archives of releases before 0.5.0 are named
+  `Shepherd-<version>.zip` and archives from 0.5.0 on `hrdrhrdrhrdr-<version>.zip`; the
+  workflow downloads archives under either name. The script checks the build number against that appcast and
   makes the delta updates from those archives.
 - It downloads Xcode's Metal toolchain, which the runner's image comes without and a Mac
   that builds the app already has.
@@ -190,7 +192,7 @@ a release.
 
 Download the draft assets, compare hashes/sizes and verify the ZIP's Sparkle signature,
 app/DMG notarization and Gatekeeper acceptance. Check that all appcast URLs refer to the
-same release tag.
+same release tag, and that the appcast item for this version carries the release notes.
 
 Then push an annotated tag `v<version>` that points to the exact built commit; without it,
 GitHub creates a lightweight tag when the draft is published. Do not create the tag before
@@ -201,6 +203,8 @@ After a release built on a Mac, copy `build/release/<version>/updates` into `bui
 keeping the older archives that are there: later releases make deltas from them. The
 workflow keeps no such directory; it downloads the published files on every run.
 
-The repository's Pages workflow and site are independent of this procedure. Historical 0.1,
+The repository's Pages workflow publishes the site separately, but the site's download
+buttons point to `releases/latest/download/hrdrhrdrhrdr.dmg`, so they work only while
+the Latest release has that file. Historical 0.1,
 0.2.0, 0.2.1 and 0.3.0 assets remain available. Pushing source and releasing the app are
 separate operations; a successful push does not mean the app was released.
