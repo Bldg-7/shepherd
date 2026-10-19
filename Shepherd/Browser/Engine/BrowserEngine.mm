@@ -234,10 +234,17 @@ class EngineApp : public CefApp, public CefBrowserProcessHandler {
 
   void OnBeforeCommandLineProcessing(const CefString &processType, CefRefPtr<CefCommandLine> commandLine) override {
     if (!processType.empty()) return;
+    // The helper path set in startWithRootCachePath: is already here as a
+    // switch, and Reset() would drop it too. CEF would then look for
+    // "<executable name> Helper.app", which doesn't exist when the executable
+    // and the helpers are named differently, and without its GPU helper
+    // Chromium takes the whole app down.
+    const CefString helper = commandLine->GetSwitchValue("browser-subprocess-path");
     // Start from a trusted configuration, ignoring all external Chromium
     // switches (debugging TCP, sandbox/certificate overrides included).
     commandLine->Reset();
     commandLine->SetProgram((*_NSGetArgv())[0]);
+    if (!helper.empty()) commandLine->AppendSwitchWithValue("browser-subprocess-path", helper);
     // Pages that aren't on screen keep running at full speed: an agent may
     // be working in them (A6).
     commandLine->AppendSwitch("disable-background-timer-throttling");
