@@ -23,6 +23,7 @@ import AppKit
             await CDPProxy.shared.start(port: 0)
             guard CDPProxy.shared.port != nil else { throw PiBridgeFailure.unavailable }
             var selections = 0
+            var selected: AgentSummary?
             let created = try await service.launch(kind: .pi, on: machine, client: client, create: { environment in
                 let created = try await client.createWorkspace(label: "Owned Pi native", on: nil, environment: environment)
                 try write(["pane":created.pane.paneID,"terminal":created.pane.terminalID], folder.appendingPathComponent("selection.json"))
@@ -34,14 +35,21 @@ import AppKit
                 }
                 guard FileManager.default.fileExists(atPath: folder.appendingPathComponent("attached").path) else { throw PiBridgeFailure.unavailable }
                 return created
-            }, select: { _ in selections += 1 })
+            }, select: { tab in selections += 1; selected = tab.pane }, started: {
+                // When the launcher would close: Pi's command is typed in, Pi
+                // and its MCP not yet taken for ready.
+                try? write(await AgentLaunchFixture.startedEvidence(selected, service: service, machine: machine, client: client),
+                           folder.appendingPathComponent("started.json"))
+            })
+            let returnedAt = Date().timeIntervalSince1970
             guard selections == 1 else { throw PiBridgeFailure.identity }
             let key = BrowserKey(machine: machine, pane: created.pane)
             let owner = AgentPaneIdentity(key: key, terminalID: created.pane.terminalID)
             guard let run = service.fixturePiCoordinator(for: owner), run.isReady else { throw PiBridgeFailure.unavailable }
             coordinator = run
             guard BrowserStore.shared.browser(for: key)?.agentSocketConnected != true else { throw PiBridgeFailure.conflict }
-            try write(["ready":true,"pid":ProcessInfo.processInfo.processIdentifier,"stage":run.stage.folder,"metadataOnly":true,"publicLaunchService":true], folder.appendingPathComponent("ready.json"))
+            try write(["ready":true,"pid":ProcessInfo.processInfo.processIdentifier,"stage":run.stage.folder,"metadataOnly":true,"publicLaunchService":true,
+                       "returnedAt":returnedAt], folder.appendingPathComponent("ready.json"))
             let stop = folder.appendingPathComponent("stop")
             let until = ContinuousClock().now.advanced(by: .seconds(65))
             while !FileManager.default.fileExists(atPath: stop.path), ContinuousClock().now < until {

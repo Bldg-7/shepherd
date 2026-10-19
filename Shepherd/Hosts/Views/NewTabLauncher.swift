@@ -70,6 +70,55 @@ nonisolated struct CreatedPaneLaunchError: Error, LocalizedError {
     var errorDescription: String? { String(localized: "The created pane was kept and selected. \(reason)") }
 }
 
+/// One Return on the tab name, from the tab being asked for until its
+/// launch ends. An agent's launch goes on until the agent is ready, long
+/// after the launcher has closed — which it does as soon as the agent's
+/// start command is in the new pane (`handOff`). The task running the launch
+/// holds this, not the launcher's state, which goes with the launcher.
+///
+/// Once the launcher has closed — at the hand-off, or by Esc, a click
+/// outside it, the app going to the background or from outside — nothing
+/// that comes later reaches it: neither a failure to show nor a close, whose
+/// `onClose` would close the next launcher instead.
+@MainActor final class LaunchAttempt {
+    private(set) var isHandedOff = false
+    private(set) var isClosed = false
+    private let close: () -> Void
+    private let fail: (_ error: any Error, _ keepsCreatedPane: Bool) -> Void
+
+    /// `close` closes the launcher, leaving the keyboard to the new tab;
+    /// `fail` shows `error` in it, with Show Created Pane when the pane made
+    /// was kept.
+    init(close: @escaping () -> Void, fail: @escaping (_ error: any Error, _ keepsCreatedPane: Bool) -> Void) {
+        self.close = close
+        self.fail = fail
+    }
+
+    /// What was asked for has started in the new tab, which is selected and
+    /// shows it: the launcher closes, once.
+    func handOff() {
+        guard !isHandedOff, !isClosed else { return }
+        isHandedOff = true
+        close()
+    }
+
+    /// The launcher has closed, whichever way.
+    func launcherClosed() {
+        isClosed = true
+    }
+
+    /// The launch ended, with `error` or without. Before a hand-off, a
+    /// failure shows in the launcher and a success closes it.
+    func finish(_ error: (any Error)?) {
+        guard !isHandedOff, !isClosed else { return }
+        if let error {
+            fail(error, error is CreatedPaneLaunchError)
+        } else {
+            close()
+        }
+    }
+}
+
 /// What the launcher asks for once every step is done.
 struct LaunchRequest {
     enum Workspace {
@@ -103,8 +152,11 @@ struct LaunchRequest {
 struct NewTabLauncher: View {
     let targets: [LaunchTarget]
     let allowsBrowserAgents: Bool
-    /// Makes the tab. Throws what went wrong, which is shown in place.
-    let create: (LaunchRequest) async throws -> Void
+    /// Makes the tab. Throws what went wrong, which is shown in place —
+    /// unless the tab was handed off first (`handOff`), as an agent's is once
+    /// the agent's start command is in the new pane. The launcher closes at
+    /// the hand-off; what comes after it shows in the sidebar.
+    let create: (LaunchRequest, _ handOff: @escaping @MainActor () -> Void) async throws -> Void
     let onClose: () -> Void
 
     private enum Step {
@@ -142,10 +194,13 @@ struct NewTabLauncher: View {
     /// Whether closing hands the keyboard back to whatever had it before.
     /// Not after a tab was opened: the new tab is selected and takes it.
     @State private var restoresFocusOnClose = true
+    /// The latest Return on the tab name, told when the launcher closes.
+    @State private var attempt: LaunchAttempt?
     @Environment(\.controlActiveState) private var controlActiveState
     @State private var outsideClicks = OutsideClickWatcher()
 
-    init(targets: [LaunchTarget], preset: LaunchPreset? = nil, allowsBrowserAgents: Bool = false, create: @escaping (LaunchRequest) async throws -> Void, onClose: @escaping () -> Void) {
+    init(targets: [LaunchTarget], preset: LaunchPreset? = nil, allowsBrowserAgents: Bool = false,
+         create: @escaping (LaunchRequest, _ handOff: @escaping @MainActor () -> Void) async throws -> Void, onClose: @escaping () -> Void) {
         self.targets = targets
         self.allowsBrowserAgents = allowsBrowserAgents
         self.create = create
@@ -185,6 +240,9 @@ struct NewTabLauncher: View {
                 .padding(.horizontal, 24)
         }
         .onChange(of: targetID) { program = .shell }
+        // Closed from outside as well — the pane switcher coming up, another
+        // machine — a launch still going leaves the launcher alone.
+        .onDisappear { attempt?.launcherClosed() }
         #if os(macOS)
         .onChange(of: controlActiveState) { _, state in
             if state != .key {
@@ -448,14 +506,18 @@ struct NewTabLauncher: View {
             let request = LaunchRequest(herdrMachine: target.herdrMachine, workspace: workspace, tabName: trimmedText,
                                         program: allowsBrowserAgents && target.herdrMachine == nil ? program : .shell)
             isCreating = true
+            let attempt = LaunchAttempt(close: { close(restoringFocus: false) }, fail: { error, keepsCreatedPane in
+                failure = connectionFailureDescription(error)
+                createdPaneRetained = keepsCreatedPane
+                isCreating = false
+            })
+            self.attempt = attempt
             Task {
                 do {
-                    try await create(request)
-                    close(restoringFocus: false)
+                    try await create(request) { attempt.handOff() }
+                    attempt.finish(nil)
                 } catch {
-                    failure = connectionFailureDescription(error)
-                    createdPaneRetained = error is CreatedPaneLaunchError
-                    isCreating = false
+                    attempt.finish(error)
                 }
             }
         }
@@ -507,6 +569,7 @@ struct NewTabLauncher: View {
     }
 
     private func close(restoringFocus: Bool) {
+        attempt?.launcherClosed()
         restoresFocusOnClose = restoringFocus
         onClose()
     }

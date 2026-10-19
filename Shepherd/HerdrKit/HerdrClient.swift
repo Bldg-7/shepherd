@@ -161,7 +161,12 @@ actor HerdrClient {
         environment.keys.sorted().flatMap { ["--env", "\($0)=\(environment[$0]!)"] }
     }
 
-    /// Success is herdr's interactive readiness result, not CLI version or MCP readiness.
+    /// Has herdr type the kind's command into the pane's shell. Over the
+    /// socket API herdr answers `agent_started` as soon as that is written,
+    /// before the agent is ready for input; only the `herdr agent start` CLI
+    /// (the way to a herdr machine here) waits for its interactive readiness.
+    /// So success is not readiness, nor CLI version or MCP readiness: a launch
+    /// waits for the agent itself (`AgentLaunchService`, `AgentLaunchReadiness`).
     func agentStart(name: String, kind: AgentKind, paneID: String, arguments: [String], timeoutMs: Int = 30_000, on machine: HerdrMachine? = nil) async throws -> AgentStartResult {
         guard (3_001...300_000).contains(timeoutMs) else { throw Self.agentResponseError() }
         let result = try await agentRequest(method: "agent.start", params: [

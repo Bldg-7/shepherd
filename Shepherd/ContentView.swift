@@ -332,7 +332,7 @@ struct ContentView: View {
                     targets: launchTargets,
                     preset: launcherPreset(launcherStart, on: machine),
                     allowsBrowserAgents: allowsBrowserAgents(on: machine),
-                    create: { request in try await openTab(request, on: machine) },
+                    create: { request, handOff in try await openTab(request, on: machine, handOff: handOff) },
                     onClose: { self.launcherStart = nil }
                 )
             }
@@ -827,7 +827,13 @@ struct ContentView: View {
     /// Opens the tab the launcher asked for, over a connection of its own,
     /// and selects it at once — before the board has listed it, which it is
     /// asked to do straight away (see `AgentBoardView.justCreatedID`).
-    private func openTab(_ request: LaunchRequest, on machine: Machine) async throws {
+    ///
+    /// An agent's tab is handed off (`handOff`) as soon as the agent's start
+    /// command is in its pane, named already: the launcher closes then, and
+    /// the launch goes on until the agent is ready, its wait and any failure
+    /// showing in the sidebar. A shell's tab is not handed off; the launcher
+    /// closes when this returns.
+    private func openTab(_ request: LaunchRequest, on machine: Machine, handOff: @escaping @MainActor () -> Void) async throws {
         func requireCurrentConnection() throws {
             try Task.checkCancellation()
             guard machineStore.isCurrentConnection(machine) else { throw MachineStore.EditError.settingsChanged }
@@ -853,20 +859,35 @@ struct ContentView: View {
                 return try await client.createWorkspace(label: name, on: request.herdrMachine, environment: environment)
             }
         }
-        do {
-            try await client.connect()
-            try requireCurrentConnection()
-            let created: HerdrClient.CreatedTab
-            if let kind = request.program.agentKind {
-                guard request.herdrMachine == nil else { throw AgentRuntimeError.remoteUnavailable }
-                created = try await AgentLaunchService.shared.launch(kind: kind, on: machine, client: client, create: create, select: select)
-            } else {
-                created = try await create([:])
-                select(created)
-            }
+        /// A new workspace's first tab is herdr's to name; the name asked for
+        /// is given to it afterwards.
+        func rename(_ created: HerdrClient.CreatedTab) async throws {
             try requireCurrentConnection()
             if case .new = request.workspace, let tabName = request.tabName {
                 try await client.renameTab(created.tab.tabID, to: tabName, on: request.herdrMachine)
+            }
+        }
+        do {
+            try await client.connect()
+            try requireCurrentConnection()
+            if let kind = request.program.agentKind {
+                guard request.herdrMachine == nil else { throw AgentRuntimeError.remoteUnavailable }
+                // Named before it is handed off, so the launcher closes on the
+                // tab with its name. A rename that fails keeps the launcher up
+                // instead, and is what it shows once the launch has ended.
+                var renameFailure: (any Error)?
+                _ = try await AgentLaunchService.shared.launch(kind: kind, on: machine, client: client, create: create, select: select, started: {
+                    do {
+                        if let retained { try await rename(retained) }
+                        handOff()
+                    } catch { renameFailure = error }
+                })
+                try requireCurrentConnection()
+                if let renameFailure { throw renameFailure }
+            } else {
+                let created = try await create([:])
+                select(created)
+                try await rename(created)
             }
             await client.disconnect()
         } catch {

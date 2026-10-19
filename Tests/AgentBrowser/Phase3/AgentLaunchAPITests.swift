@@ -154,7 +154,91 @@ actor LaunchTransport: HerdrTransport {
         #endif
         try retryAndReuse(agent: agent, row: row)
         try await typedPiShim(client: client, transport: transport)
+        try launchReadiness(row: row)
         print("AGENT LAUNCH API/STATE PASS")
+    }
+
+    /// When a launch takes the agent it started for ready: before the
+    /// launcher has handed the tab off, and after, when the user may have
+    /// sent a prompt already (`AgentLaunchReadiness`).
+    static func launchReadiness(row: JSONValue) throws {
+        let base = try JSONSerialization.jsonObject(with: JSONEncoder().encode(row)) as! [String: Any]
+        func agent(_ changes: [String: Any], removing: [String] = []) throws -> AgentSummary {
+            var value = base.merging(changes) { _, new in new }
+            for key in removing { value.removeValue(forKey: key) }
+            return AgentSummary(json: try JSONDecoder().decode(JSONValue.self, from: JSONSerialization.data(withJSONObject: value)))!
+        }
+        func ready(_ row: AgentSummary, _ kind: AgentKind, handedOff: Bool, pane: String = "w1:p1", terminal: String = "term_owned") -> Bool {
+            AgentLaunchReadiness.isReady(row, kind: kind, paneID: pane, terminalID: terminal, handedOff: handedOff)
+        }
+        let both = [false, true]
+
+        // Pi is typed in by Shepherd: herdr gives it no interactive_ready, and its idle state is read instead.
+        func pi(_ state: String, _ changes: [String: Any] = [:]) throws -> AgentSummary {
+            try agent(["agent": "pi", "agent_status": state].merging(changes) { _, new in new },
+                      removing: ["interactive_ready", "launch_pending"].filter { changes[$0] == nil })
+        }
+        for state in ["idle", "done"] {
+            for handedOff in both {
+                check(ready(try pi(state), .pi, handedOff: handedOff), "Pi \(state) is ready (handed off: \(handedOff))")
+                check(ready(try pi(state, ["interactive_ready": false]), .pi, handedOff: handedOff), "Pi \(state) needs no interactive_ready (handed off: \(handedOff))")
+                check(!ready(try pi(state, ["launch_pending": true]), .pi, handedOff: handedOff), "Pi \(state) with launch_pending is not ready (handed off: \(handedOff))")
+            }
+        }
+        check(!ready(try pi("working"), .pi, handedOff: false), "Pi working before the hand-off is not ready")
+        check(ready(try pi("working"), .pi, handedOff: true), "Pi working after the hand-off is ready")
+        for state in ["blocked", "unknown"] {
+            for handedOff in both {
+                check(!ready(try pi(state), .pi, handedOff: handedOff), "Pi \(state) is not ready (handed off: \(handedOff))")
+            }
+        }
+
+        // Claude Code and Codex are started by herdr, which marks interactive_ready and launch_pending.
+        for (kind, name) in [(AgentKind.claude, "claude-code"), (.claude, "claude"), (.codex, "codex")] {
+            func started(_ state: String, ready interactive: Any?, pending: Any?) throws -> AgentSummary {
+                var changes: [String: Any] = ["agent": name, "agent_status": state], removing: [String] = []
+                if let interactive { changes["interactive_ready"] = interactive } else { removing.append("interactive_ready") }
+                if let pending { changes["launch_pending"] = pending } else { removing.append("launch_pending") }
+                return try agent(changes, removing: removing)
+            }
+            for handedOff in both {
+                check(ready(try started("idle", ready: true, pending: false), kind, handedOff: handedOff), "\(name) interactive_ready without launch_pending is ready (handed off: \(handedOff))")
+                check(ready(try started("idle", ready: true, pending: nil), kind, handedOff: handedOff), "\(name) interactive_ready with no launch_pending field is ready (handed off: \(handedOff))")
+                check(!ready(try started("idle", ready: true, pending: true), kind, handedOff: handedOff), "\(name) idle with launch_pending is not ready (handed off: \(handedOff))")
+                check(!ready(try started("idle", ready: false, pending: false), kind, handedOff: handedOff), "\(name) idle without interactive_ready is not ready (handed off: \(handedOff))")
+                check(!ready(try started("idle", ready: nil, pending: nil), kind, handedOff: handedOff), "\(name) idle with no readiness fields is not ready (handed off: \(handedOff))")
+                // Blocked and unknown stay as they were: herdr's readiness alone decides.
+                for state in ["blocked", "unknown"] {
+                    check(ready(try started(state, ready: true, pending: false), kind, handedOff: handedOff), "\(name) \(state) with interactive_ready is ready as before (handed off: \(handedOff))")
+                    check(!ready(try started(state, ready: false, pending: true), kind, handedOff: handedOff), "\(name) \(state) still launching is not ready (handed off: \(handedOff))")
+                    check(!ready(try started(state, ready: nil, pending: nil), kind, handedOff: handedOff), "\(name) \(state) with no readiness fields is not ready (handed off: \(handedOff))")
+                }
+            }
+            // Working with launch_pending still set: herdr has not seen it idle.
+            for (interactive, pending) in [(false as Any?, true as Any?), (nil, true), (true, true), (false, false), (nil, nil)] {
+                let working = try started("working", ready: interactive, pending: pending)
+                let fields = "interactive_ready \(interactive.map { "\($0)" } ?? "absent"), launch_pending \(pending.map { "\($0)" } ?? "absent")"
+                check(!ready(working, kind, handedOff: false), "\(name) working before the hand-off is not ready (\(fields))")
+                check(ready(working, kind, handedOff: true), "\(name) working after the hand-off is ready (\(fields))")
+            }
+        }
+
+        // Only the row of the launched kind, in the same pane and terminal.
+        let claude = try agent(["agent": "claude-code", "agent_status": "working"])
+        let idleClaude = try agent([:]), idlePi = try pi("idle")
+        for handedOff in both {
+            check(ready(idleClaude, .claude, handedOff: handedOff), "the launched Claude row is ready (handed off: \(handedOff))")
+            check(!ready(idleClaude, .codex, handedOff: handedOff) && !ready(idleClaude, .pi, handedOff: handedOff), "another kind's row is refused (handed off: \(handedOff))")
+            check(!ready(idlePi, .claude, handedOff: handedOff) && !ready(idlePi, .codex, handedOff: handedOff), "Pi's row is not Claude's or Codex's (handed off: \(handedOff))")
+            check(!ready(try agent(["agent": "unrecognized"]), .claude, handedOff: handedOff), "an unrecognized agent is refused (handed off: \(handedOff))")
+            check(!ready(try agent([:], removing: ["agent"]), .claude, handedOff: handedOff), "a row with no agent is refused (handed off: \(handedOff))")
+            for row in [idleClaude, claude] {
+                check(!ready(row, .claude, handedOff: handedOff, pane: "w1:p2"), "another pane is refused (handed off: \(handedOff))")
+                check(!ready(row, .claude, handedOff: handedOff, terminal: "term_other"), "another terminal in the same pane is refused (handed off: \(handedOff))")
+            }
+            check(!ready(try pi("working"), .pi, handedOff: handedOff, terminal: "term_other"), "Pi in another terminal is refused (handed off: \(handedOff))")
+        }
+        check(ready(claude, .claude, handedOff: true) && !ready(claude, .codex, handedOff: true), "a working row after the hand-off is still only its own kind's")
     }
 
     /// Pi's shim by its absolute path (`launchPi`): typed as `herdr pane run`

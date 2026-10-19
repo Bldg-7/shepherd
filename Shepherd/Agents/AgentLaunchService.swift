@@ -241,9 +241,16 @@ final class AgentLaunchService {
 
     /// Reserve before create; select the returned shell before any later failure.
     /// A failed start never retries, closes the pane, or cleans prepared state.
+    ///
+    /// Returns once the agent is ready. `started` is awaited once before that,
+    /// as soon as the agent's start command is in the pane: from then on the
+    /// selected pane shows the agent, and the wait and any failure after it
+    /// show in the sidebar (`status(for:on:)`). A launch given `started` also
+    /// takes a working agent for ready (`AgentLaunchReadiness`).
     func launch(kind: AgentKind, on machine: Machine, client: HerdrClient,
                 create: ([String: String]) async throws -> HerdrClient.CreatedTab,
-                select: (HerdrClient.CreatedTab) -> Void) async throws -> HerdrClient.CreatedTab {
+                select: (HerdrClient.CreatedTab) -> Void,
+                started: (@MainActor () async -> Void)? = nil) async throws -> HerdrClient.CreatedTab {
         guard machine.isLocal else { throw AgentRuntimeError.remoteUnavailable }
         guard ShepherdBrowserFeature.shared.isEnabled else { throw AgentRuntimeError.rejected("shepherd-browser-disabled") }
         guard BrowserEngine.isAvailable else { throw AgentRuntimeError.rejected("native-browser-unavailable") }
@@ -251,7 +258,7 @@ final class AgentLaunchService {
         let operation = UUID(); pending.insert(operation); defer { pending.remove(operation) }
         let host = try context(), runtime = host.runtime(using: client)
         guard kind.supportsManagedBrowserLaunch else { throw AgentRuntimeError.rejected("pi-launch-unqualified") }
-        if kind == .pi { return try await launchPi(on: machine, client: client, runtime: runtime, create: create, select: select) }
+        if kind == .pi { return try await launchPi(on: machine, client: client, runtime: runtime, create: create, select: select, started: started) }
         let available = try await runtime.availability(of: kind, executable: kind.rawValue, on: .thisMac)
         diagnostics[kind] = available
         guard available.readiness == .availableAuthenticationUnknown else {
@@ -289,7 +296,8 @@ final class AgentLaunchService {
             // would allow only one launch of each kind per session.
             let result = try await client.agentStart(name: kind.rawValue + "-" + String(reservation.reservationID.prefix(8)), kind: kind, paneID: resolved.key.paneID, arguments: plan.arguments)
             guard result.agent.terminalID == pane.terminalID else { throw AgentRuntimeError.rejected("started-terminal-identity-changed") }
-            try await waitForAgent(kind: kind, pane: pane, on: machine, client: client)
+            await started?()
+            try await waitForAgent(kind: kind, pane: pane, on: machine, client: client, handedOff: started != nil)
             // Snapshot + process inspection remain authority for subsequent state.
             MachineBrowserService.shared.accept(try await client.launchSnapshot().panes, on: machine)
             failures[pane] = nil
@@ -303,7 +311,8 @@ final class AgentLaunchService {
 
     private func launchPi(on machine: Machine, client: HerdrClient, runtime: AgentRuntime,
                           create: ([String: String]) async throws -> HerdrClient.CreatedTab,
-                          select: (HerdrClient.CreatedTab) -> Void) async throws -> HerdrClient.CreatedTab {
+                          select: (HerdrClient.CreatedTab) -> Void,
+                          started: (@MainActor () async -> Void)?) async throws -> HerdrClient.CreatedTab {
         installation = try await runtime.install(on: .thisMac)
         let stage = try await runtime.stagePi(on: .thisMac)
         let created = try await create(stage.environment)
@@ -330,7 +339,8 @@ final class AgentLaunchService {
             // `pi-foreground-binding-lost`. The staged PATH still goes to the
             // pane (`stage.environment`), for Pi's own children.
             try await client.runCommand(paneID: pane.paneID, argv: [stage.shim] + stage.arguments)
-            try await waitForAgent(kind: .pi, pane: pane, on: machine, client: client)
+            await started?()
+            try await waitForAgent(kind: .pi, pane: pane, on: machine, client: client, handedOff: started != nil)
             try await coordinator.waitUntilReady()
             failures[pane] = nil
             return created
@@ -341,7 +351,11 @@ final class AgentLaunchService {
         }
     }
 
-    private func waitForAgent(kind: AgentKind, pane: AgentPaneIdentity, on machine: Machine, client: HerdrClient) async throws {
+    /// herdr's `agent.start` and Pi's typed command both return once the
+    /// command is in the shell; this waits for the agent itself to be ready
+    /// (`AgentLaunchReadiness`). `handedOff`: the launcher has closed on the
+    /// new tab already, and the user may be typing to the agent.
+    private func waitForAgent(kind: AgentKind, pane: AgentPaneIdentity, on machine: Machine, client: HerdrClient, handedOff: Bool) async throws {
         let deadline = ContinuousClock().now.advanced(by: .seconds(30))
         while ContinuousClock().now < deadline {
             let snapshot = try await client.launchSnapshot()
@@ -351,15 +365,8 @@ final class AgentLaunchService {
             }
             let agents = try await client.agentList()
             agentObservations[machine.id] = agents
-            // herdr marks interactive readiness only on an agent it started
-            // itself, once it sees that agent idle in the pane. Pi is typed in
-            // by Shepherd (`launchPi`), so for Pi the same two facts are read
-            // directly: herdr's detection of Pi in the same pane, and an idle
-            // state for it. Until herdr has read Pi's screen once the state is
-            // unknown, and a prompt sent then goes unobserved by herdr.
             if let current = agents.first(where: { $0.paneID == pane.paneID && $0.terminalID == pane.terminalID }),
-               kind == .pi ? current.state.isQuiescent : current.interactiveReady == true, current.launchPending != true,
-               current.agentName.flatMap(AgentKind.init(herdrName:)) == kind { return }
+               AgentLaunchReadiness.isReady(current, kind: kind, paneID: pane.paneID, terminalID: pane.terminalID, handedOff: handedOff) { return }
             try await Task.sleep(for: .milliseconds(250))
         }
         throw AgentRuntimeError.rejected("agent-readiness-timeout-check-cli-login-and-terminal")

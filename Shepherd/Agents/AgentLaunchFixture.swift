@@ -86,7 +86,14 @@ import AppKit
                                     select: { tab in
                                         selected = tab.pane; created.append(tab.pane)
                                         try? write(["pane": tab.pane.paneID, "terminal": tab.pane.terminalID], to: folder.appending(path: "selection.json"))
+                                    },
+                                    started: {
+                                        // When the launcher would close: the start
+                                        // command is in the pane, the agent not
+                                        // yet taken for ready.
+                                        result["started"] = await startedEvidence(selected, service: service, machine: machine, client: client)
                                     })
+                                result["returnedAt"] = Date().timeIntervalSince1970
                                 result["ok"] = true
                                 result["selectedTerminal"] = selected?.terminalID
                             }
@@ -132,6 +139,19 @@ import AppKit
                 if CDPProxy.shared.activeConnections == 0, BrowserStore.shared.shutDownNow() { NSApp.terminate(nil) }
             }
         }
+    }
+
+    /// When `started` was called, the sidebar's status of the selected pane
+    /// then, and herdr's agent row for it. No session value is kept.
+    static func startedEvidence(_ pane: AgentSummary?, service: AgentLaunchService, machine: Machine, client: HerdrClient) async -> [String: Any] {
+        var evidence: [String: Any] = ["at": Date().timeIntervalSince1970]
+        guard let pane else { return evidence }
+        evidence["status"] = String(localized: service.status(for: pane, on: machine).title)
+        if let row = try? await client.agentList().first(where: { $0.paneID == pane.paneID && $0.terminalID == pane.terminalID }) {
+            evidence["agent"] = ["kind": row.agentName ?? "", "state": row.state.rawValue,
+                                 "interactiveReady": row.interactiveReady == true, "launchPending": row.launchPending == true]
+        }
+        return evidence
     }
 
     private static func write(_ object: [String: Any], to file: URL) throws {

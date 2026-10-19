@@ -33,6 +33,35 @@ nonisolated enum AgentBrowserStatus: Equatable, Sendable {
     }
 }
 
+/// When a launch takes the agent it started for ready (`AgentLaunchService`'s
+/// wait after the start command). herdr's `agent.start` answers as soon as
+/// the command is typed into the shell, so the launch reads `agent.list` until
+/// the row of the same pane and terminal shows the kind it started, ready:
+///
+/// - Claude Code and Codex: herdr's `interactive_ready`, which it marks only on
+///   an agent it started itself once it sees it idle, and no `launch_pending`.
+/// - Pi, typed in by Shepherd rather than started by herdr: idle or done, and
+///   no `launch_pending`. Until herdr has read Pi's screen once the state is
+///   unknown, and a prompt sent then goes unobserved by herdr.
+///
+/// `handedOff`: the launcher has closed on the new tab already, and the user
+/// may have sent a prompt before herdr saw the agent idle, so a working agent
+/// is ready too — Claude Code and Codex with `launch_pending` still set, as
+/// herdr leaves it until it has seen them idle. Blocked and unknown never are.
+nonisolated enum AgentLaunchReadiness {
+    static func isReady(_ agent: AgentSummary, kind: AgentKind, paneID: String, terminalID: String, handedOff: Bool) -> Bool {
+        guard agent.paneID == paneID, agent.terminalID == terminalID,
+              agent.agentName.flatMap(AgentKind.init(herdrName:)) == kind else { return false }
+        let working = handedOff && agent.state == .working
+        switch kind {
+        case .pi:
+            return agent.launchPending != true && (agent.state.isQuiescent || working)
+        case .claude, .codex:
+            return working || (agent.interactiveReady == true && agent.launchPending != true)
+        }
+    }
+}
+
 nonisolated enum AgentResumeEligibility {
     static func sessionID(agent: AgentSummary, process: PaneProcessInfo?, status: AgentBrowserStatus, fresh: Bool) -> String? {
         guard fresh, status == .missingInjection, agent.state.isQuiescent, agent.interactiveReady == true,
