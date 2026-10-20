@@ -188,7 +188,9 @@ final class FocusReportingTerminalView: TerminalView {
         fileGesture.cancel()
         capturedFileHandler = nil
         let point = convert(event.locationInWindow, from: nil)
-        if fileGesture.begin(link: TerminalFileHit.link(in: self, point: point), at: point) {
+        // The second and third press of a double or triple click on a link
+        // are claimed too, and open nothing (see `TerminalFileGesture`).
+        if fileGesture.begin(link: TerminalFileHit.link(in: self, point: point), at: point, clickCount: event.clickCount) {
             capturedFileHandler = onOpenFileGesture // owner at press, not release
             return // no remote press, including explicit OSC8/file URI targets
         }
@@ -212,8 +214,7 @@ final class FocusReportingTerminalView: TerminalView {
                 // modifier the xterm mouse protocol doesn't carry to the
                 // program, so the claimed click is the only thing it means
                 // anything to (see `LinkDestinationPolicy`).
-                handler?(link, TerminalLinkClick(commandHeld: event.modifierFlags.contains(.command),
-                                                 windowPoint: topLeftWindowPoint(event.locationInWindow)))
+                handler?(link, TerminalLinkClick(commandHeld: event.modifierFlags.contains(.command)))
             }
             return // failure/drag never replays this gesture to the remote TUI
         }
@@ -235,15 +236,6 @@ final class FocusReportingTerminalView: TerminalView {
         linkHighlightMode = .alwaysWithModifier
         defer { linkHighlightMode = highlighting }
         super.mouseUp(with: release)
-    }
-
-    /// `point`, given in the window's coordinates with the origin at the
-    /// bottom left as AppKit has it, with the origin at the top left of the
-    /// window's content as SwiftUI's global coordinate space has it. Nil
-    /// while the view isn't in a window.
-    private func topLeftWindowPoint(_ point: NSPoint) -> CGPoint? {
-        guard let content = window?.contentView else { return nil }
-        return CGPoint(x: point.x, y: content.bounds.height - point.y)
     }
 
     override var hasFocus: Bool {

@@ -14,7 +14,6 @@ struct ExperimentalFeaturesSettingsView: View {
     @State private var advancedExpanded = false
     @State private var checkingPrerequisites = false
     @AppStorage(TerminalFileDropFeature.preferenceKey) private var terminalFileDropEnabled = false
-    @AppStorage(LinkDestinationPolicy.preferenceKey) private var linkDestination: LinkDestinationPolicy.Preference = .ask
 
     private var feature: ShepherdBrowserFeature { .shared }
     private var service: AgentLaunchService { .shared }
@@ -70,27 +69,11 @@ struct ExperimentalFeaturesSettingsView: View {
                     HStack {
                         Text("In-app Browser")
                         InfoButton(accessibilityLabel: "About In-app Browser",
-                                   explanation: "An in-app pane browser. Codex resume confirmation may wait until the first user turn; live agents are never restarted automatically.")
+                                   explanation: "An in-app pane browser. Links clicked in a terminal open in In-app Browser; ⌘-click opens them in the default browser. Codex resume confirmation may wait until the first user turn; live agents are never restarted automatically.")
                     }
                 }
                 .disabled(feature.isTransitioning)
                 .help("Turning this off preserves saved tabs, profiles, cookies, and runtime settings. An already initialized idle browser engine may remain resident until quit.")
-                // Where a link clicked in a terminal opens. Kept whether or
-                // not the browser is on: with it off, every link goes to the
-                // default browser, and the setting is there for when it is
-                // on again.
-                Picker(selection: $linkDestination) {
-                    Text("Ask first").tag(LinkDestinationPolicy.Preference.ask)
-                    Text("In-app Browser").tag(LinkDestinationPolicy.Preference.shepherd)
-                    Text("Default Browser").tag(LinkDestinationPolicy.Preference.system)
-                } label: {
-                    HStack {
-                        Text("Open links in")
-                        InfoButton(accessibilityLabel: "About opening links",
-                                   explanation: "Where http and https links clicked in a terminal open. ⌘-click opens a link in the other browser. With In-app Browser off, or unavailable on this Mac, links open in the default browser.")
-                    }
-                }
-                .accessibilityIdentifier("settings.experimental-features.link-destination")
                 if feature.isEnabled {
                     PasswordManagerSettingsRows(preferences: feature.passwordManagers,
                         windowID: passwordManagerWindowID, connectIntent: { manager in

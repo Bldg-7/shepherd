@@ -539,24 +539,24 @@
         }
       }
     },
-    "An in-app pane browser. Codex resume confirmation may wait until the first user turn; live agents are never restarted automatically." : {
+    "An in-app pane browser. Links clicked in a terminal open in In-app Browser; ⌘-click opens them in the default browser. Codex resume confirmation may wait until the first user turn; live agents are never restarted automatically." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "An in-app pane browser. Codex resume confirmation may wait until the first user turn; live agents are never restarted automatically."
+            "value" : "An in-app pane browser. Links clicked in a terminal open in In-app Browser; ⌘-click opens them in the default browser. Codex resume confirmation may wait until the first user turn; live agents are never restarted automatically."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ペインに付属するアプリ内ブラウザです。Codex の再開確認は最初のユーザー入力まで遅れることがあります。実行中のエージェントを自動で再起動しません。"
+            "value" : "ペインに付属するアプリ内ブラウザです。ターミナルでクリックしたリンクは In-app Browser で開き、⌘を押しながらクリックするとデフォルトブラウザで開きます。Codex の再開確認は最初のユーザー入力まで遅れることがあります。実行中のエージェントを自動で再起動しません。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "pane에 연결되는 앱 내 브라우저입니다. Codex 재개 확인은 첫 사용자 입력까지 늦어질 수 있으며, 실행 중인 에이전트를 자동으로 재시작하지 않습니다."
+            "value" : "pane에 연결되는 앱 내 브라우저입니다. 터미널에서 클릭한 링크는 In-app Browser에서 열리고, ⌘를 누른 채 클릭하면 기본 브라우저에서 열립니다. Codex 재개 확인은 첫 사용자 입력까지 늦어질 수 있으며, 실행 중인 에이전트를 자동으로 재시작하지 않습니다."
           }
         }
       }
@@ -6584,102 +6584,6 @@
         }
       }
     },
-    "Open links in" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "リンクを開く場所"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "링크 여는 곳"
-          }
-        }
-      }
-    },
-    "Ask first" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "最初に確認"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "처음에 묻기"
-          }
-        }
-      }
-    },
-    "Default Browser" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "デフォルトブラウザ"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "기본 브라우저"
-          }
-        }
-      }
-    },
-    "About opening links" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "リンクを開く場所について"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "링크 열기 정보"
-          }
-        }
-      }
-    },
-    "Where http and https links clicked in a terminal open. ⌘-click opens a link in the other browser. With In-app Browser off, or unavailable on this Mac, links open in the default browser." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ターミナルでクリックした http、https リンクを開く場所です。⌘を押しながらクリックすると、もう一方のブラウザで開きます。In-app Browser がオフか、この Mac で使えない場合はデフォルトブラウザで開きます。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "터미널에서 클릭한 http, https 링크를 여는 곳입니다. ⌘를 누른 채 클릭하면 다른 쪽 브라우저에서 열립니다. In-app Browser가 꺼져 있거나 이 Mac에서 쓸 수 없으면 기본 브라우저에서 열립니다."
-          }
-        }
-      }
-    },
-    "Open in In-app Browser" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "In-app Browser で開く"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "In-app Browser에서 열기"
-          }
-        }
-      }
-    },
     "Open in Default Browser" : {
       "localizations" : {
         "ja" : {
@@ -6692,54 +6596,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "기본 브라우저에서 열기"
-          }
-        }
-      }
-    },
-    "Don't ask again" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "今後は確認しない"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "다음부터 묻지 않기"
-          }
-        }
-      }
-    },
-    "⌘-click opens a link in the other browser." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "⌘を押しながらクリックすると、もう一方のブラウザで開きます。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "⌘를 누른 채 클릭하면 다른 쪽 브라우저에서 열립니다."
-          }
-        }
-      }
-    },
-    "In-app Browser is off, so the link opened in the default browser." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "In-app Browser がオフのため、デフォルトブラウザで開きました。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "In-app Browser가 꺼져 있어 기본 브라우저에서 열었습니다."
           }
         }
       }

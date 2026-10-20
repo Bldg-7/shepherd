@@ -61,17 +61,9 @@ struct ContentView: View {
     /// selected (see `FilePreviewPaneStates`).
     @State private var filePreviews = FilePreviewPaneStates()
     @State private var webLinkFailure: TerminalWebLinkError?
-    /// Where links open, as set in Settings (see `LinkDestinationPolicy`).
-    @AppStorage(LinkDestinationPolicy.preferenceKey) private var linkDestination: LinkDestinationPolicy.Preference = .ask
-    /// A clicked link the person is being asked where to open, while the
-    /// prompt for it is up.
-    @State private var linkChoice: LinkChoice?
-    /// A word on a link that went to the default browser because Shepherd
+    /// A word on a link that went to the default browser because In-app
     /// Browser couldn't show it, while it is shown.
     @State private var linkNotice: LinkNotice?
-    /// The terminal column's frame in the window, so that the prompt for a
-    /// link can be put where the link was clicked.
-    @State private var terminalColumnFrame = CGRect.zero
     @State private var isShowingPaneSwitcher = false
     @State private var paneDestinations: [PaneDestination] = []
     @State private var switcherConnection: Machine.ConnectionIdentity?
@@ -281,7 +273,6 @@ struct ContentView: View {
                 self.titleRename = nil
             }
             renameCommit = nil
-            linkChoice = nil
             #if os(macOS)
             activatedPanes = [:]
             #endif
@@ -301,7 +292,6 @@ struct ContentView: View {
             // The preview stays with the pane or tab that was selected, as
             // it was, but at the side: going to another one reveals its
             // terminal, and coming back reveals this one's.
-            linkChoice = nil
             #if os(macOS)
             expandedPreview = nil
             #endif
@@ -529,7 +519,7 @@ struct ContentView: View {
             selection: machine.flatMap { selection(on: $0).wrappedValue },
             showsTabs: showsTabs && AgentBoardView.offersTabs,
             coversTerminal: launcherStart != nil || isShowingSettings || isShowingPaneSwitcher
-                || previewCoversTerminal(on: machine) || webLinkFailure != nil || linkChoice != nil
+                || previewCoversTerminal(on: machine) || webLinkFailure != nil
                 || herdrMachineSetup != nil
         )
     }
@@ -579,13 +569,6 @@ struct ContentView: View {
         .onAppear { isDetailColumnVisible = true }
         .onDisappear { isDetailColumnVisible = false }
         #if os(macOS)
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { terminalColumnFrame = $0 }
-        // Where to open a clicked link, over the link itself.
-        .popover(item: $linkChoice, attachmentAnchor: linkChoiceAnchor, arrowEdge: .top) { choice in
-            LinkDestinationPrompt(url: choice.url) { destination, remember in
-                resolveLinkChoice(choice, destination: destination, remember: remember)
-            }
-        }
         .overlay(alignment: .bottom) {
             if let linkNotice {
                 LinkOpenedNotice(text: linkNotice.text)
@@ -599,28 +582,10 @@ struct ContentView: View {
         #endif
     }
 
-    /// A link whose browser is being asked for.
-    private struct LinkChoice: Identifiable {
-        let request: TerminalWebLinkRequest
-        /// `request.rawURL`, validated.
-        let url: String
-        var id: String { request.terminalID + " " + url }
-    }
-
     private struct LinkNotice: Equatable {
         let id = UUID()
         let text: String
     }
-
-    #if os(macOS)
-    /// The clicked link's place in the terminal column, or the column's top
-    /// for a click whose place isn't known.
-    private var linkChoiceAnchor: PopoverAttachmentAnchor {
-        guard let point = linkChoice?.request.click.windowPoint else { return .point(.top) }
-        let local = CGPoint(x: point.x - terminalColumnFrame.minX, y: point.y - terminalColumnFrame.minY)
-        return .rect(.rect(CGRect(x: local.x - 1, y: local.y - 1, width: 2, height: 2)))
-    }
-    #endif
 
     private func previewBelongsToSelection(_ request: FilePreviewRequest) -> Bool {
         guard machineStore.isCurrentConnection(request.machine),
@@ -672,40 +637,17 @@ struct ContentView: View {
         do { url = try TerminalWebLink.validatedURL(request.rawURL) }
         catch let failure as TerminalWebLinkError { webLinkFailure = failure; return }
         catch { webLinkFailure = .invalidURL; return }
-        // The same validation whichever browser it goes to; only Shepherd
-        // Browser has conditions of its own, and a link it can't show goes
-        // to the default browser.
-        let browserAvailable = ShepherdBrowserFeature.shared.isEnabled && BrowserEngine.isAvailable
+        // The same validation whichever browser it goes to. A click opens
+        // the link in the pane's In-app Browser, ⌘-click in the default
+        // browser; so does a click while In-app Browser can't show it.
         let commandHeld = request.click.commandHeld
-        switch LinkDestinationPolicy.destination(preference: linkDestination, commandHeld: commandHeld, browserAvailable: browserAvailable) {
-        case .ask:
-            linkChoice = LinkChoice(request: request, url: url)
+        let browserEnabled = ShepherdBrowserFeature.shared.isEnabled, engineAvailable = BrowserEngine.isAvailable
+        switch LinkDestinationPolicy.destination(commandHeld: commandHeld, browserEnabled: browserEnabled, engineAvailable: engineAvailable) {
         case .system:
-            openInDefaultBrowser(url, fellBack: LinkDestinationPolicy.fallsBackToSystem(
-                preference: linkDestination, commandHeld: commandHeld, browserAvailable: browserAvailable))
+            openInDefaultBrowser(url, browserUnavailable: LinkDestinationPolicy.saysBrowserUnavailable(
+                commandHeld: commandHeld, browserEnabled: browserEnabled, engineAvailable: engineAvailable))
         case .shepherd:
             openInShepherdBrowser(url, in: pane, on: request.machine, selected: selected)
-        }
-    }
-
-    /// Opens a link the prompt was up for, as answered. The link's pane is
-    /// looked up again: the board can have changed while the prompt was up.
-    private func resolveLinkChoice(_ choice: LinkChoice, destination: LinkDestinationPolicy.Preference, remember: Bool) {
-        linkChoice = nil
-        if remember { linkDestination = destination }
-        switch destination {
-        case .system:
-            openInDefaultBrowser(choice.url, fellBack: false)
-        case .shepherd, .ask:
-            guard let selected = selection, selected.connection == choice.request.machine.connectionIdentity,
-                  machineStore.isCurrentConnection(choice.request.machine) else { return }
-            let panes: [AgentSummary]
-            switch selected.item {
-            case .pane(let pane): panes = [pane]
-            case .tab(let tab): panes = tab.panes
-            }
-            guard let pane = choice.request.pane(in: panes, on: choice.request.machine) else { return }
-            openInShepherdBrowser(choice.url, in: pane, on: choice.request.machine, selected: selected)
         }
     }
 
@@ -725,16 +667,15 @@ struct ContentView: View {
         showsBrowser = true
     }
 
-    /// Opens `url`, validated, in the Mac's default browser. `fellBack` says
-    /// it goes there only because Shepherd Browser can't show it, which is
-    /// said in a notice over the terminal.
-    private func openInDefaultBrowser(_ url: String, fellBack: Bool) {
+    /// Opens `url`, validated, in the Mac's default browser.
+    /// `browserUnavailable` says it goes there only because In-app Browser,
+    /// though on, can't run on this Mac, which is said in a notice over the
+    /// terminal.
+    private func openInDefaultBrowser(_ url: String, browserUnavailable: Bool) {
         guard let target = URL(string: url) else { webLinkFailure = .invalidURL; return }
         NSWorkspace.shared.open(target)
-        guard fellBack else { return }
-        linkNotice = LinkNotice(text: ShepherdBrowserFeature.shared.isEnabled
-            ? String(localized: "In-app Browser isn't available on this Mac, so the link opened in the default browser.")
-            : String(localized: "In-app Browser is off, so the link opened in the default browser."))
+        guard browserUnavailable else { return }
+        linkNotice = LinkNotice(text: String(localized: "In-app Browser isn't available on this Mac, so the link opened in the default browser."))
     }
 
     /// The preview of `item`, the selected pane or tab. A view of its own for
