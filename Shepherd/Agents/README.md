@@ -302,9 +302,38 @@ Resources are copied into hash-versioned folders, then a single installation
 pointer is atomically replaced. Existing sessions keep immutable resource paths;
 old versions are intentionally retained until all sessions using them are gone.
 CLI capability probes have actual 20-second subprocess deadlines (a deadline
-kill is a failure, never a success). Setup uses an exclusive root lock and fails
-`setup-busy` rather than clobbering an in-flight operation. A process crash can leave the lock; it is not automatically
-removed by guessing ownership. Explicit recovery must prove that installer ended.
+kill is a failure, never a success).
+
+Setup uses an exclusive lock. Each runtime action that writes (install, Pi
+staging, reserving a launch, discarding a reservation, preparation, pane
+registration and cleanup) first creates the directory `.lock` in the runtime
+root, and removes it when the action ends. If `.lock` already exists, the
+action fails with `setup-busy` before it changes anything, instead of
+overwriting the action in progress.
+
+A launch or a resume waits up to 5 seconds for the lock. The two-second check
+needs no such wait: a pane registration or preparation of its own that fails
+with `setup-busy` runs again at the following check. A launch or a resume has
+no following check, so it runs these runtime actions through
+`AgentRuntimeLockWait`:
+
+- a launch: install, reserving the launch, discarding the reservation, and
+  preparation
+- a Pi launch: install and Pi staging
+- a resume: preparation
+
+`AgentRuntimeLockWait` runs the action again every 100 ms while it fails with
+`setup-busy`. When the action fails with `setup-busy` 5 seconds or more after
+the first try, `AgentRuntimeLockWait` stops, and the launch or resume fails
+with `setup-busy`. A failure other than `setup-busy`, or cancellation, ends the
+wait at once.
+
+The Node process that runs `runtime.mjs` for an action holds the lock. If that
+process crashes, `.lock` stays. hrdrhrdrhrdr does not remove it, because a
+`.lock` left by a crash looks the same as one held by an action that is still
+running. While it stays, every launch and resume fails with `setup-busy` after
+5 seconds. Before removing `.lock` by hand, make sure no runtime action is
+still running.
 
 Output folders are private, qualified by machine/herdr/session/terminal and use
 MCP outputMaxSize eviction. Explicit filename outputs are anchored to this folder;
