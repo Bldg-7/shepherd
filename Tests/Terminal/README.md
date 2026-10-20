@@ -122,6 +122,71 @@ strings below are written with CSI for `ESC [`.
 The test runs with a private HOME, so the user's own key bindings can't change
 the result.
 
+## Pasting a pane's or tab's ID
+
+```sh
+python3 Tests/Terminal/run-item-drop-tests.py --output /tmp/shepherd-item-drop-FRESH \
+  --swiftterm-products /path/to/DerivedData/Build/Products/Debug
+```
+
+One test program (`ItemDropTests.swift`), built with the pinned SwiftTerm, then
+source checks. It uses never-shown windows, pasteboards it creates under names of
+its own (`NSPasteboard(name:)`, released at the end) and a kernel PTY it opens
+itself. It starts no real drag session and doesn't touch the user's pasteboard,
+herdr, SSH or the installed app.
+
+- Drag source. Rows with the production `herdrItemDrag` modifier in a List.
+  Showing the list starts no drag. For each row the test asks the List's outline
+  view for the row's pasteboard writer, as AppKit does when a drag starts, and
+  writes it to an owned pasteboard. The pasteboard then holds the marker type
+  `com.bldg-7.shepherd.herdr-item` and the ID as plain text, and no URL type.
+  Asking for the writer is what records that row as the row dragged last.
+- Rules (`HerdrItemDrag`). A terminal pastes only when both hold: the dropped
+  text is the ID of the row dragged last, and that row is on the same herdr
+  server as the terminal's pane. The same herdr server means the same Machine
+  with the same connection settings, and either the same herdr machine or a
+  herdr machine on neither side. Taken: a row on a terminal of its own herdr,
+  for a Machine's own herdr, for a herdr machine and for This Mac. Refused: a
+  herdr machine's row on a pane of the Machine's own herdr and the reverse, a
+  row of another herdr machine, a row of another Machine, and a row of the same
+  Machine after its credentials changed. The ID must be 1 to 64 ASCII letters,
+  digits, `:`, `_` and `-`; an ID with an escape sequence in it is refused even
+  when it matches. Of the drag operations the drag allows, the drop uses the
+  first of copy, generic and move; a drag that allows none of them is refused.
+- Drop target. The production terminal view (`FocusReportingTerminalView`) with
+  the production drop handler. A marked drag from the app writes `w1:p4 ` or
+  `w1:t2 ` to the PTY in one write, between the bracketed-paste markers when the
+  program has turned bracketed paste on, and the keyboard stays with the view
+  that had it. Refused with zero bytes and no border: a drag that the test marks
+  as coming from another app, text without the marker type, text other than the
+  ID of the row dragged last, empty or missing text, a row of another herdr
+  server, an unsafe or too long ID, and a drag that allows none of copy, generic
+  and move.
+- The border. It is turned on once when a drop becomes possible, not again on
+  each move. It is turned off when the drag leaves the terminal, when the drag
+  changes to an operation that isn't taken, when the drag ends, when the drop is
+  made, and when the terminal stops taking drops during the drag because its
+  attach disconnected.
+- File drops (Terminal File Drop) still work on the same view. The file handler
+  and the ID handler each register only their own pasteboard type.
+- The terminal inside an `NSHostingView`, wrapped in `TerminalHostView` the way
+  the app's `PaneTerminalView` wraps it: the drop reaches the terminal view;
+  taking the drop handler away unregisters its pasteboard type; and clicks on
+  the border still reach the terminal. `ImageRenderer` draws the border: accent
+  color at the edge, nothing inside.
+- Source checks:
+  - the sidebar's pane rows and tab rows use the modifier;
+  - a pane's terminal takes the drop whenever its attach is connected, whatever
+    the Terminal File Drop setting, and shows the border;
+  - with Group by Tab on, each pane is attached through the same view;
+  - the marker type is declared for this process only, so no other app can
+    read it or send it;
+  - the ID is written to the pasteboard as data, not as an `NSString`.
+
+Not covered: a real mouse drag, the system's drag pasteboard, real drops from
+other apps (the test only marks a drag as coming from one), and the installed
+app.
+
 ## Drawing while hidden
 
 ```sh
