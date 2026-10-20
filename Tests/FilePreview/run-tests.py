@@ -80,7 +80,18 @@ assert '.keyboardShortcut(' not in previewSources,'the preview takes its keys in
 for key in ['Find','No Results','Find Previous','Find Next','Find Previous (⇧⌘G)','Find Next (⌘G)','Close Find Bar']:
  assert all(strings[key]['localizations'][l]['stringUnit']['state']=='translated' and strings[key]['localizations'][l]['stringUnit']['value'] for l in ['ko','ja']),key
 model=(ROOT/'Shepherd/FilePreview/FilePreviewModel.swift').read_text()
-load=model[model.index('    func load('):]
-assert [l.strip() for l in model.splitlines()].count('find = PreviewFindState()')==1 and load.index('find = PreviewFindState()')<load.index('let reader = FilePreviewReader()')
+def body(name):
+ start=model.index('    func '+name+'(');return model[start:model.index('\n    }\n',start)]
+load=body('load');reload=body('reload')
+assert [l.strip() for l in model.splitlines()].count('find = PreviewFindState()')==1 and load.index('find = PreviewFindState()')<load.index('await read(')
+# Reload: the header's button, ⌘R and Retry read the file again keeping the
+# find bar, one read at a time; ⌘R is taken in PreviewKeyCatcher like ⌘F.
+# Only the close button is Liquid Glass. Its strings are in Korean and
+# Japanese.
+assert 'find = PreviewFindState()' not in reload and 'await read(' in reload
+assert 'Button(action: reloadFile)' in fp and 'Button("Retry", action: reloadFile)' in fp and '.disabled(model.isReading)' in fp and 'guard !model.isReading else { return }' in fp
+assert fp.count('.buttonStyle(.glass)')==1 and '("r", .command, .reload)' in (ROOT/'Shepherd/FilePreview/PreviewKeyCatcher.swift').read_text()
+for key in ['Reload','Reload (⌘R)']:
+ assert all(strings[key]['localizations'][l]['stringUnit']['state']=='translated' and strings[key]['localizations'][l]['stringUnit']['value'] for l in ['ko','ja']),key
 assert 'PreviewKeyCatcher(keyboard: keyboard, perform: perform' in fp and '.focusable()' in fp and 'if model.find.isShown { closeFind() }' in fp
 (out/'validation.json').write_text(json.dumps({'passed':True,'userFilesRead':False,'realKeychainAccess':False,'networkAccess':False,'actualSwiftTerm':bool(args.swiftterm_products),'stages':17 if args.swiftterm_products else 15},indent=2))

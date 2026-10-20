@@ -136,7 +136,11 @@ import AppKit
         check(key("f", [.command, .capsLock]) == .find && key("F", [.command, .capsLock]) == .find, "Caps Lock doesn't matter")
         check(key("f", [.command, .option]) == nil && key("f", [.command, .shift]) == nil && key("g", [.command, .control]) == nil && key("f", []) == nil
               && key("f", .command, type: .keyUp) == nil && key("e", .command) == nil, "other modifiers, a bare f, a key-up or ⌘E aren't the preview's")
-        check(PreviewKeyCommand.keys.count == 3, "three keys, in one list")
+        // ⌘R (SHPHRD-98) reads the file again; it is taken the same way.
+        check(key("r", .command) == .reload && key("R", [.command, .capsLock]) == .reload, "⌘R")
+        check(key("r", [.command, .shift]) == nil && key("r", [.command, .option]) == nil && key("r", []) == nil
+              && key("r", .command, type: .keyUp) == nil, "⇧⌘R, ⌥⌘R, a bare r or a key-up aren't the preview's")
+        check(PreviewKeyCommand.keys.count == 4, "four keys, in one list: find's three and ⌘R")
         check(PreviewFindField.step(shift: false) == 1 && PreviewFindField.step(shift: true) == -1, "Return goes to the next match, ⇧Return to the previous")
     }
 }

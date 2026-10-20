@@ -1,5 +1,6 @@
 import Foundation
 import CoreGraphics
+import Observation
 import Citadel
 import NIOConcurrencyHelpers
 
@@ -21,6 +22,8 @@ struct AgentSummary {
     let herdrMachine: OwnedHerdrMachine?
 }
 struct OwnedHerdrMachine { let id: String }
+/// Whether an observed property was changed.
+nonisolated final class Changed: @unchecked Sendable { var value = false }
 final class OwnedSecrets: MachineSecretStore {
     var values: [String: Data] = [:]
     var loads = 0
@@ -32,6 +35,18 @@ final class OwnedSecrets: MachineSecretStore {
 @main @MainActor enum ModelTests {
     static var checks = 0
     static func check(_ b: Bool, line: Int = #line) { precondition(b, "check at line \(line)"); checks += 1 }
+    static func text(_ model: FilePreviewModel) -> String? {
+        if case .loaded(let document) = model.state, case .text(let text, _) = document.content { return text }
+        return nil
+    }
+    static func failure(_ model: FilePreviewModel) -> String? {
+        if case .failed(let message) = model.state { return message }
+        return nil
+    }
+    static func isLoading(_ model: FilePreviewModel) -> Bool {
+        if case .loading = model.state { return true }
+        return false
+    }
     static func main() async throws {
         let directory = ProcessInfo.processInfo.arguments[1]
         let suite = "owned-preview-" + UUID().uuidString
@@ -150,6 +165,156 @@ final class OwnedSecrets: MachineSecretStore {
         else { preconditionFailure("timeout") }
         let timeoutClosed = await OwnedSFTP.shared.closes
         check(timeoutClosed >= 1)
+        // Reload (SHPHRD-98): the same request read again, keeping how the
+        // file is looked at: source or rendering, scroll place, the line
+        // linked to, the table of contents and the find bar.
+        let localLoads = secrets.loads
+        let reloadPath = directory + "/reload.md"
+        try Data("# Reload one\n\nfirst".utf8).write(to: URL(fileURLWithPath: reloadPath))
+        let reloadRequest = FilePreviewRequest(machine: local, pane: pane, link: "reload.md")
+        let viewed = FilePreviewModel()
+        await viewed.load(reloadRequest, store: store)
+        check(text(viewed) == "# Reload one\n\nfirst" && !viewed.isReloading && !viewed.isReading && !viewed.showsSource)
+        let linked = viewed.link
+        viewed.showsSource = true; viewed.scrollOffset = CGPoint(x: 0, y: 120); viewed.showsOutline = false
+        viewed.find = PreviewFindState(isShown: true, query: "one", current: 0)
+        viewed.visibleLines = [2, 3]; viewed.reveal(.line(3))
+        let revealed = viewed.scrollRequest
+        try Data("# Reload two\n\nsecond one".utf8).write(to: URL(fileURLWithPath: reloadPath))
+        await viewed.reload(reloadRequest, store: store)
+        check(text(viewed) == "# Reload two\n\nsecond one" && !viewed.isReloading && !viewed.isReading)
+        check(viewed.link == linked && viewed.link?.path == reloadPath && viewed.finishedRequestID == reloadRequest.id)
+        check(viewed.showsSource && viewed.scrollOffset == CGPoint(x: 0, y: 120) && !viewed.showsOutline)
+        check(viewed.scrollRequest == revealed && viewed.visibleLines == [2, 3])
+        // What the find bar looks for is kept; it counts its matches in the
+        // new text, at none of them yet, as when Source is chosen.
+        check(viewed.find == PreviewFindState(isShown: true, query: "one", current: nil))
+        // The same file read again: nothing shown is changed.
+        viewed.find.current = 1
+        let stateChanged = Changed(), linkChanged = Changed()
+        withObservationTracking { _ = viewed.state } onChange: { stateChanged.value = true }
+        withObservationTracking { _ = viewed.link } onChange: { linkChanged.value = true }
+        await viewed.reload(reloadRequest, store: store)
+        check(!stateChanged.value && !linkChanged.value && viewed.find.current == 1 && text(viewed) == "# Reload two\n\nsecond one")
+        // Shown again with its pane after a reload: not read again.
+        try Data("# Reload three".utf8).write(to: URL(fileURLWithPath: reloadPath))
+        await viewed.loadIfNeeded(reloadRequest, store: store)
+        check(text(viewed) == "# Reload two\n\nsecond one")
+        // The file gone: why, with how it was looked at kept for the next
+        // read that works, which shows it as it was looked at.
+        try FileManager.default.removeItem(atPath: reloadPath)
+        await viewed.reload(reloadRequest, store: store)
+        check(failure(viewed) != nil && !viewed.isReloading && !viewed.isReading)
+        check(viewed.link == linked && viewed.showsSource && viewed.scrollOffset == CGPoint(x: 0, y: 120) && !viewed.showsOutline)
+        check(viewed.find.isShown && viewed.find.query == "one")
+        await viewed.loadIfNeeded(reloadRequest, store: store)
+        check(failure(viewed) != nil)
+        try Data("# Reload back".utf8).write(to: URL(fileURLWithPath: reloadPath))
+        await viewed.reload(reloadRequest, store: store)
+        check(text(viewed) == "# Reload back" && viewed.showsSource && viewed.scrollOffset == CGPoint(x: 0, y: 120) && !viewed.showsOutline)
+        check(viewed.find.isShown && viewed.find.query == "one" && viewed.link == linked)
+        // Past 4 MiB: too large, as for a first read.
+        try Data(repeating: 65, count: FilePreviewDocument.maximumBytes + 1).write(to: URL(fileURLWithPath: reloadPath))
+        await viewed.reload(reloadRequest, store: store)
+        check(failure(viewed) == FilePreviewError.tooLarge.localizedDescription && viewed.showsSource)
+        try Data("# Reload one\n\nfirst".utf8).write(to: URL(fileURLWithPath: reloadPath))
+        // A link to a line: the source is chosen as the file is first shown,
+        // not again when it is read again.
+        let lineRequest = FilePreviewRequest(machine: local, pane: pane, link: "reload.md:2")
+        let atLine = FilePreviewModel()
+        await atLine.load(lineRequest, store: store)
+        check(atLine.showsSource && atLine.link?.line == 2)
+        atLine.showsSource = false
+        await atLine.reload(lineRequest, store: store)
+        check(!atLine.showsSource && atLine.link?.line == 2 && text(atLine) == "# Reload one\n\nfirst")
+        // A link to a line whose first read failed: Retry shows it first.
+        let laterPath = directory + "/later.md"
+        let laterRequest = FilePreviewRequest(machine: local, pane: pane, link: "later.md:1")
+        let later = FilePreviewModel()
+        await later.load(laterRequest, store: store)
+        check(failure(later) != nil && !later.showsSource)
+        try Data("# Later".utf8).write(to: URL(fileURLWithPath: laterPath))
+        await later.reload(laterRequest, store: store)
+        check(text(later) == "# Later" && later.showsSource && later.link?.line == 1)
+        // A new read still starts everything over.
+        viewed.showsOutline = false
+        await viewed.load(reloadRequest, store: store)
+        check(!viewed.showsSource && viewed.scrollOffset == nil && viewed.showsOutline && viewed.find == PreviewFindState())
+        check(secrets.loads == localLoads)
+
+        // Remote: what was read stays shown while it is read again; each
+        // reload connects once, reads the Keychain once and checks the pin.
+        let far = FilePreviewModel()
+        await OwnedSFTP.shared.plan(Array("# Far one".utf8))
+        let farLoads = secrets.loads
+        await far.load(remoteRequest, store: store)
+        check(text(far) == "# Far one" && secrets.loads == farLoads + 1)
+        far.showsSource = true; far.scrollOffset = CGPoint(x: 0, y: 64)
+        await OwnedSFTP.shared.plan(Array("# Far two".utf8), heldConnect: true)
+        let reloading = Task { await far.reload(remoteRequest, store: store) }
+        while !(await OwnedSFTP.shared.waitingConnect) { await Task.yield() }
+        check(text(far) == "# Far one" && far.isReloading && far.isReading)
+        await OwnedSFTP.shared.releaseConnect()
+        await reloading.value
+        check(text(far) == "# Far two" && !far.isReloading && far.showsSource && far.scrollOffset == CGPoint(x: 0, y: 64))
+        let farConnects = await OwnedSFTP.shared.connects, farPins = await OwnedSFTP.shared.pins
+        check(farConnects == 1 && farPins == ["owned-pin"] && secrets.loads == farLoads + 2)
+        await OwnedSFTP.shared.plan(Array("# Far two".utf8))
+        await far.reload(remoteRequest, store: store)
+        let againConnects = await OwnedSFTP.shared.connects, againPins = await OwnedSFTP.shared.pins
+        check(againConnects == 1 && againPins == ["owned-pin"] && secrets.loads == farLoads + 3)
+        // Left with its pane while read again: the read is closed, what was
+        // read stays, and the reload is made again once on return.
+        await OwnedSFTP.shared.plan(Array("# Far three".utf8), heldRead: true)
+        let away = Task { await far.reload(remoteRequest, store: store) }
+        while !(await OwnedSFTP.shared.waitingRead) { await Task.yield() }
+        check(far.isReloading)
+        away.cancel()
+        await away.value
+        let leftCloses = await OwnedSFTP.shared.closes
+        check(text(far) == "# Far two" && !far.isReloading && !far.isReading && leftCloses >= 1)
+        await OwnedSFTP.shared.plan(Array("# Far three".utf8))
+        await far.loadIfNeeded(remoteRequest, store: store)
+        let backConnects = await OwnedSFTP.shared.connects
+        check(text(far) == "# Far three" && backConnects == 1 && far.showsSource && far.scrollOffset == CGPoint(x: 0, y: 64))
+        await far.loadIfNeeded(remoteRequest, store: store)
+        let stayConnects = await OwnedSFTP.shared.connects
+        check(stayConnects == 1)
+        // A failed preview read again shows that it is reading.
+        await OwnedSFTP.shared.plan(Array("# Far".utf8), mode: 0o040755)
+        await far.reload(remoteRequest, store: store)
+        check(failure(far) == FilePreviewError.notRegularFile.localizedDescription && far.showsSource)
+        await OwnedSFTP.shared.plan(Array("# Far four".utf8), heldConnect: true)
+        let retry = Task { await far.reload(remoteRequest, store: store) }
+        while !(await OwnedSFTP.shared.waitingConnect) { await Task.yield() }
+        check(isLoading(far) && !far.isReloading && far.isReading)
+        await OwnedSFTP.shared.releaseConnect()
+        await retry.value
+        check(text(far) == "# Far four" && far.showsSource && far.scrollOffset == CGPoint(x: 0, y: 64))
+        // And left with its pane then: read again on return.
+        await OwnedSFTP.shared.plan(Array("# Far".utf8), mode: 0o040755)
+        await far.reload(remoteRequest, store: store)
+        await OwnedSFTP.shared.plan(Array("# Far five".utf8), heldRead: true)
+        let gone = Task { await far.reload(remoteRequest, store: store) }
+        while !(await OwnedSFTP.shared.waitingRead) { await Task.yield() }
+        gone.cancel()
+        await gone.value
+        check(isLoading(far))
+        await OwnedSFTP.shared.plan(Array("# Far five".utf8))
+        await far.loadIfNeeded(remoteRequest, store: store)
+        check(text(far) == "# Far five" && far.showsSource)
+        // A late reload doesn't win over a newer read of another request.
+        await OwnedSFTP.shared.plan(Array("# Late reload".utf8), heldConnect: true)
+        let late = Task { await far.reload(remoteRequest, store: store) }
+        while !(await OwnedSFTP.shared.waitingConnect) { await Task.yield() }
+        await far.load(reloadRequest, store: store)
+        await OwnedSFTP.shared.releaseConnect()
+        await late.value
+        check(text(far) == "# Reload one\n\nfirst" && far.link?.path == reloadPath && !far.isReloading && !far.showsSource)
+        // A nested herdr's pane: the same error read again.
+        await far.reload(nestedRequest, store: store)
+        check(failure(far) == FilePreviewError.nestedMachine.localizedDescription)
+
         // Stale credential/endpoint records never reach the reader or Keychain.
         let oldLoads = secrets.loads
         var edited = remote; edited.hostname = "new-owned.invalid"
@@ -159,6 +324,6 @@ final class OwnedSecrets: MachineSecretStore {
         if case .failed = model.state { checks += 1 } else { preconditionFailure("stale connection") }
         check(secrets.loads == oldLoads)
         let staleConnects = await OwnedSFTP.shared.connects; check(staleConnects == 0)
-        print("PASS \(checks) real preview model/store request, no-local-secret, refreshed-pin, stale-epoch, cancellation and 15s timeout checks; in-memory SSH/secret seams only")
+        print("PASS \(checks) real preview model/store request, no-local-secret, refreshed-pin, stale-epoch, cancellation, 15s timeout and reload checks; in-memory SSH/secret seams only")
     }
 }
