@@ -76,6 +76,18 @@ final class OwnedSecrets: MachineSecretStore {
         let plain = FilePreviewModel()
         await plain.load(request, store: store)
         check(!plain.showsSource)
+        // The table of contents: on for each read, off for this preview
+        // only, kept while shown again; where it scrolls the preview to.
+        check(plain.showsOutline && plain.scrollRequest == nil && plain.visibleBlocks.isEmpty && plain.visibleLines.isEmpty)
+        plain.showsOutline = false; plain.visibleBlocks = [3, 4]; plain.visibleLines = [7]
+        plain.reveal(.block(4))
+        let first = plain.scrollRequest
+        plain.reveal(.block(4))
+        check(first?.target == .block(4) && plain.scrollRequest?.target == .block(4) && plain.scrollRequest != first)
+        await plain.loadIfNeeded(request, store: store)
+        check(!plain.showsOutline && model.showsOutline && lined.showsOutline)
+        await plain.load(request, store: store)
+        check(plain.showsOutline && plain.scrollRequest == nil && plain.visibleBlocks.isEmpty && plain.visibleLines.isEmpty)
         let remote = Machine(displayName: "Owned Remote", hostname: "owned.invalid", username: "owned", authMethod: .password)
         try store.addMachine(remote, password: "synthetic-only")
         let remoteRequest = FilePreviewRequest(machine: remote, pane: pane, link: "/remote/a.md")

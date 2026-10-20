@@ -39,7 +39,7 @@ stage('pane-states-tests',20,[str(out/'pane-states-tests')])
 # to P, each with its own read, source choice and scroll place. SwiftUI's
 # faults go to the log, which must not say state was changed during a view
 # update.
-panel=paneStates+['Shepherd/FilePreview/FilePreviewPanel.swift','Shepherd/FilePreview/MarkdownPreview.swift','Shepherd/FilePreview/SourceFilePreview.swift','Shepherd/FilePreview/PreviewSyntaxHighlighter.swift','Shepherd/FilePreview/PreviewSyntaxRendering.swift']
+panel=paneStates+['Shepherd/FilePreview/FilePreviewPanel.swift','Shepherd/FilePreview/MarkdownPreview.swift','Shepherd/FilePreview/PreviewOutline.swift','Shepherd/FilePreview/SourceFilePreview.swift','Shepherd/FilePreview/PreviewSyntaxHighlighter.swift','Shepherd/FilePreview/PreviewSyntaxRendering.swift']
 (out/'panel-files').mkdir(mode=0o700)
 stage('panel-window-build',120,['xcrun','swiftc','ShepherdKit/Sources/ShepherdKit/Resources.swift','-target',platform.machine()+'-apple-macos26.6.2','-swift-version','6','-default-isolation','MainActor','-parse-as-library',*panel,'Tests/FilePreview/PanelWindowTests.swift','-framework','AppKit','-o',str(out/'panel-window-tests')])
 stage('panel-window-tests',60,[str(out/'panel-window-tests'),str(out/'panel-files')],mirrorsLog=True)
@@ -54,4 +54,15 @@ if args.swiftterm_products:
  stage('terminal-link-build',90,['xcrun','swiftc','ShepherdKit/Sources/ShepherdKit/Resources.swift','-target',platform.machine()+'-apple-macos26.6.2','-swift-version','6','-default-isolation','MainActor','-parse-as-library','-I',str(products),*native,str(products/'SwiftTerm.o'),'-framework','AppKit','-framework','QuartzCore','-framework','CoreText','-o',str(out/'terminal-link-tests')])
  stage('terminal-link-tests',20,[str(out/'terminal-link-tests')])
  (out/'native-source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in native},indent=2))
+# The Markdown table of contents: its strings in Korean and Japanese; whether
+# it is shown kept with each preview in window memory, never in defaults; a
+# heading chosen in it goes through the preview's own scroll request.
+strings=json.loads((ROOT/'Shepherd/Localizable.xcstrings').read_text())['strings']
+for key in ['Table of Contents','Show Table of Contents','Hide Table of Contents','No Headings']:
+ assert all(strings[key]['localizations'][l]['stringUnit']['state']=='translated' and strings[key]['localizations'][l]['stringUnit']['value'] for l in ['ko','ja']),key
+for name in sorted((ROOT/'Shepherd/FilePreview').glob('*.swift')):
+ source=name.read_text();assert not any(word in source for word in ['UserDefaults','@AppStorage','@SceneStorage']),name.name
+fp=(ROOT/'Shepherd/FilePreview/FilePreviewPanel.swift').read_text()
+assert 'model.reveal(inSource ? .line(heading.line) : .block(heading.id))' in fp and 'systemImage: "list.bullet.indent"' in fp and '.disabled(!hasHeadings)' in fp
+assert '.scrollTargetLayout(' not in ''.join(n.read_text() for n in (ROOT/'Shepherd/FilePreview').glob('*.swift')),'scroll target layouts change how a kept scroll place comes back'
 (out/'validation.json').write_text(json.dumps({'passed':True,'userFilesRead':False,'realKeychainAccess':False,'networkAccess':False,'actualSwiftTerm':bool(args.swiftterm_products),'stages':15 if args.swiftterm_products else 13},indent=2))
