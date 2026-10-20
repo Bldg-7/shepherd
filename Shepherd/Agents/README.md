@@ -206,7 +206,7 @@ rejections complete transport normally with `{ok:false,error:<reason>}` because
 runScript otherwise discards stdout on nonzero exit; Swift always throws the typed
 rejection. Normal process completion alone is never operation success. Crashes or
 missing executables still produce transport errors without a valid result. Important codes:
-`setup-busy`, `session-only-policy`, `legacy-global-registration-present`,
+`setup-busy`, `runtime-lock-failed`, `session-only-policy`, `legacy-global-registration-present`,
 `legacy-global-skill-present`, `node-version-unsupported`,
 `uninspectable-claude-registration`, `offline-dependencies-missing`, `cli-missing`, `cli-unsupported`,
 `duplicate-registration`, `globally-enabled-shepherd-plugin`,
@@ -304,12 +304,44 @@ old versions are intentionally retained until all sessions using them are gone.
 CLI capability probes have actual 20-second subprocess deadlines (a deadline
 kill is a failure, never a success).
 
-Setup uses an exclusive lock. Each runtime action that writes (install, Pi
-staging, reserving a launch, discarding a reservation, preparation, pane
-registration and cleanup) first creates the directory `.lock` in the runtime
-root, and removes it when the action ends. If `.lock` already exists, the
-action fails with `setup-busy` before it changes anything, instead of
-overwriting the action in progress.
+Setup uses an exclusive lock, taken in two steps. Each runtime action that
+writes (install, Pi staging, reserving a launch, discarding a reservation,
+preparation, pane registration and cleanup) first opens the runtime root
+folder (`AgentRuntime` or `AgentRuntime-Debug`) with a kernel lock on it
+(`open` with `O_EXLOCK`, the same lock as `flock`). Then it creates the file
+`.lock` in that folder. When the action ends, it removes `.lock` first and
+closes the folder after that.
+
+- The kernel lock keeps actions of this version apart. If another action
+  holds it, the action fails with `setup-busy` before it changes anything,
+  instead of overwriting the action in progress. The kernel releases it when
+  the process holding it exits, however it exits. Processes that the action
+  starts, such as CLI probes, do not inherit it.
+- The `.lock` file keeps out hrdrhrdrhrdr 0.5.2 and earlier. Those versions
+  take the lock only by creating `.lock` as a folder, so while the file
+  exists, their `mkdir` fails and they fail with `setup-busy`.
+
+When an action finds `.lock` already there, what it does depends on what
+`.lock` is:
+
+- A file: an action of this version ended without removing it, for example
+  in a crash. The action removes it and runs.
+- A folder made before the Mac last started: a version up to 0.5.2 made it
+  and cannot still be running. If the folder is empty, the action removes it
+  and runs; if not, the action fails with `runtime-lock-failed`. A folder
+  counts as made before the Mac last started when it was made more than 2
+  seconds before the kernel started and more than 2 seconds before launchd
+  (process 1) started. The 2 seconds allow for those start times being known
+  only roughly.
+- A folder made since the Mac last started, or one whose creation time cannot
+  be read: the version that made it may still be running. The action fails
+  with `setup-busy` and leaves the folder.
+- Anything else, such as a symbolic link: the action fails with
+  `runtime-lock-failed`.
+
+The action also fails with `runtime-lock-failed` when it cannot open or lock
+the root folder for any reason other than another action holding it, or
+cannot create `.lock` or remove one left behind.
 
 A launch or a resume waits up to 5 seconds for the lock. The two-second check
 needs no such wait: a pane registration or preparation of its own that fails
@@ -326,14 +358,22 @@ no following check, so it runs these runtime actions through
 `setup-busy`. When the action fails with `setup-busy` 5 seconds or more after
 the first try, `AgentRuntimeLockWait` stops, and the launch or resume fails
 with `setup-busy`. A failure other than `setup-busy`, or cancellation, ends the
-wait at once.
+wait at once. `runtime-lock-failed` is one of those other failures: a launch
+or resume fails with it at once. When a pane registration or preparation in
+the two-second check fails with it, the check waits 30 seconds before trying
+that pane again, as after its other failures.
 
-The Node process that runs `runtime.mjs` for an action holds the lock. If that
-process crashes, `.lock` stays. hrdrhrdrhrdr does not remove it, because a
-`.lock` left by a crash looks the same as one held by an action that is still
-running. While it stays, every launch and resume fails with `setup-busy` after
-5 seconds. Before removing `.lock` by hand, make sure no runtime action is
-still running.
+The Node process that runs `runtime.mjs` for an action holds the root folder's
+kernel lock. If that process crashes or is killed, the kernel releases the
+lock, and the next action removes the `.lock` file left behind and runs.
+Nothing has to be removed by hand. The one exception is a `.lock` folder made
+since the Mac last started by hrdrhrdrhrdr 0.5.2 or earlier. From the folder
+alone, an action cannot tell whether the process that made it crashed or is
+still running, so while the folder stays, every launch and resume fails with
+`setup-busy` after 5 seconds. After the Mac restarts, the next action removes
+it. To remove it sooner by hand, first make sure no version up to 0.5.2 is
+still running, including the hooks of agent sessions started before the
+update, which keep using the runtime they started with.
 
 Output folders are private, qualified by machine/herdr/session/terminal and use
 MCP outputMaxSize eviction. Explicit filename outputs are anchored to this folder;
