@@ -1,0 +1,95 @@
+#!/bin/sh
+# TEST ONLY: stands in for the host's herdr, installed at the test HOME's
+# ~/.local/bin/herdr. No network, no herdr state: its saved machines are
+# lines of "id|label|target|session|enabled" in $SHEPHERD_FAKE_DIR/catalog,
+# and what `machine add`, `machine remove` and `--machine … status server`
+# do is set by files there. Messages and exit statuses are herdr 0.9.1's
+# (src/cli/machine.rs, src/remote/attach.rs).
+d=${SHEPHERD_FAKE_DIR:?}
+{ for argument in "$@"; do printf '%s\n' "$argument"; done; printf '%s\n' '----'; } >> "$d/herdr-arguments.log"
+catalog="$d/catalog"
+touch "$catalog"
+
+list_json() {
+  printf '['
+  first=yes
+  while IFS='|' read -r id label target session enabled; do
+    [ -n "$id" ] || continue
+    [ "$first" = yes ] || printf ','
+    first=no
+    printf '{"id":"%s","label":"%s","target":"%s","session":"%s","enabled":%s,"selected":false}' "$id" "$label" "$target" "$session" "$enabled"
+  done < "$catalog"
+  printf ']\n'
+}
+
+hang() {
+  # Like herdr between connecting and saving: an SSH connection shared in a
+  # folder of its own (a socket, bound with a relative name, which is not
+  # limited in length), and a TERM that kills it before it can clean up.
+  dir="${TMPDIR:-/tmp}"
+  dir="${dir%/}/herdr-ssh-$$-0"
+  mkdir -m 700 "$dir"
+  printf 'Host *\n' > "$dir/config"
+  (cd "$dir" && /usr/bin/python3 -I -c 'import socket; socket.socket(socket.AF_UNIX).bind("ctl")')
+  printf '%s\n' "$dir" > "$d/herdr-ssh-dir"
+  exec sleep 60
+}
+
+case "$1 $2" in
+  "machine list")
+    list_json
+    exit 0 ;;
+  "machine add")
+    target=$3
+    label=$5
+    case $(cat "$d/herdr-add" 2>/dev/null || echo ok) in
+      ok|save-then-hang)
+        id=$(cat "$d/next-id" 2>/dev/null || echo 0123456789abcdef0123456789abcdef)
+        printf '%s|%s|%s|default|true\n' "$id" "$label" "$target" >> "$catalog"
+        if [ "$(cat "$d/herdr-add" 2>/dev/null)" = save-then-hang ]; then hang; fi
+        printf 'Saved SSH machine %s. Remote server is ready.\nOpen Herdr clients connect automatically.\n' "$id"
+        exit 0 ;;
+      approval)
+        printf 'error: matching remote herdr 0.9.1 is not installed at ~/.local/bin/herdr; run from an interactive terminal to approve installation; machine was not saved\n' >&2
+        exit 1 ;;
+      not-ready)
+        printf 'error: remote server is not ready for saved machines; machine was not saved\n' >&2
+        exit 1 ;;
+      invalid)
+        printf 'error: SSH endpoint label must be at most 128 bytes and contain no control characters\n' >&2
+        exit 2 ;;
+      hang)
+        hang ;;
+    esac ;;
+  "machine remove")
+    id=$3
+    if [ "$(cat "$d/herdr-remove" 2>/dev/null)" = fail ]; then
+      printf 'error: unsupported endpoint catalog version 9; expected 1\n' >&2
+      exit 2
+    fi
+    if grep -q "^$id|" "$catalog"; then
+      grep -v "^$id|" "$catalog" > "$catalog.new"
+      mv "$catalog.new" "$catalog"
+      printf 'Removed SSH machine %s.\n' "$id"
+      exit 0
+    fi
+    printf 'machine profile %s was not found\n' "$id" >&2
+    exit 1 ;;
+  "--machine "*)
+    case $(cat "$d/herdr-status" 2>/dev/null || echo ok) in
+      ok)
+        printf 'status: running\nversion: 0.9.1\n'
+        exit 0 ;;
+      not-ready)
+        printf "error: machine '%s' (session default): remote server is not ready for saved machines\n" "$2" >&2
+        exit 1 ;;
+      down)
+        printf "error: machine '%s' (session default): ssh: connect to host workbox.example port 22: Connection refused\n" "$2" >&2
+        exit 1 ;;
+    esac ;;
+  "status client")
+    printf '{"version":"0.9.1","channel":"stable","protocol":9}\n'
+    exit 0 ;;
+esac
+printf 'fake herdr: unexpected arguments: %s\n' "$*" >&2
+exit 64

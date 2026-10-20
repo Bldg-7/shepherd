@@ -1,0 +1,98 @@
+#!/bin/sh
+# TEST ONLY: stands in for OpenSSH on PATH. No network, no real ~/.ssh: the
+# "server" is a key and a scenario in $SHEPHERD_FAKE_DIR, and the known_hosts
+# it checks are under the test's HOME. It records its arguments, answers
+# `ssh -G` from a file, takes a host key in with accept-new the way OpenSSH
+# writes one, refuses with OpenSSH 10.3's own messages, and runs the remote
+# command with /bin/sh under a home of the "machine"'s own.
+d=${SHEPHERD_FAKE_DIR:?}
+{ for argument in "$@"; do printf '%s\n' "$argument"; done; printf '%s\n' '----'; } >> "$d/ssh-arguments.log"
+
+scenario=$(cat "$d/scenario" 2>/dev/null || echo ok)
+hostname=$(cat "$d/hostname" 2>/dev/null || echo workbox.example)
+key=$(cat "$d/hostkey.pub")
+known_type=ED25519
+
+strict=ask
+known_file="$HOME/.ssh/known_hosts"
+resolve=no
+control=
+target=
+while [ $# -gt 0 ]; do
+  case $1 in
+    -G) resolve=yes; shift ;;
+    -T|-tt|-N) shift ;;
+    -F|-S) shift 2 ;;
+    -O) control=$2; shift 2 ;;
+    -o)
+      case $2 in
+        StrictHostKeyChecking=*) strict=${2#StrictHostKeyChecking=} ;;
+        UserKnownHostsFile=*) known_file=${2#UserKnownHostsFile=}; known_file=${known_file#\"}; known_file=${known_file%\"} ;;
+      esac
+      shift 2 ;;
+    -*) echo "fake ssh: unexpected option $1" >&2; exit 254 ;;
+    *) target=$1; shift; break ;;
+  esac
+done
+command=$*
+
+if [ -n "$control" ]; then
+  printf '%s %s\n' "$control" "$target" >> "$d/control.log"
+  exit 0
+fi
+
+if [ "$resolve" = yes ]; then
+  if [ -f "$d/ssh-G" ]; then
+    sed "s#@HOME@#$HOME#g" "$d/ssh-G"
+  else
+    printf 'user dev\nhostname %s\nport 22\nbatchmode no\nstricthostkeychecking ask\nuserknownhostsfile %s/.ssh/known_hosts %s/.ssh/known_hosts2\n' "$hostname" "$HOME" "$HOME"
+  fi
+  exit 0
+fi
+
+if [ "$scenario" = jump-unknown ]; then
+  printf "The authenticity of host 'jump.example (10.0.0.1)' can't be established.\r\nED25519 key fingerprint is SHA256:Q1zkmgAizV6Dpvk6Ou3ae2T6MSs5nN9iu9vjbg3zrUQ.\r\nThis key is not known by any other names.\r\nHost key verification failed.\r\n" >&2
+  exit 255
+fi
+
+if [ "$strict" = accept-new ]; then
+  if ! grep -qF -- "$key" "$known_file" 2>/dev/null; then
+    printf '%s %s\n' "$hostname" "$key" >> "$known_file"
+    printf "Warning: Permanently added '%s' (%s) to the list of known hosts.\r\n" "$hostname" "$known_type" >&2
+  fi
+  printf 'dev@%s: Permission denied (publickey).\r\n' "$hostname" >&2
+  exit 255
+fi
+
+case $scenario in
+  changed)
+    printf '@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\r\n@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @\r\n@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\r\nIT IS POSSIBLE THAT SOMEONE IS DOING SOMETHING NASTY!\r\nSomeone could be eavesdropping on you right now (man-in-the-middle attack)!\r\nIt is also possible that a host key has just been changed.\r\nThe fingerprint for the ED25519 key sent by the remote host is\nSHA256:Q1zkmgAizV6Dpvk6Ou3ae2T6MSs5nN9iu9vjbg3zrUQ.\r\nPlease contact your system administrator.\r\nAdd correct host key in %s to get rid of this message.\r\nOffending ED25519 key in %s:1\r\nHost key for %s has changed and you have requested strict checking.\r\nHost key verification failed.\r\n' "$known_file" "$known_file" "$hostname" >&2
+    exit 255 ;;
+  revoked)
+    printf '@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\r\n@       WARNING: REVOKED HOST KEY DETECTED!               @\r\n@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\r\nThe ED25519 host key for %s is marked as revoked.\r\nThis could mean that a stolen key is being used to\r\nimpersonate this host.\r\nHost key verification failed.\r\n' "$hostname" >&2
+    exit 255 ;;
+esac
+
+if [ "$strict" = yes ] && ! grep -qF -- "$hostname $key" "$known_file" 2>/dev/null; then
+  printf 'No %s host key is known for %s and you have requested strict checking.\r\nHost key verification failed.\r\n' "$known_type" "$hostname" >&2
+  exit 255
+fi
+
+case $scenario in
+  password-only)
+    printf 'dev@%s: Permission denied (publickey,password,keyboard-interactive).\r\n' "$hostname" >&2
+    exit 255 ;;
+  network)
+    printf 'ssh: connect to host %s port 22: Connection refused\r\n' "$hostname" >&2
+    exit 255 ;;
+  tailscale)
+    printf '# Tailscale SSH requires an additional check.\n# To authenticate, visit: https://login.tailscale.com/a/l1b2c3d4\n' >&2
+    exec sleep 60 ;;
+  hang)
+    exec sleep 60 ;;
+esac
+
+# A login banner a shell profile might print, around which the probe has to
+# be found.
+printf 'Welcome to %s\n' "$hostname"
+HOME="$d/remote-home" exec /bin/sh -c "$command"
