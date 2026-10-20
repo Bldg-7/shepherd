@@ -12,7 +12,9 @@ struct FilePreviewPanel: View {
     var onFileLink: (FilePreviewRequest) -> Void
     var isExpanded = false
     var onToggleExpanded: (() -> Void)? = nil
-    @State private var reload = 0
+    /// How many times the file has been asked to be read again, with the
+    /// header's Reload button, ⌘R or Retry: each starts a read.
+    @State private var reloads = 0
     /// What is shown of the text read, worked out once for each read.
     @State private var shownText = PreviewTextCache()
     /// Which blocks of the Markdown rendering its scroll view shows.
@@ -62,6 +64,7 @@ struct FilePreviewPanel: View {
                     let headings = shownText.shown(text, markdown: true, limit: renderCharacters).markdown?.headings ?? []
                     outlineToggle(hasHeadings: !headings.isEmpty)
                 }
+                reloadButton
                 #if os(macOS)
                 if let onToggleExpanded {
                     Button(action: onToggleExpanded) {
@@ -95,7 +98,7 @@ struct FilePreviewPanel: View {
                 ContentUnavailableView {
                     Label("Cannot Preview File", systemImage: "doc.badge.ellipsis")
                 } description: { Text(verbatim: message) } actions: {
-                    Button("Retry") { reload += 1 }
+                    Button("Retry", action: reloadFile)
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             case .loaded(let document):
                 content(document)
@@ -105,8 +108,8 @@ struct FilePreviewPanel: View {
         .background(.background)
         .navigationTitle(title)
         #if os(macOS)
-        // ⌘F and the find bar's keys while the preview has the keyboard,
-        // which a click in it gives it.
+        // ⌘F and the find bar's keys, and ⌘R, while the preview has the
+        // keyboard, which a click in it gives it.
         .background {
             PreviewKeyCatcher(keyboard: keyboard, perform: perform, onTakeKeyboard: { panelFocused = true })
         }
@@ -124,10 +127,11 @@ struct FilePreviewPanel: View {
         }
         #endif
         // A preview shown again with its pane has been read already; only
-        // Retry, or a read that was cancelled when its pane was left, reads.
-        .task(id: "\(request.id)-\(reload)") {
-            if reload > 0 {
-                await model.load(request, store: machineStore)
+        // Reload, ⌘R and Retry, or a read that was cancelled when its pane
+        // was left, read.
+        .task(id: "\(request.id)-\(reloads)") {
+            if reloads > 0 {
+                await model.reload(request, store: machineStore)
             } else {
                 await model.loadIfNeeded(request, store: machineStore)
             }
@@ -295,13 +299,46 @@ struct FilePreviewPanel: View {
         #endif
     }
 
+    /// Reads the file again, keeping how it is looked at (see
+    /// `FilePreviewModel.reload`): one read at a time.
+    private func reloadFile() {
+        guard !model.isReading else { return }
+        reloads += 1
+    }
+
+    /// The header's Reload button, as In-app Browser's: disabled while the
+    /// file is read, and a small spinner in its place while it is read again
+    /// over what was read.
+    private var reloadButton: some View {
+        Button(action: reloadFile) {
+            Label {
+                Text("Reload")
+            } icon: {
+                Image(systemName: "arrow.clockwise").opacity(model.isReloading ? 0 : 1)
+            }
+            .labelStyle(.iconOnly)
+        }
+        .buttonStyle(.borderless)
+        .disabled(model.isReading)
+        .overlay {
+            if model.isReloading {
+                ProgressView().controlSize(.small).accessibilityHidden(true)
+            }
+        }
+        .help("Reload (⌘R)")
+        .accessibilityIdentifier("preview.reload")
+    }
+
     #if os(macOS)
-    /// Does what a key the preview takes asks for (see `PreviewKeyCatcher`),
-    /// while text is shown. Whether it did.
+    /// Does what a key the preview takes asks for (see `PreviewKeyCatcher`):
+    /// ⌘R whatever is shown, and find's keys while text is. Whether it did.
     private func perform(_ command: PreviewKeyCommand) -> Bool {
-        guard let (_, inSource) = shownTextNow() else { return false }
         switch command {
+        case .reload:
+            // Taken while the file is read, too: one read at a time.
+            reloadFile()
         case .find:
+            guard let (_, inSource) = shownTextNow() else { return false }
             // The bar shows with the keyboard in it, what it looks for
             // selected; opened anew, it goes to the first match from where
             // the view is.
@@ -312,6 +349,7 @@ struct FilePreviewPanel: View {
                 goToMatch(PreviewFind.first(matches, atOrAfter: firstShownRow(inSource: inSource)), in: matches, inSource: inSource)
             }
         case .findNext, .findPrevious:
+            guard shownTextNow() != nil else { return false }
             // With nothing to look for yet, as ⌘F.
             if model.find.query.isEmpty { return perform(.find) }
             findStep(command == .findNext ? 1 : -1)

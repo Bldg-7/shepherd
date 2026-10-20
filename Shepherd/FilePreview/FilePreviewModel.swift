@@ -50,7 +50,8 @@ nonisolated struct PreviewScrollRequest: Equatable, Sendable {
 
 /// What a preview's find bar looks for, and which of what it finds it is
 /// at. Kept with the preview (see `FilePreviewModel.find`), so it comes
-/// back with its pane; each new read starts it over.
+/// back with its pane; each new read starts it over, and reading the file
+/// again keeps it.
 nonisolated struct PreviewFindState: Equatable, Sendable {
     /// Whether the find bar is shown. Its matches are marked only while it is.
     var isShown = false
@@ -73,14 +74,15 @@ nonisolated struct PreviewFindState: Equatable, Sendable {
     private(set) var link: FilePreviewLink?
     /// Whether a Markdown file shows its source rather than its rendering.
     /// Each new read starts with the rendering, or with the source for a
-    /// link to a line.
+    /// link to a line; reading the file again keeps it.
     var showsSource = false
     /// Where the preview was scrolled to, to put it back there when it is
     /// shown again. Not observed: it is written on every scroll, and nothing
     /// on screen follows it.
     @ObservationIgnored var scrollOffset: CGPoint?
     /// Whether a Markdown file shows its table of contents. Each new read
-    /// starts with it shown; turned off, it stays off for this preview only.
+    /// starts with it shown; turned off, it stays off for this preview only,
+    /// read again or not.
     var showsOutline = true
     /// The last place the preview was asked to scroll to (see `reveal`).
     private(set) var scrollRequest: PreviewScrollRequest?
@@ -96,7 +98,22 @@ nonisolated struct PreviewFindState: Equatable, Sendable {
     /// The request whose read has ended, loaded or failed. A read that was
     /// cancelled hasn't, and is made again (see `loadIfNeeded`).
     @ObservationIgnored private(set) var finishedRequestID: UUID?
+    /// Whether the file is being read again (see `reload`) while what was
+    /// read before stays shown.
+    private(set) var isReloading = false
+    /// The request whose reload was cancelled when its pane was left, to be
+    /// made again when the pane comes back (see `loadIfNeeded`).
+    @ObservationIgnored private var cancelledReload: UUID?
+    /// Whether a read since the last `load` has shown the file: a link to a
+    /// line turns the source on only as the file is first shown.
+    @ObservationIgnored private var hasShownFile = false
     private var generation = UUID()
+
+    /// Whether the file is being read, first or again.
+    var isReading: Bool {
+        if case .loading = state { return true }
+        return isReloading
+    }
 
     /// Brings `target` to the top of the preview's scroll view: a block when
     /// the preview shows the Markdown rendering, a line when it shows the
@@ -107,20 +124,47 @@ nonisolated struct PreviewFindState: Equatable, Sendable {
 
     /// Reads the file unless this request's read has already ended: a
     /// preview that comes back with its pane shows what was read, without
-    /// connecting to the machine again. Retry reads again with `load`.
+    /// connecting to the machine again. A reload that was cancelled when the
+    /// pane was left is made again. Reload and Retry read again with `reload`.
     func loadIfNeeded(_ request: FilePreviewRequest, store: MachineStore) async {
+        if cancelledReload == request.id {
+            await reload(request, store: store)
+            return
+        }
         guard finishedRequestID != request.id else { return }
         await load(request, store: store)
     }
 
+    /// Reads the file anew: how it is looked at starts over.
     func load(_ request: FilePreviewRequest, store: MachineStore) async {
         let epoch = UUID()
         generation = epoch
-        state = .loading; link = nil
+        state = .loading; link = nil; isReloading = false
         finishedRequestID = nil; showsSource = false; scrollOffset = nil
         showsOutline = true; scrollRequest = nil; visibleBlocks = []; visibleLines = []
         // What the find bar looks for starts over with each read.
         find = PreviewFindState()
+        cancelledReload = nil; hasShownFile = false
+        await read(request, store: store, epoch: epoch, again: false)
+    }
+
+    /// Reads the file again, as the header's Reload button, ⌘R and Retry
+    /// do, keeping how it is looked at: source or rendering, where it is
+    /// scrolled to, the line linked to, the table of contents and the find
+    /// bar. What was read stays shown while it is read again; a preview that
+    /// failed shows that it is reading. A read that fails shows why, and
+    /// how the file was looked at comes back with the next that doesn't.
+    func reload(_ request: FilePreviewRequest, store: MachineStore) async {
+        let epoch = UUID()
+        generation = epoch
+        cancelledReload = nil
+        if case .loaded = state { isReloading = true } else { state = .loading }
+        await read(request, store: store, epoch: epoch, again: true)
+    }
+
+    /// Reads `request`'s file for the read `epoch`, a new one or one `again`.
+    private func read(_ request: FilePreviewRequest, store: MachineStore, epoch: UUID, again: Bool) async {
+        defer { if generation == epoch, isReloading { isReloading = false } }
         let reader = FilePreviewReader()
         do {
             try Task.checkCancellation()
@@ -128,7 +172,7 @@ nonisolated struct PreviewFindState: Equatable, Sendable {
             guard !request.nestedMachine else { throw FilePreviewError.nestedMachine }
             let resolved = try FilePreviewLink.resolve(request.rawLink, directory: request.directory, hostname: machine.hostname,
                 additionalHosts: machine.isLocal ? FilePreviewLink.localHostAliases : [])
-            link = resolved
+            if link != resolved { link = resolved }
             // Local previews must not even look up a remote credential.
             // An unpinned endpoint is not a reason to prompt for a credential.
             if !machine.isLocal && machine.pinnedHostKeyFingerprint == nil { throw FilePreviewError.needsHostKey }
@@ -156,14 +200,30 @@ nonisolated struct PreviewFindState: Equatable, Sendable {
             try Task.checkCancellation()
             _ = try store.currentMachine(matching: request.machine)
             guard generation == epoch else { return }
-            state = .loaded(try FilePreviewDocument(data: data, path: resolved.path))
-            if resolved.line != nil { showsSource = true }
+            show(try FilePreviewDocument(data: data, path: resolved.path))
+            if !hasShownFile, resolved.line != nil { showsSource = true }
+            hasShownFile = true
             finishedRequestID = request.id
         } catch {
             await reader.cancel()
-            guard generation == epoch, !Task.isCancelled else { return }
+            guard generation == epoch else { return }
+            if Task.isCancelled {
+                // Left with its pane: what was shown stays, and a reload is
+                // made again when the pane comes back, as a new read is.
+                if again { cancelledReload = request.id }
+                return
+            }
             state = .failed(error.localizedDescription)
             finishedRequestID = request.id
         }
+    }
+
+    /// Shows `document` in place of what was shown. The same file as shown
+    /// is left as it is; another one keeps how the preview is looked at,
+    /// and the find bar, counting its matches in it, is at none of them yet.
+    private func show(_ document: FilePreviewDocument) {
+        if case .loaded(let shown) = state, shown.content == document.content { return }
+        state = .loaded(document)
+        if find.current != nil { find.current = nil }
     }
 }

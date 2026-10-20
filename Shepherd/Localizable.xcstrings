@@ -91,6 +91,12 @@
         "ko" : { "stringUnit" : { "state" : "translated", "value" : "찾기 막대 닫기" } }
       }
     },
+    "Reload (⌘R)" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "再読み込み (⌘R)" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "새로고침 (⌘R)" } }
+      }
+    },
     "Frontmatter" : {
       "localizations" : {
         "ja" : { "stringUnit" : { "state" : "translated", "value" : "フロントマター" } },

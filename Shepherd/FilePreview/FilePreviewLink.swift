@@ -117,7 +117,7 @@ nonisolated struct FilePreviewDocument: Sendable {
     static let maximumBytes = 4 * 1024 * 1024
     static let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "gif", "webp", "heic", "tiff", "bmp"]
     static let textExtensions: Set<String> = ["md", "markdown", "txt", "swift", "js", "jsx", "ts", "tsx", "json", "jsonl", "yaml", "yml", "toml", "xml", "html", "css", "scss", "py", "rb", "rs", "go", "c", "h", "cpp", "hpp", "sh", "bash", "zsh", "sql", "log", "csv", "ini", "conf", "diff", "patch", "svg"]
-    enum Content: Sendable { case text(String, markdown: Bool), image(Data) }
+    enum Content: Sendable, Equatable { case text(String, markdown: Bool), image(Data) }
     let content: Content
 
     init(data: Data, path: String) throws {

@@ -8,6 +8,8 @@ enum PreviewKeyCommand: Equatable, Sendable {
     case find
     /// ⌘G and ⇧⌘G: the find bar's next and previous match.
     case findNext, findPrevious
+    /// ⌘R: reads the file again.
+    case reload
 
     /// Each key the preview takes: its character, and exactly the
     /// modifiers, of ⇧, ⌃, ⌥ and ⌘, it is taken with.
@@ -15,6 +17,7 @@ enum PreviewKeyCommand: Equatable, Sendable {
         ("f", .command, .find),
         ("g", .command, .findNext),
         ("g", [.command, .shift], .findPrevious),
+        ("r", .command, .reload),
     ]
 
     /// The command a key-down is, if it is one of `keys`.
