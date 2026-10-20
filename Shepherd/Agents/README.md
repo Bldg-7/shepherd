@@ -19,6 +19,24 @@ existing developer instructions. **This is not native Codex skill registration.*
 The pinned Codex 0.160.1 CLI/schema has no equivalent per-launch plugin-directory
 option; marketplace install support must not be reported as that capability.
 
+Agents see the browser integration under these names: the MCP server `3rdr-browser`, the
+skill `3rdr-browser` and, in Claude, the plugin `3rdr`. Its tools are
+`mcp__plugin_3rdr_3rdr-browser__*` in Claude and `mcp__3rdr_browser__*` in Codex and Pi,
+which turn the hyphen into an underscore. Versions up to 0.5.2 used `shepherd-browser`
+and `shepherd`. Three checks accept both the new and the old names (`SERVERS` and
+`PLUGINS` in `runtime-core.mjs`):
+
+- the check for duplicate registrations and for registrations in the user's global CLI
+  settings
+- the child hook's check for launch arguments it has already added
+- `isInjected`
+
+This keeps two cases working. A session launched before the rename keeps its own version
+folder and the old names, and is still recognised. A global registration left from an
+old version is still found and reported. The pi-mcp-adapter protocol namespace stays
+`shepherd`: the adapter requires a namespace that starts with a letter, and `3rdr` starts
+with a digit.
+
 No operation writes user CLI settings, user skill folders, or the Codex plugin
 cache. Existing global hrdrhrdrhrdr skills/MCP/enabled plugins cause explicit
 rejection, not automatic deletion or migration. Old `setupCodex`/`setMode` RPCs

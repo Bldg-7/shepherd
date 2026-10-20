@@ -165,6 +165,18 @@ It archives, exports/signs, notarizes, staples the app and DMG, runs Gatekeeper 
 signs the Sparkle feed. It stops if the update in the appcast came out unsigned, which is
 what happens when the Sparkle key it was given is not the one the app trusts.
 
+Right after the export, the script runs
+`Tests/AgentBrowser/run-cef-helper-name-tests.py --app` on the exported app and stops if
+that check fails. The check wants exactly five helper apps for the browser engine (CEF) in
+`Contents/Frameworks`: `3rdr Helper`, `3rdr Helper (Alerts)`, `3rdr Helper (GPU)`,
+`3rdr Helper (Plugin)` and `3rdr Helper (Renderer)`. Each helper must contain its
+executable, its Info.plist must name that executable, and its signature must be valid.
+The helpers must also be where the app's code tells CEF to look for them. A missing or
+misnamed helper still builds and signs, but the app quits as soon as the browser starts,
+as 0.5.0 did. A reused `build/DerivedData` can still hold helpers under the earlier name
+`Shepherd Helper`, which also fails the check; delete `build/DerivedData` and run the
+script again.
+
 Existing output is not deleted. On a Mac, keep what a failed attempt left in
 `build/release/<version>`, and set `SHEPHERD_RELEASE_WORK` to a fresh directory for the
 retry. A workflow run starts from nothing each time.
