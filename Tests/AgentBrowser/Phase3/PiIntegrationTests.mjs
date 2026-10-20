@@ -7,6 +7,11 @@ import {detectPi, resolvePiExecutable, piNodeSupported, piInvocation, PI_MANAGED
 import {registerPiLifecycle, SERVER as PI_SERVER} from '../../../Shepherd/Agents/AgentRuntime/pi-lifecycle.mjs';
 import {detect, injected, resume, childCommand, SERVER} from '../../../Shepherd/Agents/AgentRuntime/runtime-core.mjs';
 import {prepare, stagePi} from '../../../Shepherd/Agents/AgentRuntime/runtime.mjs';
+import {registerPiSessionNaming} from '../../../Shepherd/Agents/AgentRuntime/pi-session-name.mjs';
+import {createPiHost} from '../../../Shepherd/Agents/AgentRuntime/pi-host.mjs';
+import net from 'node:net';
+import crypto from 'node:crypto';
+import {fileURLToPath} from 'node:url';
 
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'shepherd-pi-fixture-'));
 process.on('exit', () => fs.rmSync(directory, { recursive: true, force: true }));
@@ -258,4 +263,91 @@ test('Status-channel failure leaves no registered live authority', async () => {
   await f.emit('session_start'); await turn();
   assert.equal(f.controller.state(),'failed'); assert(f.events.some(e=>e[0]==='revoke'));
   assert(f.events.some(e=>e[0]==='unregister')); await f.controller.shutdown();
+});
+
+// The pane's name from the app's Rename Pane, for Pi's session (SHPHRD-95).
+function namingFixture() {
+  const handlers = new Map(), names = [];
+  const pi = { on(name, handler) { assert(!handlers.has(name)); handlers.set(name, handler); }, setSessionName(name) { names.push(name); } };
+  const naming = registerPiSessionNaming(pi);
+  const value = { idle: true, pending: false, mode: 'tui' };
+  const context = { get mode() { return value.mode; }, isIdle: () => value.idle, hasPendingMessages: () => value.pending };
+  const emit = name => handlers.get(name)?.({ type: name }, context);
+  return { pi, naming, names, value, emit };
+}
+test('Session name: each number set once, while Pi is idle', () => {
+  const f = namingFixture(); f.emit('session_start');
+  f.naming.offer({ sequence: 1, name: 'Release notes' }); f.naming.offer({ sequence: 1, name: 'Release notes' });
+  assert.deepEqual(f.names, ['Release notes']);
+  f.naming.offer({ sequence: 2, name: 'Renamed' }); f.naming.offer({ sequence: 1, name: 'Release notes' });
+  assert.deepEqual(f.names, ['Release notes', 'Renamed']);
+});
+test('Session name: a working Pi gets it after agent_settled, the latest only', () => {
+  const f = namingFixture(); f.emit('session_start'); f.emit('agent_start');
+  f.naming.offer({ sequence: 1, name: 'First' }); f.naming.offer({ sequence: 2, name: 'Second' });
+  assert.deepEqual(f.names, []);
+  f.value.pending = true; f.emit('agent_settled'); assert.deepEqual(f.names, []);
+  f.value.pending = false; f.value.idle = false; f.emit('agent_settled'); assert.deepEqual(f.names, []);
+  f.value.idle = true; f.emit('agent_settled'); assert.deepEqual(f.names, ['Second']);
+  f.emit('agent_settled'); f.naming.offer({ sequence: 2, name: 'Second' }); assert.deepEqual(f.names, ['Second']);
+});
+test('Session name: before session_start, outside the TUI and for a new session, nothing', () => {
+  const f = namingFixture();
+  f.naming.offer({ sequence: 1, name: 'Early' }); assert.deepEqual(f.names, []);
+  f.value.mode = 'rpc'; f.emit('session_start'); f.emit('agent_settled'); assert.deepEqual(f.names, []);
+  f.value.mode = 'tui'; f.emit('session_start'); assert.deepEqual(f.names, [], 'a name offered before is for the session before');
+  f.emit('agent_start'); f.naming.offer({ sequence: 2, name: 'Old session' });
+  f.emit('session_start'); f.emit('agent_settled'); assert.deepEqual(f.names, []);
+  f.naming.offer({ sequence: 3, name: 'New session' }); assert.deepEqual(f.names, ['New session']);
+  f.emit('session_shutdown'); f.naming.offer({ sequence: 4, name: 'After shutdown' }); assert.deepEqual(f.names, ['New session']);
+});
+test('Session name: only a numbered one-line name of at most 200 characters', () => {
+  const f = namingFixture(); f.emit('session_start');
+  for (const value of [undefined, null, {}, { sequence: 0, name: 'zero' }, { sequence: 1.5, name: 'fraction' }, { sequence: '1', name: 'text' },
+    { sequence: 1, name: '' }, { sequence: 1, name: ' padded' }, { sequence: 1, name: 'two\nlines' }, { sequence: 1, name: 'line\u2028separator' },
+    { sequence: 1, name: 'escape\u001b[31m' }, { sequence: 1, name: 'x'.repeat(201) }, { sequence: 1, name: 7 }]) f.naming.offer(value);
+  assert.deepEqual(f.names, []);
+  f.naming.offer({ sequence: 1, name: '🇰🇷'.repeat(200) }); f.naming.offer({ sequence: 2, name: '가'.repeat(200) });
+  assert.deepEqual(f.names, ['🇰🇷'.repeat(200), '가'.repeat(200)]);
+});
+test('Session name: a failing setSessionName is not tried again', () => {
+  const f = namingFixture(); let calls = 0;
+  f.pi.setSessionName = () => { calls++; throw new Error('stale extension context'); };
+  f.emit('session_start'); f.naming.offer({ sequence: 1, name: 'Once' }); f.naming.offer({ sequence: 1, name: 'Once' }); f.emit('agent_settled');
+  assert.equal(calls, 1);
+});
+test('Session name arrives in the bridge\'s status replies, through createPiHost', async () => {
+  const root = fs.mkdtempSync('/private/tmp/shp-pn-'), socketPath = path.join(root, 'c.sock'), bootstrap = path.join(root, 'bootstrap.json');
+  const requests = []; let sessionName;
+  const server = net.createServer(connection => {
+    let input = '';
+    connection.on('data', chunk => {
+      input += chunk; const newline = input.indexOf('\n'); if (newline < 0) return;
+      const request = JSON.parse(input.slice(0, newline)); requests.push(request.command);
+      const reply = request.command === 'open' ? { ok: true, mcp: { command: '/owned/node', args: ['/owned/mcp-run.mjs', '/owned/descriptor.json'] } }
+        : request.command === 'status' ? { ok: true, ready: true, quiescent: true, ...(sessionName ? { sessionName } : {}) } : { ok: true };
+      connection.end(JSON.stringify(reply) + '\n');
+    });
+  });
+  try {
+    await new Promise(resolve => server.listen(socketPath, resolve)); fs.chmodSync(socketPath, 0o600);
+    fs.writeFileSync(bootstrap, JSON.stringify({ version: 1, launchID: crypto.randomUUID(), capability: crypto.randomBytes(32).toString('base64'), socketPath,
+      node: process.execPath, helper: fileURLToPath(new URL('../../../Shepherd/Agents/AgentRuntime/pi-control.mjs', import.meta.url)), herdrReporting: false }), { mode: 0o600 });
+    const f = namingFixture(); f.emit('session_start');
+    const host = createPiHost(bootstrap, { report: () => {}, onFailure: () => assert.fail('bridge failure'), sessionName: f.naming.offer });
+    const lease = await host.open({ pid: process.pid }, undefined);
+    try {
+      await lease.refresh(); assert.deepEqual(f.names, [], 'no name, nothing set');
+      sessionName = { sequence: 1, name: 'From the pane' };
+      await lease.refresh(); await lease.refresh(); assert.deepEqual(f.names, ['From the pane'], 'the same number set once');
+      f.emit('agent_start'); sessionName = { sequence: 2, name: 'While working' };
+      await lease.refresh(); assert.deepEqual(f.names, ['From the pane'], 'not while Pi works');
+      f.emit('agent_settled'); assert.deepEqual(f.names, ['From the pane', 'While working'], 'set once Pi has settled');
+      sessionName = { sequence: 3, name: 'Third' }; await lease.refresh();
+      assert.deepEqual(f.names, ['From the pane', 'While working', 'Third'], 'a new number, a new name');
+      assert(requests.filter(command => command === 'status').length >= 5);
+    } finally { await lease.close(); }
+  } finally {
+    await new Promise(resolve => server.close(resolve)); fs.rmSync(root, { recursive: true, force: true });
+  }
 });

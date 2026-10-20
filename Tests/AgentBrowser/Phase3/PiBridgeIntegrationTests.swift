@@ -40,6 +40,18 @@ import NIOPosix
         })
         let listener = PiBridgeListener(), socket = root.appendingPathComponent("ctl.sock").path
         try await listener.start(path: socket, host: host)
+        // Another launch's pane name: never in this launch's status replies.
+        let decoyDirectory = root.appendingPathComponent("decoy"), decoySessions = decoyDirectory.appendingPathComponent("sessions")
+        try FileManager.default.createDirectory(at: decoySessions, withIntermediateDirectories: true, attributes: [.posixPermissions:0o700])
+        let decoy = PiBridgeLaunch(id:UUID().uuidString.lowercased(),owner:.init(machineID:"owned-machine",herdrMachineID:nil,session:"default",paneID:"w1:p2",terminalID:"other-terminal"),
+            node:node,entry:fixture,arguments:[],cwd:decoyDirectory.path,sessionID:UUID().uuidString.lowercased(),sessionDirectory:decoySessions.path,
+            helper:resources+"/pi-control.mjs",wrapper:resources+"/pi-mcp-run.mjs",bootstrap:decoyDirectory.appendingPathComponent("bootstrap.json").path)
+        try host.provision(decoy,socketPath:socket)
+        precondition(host.nameSession(launchID:decoy.id,name:"Decoy pane"), "another launch named")
+        for bad in ["", " padded", "trailing ", "two\nlines", "line\u{2028}separator", "escape\u{1b}[31m", String(repeating:"x",count:201)] {
+            precondition(!host.nameSession(launchID:decoy.id,name:bad), "rejected session name \(bad.debugDescription)")
+        }
+        precondition(!host.nameSession(launchID:UUID().uuidString.lowercased(),name:"Nobody"), "an unknown launch is never named")
         for mode in ["normal", "shadow", "exec"] {
             let dir = root.appendingPathComponent(mode)
             let sessions = dir.appendingPathComponent("sessions")
@@ -62,6 +74,9 @@ import NIOPosix
                 node:node,entry:fixture,arguments:[config.path],cwd:dir.path,sessionID:sessionID,sessionDirectory:sessions.path,
                 helper:resources+"/pi-control.mjs",wrapper:resources+"/pi-mcp-run.mjs",bootstrap:bootstrap.path,permitsPiTitleRewrite:mode == "exec")
             try host.provision(launch,socketPath:socket)
+            // Renamed twice before Pi asked: the second name, under number 2.
+            precondition(host.nameSession(launchID:id,name:"First \(mode)") && host.nameSession(launchID:id,name:String(repeating:"가",count:199)+mode.prefix(1)))
+            let expectedName = String(repeating:"가",count:199)+mode.prefix(1)
             let process = Process(); process.executableURL=URL(fileURLWithPath:node); process.arguments=[fixture,config.path]
             process.currentDirectoryURL=dir
             process.environment=["HOME":dir.path,"PATH":URL(fileURLWithPath:node).deletingLastPathComponent().path+":/usr/bin:/bin","LANG":"en_US.UTF-8"]
@@ -85,8 +100,15 @@ import NIOPosix
             }
             let summary=try JSONSerialization.jsonObject(with:Data(contentsOf:result)) as! [String:Any]
             precondition(summary["passed"] as? Bool == true)
+            if mode != "exec" {
+                // Every status reply this launch got carried its own latest name, and no other launch's.
+                let names = summary["sessionNames"] as? [[String:Any]] ?? []
+                precondition(!names.isEmpty && names.allSatisfy { ($0["sequence"] as? Int) == 2 && ($0["name"] as? String) == expectedName },
+                              "status replies carry this launch's latest pane name only (\(mode))")
+            }
             precondition(!proof.isCurrent(), "exited root cannot remain authorized")
             host.retire(launchID:id)
+            precondition(!host.nameSession(launchID:id,name:"After retirement"), "a retired launch is never named")
         }
         if CommandLine.arguments.count > 4 {
             try await actualPi(node: node, entry: CommandLine.arguments[4], resources: resources, root: root,

@@ -32,7 +32,7 @@ if(process.argv[3]==='intruder') {
   const {createPiHost}=await import(pathToFileURL(path.join(config.resources,'pi-host.mjs')));
   const {registerPiLifecycle}=await import(pathToFileURL(path.join(config.resources,'pi-lifecycle.mjs')));
   const identity={...config.identity,pid:process.pid};
-  const handlers=new Map(), children=[], statuses=[];
+  const handlers=new Map(), children=[], statuses=[], sessionNames=[];
   let active, registerCount=0, controller;
   const api={
     on(name,fn){handlers.set(name,fn);},
@@ -63,7 +63,8 @@ if(process.argv[3]==='intruder') {
     },
     unregisterMcpServer(){active?.stdin.end();active=undefined;}
   };
-  const host=createPiHost(config.bootstrap,{report:state=>statuses.push(state),onFailure:()=>{void controller?.shutdown();}});
+  const host=createPiHost(config.bootstrap,{report:state=>statuses.push(state),onFailure:()=>{void controller?.shutdown();},
+    sessionName:value=>sessionNames.push(value)});
   controller=registerPiLifecycle(api,host);
   const context={cwd:config.cwd,sessionManager:{getSessionId:()=>identity.sessionID,getSessionFile:()=>identity.sessionFile,getLeafId:()=>identity.leafID},
     isIdle:()=>true,hasPendingMessages:()=>false};
@@ -93,6 +94,6 @@ if(process.argv[3]==='intruder') {
     if(child.exitCode===null && child.signalCode===null)await once(child,'exit');
     assert.equal(child.exitCode,0);
   }
-  fs.writeFileSync(config.result,JSON.stringify({passed:true,mode:config.mode,registerCount,states:statuses,childrenExited:children.length}),{mode:0o600});
+  fs.writeFileSync(config.result,JSON.stringify({passed:true,mode:config.mode,registerCount,states:statuses,childrenExited:children.length,sessionNames}),{mode:0o600});
   process.stdout.write('PASS owned Pi client '+config.mode+'\n');
 }
