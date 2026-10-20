@@ -142,6 +142,7 @@ extension MachineStore { var activeMachine: Machine? { LayoutFixture.machine } }
 
                 check(result.cards.count == 2, "\(name): the Form draws exactly two cards")
                 check(card("In-app Browser") == 0, "\(name): In-app Browser's toggle is in the first card")
+                check(top("Open links in") == .infinity, "\(name): no setting for where links open")
                 check(card("Terminal File Drop") == 1, "\(name): Terminal File Drop's toggle is in the second card")
                 // Its ⓘ may read as a line of its own, on the same row.
                 check(result.cards.count == 2 && result.lines.filter { result.cards[1].contains($0.rect.midY) }

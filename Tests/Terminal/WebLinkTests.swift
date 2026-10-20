@@ -28,27 +28,29 @@ public nonisolated enum AgentKind: String, Sendable {
         }
         do { _ = try TerminalWebLink.validatedURL("https://user:synthetic@example.invalid/"); preconditionFailure("invalid URL accepted") }
         catch TerminalWebLinkError.invalidURL { checks += 1 }
-        // Where a click goes: the setting, ⌘ for the other browser, and the
-        // default browser for whatever Shepherd Browser can't show.
+        // Where a click goes: In-app Browser, ⌘ for the default browser, and
+        // the default browser for whatever In-app Browser can't show — said
+        // in a notice only when it is on but can't run on this Mac.
         typealias Policy = LinkDestinationPolicy
-        check(Policy.destination(preference: .shepherd, commandHeld: false, browserAvailable: true) == .shepherd)
-        check(Policy.destination(preference: .shepherd, commandHeld: true, browserAvailable: true) == .system)
-        check(Policy.destination(preference: .system, commandHeld: false, browserAvailable: true) == .system)
-        check(Policy.destination(preference: .system, commandHeld: true, browserAvailable: true) == .shepherd)
-        check(Policy.destination(preference: .ask, commandHeld: false, browserAvailable: true) == .ask)
-        check(Policy.destination(preference: .ask, commandHeld: true, browserAvailable: true) == .system)
-        for preference in Policy.Preference.allCases {
-            for command in [false, true] {
-                check(Policy.destination(preference: preference, commandHeld: command, browserAvailable: false) == .system)
-            }
+        struct Row { let command, enabled, engine: Bool; let destination: Policy.Destination; let notice: Bool }
+        let table = [
+            Row(command: false, enabled: true, engine: true, destination: .shepherd, notice: false),
+            Row(command: true, enabled: true, engine: true, destination: .system, notice: false),
+            Row(command: false, enabled: false, engine: true, destination: .system, notice: false),
+            Row(command: true, enabled: false, engine: true, destination: .system, notice: false),
+            Row(command: false, enabled: true, engine: false, destination: .system, notice: true),
+            Row(command: true, enabled: true, engine: false, destination: .system, notice: false),
+            Row(command: false, enabled: false, engine: false, destination: .system, notice: false),
+            Row(command: true, enabled: false, engine: false, destination: .system, notice: false),
+        ]
+        check(Set(table.map { "\($0.command)\($0.enabled)\($0.engine)" }).count == 8)
+        for row in table {
+            check(Policy.destination(commandHeld: row.command, browserEnabled: row.enabled, engineAvailable: row.engine) == row.destination)
+            check(Policy.saysBrowserUnavailable(commandHeld: row.command, browserEnabled: row.enabled, engineAvailable: row.engine) == row.notice)
         }
-        check(Policy.fallsBackToSystem(preference: .shepherd, commandHeld: false, browserAvailable: false))
-        check(Policy.fallsBackToSystem(preference: .system, commandHeld: true, browserAvailable: false))
-        check(!Policy.fallsBackToSystem(preference: .system, commandHeld: false, browserAvailable: false))
-        check(!Policy.fallsBackToSystem(preference: .ask, commandHeld: false, browserAvailable: false))
-        check(!Policy.fallsBackToSystem(preference: .shepherd, commandHeld: false, browserAvailable: true))
-        check(Policy.Preference(rawValue: "ask") == .ask && Policy.preferenceKey == "links.destination")
-        let click = TerminalLinkClick(commandHeld: true, windowPoint: CGPoint(x: 3, y: 4))
+        let click = TerminalLinkClick(commandHeld: true)
+        // A click SwiftTerm reports itself is taken for a plain click.
+        check(!TerminalLinkClick.unknown.commandHeld && Policy.destination(commandHeld: TerminalLinkClick.unknown.commandHeld, browserEnabled: true, engineAvailable: true) == .shepherd)
         check(TerminalWebLinkRequest(machine: Machine(displayName: "Owned", hostname: "owned.invalid", username: "fixture"), pane: AgentSummary(json: .object(["pane_id": .string("p1"), "terminal_id": .string("t1")]))!, url: "https://example.invalid/", click: click).click == click)
         check(TerminalWebLinkRequest(machine: Machine(displayName: "Owned", hostname: "owned.invalid", username: "fixture"), pane: AgentSummary(json: .object(["pane_id": .string("p1"), "terminal_id": .string("t1")]))!, url: "https://example.invalid/").click == .unknown)
         check(TerminalWebLink.isWebLink("http:malformed"))
@@ -78,6 +80,6 @@ public nonisolated enum AgentKind: String, Sendable {
         let nestedRequest = TerminalWebLinkRequest(machine: machine, pane: pane("terminal-1", nested: nested), url: request.rawURL)
         check(nestedRequest.pane(in: [original], on: machine) == nil)
         check(nestedRequest.pane(in: [pane("terminal-1", nested: nested)], on: machine) != nil)
-        print("PASS \(checks) production URL validation/destination policy/stale connection/pane/terminal/nested scope checks; no network/browser/credential access")
+        print("PASS \(checks) production URL validation/click destination and notice table/stale connection/pane/terminal/nested scope checks; no network/browser/credential access")
     }
 }

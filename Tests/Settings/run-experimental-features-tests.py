@@ -15,7 +15,7 @@ service+=[str(x.relative_to(ROOT)) for x in sorted((ROOT/'ShepherdKit/Sources/Sh
 credentials=['Shepherd/CredentialBroker/CredentialBrokerContracts.swift','Shepherd/CredentialBroker/CredentialBroker.swift','Shepherd/CredentialBroker/Interface/CredentialCLIService.swift','Shepherd/CredentialBroker/Interface/CredentialGrantView.swift']
 credentials+=['Shepherd/PasswordManagers/'+n+'.swift' for n in ['PasswordManagerProviderID','PasswordManagerPreferences','PasswordManagerProvider','PasswordManagerCommandExecutor','BitwardenUnlockCommand','CLICredentialProvider','PasswordManagerConnectionCoordinator','PasswordManagerConnectionSetupView']]
 credentials+=['ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/LocalCommand.swift']
-sources=service+credentials+[page,agents,passwords,'Shepherd/Hosts/Views/SettingsPageChrome.swift','Shepherd/Hosts/Views/InfoButton.swift','Shepherd/FileDrop/TerminalFileDropFeature.swift','Shepherd/Terminal/LinkDestinationPolicy.swift','Tests/Settings/ExperimentalFeaturesLayoutTests.swift']
+sources=service+credentials+[page,agents,passwords,'Shepherd/Hosts/Views/SettingsPageChrome.swift','Shepherd/Hosts/Views/InfoButton.swift','Shepherd/FileDrop/TerminalFileDropFeature.swift','Tests/Settings/ExperimentalFeaturesLayoutTests.swift']
 (out/'source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in sources},indent=2))
 def stage(name,seconds,args):
  log=out/(name+'.log')
@@ -30,4 +30,7 @@ assert len(re.findall(r'\bSection\b',e))==2 and e.count('            Section {\n
 assert not re.search(r'\bSection\b',a+w)
 assert e.index('Text("In-app Browser")')<e.index('PasswordManagerSettingsRows(')<e.index('AgentSkillRows(')<e.index('                    advancedSettings\n')<e.index('if showsDiagnostics { diagnosticsRows }')<e.index('Text("Terminal File Drop")')
 assert '            Text("Diagnostics")\n' in e
-(out/'validation.json').write_text(json.dumps({'passed':True,'stages':2,'twoCards':True,'browserRowsInBrowserCard':True,'diagnosticsLastInBrowserCard':True,'neverShownWindow':True,'appOrUserInput':False},indent=2))
+# Where a terminal's links open isn't set here: a click opens In-app Browser,
+# ⌘-click the default browser, as the toggle's ⓘ says.
+assert 'Picker' not in e and 'LinkDestinationPolicy' not in e and '⌘-click opens them in the default browser.' in e
+(out/'validation.json').write_text(json.dumps({'passed':True,'stages':2,'twoCards':True,'browserRowsInBrowserCard':True,'diagnosticsLastInBrowserCard':True,'noLinkSetting':True,'neverShownWindow':True,'appOrUserInput':False},indent=2))
