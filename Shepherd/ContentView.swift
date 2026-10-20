@@ -710,8 +710,8 @@ struct ContentView: View {
         NSWorkspace.shared.open(target)
         guard fellBack else { return }
         linkNotice = LinkNotice(text: ShepherdBrowserFeature.shared.isEnabled
-            ? String(localized: "hrdrhrdrhrdr Browser isn't available on this Mac, so the link opened in the default browser.")
-            : String(localized: "hrdrhrdrhrdr Browser is off, so the link opened in the default browser."))
+            ? String(localized: "In-app Browser isn't available on this Mac, so the link opened in the default browser.")
+            : String(localized: "In-app Browser is off, so the link opened in the default browser."))
     }
 
     /// The preview of `item`, the selected pane or tab. A view of its own for

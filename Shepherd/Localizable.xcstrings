@@ -260,24 +260,24 @@
         }
       }
     },
-    "About hrdrhrdrhrdr Browser" : {
+    "About In-app Browser" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "About hrdrhrdrhrdr Browser"
+            "value" : "About In-app Browser"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "hrdrhrdrhrdr Browser について"
+            "value" : "In-app Browser について"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "hrdrhrdrhrdr Browser 안내"
+            "value" : "In-app Browser 안내"
           }
         }
       }
@@ -4719,25 +4719,25 @@
         }
       }
     },
-    "Prepared automatically while hrdrhrdrhrdr Browser is on. Only agents launched or explicitly resumed by hrdrhrdrhrdr receive this integration." : {
+    "Prepared automatically while In-app Browser is on. Only agents launched or explicitly resumed by hrdrhrdrhrdr receive this integration." : {
       "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Prepared automatically while hrdrhrdrhrdr Browser is on. Only agents launched or explicitly resumed by hrdrhrdrhrdr receive this integration."
+            "value" : "Prepared automatically while In-app Browser is on. Only agents launched or explicitly resumed by hrdrhrdrhrdr receive this integration."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "hrdrhrdrhrdr Browser がオンの間に自動準備します。hrdrhrdrhrdr から起動または明示的に再開したエージェントだけに連携を追加します。"
+            "value" : "In-app Browser がオンの間に自動準備します。hrdrhrdrhrdr から起動または明示的に再開したエージェントだけに連携を追加します。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "hrdrhrdrhrdr Browser가 켜져 있으면 자동으로 준비합니다. hrdrhrdrhrdr에서 실행하거나 명시적으로 재개한 에이전트에만 연결합니다."
+            "value" : "In-app Browser가 켜져 있으면 자동으로 준비합니다. hrdrhrdrhrdr에서 실행하거나 명시적으로 재개한 에이전트에만 연결합니다."
           }
         }
       }
@@ -5134,41 +5134,41 @@
         }
       }
     },
-    "Resume with hrdrhrdrhrdr Browser" : {
+    "Resume with In-app Browser" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Resume with hrdrhrdrhrdr Browser"
+            "value" : "Resume with In-app Browser"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "hrdrhrdrhrdr Browser で再開"
+            "value" : "In-app Browser で再開"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "hrdrhrdrhrdr Browser로 재개"
+            "value" : "In-app Browser로 재개"
           }
         }
       }
     },
-    "Resume with hrdrhrdrhrdr Browser is unavailable" : {
+    "Resume with In-app Browser is unavailable" : {
       "extractionState" : "stale",
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "hrdrhrdrhrdrブラウザーでのセッション再開は利用できません"
+            "value" : "In-app Browser でのセッション再開は利用できません"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "hrdrhrdrhrdr 브라우저로 세션 이어가기를 사용할 수 없습니다"
+            "value" : "In-app Browser로 세션 이어가기를 사용할 수 없습니다"
           }
         }
       }
@@ -5595,63 +5595,63 @@
         }
       }
     },
-    "hrdrhrdrhrdr Browser" : {
+    "In-app Browser" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "hrdrhrdrhrdr Browser"
+            "value" : "In-app Browser"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "hrdrhrdrhrdr Browser"
+            "value" : "In-app Browser"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "hrdrhrdrhrdr Browser"
+            "value" : "In-app Browser"
           }
         }
       }
     },
-    "hrdrhrdrhrdr Browser cannot be disabled while an agent, browser connection, or launch is active, or activity cannot be confirmed. Wait until all local sessions are inactive and try again." : {
+    "In-app Browser cannot be disabled while an agent, browser connection, or launch is active, or activity cannot be confirmed. Wait until all local sessions are inactive and try again." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "hrdrhrdrhrdr Browser cannot be disabled while an agent, browser connection, or launch is active, or activity cannot be confirmed. Wait until all local sessions are inactive and try again."
+            "value" : "In-app Browser cannot be disabled while an agent, browser connection, or launch is active, or activity cannot be confirmed. Wait until all local sessions are inactive and try again."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "エージェント、ブラウザ接続、起動処理が動作中の場合、または動作状況を確認できない場合は、hrdrhrdrhrdr Browser をオフにできません。すべてのローカルセッションが非アクティブになるまで待ってから、もう一度お試しください。"
+            "value" : "エージェント、ブラウザ接続、起動処理が動作中の場合、または動作状況を確認できない場合は、In-app Browser をオフにできません。すべてのローカルセッションが非アクティブになるまで待ってから、もう一度お試しください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "에이전트, 브라우저 연결, 실행 작업이 활성 상태이거나 활동 여부를 확인할 수 없으면 hrdrhrdrhrdr Browser를 끌 수 없습니다. 모든 로컬 세션이 비활성 상태가 된 뒤 다시 시도하세요."
+            "value" : "에이전트, 브라우저 연결, 실행 작업이 활성 상태이거나 활동 여부를 확인할 수 없으면 In-app Browser를 끌 수 없습니다. 모든 로컬 세션이 비활성 상태가 된 뒤 다시 시도하세요."
           }
         }
       }
     },
-    "hrdrhrdrhrdr browser skill" : {
+    "In-app Browser skill" : {
       "extractionState" : "stale",
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "hrdrhrdrhrdr ブラウザスキル"
+            "value" : "In-app Browser スキル"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "hrdrhrdrhrdr 브라우저 스킬"
+            "value" : "In-app Browser 스킬"
           }
         }
       }
@@ -7485,34 +7485,34 @@
         }
       }
     },
-    "Where http and https links clicked in a terminal open. ⌘-click opens a link in the other browser. With hrdrhrdrhrdr Browser off, or unavailable on this Mac, links open in the default browser." : {
+    "Where http and https links clicked in a terminal open. ⌘-click opens a link in the other browser. With In-app Browser off, or unavailable on this Mac, links open in the default browser." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ターミナルでクリックした http、https リンクを開く場所です。⌘を押しながらクリックすると、もう一方のブラウザで開きます。hrdrhrdrhrdr Browser がオフか、この Mac で使えない場合はデフォルトブラウザで開きます。"
+            "value" : "ターミナルでクリックした http、https リンクを開く場所です。⌘を押しながらクリックすると、もう一方のブラウザで開きます。In-app Browser がオフか、この Mac で使えない場合はデフォルトブラウザで開きます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "터미널에서 클릭한 http, https 링크를 여는 곳입니다. ⌘를 누른 채 클릭하면 다른 쪽 브라우저에서 열립니다. hrdrhrdrhrdr Browser가 꺼져 있거나 이 Mac에서 쓸 수 없으면 기본 브라우저에서 열립니다."
+            "value" : "터미널에서 클릭한 http, https 링크를 여는 곳입니다. ⌘를 누른 채 클릭하면 다른 쪽 브라우저에서 열립니다. In-app Browser가 꺼져 있거나 이 Mac에서 쓸 수 없으면 기본 브라우저에서 열립니다."
           }
         }
       }
     },
-    "Open in hrdrhrdrhrdr Browser" : {
+    "Open in In-app Browser" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "hrdrhrdrhrdr Browser で開く"
+            "value" : "In-app Browser で開く"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "hrdrhrdrhrdr Browser에서 열기"
+            "value" : "In-app Browser에서 열기"
           }
         }
       }
@@ -7565,34 +7565,34 @@
         }
       }
     },
-    "hrdrhrdrhrdr Browser is off, so the link opened in the default browser." : {
+    "In-app Browser is off, so the link opened in the default browser." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "hrdrhrdrhrdr Browser がオフのため、デフォルトブラウザで開きました。"
+            "value" : "In-app Browser がオフのため、デフォルトブラウザで開きました。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "hrdrhrdrhrdr Browser가 꺼져 있어 기본 브라우저에서 열었습니다."
+            "value" : "In-app Browser가 꺼져 있어 기본 브라우저에서 열었습니다."
           }
         }
       }
     },
-    "hrdrhrdrhrdr Browser isn't available on this Mac, so the link opened in the default browser." : {
+    "In-app Browser isn't available on this Mac, so the link opened in the default browser." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "この Mac では hrdrhrdrhrdr Browser を使えないため、デフォルトブラウザで開きました。"
+            "value" : "この Mac では In-app Browser を使えないため、デフォルトブラウザで開きました。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "이 Mac에서는 hrdrhrdrhrdr Browser를 쓸 수 없어 기본 브라우저에서 열었습니다."
+            "value" : "이 Mac에서는 In-app Browser를 쓸 수 없어 기본 브라우저에서 열었습니다."
           }
         }
       }

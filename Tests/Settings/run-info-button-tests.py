@@ -19,5 +19,5 @@ stage('tests',30,[str(out/'info-button-tests')])
 e,a=[(ROOT/v).read_text() for v in views]
 assert e.count('InfoButton(accessibilityLabel: "About ')==3 and a.count('InfoButton(accessibilityLabel: "About ')==1
 assert 'systemName: "info.circle"' not in e+a
-assert 'Text("hrdrhrdrhrdr Browser")' in e and 'Text("Terminal File Drop")' in e and '(Experimental)' not in e
+assert 'Text("In-app Browser")' in e and 'Text("Terminal File Drop")' in e and '(Experimental)' not in e
 (out/'validation.json').write_text(json.dumps({'passed':True,'stages':2,'toggleLabelAndPlainRow':True,'closesOnSecondClickOutsideClickEscape':True,'ownedOffscreenWindow':True,'appOrUserInput':False},indent=2))

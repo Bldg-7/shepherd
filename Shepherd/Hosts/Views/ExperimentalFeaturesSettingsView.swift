@@ -68,8 +68,8 @@ struct ExperimentalFeaturesSettingsView: View {
                     set: { enabled in Task { await feature.setEnabled(enabled, presentationOwner: passwordManagerWindowID) } }
                 )) {
                     HStack {
-                        Text("hrdrhrdrhrdr Browser")
-                        InfoButton(accessibilityLabel: "About hrdrhrdrhrdr Browser",
+                        Text("In-app Browser")
+                        InfoButton(accessibilityLabel: "About In-app Browser",
                                    explanation: "An in-app pane browser. Codex resume confirmation may wait until the first user turn; live agents are never restarted automatically.")
                     }
                 }
@@ -81,13 +81,13 @@ struct ExperimentalFeaturesSettingsView: View {
                 // on again.
                 Picker(selection: $linkDestination) {
                     Text("Ask first").tag(LinkDestinationPolicy.Preference.ask)
-                    Text("hrdrhrdrhrdr Browser").tag(LinkDestinationPolicy.Preference.shepherd)
+                    Text("In-app Browser").tag(LinkDestinationPolicy.Preference.shepherd)
                     Text("Default Browser").tag(LinkDestinationPolicy.Preference.system)
                 } label: {
                     HStack {
                         Text("Open links in")
                         InfoButton(accessibilityLabel: "About opening links",
-                                   explanation: "Where http and https links clicked in a terminal open. ⌘-click opens a link in the other browser. With hrdrhrdrhrdr Browser off, or unavailable on this Mac, links open in the default browser.")
+                                   explanation: "Where http and https links clicked in a terminal open. ⌘-click opens a link in the other browser. With In-app Browser off, or unavailable on this Mac, links open in the default browser.")
                     }
                 }
                 .accessibilityIdentifier("settings.experimental-features.link-destination")

@@ -28,6 +28,6 @@ stage('tests',90,[str(out/'layout-tests'),str(out/'renders')])
 e,a,w=[(ROOT/v).read_text() for v in [page,agents,passwords]]
 assert len(re.findall(r'\bSection\b',e))==2 and e.count('            Section {\n')==2
 assert not re.search(r'\bSection\b',a+w)
-assert e.index('Text("hrdrhrdrhrdr Browser")')<e.index('PasswordManagerSettingsRows(')<e.index('AgentSkillRows(')<e.index('                    advancedSettings\n')<e.index('if showsDiagnostics { diagnosticsRows }')<e.index('Text("Terminal File Drop")')
+assert e.index('Text("In-app Browser")')<e.index('PasswordManagerSettingsRows(')<e.index('AgentSkillRows(')<e.index('                    advancedSettings\n')<e.index('if showsDiagnostics { diagnosticsRows }')<e.index('Text("Terminal File Drop")')
 assert '            Text("Diagnostics")\n' in e
 (out/'validation.json').write_text(json.dumps({'passed':True,'stages':2,'twoCards':True,'browserRowsInBrowserCard':True,'diagnosticsLastInBrowserCard':True,'neverShownWindow':True,'appOrUserInput':False},indent=2))

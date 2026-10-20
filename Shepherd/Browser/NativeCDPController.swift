@@ -15,7 +15,7 @@ import AppKit
     private var cleanupConfirmed = false
 
     func acquire() async throws -> (NativeCDPTransport, NativeCDPTransport.Owner) {
-        guard ShepherdBrowserFeature.shared.isEnabled else { throw ProxyError("hrdrhrdrhrdr Browser is disabled.") }
+        guard ShepherdBrowserFeature.shared.isEnabled else { throw ProxyError("In-app Browser is disabled.") }
         try Task.checkCancellation()
         let current = BrowserEngine.generation
         guard BrowserEngine.isRunning, lostGeneration != current else { throw ProxyError("Native controller unavailable until engine restart.") }
