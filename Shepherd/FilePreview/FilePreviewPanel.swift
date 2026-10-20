@@ -17,7 +17,10 @@ struct FilePreviewPanel: View {
     @State private var shownText = PreviewTextCache()
     /// Which blocks of the Markdown rendering its scroll view shows.
     @State private var shownBlocks = PreviewVisibleRows()
+    /// The find bar's matches in what is shown.
+    @State private var finder = PreviewFindCache()
     #if os(macOS)
+    @State private var keyboard = PreviewKeyboard()
     @FocusState private var panelFocused: Bool
     #endif
     // Both raw text and Markdown have a bounded render budget independent
@@ -50,7 +53,12 @@ struct FilePreviewPanel: View {
                         model.scrollOffset = nil
                         model.visibleBlocks = []; model.visibleLines = []
                         model.showsSource = shows
-                    })).toggleStyle(.button)
+                        // What is looked for is kept; the other view has
+                        // matches of its own, and the bar is at none yet.
+                        model.find.current = nil
+                    }))
+                    .toggleStyle(.button)
+                    .accessibilityIdentifier("preview.source")
                     let headings = shownText.shown(text, markdown: true, limit: renderCharacters).markdown?.headings ?? []
                     outlineToggle(hasHeadings: !headings.isEmpty)
                 }
@@ -97,12 +105,22 @@ struct FilePreviewPanel: View {
         .background(.background)
         .navigationTitle(title)
         #if os(macOS)
-        .focusable(isExpanded)
+        // ⌘F and the find bar's keys while the preview has the keyboard,
+        // which a click in it gives it.
+        .background {
+            PreviewKeyCatcher(keyboard: keyboard, perform: perform, onTakeKeyboard: { panelFocused = true })
+        }
+        .focusable()
         .focusEffectDisabled()
         .focused($panelFocused)
-        .onChange(of: isExpanded, initial: true) { _, expanded in panelFocused = expanded }
+        .onChange(of: isExpanded, initial: true) { _, expanded in
+            panelFocused = expanded
+            // Restored to its size, the keyboard goes back to the terminal
+            // it came from, as it always did.
+            if !expanded { keyboard.giveBack() }
+        }
         .onExitCommand {
-            if isExpanded { onToggleExpanded?() } else { onClose() }
+            if model.find.isShown { closeFind() } else if isExpanded { onToggleExpanded?() } else { onClose() }
         }
         #endif
         // A preview shown again with its pane has been read already; only
@@ -130,7 +148,19 @@ struct FilePreviewPanel: View {
         switch document.content {
         case .text(let text, let markdown):
             let shown = shownText.shown(text, markdown: markdown, limit: renderCharacters)
+            let inSource = shown.markdown == nil || model.showsSource
+            // The find bar's matches are marked while it is shown.
+            let matches = model.find.isShown
+                ? finder.matches(of: model.find.query, in: shown.text, rendering: inSource ? nil : shown.markdown) : []
+            let current = PreviewFind.current(model.find.current, count: matches.count)
+            let marks = model.find.isShown ? finder.marks(current: current) : .none
             VStack(spacing: 0) {
+                #if os(macOS)
+                if model.find.isShown {
+                    PreviewFindBar(query: model.find.query, current: current, count: matches.count, keyboard: keyboard,
+                                   onQuery: findQueryChanged, onStep: findStep, onClose: closeFind)
+                }
+                #endif
                 if shown.truncated {
                     Text("Preview truncated to 120,000 characters.").font(.caption).foregroundStyle(.secondary).padding(8)
                 }
@@ -138,7 +168,7 @@ struct FilePreviewPanel: View {
                     Group {
                         if let markdown = shown.markdown, !model.showsSource {
                             ScrollView {
-                                MarkdownPreview(document: markdown) { block, frame in
+                                MarkdownPreview(document: markdown, marks: marks) { block, frame in
                                     keepVisibleBlocks(shownBlocks.place(block, at: frame))
                                 }
                             }
@@ -150,11 +180,11 @@ struct FilePreviewPanel: View {
                             SourceFilePreview(text: shown.text, selectedLine: model.link?.line,
                                               language: .filename(model.link?.path),
                                               restoredOffset: model.scrollOffset, onScroll: keepScrollOffset,
-                                              onVisibleLines: { model.visibleLines = $0 })
+                                              onVisibleLines: { model.visibleLines = $0 }, marks: marks)
                         }
                     }
                     .onChange(of: model.scrollRequest) { _, request in
-                        scroll(proxy, to: request, inSource: shown.markdown == nil || model.showsSource)
+                        scroll(proxy, to: request, inSource: inSource)
                     }
                 }
                 .overlay(alignment: .topTrailing) {
@@ -185,15 +215,110 @@ struct FilePreviewPanel: View {
         if let blocks { model.visibleBlocks = blocks }
     }
 
-    /// Brings what `request` asks for to the top, when it is in the view
-    /// shown: a block of the rendering, or a line of the source.
+    /// Brings what `request` asks for into view, when it is in the view
+    /// shown: a block of the rendering, or a line of the source, to the top,
+    /// or the place in it asked for at the same place in the view.
     private func scroll(_ proxy: ScrollViewProxy, to request: PreviewScrollRequest?, inSource: Bool) {
+        func anchor(_ place: Double) -> UnitPoint { place > 0 ? UnitPoint(x: 0, y: min(1, place)) : .top }
         switch request?.target {
-        case .block(let id)? where !inSource: proxy.scrollTo(PreviewBlockAnchor(block: id), anchor: .top)
-        case .line(let line)? where inSource: proxy.scrollTo(line, anchor: .top)
+        case .block(let id, let place)? where !inSource: proxy.scrollTo(PreviewBlockAnchor(block: id), anchor: anchor(place))
+        case .line(let line, let place)? where inSource: proxy.scrollTo(line, anchor: anchor(place))
         default: break
         }
     }
+
+    /// The text shown, if it is text, and whether it is shown as the source
+    /// view shows it.
+    private func shownTextNow() -> (shown: PreviewTextCache.Shown, inSource: Bool)? {
+        guard case .loaded(let document) = model.state, case .text(let text, let markdown) = document.content else { return nil }
+        let shown = shownText.shown(text, markdown: markdown, limit: renderCharacters)
+        return (shown, shown.markdown == nil || model.showsSource)
+    }
+
+    /// The find bar's matches in the view shown, and whether it is the
+    /// source. Nil when no text is shown.
+    private func findMatches() -> (matches: [PreviewFindMatch], inSource: Bool)? {
+        guard let (shown, inSource) = shownTextNow() else { return nil }
+        return (finder.matches(of: model.find.query, in: shown.text, rendering: inSource ? nil : shown.markdown), inSource)
+    }
+
+    /// The first row the view shown shows: a line of the source, or a block
+    /// of the rendering.
+    private func firstShownRow(inSource: Bool) -> Int? {
+        (inSource ? model.visibleLines : model.visibleBlocks).first
+    }
+
+    /// What is typed into the find bar is looked for as it is typed: the
+    /// bar goes to the first match from where the view is.
+    private func findQueryChanged(_ query: String) {
+        model.find.query = query
+        guard let (matches, inSource) = findMatches() else { return }
+        goToMatch(PreviewFind.first(matches, atOrAfter: firstShownRow(inSource: inSource)), in: matches, inSource: inSource)
+    }
+
+    /// The next match, `by` 1, or the previous, -1, going round at either
+    /// end. With the bar at none yet: the first from where the view is, or
+    /// the last before it. Shows the bar if it was closed.
+    private func findStep(_ by: Int) {
+        if !model.find.isShown { model.find.isShown = true }
+        guard let (matches, inSource) = findMatches(), !matches.isEmpty else { return }
+        let next: Int?
+        if let current = PreviewFind.current(model.find.current, count: matches.count) {
+            next = PreviewFind.step(from: current, by: by, count: matches.count)
+        } else {
+            let row = firstShownRow(inSource: inSource)
+            next = by > 0 ? PreviewFind.first(matches, atOrAfter: row) : PreviewFind.last(matches, before: row)
+        }
+        goToMatch(next, in: matches, inSource: inSource)
+    }
+
+    /// Makes `index` the match the bar is at, and brings it into view
+    /// unless its row is shown whole already: neither the first nor the
+    /// last row shown, either of which may be cut off. Rows shown are one
+    /// run of rows; when they are not, what was reported is not trusted.
+    private func goToMatch(_ index: Int?, in matches: [PreviewFindMatch], inSource: Bool) {
+        model.find.current = index
+        guard let index else { return }
+        let match = matches[index]
+        let shownRows = inSource ? model.visibleLines : model.visibleBlocks
+        if let first = shownRows.first, let last = shownRows.last, last - first == shownRows.count - 1,
+           first < match.row, match.row < last { return }
+        model.reveal(inSource ? .line(match.row, at: match.place) : .block(match.row, at: match.place))
+    }
+
+    /// Closes the find bar, its matches no longer marked, and gives the
+    /// keyboard to the preview. What it looked for is kept for the next ⌘F.
+    private func closeFind() {
+        model.find.isShown = false
+        #if os(macOS)
+        keyboard.focusPreview()
+        #endif
+    }
+
+    #if os(macOS)
+    /// Does what a key the preview takes asks for (see `PreviewKeyCatcher`),
+    /// while text is shown. Whether it did.
+    private func perform(_ command: PreviewKeyCommand) -> Bool {
+        guard let (_, inSource) = shownTextNow() else { return false }
+        switch command {
+        case .find:
+            // The bar shows with the keyboard in it, what it looks for
+            // selected; opened anew, it goes to the first match from where
+            // the view is.
+            let opening = !model.find.isShown
+            model.find.isShown = true
+            keyboard.focusFindField()
+            if opening, let (matches, _) = findMatches() {
+                goToMatch(PreviewFind.first(matches, atOrAfter: firstShownRow(inSource: inSource)), in: matches, inSource: inSource)
+            }
+        case .findNext, .findPrevious:
+            // With nothing to look for yet, as ⌘F.
+            if model.find.query.isEmpty { return perform(.find) }
+            findStep(command == .findNext ? 1 : -1)
+        }
+        return true
+    }
+    #endif
 
     /// Shows or hides the table of contents of this preview. With no
     /// headings to list, it is off and can't be turned on.

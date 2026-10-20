@@ -35,13 +35,30 @@ struct FilePreviewRequest: Identifiable {
 /// request is a new one, so asking for the same place again scrolls again.
 nonisolated struct PreviewScrollRequest: Equatable, Sendable {
     enum Target: Equatable, Sendable {
-        /// A block of the Markdown rendering, by its `id`.
-        case block(Int)
-        /// A 1-based line of the source view.
-        case line(Int)
+        /// A block of the Markdown rendering, by its `id`. `at` is the
+        /// place in the block, from 0 at its top to 1 at its bottom, that
+        /// is brought into view at the same place in the view: 0, the
+        /// block's top at the view's top, for a block that fits.
+        case block(Int, at: Double = 0)
+        /// A 1-based line of the source view, and the place in it, as for
+        /// a block.
+        case line(Int, at: Double = 0)
     }
     let id = UUID()
     let target: Target
+}
+
+/// What a preview's find bar looks for, and which of what it finds it is
+/// at. Kept with the preview (see `FilePreviewModel.find`), so it comes
+/// back with its pane; each new read starts it over.
+nonisolated struct PreviewFindState: Equatable, Sendable {
+    /// Whether the find bar is shown. Its matches are marked only while it is.
+    var isShown = false
+    /// What is typed into it: looked for in the text shown, case ignored.
+    var query = ""
+    /// The match the bar is at, by its place among the matches of `query`
+    /// in the view shown; nil while it is at none.
+    var current: Int?
 }
 
 /// One preview's file, read, and how it is being looked at. It is kept with
@@ -73,6 +90,9 @@ nonisolated struct PreviewScrollRequest: Equatable, Sendable {
     /// The 1-based lines the source view shows now, in order, as its scroll
     /// view reports them.
     var visibleLines: [Int] = []
+    /// The find bar: whether it is shown, what it looks for, and the match
+    /// it is at.
+    var find = PreviewFindState()
     /// The request whose read has ended, loaded or failed. A read that was
     /// cancelled hasn't, and is made again (see `loadIfNeeded`).
     @ObservationIgnored private(set) var finishedRequestID: UUID?
@@ -99,6 +119,8 @@ nonisolated struct PreviewScrollRequest: Equatable, Sendable {
         state = .loading; link = nil
         finishedRequestID = nil; showsSource = false; scrollOffset = nil
         showsOutline = true; scrollRequest = nil; visibleBlocks = []; visibleLines = []
+        // What the find bar looks for starts over with each read.
+        find = PreviewFindState()
         let reader = FilePreviewReader()
         do {
             try Task.checkCancellation()

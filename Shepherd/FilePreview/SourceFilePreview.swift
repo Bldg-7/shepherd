@@ -6,7 +6,8 @@ import SwiftUI
 ///
 /// Each row is known by its 1-based line number: a `ScrollViewReader` around
 /// this view scrolls to a line by its number, and `onVisibleLines` is told
-/// the numbers of the lines shown.
+/// the numbers of the lines shown. The find bar's matches are marked where
+/// they are shown.
 struct SourceFilePreview: View {
     let text: String
     var selectedLine: Int?
@@ -19,6 +20,8 @@ struct SourceFilePreview: View {
     /// Told the 1-based numbers of the lines shown, in order, each time they
     /// change.
     var onVisibleLines: (([Int]) -> Void)? = nil
+    /// The find bar's matches, by line number.
+    var marks: PreviewFindMarks = .none
     @State private var cache = PreviewSyntaxCache()
     @State private var shownLines = PreviewVisibleRows()
     @Environment(\.colorScheme) private var scheme
@@ -37,7 +40,7 @@ struct SourceFilePreview: View {
                             Text(verbatim: String(line.number))
                                 .foregroundStyle(.secondary)
                                 .frame(width: gutter, alignment: .trailing)
-                            Text(line.text.isEmpty ? AttributedString(" ") : PreviewSyntaxRendering.attributed(line, scheme: scheme))
+                            Text(line.text.isEmpty ? AttributedString(" ") : PreviewSyntaxRendering.attributed(line, scheme: scheme, marks: marks(row: line.number)))
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .fixedSize(horizontal: false, vertical: true)
                         }

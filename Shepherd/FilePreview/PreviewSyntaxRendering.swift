@@ -44,7 +44,13 @@ nonisolated struct PreviewSyntaxInput: Hashable, Sendable {
         }
     }
 
-    static func attributed(_ line: PreviewSyntaxLine, scheme: ColorScheme) -> AttributedString {
+    /// The line as the source view shows it: its tokens colored, and the
+    /// find bar's matches in it marked.
+    static func attributed(_ line: PreviewSyntaxLine, scheme: ColorScheme, marks: [PreviewFindMark] = []) -> AttributedString {
+        marked(colored(line, scheme: scheme), marks)
+    }
+
+    private static func colored(_ line: PreviewSyntaxLine, scheme: ColorScheme) -> AttributedString {
         let chars = Array(line.text)
         var result = AttributedString(), position = 0
         for span in line.spans {
@@ -59,6 +65,53 @@ nonisolated struct PreviewSyntaxInput: Hashable, Sendable {
         if position < chars.count { result.append(AttributedString(String(chars[position...]))) }
         return result
     }
+
+    /// The background of a match of the find bar, and of the one it is at.
+    static let matchBackground = Color.yellow.opacity(0.35)
+    static let currentMatchBackground = Color.orange.opacity(0.75)
+
+    /// `text` with `marks`, the find bar's matches in it, on their
+    /// backgrounds. Marks are by Unicode scalar, in order and apart; one
+    /// past the end of `text` is left out.
+    static func marked(_ text: AttributedString, _ marks: [PreviewFindMark]) -> AttributedString {
+        guard !marks.isEmpty else { return text }
+        let scalars = text.unicodeScalars
+        let count = scalars.count
+        var result = AttributedString(), index = text.startIndex, offset = 0
+        for mark in marks where mark.range.lowerBound >= offset && mark.range.upperBound <= count {
+            let start = scalars.index(index, offsetBy: mark.range.lowerBound - offset)
+            let end = scalars.index(start, offsetBy: mark.range.count)
+            result.append(text[index..<start])
+            var match = AttributedString(text[start..<end])
+            match.backgroundColor = mark.isCurrent ? currentMatchBackground : matchBackground
+            result.append(match)
+            index = end; offset = mark.range.upperBound
+        }
+        result.append(text[index...])
+        return result
+    }
+}
+
+/// A match of a preview's find bar in one text the preview shows: where it
+/// is, by Unicode scalar offsets in that text, and whether it is the match
+/// the bar is at.
+nonisolated struct PreviewFindMark: Equatable, Sendable {
+    let range: Range<Int>
+    let isCurrent: Bool
+}
+
+/// The find bar's matches in what a preview shows, by the row each is in —
+/// a source line, by its 1-based number, or a block of the Markdown
+/// rendering, by its `id` — and by which text of the row (see
+/// `PreviewFindText.part`).
+nonisolated struct PreviewFindMarks: Sendable {
+    static let none = PreviewFindMarks(rows: [:])
+    let rows: [Int: [Int: [PreviewFindMark]]]
+
+    /// The marks in `part` of `row`, in order.
+    func callAsFunction(row: Int, part: Int = 0) -> [PreviewFindMark] {
+        rows[row]?[part] ?? []
+    }
 }
 
 /// Also used for Markdown fenced code. Text is literal attributed source, not
@@ -66,6 +119,8 @@ nonisolated struct PreviewSyntaxInput: Hashable, Sendable {
 struct HighlightedCode: View {
     let text: String
     var language: PreviewSyntaxLanguage = .plain
+    /// The find bar's matches in `text`.
+    var marks: [PreviewFindMark] = []
     @State private var cache = PreviewSyntaxCache()
     @Environment(\.colorScheme) private var scheme
     private var input: PreviewSyntaxInput { .init(text: text, language: language) }
@@ -76,7 +131,7 @@ struct HighlightedCode: View {
             if pair.offset > 0 { result.append(AttributedString("\n")) }
             result.append(PreviewSyntaxRendering.attributed(pair.element, scheme: scheme))
         }
-        Text(attributed)
+        Text(PreviewSyntaxRendering.marked(attributed, marks))
             .font(.system(.callout, design: .monospaced))
             .frame(maxWidth: .infinity, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)

@@ -47,6 +47,11 @@ nonisolated struct PreviewMarkdownBlock: Identifiable, Sendable {
         self.id = id; self.kind = kind; self.text = text; self.language = language; self.rows = rows; self.line = line
     }
 
+    /// A frontmatter block's fields, as the rendering shows them.
+    var frontmatterFields: [PreviewFrontmatterField] {
+        PreviewFrontmatterField.parse(text, separator: language == .toml ? "=" : ":")
+    }
+
     /// What the block is known by in the preview's scroll view, to be
     /// scrolled to. Not a bare Int, which a frontmatter field or a table row
     /// inside a block also has.
@@ -241,15 +246,26 @@ final class PreviewMarkdownDocument {
 /// The rendering of a Markdown document, for a scroll view. Each block is
 /// known by its `anchor`, which the scroll view can scroll to, and tells
 /// `onBlockFrame` where it is laid out in the rendering, for the scroll view
-/// to work out the blocks it shows (see `PreviewVisibleRows`).
+/// to work out the blocks it shows (see `PreviewVisibleRows`). The find
+/// bar's matches are marked where they are shown.
 struct MarkdownPreview: View {
     let document: PreviewMarkdownDocument
+    /// The find bar's matches, by block `id` and text of the block (see
+    /// `PreviewFindText.part`).
+    var marks: PreviewFindMarks = .none
     /// Told a block's frame in the rendering as the lazy stack lays it out,
     /// and nil when the stack lets go of it.
     var onBlockFrame: ((Int, CGRect?) -> Void)? = nil
     nonisolated private static let space = "preview.markdown"
-    /// A block's inline Markdown as it is shown.
-    private func inline(_ text: String) -> AttributedString { document.inline(text) }
+    /// Inline Markdown of `block` as it is shown, with the find bar's
+    /// matches in it: `part` of the block's texts.
+    private func inline(_ text: String, in block: PreviewMarkdownBlock, part: Int = 0) -> AttributedString {
+        PreviewSyntaxRendering.marked(document.inline(text), marks(row: block.id, part: part))
+    }
+    /// Literal text of `block` as it is shown, with the find bar's matches.
+    private func literal(_ text: String, in block: PreviewMarkdownBlock, part: Int) -> AttributedString {
+        PreviewSyntaxRendering.marked(AttributedString(text), marks(row: block.id, part: part))
+    }
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 14) {
             ForEach(document.blocks, id: \.anchor) { block in
@@ -270,32 +286,32 @@ struct MarkdownPreview: View {
     @ViewBuilder private func blockView(_ block: PreviewMarkdownBlock) -> some View {
         switch block.kind {
         case .heading(let depth):
-            Text(inline(block.text)).font(depth == 1 ? .title : depth == 2 ? .title2 : .headline).bold()
+            Text(inline(block.text, in: block)).font(depth == 1 ? .title : depth == 2 ? .title2 : .headline).bold()
         case .paragraph:
-            Text(inline(block.text)).frame(maxWidth: .infinity, alignment: .leading)
+            Text(inline(block.text, in: block)).frame(maxWidth: .infinity, alignment: .leading)
         case .frontmatter:
             VStack(alignment: .leading, spacing: 8) {
                 Text("Frontmatter").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                ForEach(PreviewFrontmatterField.parse(block.text, separator: block.language == .toml ? "=" : ":")) { field in
+                ForEach(block.frontmatterFields) { field in
                     HStack(alignment: .top, spacing: 12) {
-                        if !field.key.isEmpty { Text(verbatim: field.key).font(.callout.weight(.semibold)).frame(width: 100, alignment: .leading) }
-                        Text(verbatim: field.value).font(.callout).frame(maxWidth: .infinity, alignment: .leading)
+                        if !field.key.isEmpty { Text(literal(field.key, in: block, part: 2 * field.id)).font(.callout.weight(.semibold)).frame(width: 100, alignment: .leading) }
+                        Text(literal(field.value, in: block, part: 2 * field.id + 1)).font(.callout).frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
             }.padding(12).background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
         case .code:
-            HighlightedCode(text: block.text, language: block.language)
+            HighlightedCode(text: block.text, language: block.language, marks: marks(row: block.id))
                 .padding(12).background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
         case .listItem(let marker, let depth, let checked):
             HStack(alignment: .top, spacing: 8) {
                 if let checked { Image(systemName: checked ? "checkmark.square" : "square").accessibilityLabel(checked ? "Checked" : "Unchecked") }
                 else { Text(verbatim: marker).monospacedDigit() }
-                Text(inline(block.text)).frame(maxWidth: .infinity, alignment: .leading)
+                Text(inline(block.text, in: block)).frame(maxWidth: .infinity, alignment: .leading)
             }.padding(.leading, CGFloat(depth) * 16)
         case .quote:
             HStack(alignment: .top) {
                 Rectangle().fill(.secondary).frame(width: 3)
-                Text(inline(block.text)).foregroundStyle(.secondary)
+                Text(inline(block.text, in: block)).foregroundStyle(.secondary)
             }.fixedSize(horizontal: false, vertical: true)
         case .table:
             ScrollView(.horizontal) {
@@ -303,7 +319,7 @@ struct MarkdownPreview: View {
                     ForEach(block.rows.indices, id: \.self) { row in
                         GridRow {
                             ForEach(block.rows[row].indices, id: \.self) { col in
-                                Text(inline(block.rows[row][col])).fontWeight(row == 0 ? .semibold : .regular)
+                                Text(inline(block.rows[row][col], in: block, part: row * block.rows[row].count + col)).fontWeight(row == 0 ? .semibold : .regular)
                                     .frame(minWidth: 80, alignment: .leading)
                             }
                         }
