@@ -30,7 +30,7 @@ import Darwin
         view.terminalDelegate = coordinator
         view.onOpenFileGesture = { link, click in opened.append(link); clicks.append(click) }
         func populate() {
-            view.feed(text: "\u{1b}[2J\u{1b}[HREADME.md:42\r\ndocs/guide.md\r\nfile:///remote/uri.md#L9\r\n\u{1b}]8;;file://owned.invalid/remote/osc.md\u{7}explicit\u{1b}]8;;\u{7}\r\n\u{1b}]8;;/remote/no-extension\u{7}relative\u{1b}]8;;\u{7}\r\n\u{1b}]8;;https://example.invalid/index\u{7}web\u{1b}]8;;\u{7}\r\nnormal control\r\n\u{1b}]8;;file://foreign.invalid/remote/wrong.md\u{7}wrong-host\u{1b}]8;;\u{7}\r\nhttps://example.invalid/query?q=one%20two#fragment\r\n\u{1b}]8;;https://user:synthetic@example.invalid/\u{7}invalid-web\u{1b}]8;;\u{7}\r\n\u{1b}]8;;ssh://example.invalid/\u{7}unsupported\u{1b}]8;;\u{7}\r\n\u{1b}]8;;README.md:42\u{7}source\u{1b}]8;;\u{7}\r\n\u{1b}]8;;file:///remote/uri.md#L9\u{7}uri\u{1b}]8;;\u{7}\r\n/remote/plain.md\r\n~/Projects/tf-post\r\n\u{1b}[?1003h\u{1b}[?1006h")
+            view.feed(text: "\u{1b}[2J\u{1b}[HREADME.md:42\r\ndocs/guide.md\r\nfile:///remote/uri.md#L9\r\n\u{1b}]8;;file://owned.invalid/remote/osc.md\u{7}explicit\u{1b}]8;;\u{7}\r\n\u{1b}]8;;/remote/no-extension\u{7}relative\u{1b}]8;;\u{7}\r\n\u{1b}]8;;https://example.invalid/index\u{7}web\u{1b}]8;;\u{7}\r\nnormal control\r\n\u{1b}]8;;file://foreign.invalid/remote/wrong.md\u{7}wrong-host\u{1b}]8;;\u{7}\r\nhttps://example.invalid/query?q=one%20two#fragment\r\n\u{1b}]8;;https://user:synthetic@example.invalid/\u{7}invalid-web\u{1b}]8;;\u{7}\r\n\u{1b}]8;;ssh://example.invalid/\u{7}unsupported\u{1b}]8;;\u{7}\r\n\u{1b}]8;;README.md:42\u{7}source\u{1b}]8;;\u{7}\r\n\u{1b}]8;;file:///remote/uri.md#L9\u{7}uri\u{1b}]8;;\u{7}\r\n/remote/plain.md\r\n~/Projects/tf-post\r\n\u{1b}]8;;report.html\u{7}html\u{1b}]8;;\u{7}\r\n\u{1b}]8;;file:///owned/project/Report.HTM#sec\u{7}page\u{1b}]8;;\u{7}\r\n\u{1b}]8;;report.html:12\u{7}html-line\u{1b}]8;;\u{7}\r\n\u{1b}[?1003h\u{1b}[?1006h")
         }
         populate()
         let cell = view.caretFrame.size
@@ -169,6 +169,41 @@ import Darwin
             press(point(8), clicks: 2); press(point(8), clicks: 3)
             check(opened == [web] && sent == first && received() == first && selection().isEmpty, "\(mode): a link pressed second in a run opens once")
         }
+        // An HTML file link (OSC 8) is claimed as any file link is, with or
+        // without ⌘, and sends nothing to the program. In a pane of this
+        // Mac's own herdr it goes where a web link goes — to `openWeb`, with
+        // the click — as a file URL; in any other pane, to the preview as
+        // before. A double or triple click on it opens it once.
+        var routes: [TerminalLinkRoute?] = [], local = true
+        view.onOpenFileGesture = { link, click in
+            opened.append(link); clicks.append(click)
+            routes.append(TerminalLinkRoute(link: link, directory: "/owned/project", hostname: "owned.invalid", additionalHosts: [], opensPages: local))
+        }
+        populate()
+        let pages = [(15, "report.html", "file:///owned/project/report.html"), (16, "file:///owned/project/Report.HTM#sec", "file:///owned/project/Report.HTM#sec"), (17, "report.html:12", "file:///owned/project/report.html")]
+        for thisMac in [true, false] {
+            local = thisMac
+            for (row, link, url) in pages {
+                for command in [false, true] {
+                    for count in [1, 2, 3] {
+                        sent = []; opened = []; clicks = []; routes = []; _ = received(); view.selectNone()
+                        for n in 1...count {
+                            view.mouseDown(with: event(.leftMouseDown, point(row), command: command, clicks: n))
+                            check(sent.isEmpty && received().isEmpty, "an HTML file press is claimed before any input to the program")
+                            view.mouseUp(with: event(.leftMouseUp, point(row), command: command, clicks: n))
+                        }
+                        check(opened == [link] && clicks.map(\.commandHeld) == [command], "a \(count)-click on \(link) opens it once, with ⌘ as held")
+                        check(routes == [thisMac ? .page(url) : .file(link)], "\(link) goes to the browser side only from this Mac's own herdr")
+                        check(sent.isEmpty && received().isEmpty && selection().isEmpty, "an HTML file click sends nothing to the PTY and selects nothing")
+                    }
+                }
+            }
+        }
+        // The pane's web links are unchanged beside them.
+        local = true; sent = []; opened = []; routes = []; _ = received(); click(5, command: true)
+        check(routes == [.web("https://example.invalid/index")] && sent.isEmpty && received().isEmpty, "a web link is still a web link")
+        sent = []; opened = []; routes = []; _ = received(); click(11, command: false)
+        check(routes == [.file("README.md:42")] && sent.isEmpty && received().isEmpty, "other files still go to the preview")
         // The same rules without a view.
         var run = TerminalFileGesture()
         check(run.begin(link: web, at: .zero, clickCount: 1) && run.end(at: .zero) == web, "a click on a link opens it")
@@ -191,6 +226,6 @@ import Darwin
         _ = gesture.begin(link: "owned.md", at: .zero)
         check(gesture.end(at: CGPoint(x: 1, y: 1)) == "owned.md", "small pointer motion keeps original target")
         check(FilePreviewLink.isFileGestureLink("file://other/a.md") && !FilePreviewLink.isFileGestureLink("https://example.invalid/a.md"), "intent classification must not route to URI host or claim web schemes")
-        print("PASS \(checks) real SwiftTerm mouse press/drag/release, OSC8 file link, plain path to TUI, owned PTY zero-byte, normal-input, failure and captured-owner policy and double/triple click checks; no user terminal/GUI/SSH")
+        print("PASS \(checks) real SwiftTerm mouse press/drag/release, OSC8 file link, plain path to TUI, owned PTY zero-byte, normal-input, failure and captured-owner policy, double/triple click and HTML file link routing checks; no user terminal/GUI/SSH")
     }
 }
