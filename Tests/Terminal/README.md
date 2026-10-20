@@ -70,19 +70,39 @@ Needs no SwiftTerm build. It has three stages.
   composition. On an empty tab name Return is refused and editing goes on.
   Losing the keyboard, or the field going away, saves the name typed so far
   (an empty tab name is dropped), once, on the next turn of the run loop.
+  The insertion point, the text and the grey placeholder start 12pt in from
+  the field's left edge. AppKit alone puts them 6pt in, against the rounded
+  end.
 - Toolbar: the production split views in a never-shown window. It checks that
   the window's title is the selected terminal view's title, also while a file
   preview is open. While renaming, the title is hidden and the field takes its
-  place, before the other toolbar items, and gets the keyboard. After Return the
-  title comes back.
+  place, before the other toolbar items, and gets the keyboard. The buttons
+  after the field stay exactly where they were, and the field sits on their
+  line, no taller than they are. After Return the title and the buttons come
+  back as they were.
+- Title double-click, in the toolbar stage: the watcher in
+  `TitleDoubleClick.swift`, on the same window. A double-click on the title's
+  text starts a rename, as the row's Rename item does, with the name selected.
+  The watcher keeps the second mouse press and the release after it from
+  AppKit, so the window is not zoomed. AppKit still gets these clicks
+  unchanged:
+  - a single click on the title
+  - a double-click elsewhere in the bar, or just past the title's text
+  - a double-click on the title while nothing can be renamed
+  - a double-click on the field while it is up
 
 The field and toolbar stages also read the system log
 (`OS_ACTIVITY_DT_MODE=1`) and fail on SwiftUI's "Modifying state during view
 update" or AppKit's `layoutSubtreeIfNeeded` warning. Source checks: the board has
 no rename dialog, Cmd-W is ignored while renaming, the field's text is set only
 when the field is made, and Return and Escape are handled only when nothing is
-being composed. A real keyboard, input method, full screen and the installed app
-are not covered.
+being composed. The source checks also look for three things in the code. The
+flexible space after the field is there only while the field is up. The field
+uses its own cell. A double-click on the title renames what Cmd-W would close,
+and does so only while no name is being typed and no sheet is over the window.
+A real keyboard, input method, full screen and the installed app are not
+covered. Nor is what the system does with a double-click in the title bar,
+because a never-shown window neither zooms nor minimizes.
 
 ## Focus frame
 
