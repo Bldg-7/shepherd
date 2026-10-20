@@ -202,6 +202,9 @@ actor LaunchTransport: HerdrTransport {
         check(code(slow.result) == "setup-busy" && slow.calls == 5 && slow.slept.count == 4, "the calls' own time counts toward the 5 s")
         let missing = await attempt(busy: 0, then: AgentRuntimeError.rejected("cli-missing"))
         check(code(missing.result) == "cli-missing" && missing.calls == 1 && missing.slept.isEmpty, "cli-missing fails at once")
+        let lockFailed = await attempt(busy: 0, then: AgentRuntimeError.rejected("runtime-lock-failed"))
+        check(code(lockFailed.result) == "runtime-lock-failed" && lockFailed.calls == 1 && lockFailed.slept.isEmpty,
+              "runtime-lock-failed fails at once without another try")
         let transport = await attempt(busy: 0, then: HostScriptError(status: 1, message: "transport"))
         check(transportFailure(transport.result) && transport.calls == 1 && transport.slept.isEmpty, "a script failure fails at once")
         let afterBusy = await attempt(busy: 1, then: AgentRuntimeError.rejected("cli-missing"))
@@ -351,6 +354,10 @@ actor LaunchTransport: HerdrTransport {
         let expired = Preparation.nextRetry(after: first, argv: argv, error: busy, message: "busy", now: first.notBefore)
         check(expired == first && Preparation.shouldPrepare(argv, rejected: nil, retry: expired, now: first.notBefore), "setup-busy keeps the count and no new wait")
         check(Preparation.nextRetry(after: first, argv: other, error: busy, message: "busy", now: start) == nil, "setup-busy for different argv forgets the old wait")
+        let lockFailed = AgentRuntimeError.rejected("runtime-lock-failed")
+        let unlocked = Preparation.nextRetry(after: nil, argv: argv, error: lockFailed, message: "lock", now: start)
+        check(unlocked?.attempts == 1 && unlocked?.notBefore == start + .seconds(30) && !Preparation.isQuiet(lockFailed),
+              "runtime-lock-failed waits 30 s like any other failure")
         check(!Preparation.shouldPrepare(argv, rejected: argv, retry: nil, now: start) && Preparation.isQuiet(AgentRuntimeError.rejected("duplicate-registration")),
               "quiet rejection is remembered per argv as before")
         let registration = Preparation.nextRetry(after: nil, argv: nil, error: HostScriptError(status: 1, message: "transport"), message: "register", now: start)!

@@ -1,6 +1,8 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {VERSION,SERVER,RuntimeError,requireValue,quote,privateDirectory,atomicWrite,readJSON,readCodex,mergedInstructions,detect,validateEndpoint,paneName,childCommand,injected,resume,optionValues,instructionOverride,requireNode,inspectClaudeRegistrations} from './runtime-core.mjs';
 
@@ -12,12 +14,78 @@ export function locations(root) {
   privateDirectory(root);
   return readJSON(path.join(root,'installation.json'),null);
 }
-function withLock(root, operation) {
+// <sys/fcntl.h>: open() also takes flock(LOCK_EX) on the file. Not in fs.constants.
+const O_EXLOCK=0x20;
+// When launchd (PID 1) started, in ms since the epoch, or null.
+function launchdStart() {
+  const ps=spawnSync('ps',['-p','1','-o','lstart='],{encoding:'utf8',env:{LC_ALL:'C',TZ:'UTC',PATH:'/bin:/usr/bin'},timeout:5000});
+  const match=ps.status === 0 && typeof ps.stdout === 'string' && /^[A-Z][a-z]{2} ([A-Z][a-z]{2}) +(\d{1,2}) (\d\d):(\d\d):(\d\d) (\d{4})$/.exec(ps.stdout.trim());
+  const month=match ? 'JanFebMarAprMayJunJulAugSepOctNovDec'.indexOf(match[1]) : -1;
+  if(month < 0 || month % 3) return null;
+  const time=Date.UTC(+match[6],month/3,+match[2],+match[3],+match[4],+match[5]);
+  return Number.isFinite(time) ? time : null;
+}
+// True only when the folder was made over 2 s before this boot, by both the
+// kernel's boot time and launchd's start. Anything that cannot be read is false.
+function predatesBoot(stat) {
+  try {
+    const kernel=Date.now()-os.uptime()*1000;
+    if(!(stat.birthtimeMs > 0) || !Number.isFinite(kernel) || stat.birthtimeMs >= kernel-2000) return false;
+    const launchd=launchdStart();
+    return launchd !== null && stat.birthtimeMs < Math.min(launchd,kernel)-2000;
+  } catch {return false;}
+}
+// Takes the name `.lock` while the root folder's lock is held. A file there was
+// made by a holder of that lock, which removes it before letting go, so its
+// holder has exited. A folder was made by a version before this one, which takes
+// only `.lock` and may still be running unless the folder predates this boot.
+function claimLockName(lock, beforeBoot) {
+  const {O_RDWR,O_CREAT,O_EXCL,O_NOFOLLOW}=fs.constants;
+  for(let attempt=0;attempt<3;attempt++) {
+    let file;
+    try {file=fs.openSync(lock,O_RDWR|O_CREAT|O_EXCL|O_NOFOLLOW,0o600);}
+    catch(error) {if(error.code !== 'EEXIST') throw new RuntimeError('runtime-lock-failed');}
+    if(file !== undefined) {try {fs.closeSync(file);} catch {} return;}
+    let stat;
+    try {stat=fs.lstatSync(lock,{throwIfNoEntry:false});} catch {throw new RuntimeError('runtime-lock-failed');}
+    if(!stat) continue;
+    if(stat.isDirectory()) {
+      let proven=false;try {proven=beforeBoot(stat) === true;} catch {}
+      if(!proven) throw new RuntimeError('setup-busy');
+    } else if(!stat.isFile()) throw new RuntimeError('runtime-lock-failed');
+    try {stat.isDirectory() ? fs.rmdirSync(lock) : fs.unlinkSync(lock);}
+    catch(error) {if(error.code !== 'ENOENT') throw new RuntimeError('runtime-lock-failed');}
+  }
+  throw new RuntimeError('setup-busy');
+}
+// One runtime action at a time, across processes and versions. The kernel lock
+// on the root folder orders this version's processes; the kernel drops it when
+// the holder exits in any way, and spawned children never get the descriptor
+// (Node opens it close-on-exec), so a crash leaves nothing that blocks the next
+// action. `.lock`, a file for the length of the action, makes an older version's
+// `mkdir .lock` fail with setup-busy. No action calls withLock again while it
+// holds the lock: a second open of the root in the same process would fail
+// with setup-busy. `predatesBoot` is replaced only by tests.
+export function withLock(root, operation, {predatesBoot:beforeBoot=predatesBoot}={}) {
   requireNode();
   requireValue(typeof root === 'string' && path.isAbsolute(root),'invalid-runtime-root');
   privateDirectory(root); const lock=path.join(root,'.lock');
-  try {fs.mkdirSync(lock,{mode:0o700});} catch {throw new RuntimeError('setup-busy');}
-  try {return operation();} finally {fs.rmdirSync(lock);}
+  let fd;
+  try {fd=fs.openSync(root,fs.constants.O_RDONLY|fs.constants.O_DIRECTORY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK|O_EXLOCK);}
+  catch(error) {throw new RuntimeError(error.code === 'EAGAIN' ? 'setup-busy' : 'runtime-lock-failed');}
+  try {
+    const own=fs.fstatSync(fd);
+    requireValue(own.isDirectory() && own.uid === process.getuid() && (own.mode & 0o077) === 0,'runtime-lock-failed');
+    claimLockName(lock,beforeBoot);
+  } catch(error) {
+    try {fs.closeSync(fd);} catch {}
+    throw error instanceof RuntimeError ? error : new RuntimeError('runtime-lock-failed');
+  }
+  try {return operation();}
+  finally {
+    try {fs.unlinkSync(lock);} catch {}
+    try {fs.closeSync(fd);} catch {}
+  }
 }
 function plugin(dir, runner, args, hook) {
   fs.mkdirSync(path.join(dir,'.claude-plugin'),{recursive:true,mode:0o700});

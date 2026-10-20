@@ -3,10 +3,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import {execFileSync,spawnSync} from 'node:child_process';
+import {execFileSync,spawn,spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {shellTokens,childCommand,quote,sessionName,injected,mergedInstructions,readCodex,resume,validateEndpoint,atomicWrite,detect,requireNode,nodeSupported} from '../../../Shepherd/Agents/AgentRuntime/runtime-core.mjs';
-import {install,prepare,rewrite,cleanup,setMode,checkScope,registerPane,setupCodex,reserveLaunch,discardReservation} from '../../../Shepherd/Agents/AgentRuntime/runtime.mjs';
+import {install,prepare,rewrite,cleanup,setMode,checkScope,registerPane,setupCodex,reserveLaunch,discardReservation,withLock} from '../../../Shepherd/Agents/AgentRuntime/runtime.mjs';
 let checks=0;const check=(name,operation)=>{operation();checks++;console.log('PASS',name);};
 const directory=fs.mkdtempSync(path.join(os.tmpdir(),'shepherd-runtime-unit-'));
 try {
@@ -43,7 +43,128 @@ try {
  check('idempotent install',()=>{install({root});assert.deepEqual(fs.readFileSync(path.join(root,'installation.json')),preimage);});
  check('failed atomic rename preserves existing target',()=>{const target=path.join(root,'not-file');fs.mkdirSync(target);assert.throws(()=>atomicWrite(target,'replacement'));assert(fs.statSync(target).isDirectory());assert(!fs.readdirSync(root).some(n=>n.startsWith('.new-')));});
  check('immutable copied dependency links remain relative',()=>{const installed=JSON.parse(fs.readFileSync(path.join(root,'installation.json'),'utf8'));assert(!path.isAbsolute(fs.readlinkSync(path.join(installed.resourceDirectory,'node_modules','.bin','playwright-mcp'))));});
- check('concurrent setup lock fails closed',()=>{fs.mkdirSync(path.join(root,'.lock'));assert.throws(()=>install({root}),/setup-busy/);fs.rmdirSync(path.join(root,'.lock'));assert.deepEqual(fs.readFileSync(path.join(root,'installation.json')),preimage);});
+ check('concurrent setup lock fails closed, keeping an older version\'s .lock folder made this boot',()=>{const lock=path.join(root,'.lock');fs.mkdirSync(lock);assert.throws(()=>install({root}),/setup-busy/);assert(fs.lstatSync(lock).isDirectory());fs.rmdirSync(lock);assert.deepEqual(fs.readFileSync(path.join(root,'installation.json')),preimage);});
+ // The runtime lock across processes and versions (withLock), each case in its
+ // own root. Every child and grandchild started here has exited when it ends.
+ {
+ const runtimeURL=new URL('../../../Shepherd/Agents/AgentRuntime/runtime.mjs',import.meta.url),runtimeScript=fileURLToPath(runtimeURL);
+ const busy=/setup-busy/,lockFailed=/runtime-lock-failed/;
+ const children=new Set(),grandchildren=new Set();
+ const alive=pid=>{try{process.kill(pid,0);return true;}catch(error){return error.code !== 'ESRCH';}};
+ const exited=child=>child.exitCode !== null || child.signalCode !== null ? Promise.resolve() : new Promise(resolve=>child.once('exit',resolve));
+ const gone=async pid=>{for(let i=0;i<100 && alive(pid);i++) await new Promise(resolve=>setTimeout(resolve,50));return !alive(pid);};
+ const checkAsync=async(name,operation)=>{await operation();checks++;console.log('PASS',name);};
+ let roots=0;const lockRoot=()=>{const r=path.join(directory,'lock-'+(++roots));fs.mkdirSync(r,{mode:0o700});return r;};
+ const lockOf=r=>path.join(r,'.lock'),absent=file=>fs.lstatSync(file,{throwIfNoEntry:false}) === undefined;
+ // This version holding the lock until killed; with 'detach' it first starts a
+ // detached /bin/sleep that outlives it.
+ const holderSource=`import fs from 'node:fs';import {spawn} from 'node:child_process';import {withLock} from ${JSON.stringify(runtimeURL.href)};
+const [root,detach]=process.argv.slice(1);
+withLock(root,()=>{let child=0;if(detach){const c=spawn('/bin/sleep',['60'],{detached:true,stdio:'ignore'});c.unref();child=c.pid;}
+fs.writeSync(1,JSON.stringify({child})+'\\n');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0);});`;
+ const holder=async(r,detach=false)=>{
+  const child=spawn(process.execPath,['--input-type=module','-e',holderSource,r,...(detach?['detach']:[])],{stdio:['ignore','pipe','inherit']});children.add(child);
+  const line=await new Promise((resolve,reject)=>{let text='';child.stdout.on('data',d=>{text+=d;if(text.includes('\n')) resolve(text);});child.once('exit',()=>reject(new Error('holder exited before holding')));});
+  const {child:grandchild}=JSON.parse(line);if(grandchild) grandchildren.add(grandchild);
+  return {child,grandchild};
+ };
+ const stop=async(child,signal)=>{child.kill(signal);await exited(child);children.delete(child);return child.signalCode;};
+ // A worker of this version (withLock) or of an older one (mkdir .lock, as
+ // before this change) entering a critical section until `until`. Finding
+ // another worker inside counts as a violation.
+ const workerSource=`import fs from 'node:fs';import path from 'node:path';import {withLock} from ${JSON.stringify(runtimeURL.href)};
+const [root,kind,until]=process.argv.slice(1);const lock=path.join(root,'.lock'),inside=path.join(root,'inside');
+const pause=ms=>Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,ms);
+const result={kind,held:0,busy:0,violations:0,failed:[]};
+const critical=()=>{let fd;try{fd=fs.openSync(inside,'wx');}catch(error){if(error.code !== 'EEXIST') throw error;result.violations++;return;}
+fs.closeSync(fd);pause(Math.random()*2);fs.unlinkSync(inside);result.held++;};
+while(Date.now() < Number(until)) {
+ if(kind === 'new') {try{withLock(root,critical);}catch(error){if(error.code === 'setup-busy') result.busy++;else result.failed.push(String(error.code ?? error.message));}}
+ else {let made=false;try{fs.mkdirSync(lock,{mode:0o700});made=true;}catch{result.busy++;}if(made) try{critical();}finally{fs.rmdirSync(lock);}}
+ pause(Math.random());
+}
+fs.writeSync(1,JSON.stringify(result)+'\\n');`;
+ const rpc=r=>JSON.parse(execFileSync(process.execPath,[runtimeScript],{input:JSON.stringify({action:'reserveLaunch',root:r}),encoding:'utf8',timeout:10000,killSignal:'SIGKILL'}));
+ try {
+  await checkAsync('a live holder keeps the lock: setup-busy without running the action, and its .lock stays',async()=>{
+   const r=lockRoot();const {child}=await holder(r);
+   let ran=false;assert.throws(()=>withLock(r,()=>{ran=true;}),busy);assert(!ran);assert(fs.lstatSync(lockOf(r)).isFile());
+   await stop(child,'SIGKILL');
+  });
+  for(const signal of ['SIGKILL','SIGTERM']) await checkAsync(`a holder ended by ${signal} leaves .lock, and the next action takes the lock and removes it`,async()=>{
+   const r=lockRoot();const {child}=await holder(r);
+   assert.equal(await stop(child,signal),signal);assert(fs.lstatSync(lockOf(r)).isFile());
+   let ran=false;withLock(r,()=>{ran=true;});assert(ran);assert(absent(lockOf(r)));
+  });
+  await checkAsync('a detached child of a killed holder does not keep the lock',async()=>{
+   const r=lockRoot();const {child,grandchild}=await holder(r,true);
+   assert(grandchild > 0 && alive(grandchild));await stop(child,'SIGKILL');assert(alive(grandchild));
+   let ran=false;withLock(r,()=>{ran=true;});assert(ran);assert(absent(lockOf(r)));
+   process.kill(grandchild,'SIGKILL');assert(await gone(grandchild));grandchildren.delete(grandchild);
+  });
+  await checkAsync('mixed contention: workers of this version and older mkdir workers never share the critical section',async()=>{
+   const r=lockRoot();const until=Date.now()+2500;
+   const results=await Promise.all([...Array(4).fill('new'),...Array(2).fill('old')].map(kind=>{
+    const child=spawn(process.execPath,['--input-type=module','-e',workerSource,r,kind,String(until)],{stdio:['ignore','pipe','inherit']});children.add(child);
+    let text='';child.stdout.on('data',d=>{text+=d;});
+    return new Promise(resolve=>child.once('close',resolve)).then(()=>{children.delete(child);assert.equal(child.exitCode,0);return JSON.parse(text);});
+   }));
+   const sum=(kind,key)=>results.filter(w=>w.kind === kind).reduce((n,w)=>n+w[key],0);
+   const totals={newHeld:sum('new','held'),newBusy:sum('new','busy'),oldHeld:sum('old','held'),oldBusy:sum('old','busy'),violations:sum('new','violations')+sum('old','violations'),failed:results.flatMap(w=>w.failed)};
+   console.log('contention',JSON.stringify(totals));
+   assert.equal(totals.violations,0);assert.deepEqual(totals.failed,[]);
+   assert(totals.newHeld > 0 && totals.oldHeld > 0 && totals.newBusy > 0 && totals.oldBusy > 0);
+   assert.deepEqual(fs.readdirSync(r),[]);withLock(r,()=>{});
+  });
+  check('by default an older version\'s .lock folder made this boot stays, and one made before boot is removed',()=>{
+   const fresh=lockRoot();fs.mkdirSync(lockOf(fresh));assert.throws(()=>withLock(fresh,()=>{}),busy);assert(fs.lstatSync(lockOf(fresh)).isDirectory());
+   const old=lockRoot();fs.mkdirSync(lockOf(old));const past=new Date(Date.UTC(2000,0,1));fs.utimesSync(lockOf(old),past,past);
+   assert(fs.lstatSync(lockOf(old)).birthtimeMs < Date.now()-os.uptime()*1000,'APFS moves the birth time back with an earlier modification time');
+   let ran=false;withLock(old,()=>{ran=true;});assert(ran);assert(absent(lockOf(old)));
+  });
+  check('an older version\'s .lock folder is removed only when predatesBoot answers true',()=>{
+   for(const answer of [()=>null,()=>false,()=>undefined,()=>1,()=>{throw new Error('unreadable');}]) {
+    const r=lockRoot();fs.mkdirSync(lockOf(r));let ran=false;
+    assert.throws(()=>withLock(r,()=>{ran=true;},{predatesBoot:answer}),busy);assert(!ran);assert(fs.lstatSync(lockOf(r)).isDirectory());
+   }
+   const r=lockRoot();fs.mkdirSync(lockOf(r));let seen,ran=false;
+   withLock(r,()=>{ran=true;assert(fs.lstatSync(lockOf(r)).isFile());},{predatesBoot:stat=>{seen=stat;return true;}});
+   assert(ran && seen.isDirectory());assert(absent(lockOf(r)));
+   const full=lockRoot();fs.mkdirSync(lockOf(full));fs.writeFileSync(path.join(lockOf(full),'owner'),'');
+   assert.throws(()=>withLock(full,()=>{},{predatesBoot:()=>true}),lockFailed);assert(fs.existsSync(path.join(lockOf(full),'owner')));
+  });
+  check('a root that cannot hold .lock, or a .lock of another kind, fails with runtime-lock-failed and lets go of the root',()=>{
+   const readOnly=lockRoot();fs.chmodSync(readOnly,0o500);
+   try {assert.throws(()=>withLock(readOnly,()=>{}),lockFailed);assert.deepEqual(fs.readdirSync(readOnly),[]);} finally {fs.chmodSync(readOnly,0o700);}
+   withLock(readOnly,()=>{});
+   const linked=lockRoot();fs.symlinkSync(directory,lockOf(linked));
+   assert.throws(()=>withLock(linked,()=>{}),lockFailed);assert(fs.lstatSync(lockOf(linked)).isSymbolicLink());
+   fs.unlinkSync(lockOf(linked));withLock(linked,()=>{});
+  });
+  await checkAsync('the runtime script returns setup-busy and runtime-lock-failed as typed rejections',async()=>{
+   const r=lockRoot();const {child}=await holder(r);
+   assert.deepEqual(rpc(r),{ok:false,error:'setup-busy'});await stop(child,'SIGKILL');assert.equal(rpc(r).ok,true);
+   const linked=lockRoot();fs.symlinkSync(directory,lockOf(linked));assert.deepEqual(rpc(linked),{ok:false,error:'runtime-lock-failed'});
+  });
+  check('an action that throws lets go of the lock and its error reaches the caller',()=>{
+   const r=lockRoot(),failure=new Error('action failed');
+   assert.throws(()=>withLock(r,()=>{throw failure;}),error=>error === failure);
+   assert(absent(lockOf(r)));let ran=false;withLock(r,()=>{ran=true;});assert(ran);
+  });
+  check('while the lock is held, .lock is a 0600 file, an older version\'s mkdir fails with EEXIST, and a nested withLock with setup-busy',()=>{
+   const r=lockRoot();
+   withLock(r,()=>{
+    const stat=fs.lstatSync(lockOf(r));assert(stat.isFile() && (stat.mode & 0o777) === 0o600);
+    assert.throws(()=>fs.mkdirSync(lockOf(r),{mode:0o700}),{code:'EEXIST'});
+    assert.throws(()=>withLock(r,()=>{}),busy);assert(fs.lstatSync(lockOf(r)).isFile());
+   });
+   assert(absent(lockOf(r)));
+  });
+ } finally {
+  for(const child of children) {child.kill('SIGKILL');await exited(child);}
+  for(const pid of grandchildren) if(alive(pid)) {process.kill(pid,'SIGKILL');await gone(pid);}
+ }
+ }
  const config='developer_instructions = "Keep user instructions"\n[mcp_servers.chrome]\ncommand = "owned-command"\n[profiles.legacy]\ndeveloper_instructions = "Legacy profile"\n';fs.writeFileSync(path.join(codexHome,'config.toml'),config,{mode:0o600});
  fs.writeFileSync(path.join(codexHome,'work.config.toml'),'developer_instructions = """Named profile\nmultiline"""\nmodel = "owned-model"\n',{mode:0o600});
  check('base instructions merge',()=>assert.match(mergedInstructions(readCodex(codexHome)),/^Keep user instructions\n\nFor web pages/));
