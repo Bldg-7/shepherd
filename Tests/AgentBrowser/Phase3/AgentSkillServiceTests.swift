@@ -15,6 +15,11 @@ private actor SkillTransport: HerdrTransport {
     private var processes: [String: JSONValue] = [:]
     private var hold = true
     private var scopeFailure = false
+    /// Installs still to refuse with setup-busy, as the runtime does while
+    /// the browser check holds its lock.
+    private var busyInstalls = 0
+    private(set) var stages = 0
+    func refuseInstalls(_ count: Int) { busyInstalls = count }
     private var pending: CheckedContinuation<Void, Never>?
     private var started: CheckedContinuation<Void, Never>?
     /// Each registerPane: the pane, the servers to block and the toggle.
@@ -54,6 +59,7 @@ private actor SkillTransport: HerdrTransport {
         let value: [String: Any]
         if script.contains("\"action\":\"install\"") {
             installs += 1
+            if busyInstalls > 0 { busyInstalls -= 1; return Data("{\"ok\":false,\"error\":\"setup-busy\"}".utf8) }
             if hold { await withCheckedContinuation { pending = $0; started?.resume(); started = nil } }
             value = installation
         } else if script.contains("\"action\":\"registerPane\"") {
@@ -69,6 +75,7 @@ private actor SkillTransport: HerdrTransport {
             registrations.append(pane + " " + field("competingBrowserServers", "]") + " " + field("disableCompetingBrowsers", ","))
             value = ["registered": true]
         } else if script.contains("\"action\":\"stagePi\"") {
+            stages += 1
             return Data("{\"ok\":false,\"error\":\"pi-package-unsupported\"}".utf8)
         } else if script.contains("\"action\":\"status\"") { statusScripts += 1; value = ["installation": installation] }
         else if script.contains("\"action\":\"checkScope\"") {
@@ -272,6 +279,20 @@ nonisolated private final class Fired: @unchecked Sendable {
         } catch AgentRuntimeError.rejected(let code) { precondition(code == "pi-package-unsupported") }
         expect(await fake.scripts == beforePiLaunch + 2)
         expect(await fake.installs == 2)
+        expect(await fake.stages == 1)
+        // The browser check holding the runtime lock: the launch waits it
+        // out and goes on to stage Pi (AgentRuntimeLockWait).
+        await fake.refuseInstalls(1)
+        let beforeBusyLaunch = await fake.scripts
+        do {
+            _ = try await service.launch(kind: .pi, on: machine, client: HerdrClient(transport: fake),
+                create: { _ in preconditionFailure("unsupported Pi package must not create a pane") },
+                select: { _ in preconditionFailure("unsupported Pi package must not select a pane") })
+            preconditionFailure("unsupported Pi package launched")
+        } catch AgentRuntimeError.rejected(let code) { precondition(code == "pi-package-unsupported", "a busy install is waited out up to stagePi, not \(code)") }
+        expect(await fake.scripts == beforeBusyLaunch + 3)
+        expect(await fake.installs == 4)
+        expect(await fake.stages == 2)
         await fake.configure(hold: true)
         ShepherdBrowserFeature.shared.isEnabled = false
         await service.stop()
@@ -302,6 +323,6 @@ nonisolated private final class Fired: @unchecked Sendable {
         await service.stop()
         try await browserCheck(fake: fake, machine: machine, defaults: defaults)
         try await registrationFollowsSettings(fake: fake, machine: machine, defaults: defaults)
-        print("PASS real AgentLaunchService with synthetic native/transport seams: OFF no setup, ON automatic setup, shared/coalesced preparation, safe drain, legacy-global failure, explicit retry, Codex delivery distinction, panes registered again once when settings settle; no real CLI/herdr/GUI")
+        print("PASS real AgentLaunchService with synthetic native/transport seams: OFF no setup, ON automatic setup, shared/coalesced preparation, safe drain, legacy-global failure, explicit retry, Codex delivery distinction, a launch waiting out a busy runtime lock, panes registered again once when settings settle; no real CLI/herdr/GUI")
     }
 }

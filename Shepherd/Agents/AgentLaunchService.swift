@@ -264,12 +264,14 @@ final class AgentLaunchService {
         guard available.readiness == .availableAuthenticationUnknown else {
             throw AgentRuntimeError.rejected(available.nodeSupported ? (available.readiness == .missing ? "cli-missing" : "cli-unsupported") : "node-version-unsupported")
         }
-        installation = try await runtime.install(on: .thisMac)
+        // The browser check may hold the runtime lock for a moment
+        // (AgentRuntimeLockWait): each runtime call here waits it out.
+        installation = try await AgentRuntimeLockWait.run { try await runtime.install(on: .thisMac) }
         preferences.mode = installation!.mode
-        let reservation = try await runtime.reserveLaunch(on: .thisMac)
+        let reservation = try await AgentRuntimeLockWait.run { try await runtime.reserveLaunch(on: .thisMac) }
         let created: HerdrClient.CreatedTab
         do { created = try await create(reservation.environment) }
-        catch { try await runtime.discardReservation(reservation, on: .thisMac); throw error }
+        catch { try await AgentRuntimeLockWait.run { try await runtime.discardReservation(reservation, on: .thisMac) }; throw error }
         select(created)
         let createdIdentity = AgentPaneIdentity(key: BrowserKey(machine: machine, pane: created.pane), terminalID: created.pane.terminalID)
         preparingPanes.insert(createdIdentity)
@@ -284,9 +286,11 @@ final class AgentLaunchService {
             // From this point an interrupted prepare might have bound the reservation.
             // Leave it for proven disappearance cleanup, never discard on guesswork.
             preparationAttempted = true
-            let plan = try await runtime.prepare(kind: kind, executable: kind.rawValue, pane: pane,
-                endpoint: AgentBrowserEndpoint(endpoint), preferences: preferences, codexHome: host.codexHome,
-                claudeSettingsFile: host.claudeSettings, reservation: reservation, on: .thisMac)
+            let plan = try await AgentRuntimeLockWait.run { [preferences] in
+                try await runtime.prepare(kind: kind, executable: kind.rawValue, pane: pane,
+                    endpoint: AgentBrowserEndpoint(endpoint), preferences: preferences, codexHome: host.codexHome,
+                    claudeSettingsFile: host.claudeSettings, reservation: reservation, on: .thisMac)
+            }
             plans[pane] = plan
             // Preparation can suspend. Recheck the same authoritative terminal
             // and foreground shell before sending the destructive start RPC.
@@ -304,7 +308,7 @@ final class AgentLaunchService {
             return created
         } catch {
             failures[identity ?? createdIdentity] = connectionFailureDescription(error)
-            if !preparationAttempted { try await runtime.discardReservation(reservation, on: .thisMac) }
+            if !preparationAttempted { try await AgentRuntimeLockWait.run { try await runtime.discardReservation(reservation, on: .thisMac) } }
             throw error
         }
     }
@@ -313,8 +317,8 @@ final class AgentLaunchService {
                           create: ([String: String]) async throws -> HerdrClient.CreatedTab,
                           select: (HerdrClient.CreatedTab) -> Void,
                           started: (@MainActor () async -> Void)?) async throws -> HerdrClient.CreatedTab {
-        installation = try await runtime.install(on: .thisMac)
-        let stage = try await runtime.stagePi(on: .thisMac)
+        installation = try await AgentRuntimeLockWait.run { try await runtime.install(on: .thisMac) }
+        let stage = try await AgentRuntimeLockWait.run { try await runtime.stagePi(on: .thisMac) }
         let created = try await create(stage.environment)
         select(created)
         let pane = AgentPaneIdentity(key: BrowserKey(machine: machine, pane: created.pane), terminalID: created.pane.terminalID)
@@ -454,8 +458,10 @@ final class AgentLaunchService {
             guard persistenceInspection.agentArguments(for: kind) == argv else { throw AgentRuntimeError.rejected("resume-foreground-changed") }
             try AgentSavedSession.verify(kind: kind, sessionID: sessionID, cwd: expected.workingDirectory,
                 configurationDirectory: configurationDirectory, process: persistenceInspection)
-            let plan = try await runtime.prepare(kind: kind, executable: kind.rawValue, pane: identity, endpoint: AgentBrowserEndpoint(endpoint), preferences: preferences,
-                arguments: Array(argv.dropFirst()), codexHome: host.codexHome, claudeSettingsFile: host.claudeSettings, reservation: nil, on: .thisMac).resuming(sessionID: sessionID)
+            let plan = try await AgentRuntimeLockWait.run { [preferences] in
+                try await runtime.prepare(kind: kind, executable: kind.rawValue, pane: identity, endpoint: AgentBrowserEndpoint(endpoint), preferences: preferences,
+                    arguments: Array(argv.dropFirst()), codexHome: host.codexHome, claudeSettingsFile: host.claudeSettings, reservation: nil, on: .thisMac)
+            }.resuming(sessionID: sessionID)
             let initial = try await checkedIdle(expected, kind: kind, on: machine, client: client, exactRevision: true)
             guard initial.agentArguments(for: kind) == argv, AgentIdleStopPolicy.isEmptyEditor(kind: kind, ansi: try await client.visiblePaneANSI(paneID: agent.paneID)) else {
                 throw AgentRuntimeError.rejected("resume-editor-or-modal-not-empty")

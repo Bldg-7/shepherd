@@ -127,6 +127,30 @@ nonisolated enum AgentDirectPreparation {
     }
 }
 
+/// A launch's or resume's own runtime calls (`AgentLaunchService`). The
+/// browser check registers a new pane from the same snapshot a launch
+/// accepts, and the two can start Node within milliseconds of each other:
+/// `runtime.mjs` refuses the second with setup-busy before it changes
+/// anything. The browser check tries again on its next check (`nextRetry`
+/// above); a launch has no next check, so it makes the same call again every
+/// `interval` for up to `limit`. Any other failure ends it at once, and so
+/// does cancellation while it waits.
+nonisolated enum AgentRuntimeLockWait {
+    static let interval: Duration = .milliseconds(100)
+    static let limit: Duration = .seconds(5)
+
+    static func run<T>(isolation: isolated (any Actor)? = #isolation,
+                       sleep: (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
+                       now: () -> ContinuousClock.Instant = { ContinuousClock().now },
+                       _ operation: () async throws -> T) async throws -> T {
+        let deadline = now().advanced(by: limit)
+        while true {
+            do { return try await operation() }
+            catch AgentRuntimeError.rejected("setup-busy") where now() < deadline { try await sleep(interval) }
+        }
+    }
+}
+
 /// The browser check asks herdr for every pane's processes every two
 /// seconds. An agent pane whose snapshot pane and agent.list row are both
 /// unchanged keeps the processes last read, for at most `maximumAge`; a pane

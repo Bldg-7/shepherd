@@ -155,7 +155,68 @@ actor LaunchTransport: HerdrTransport {
         try retryAndReuse(agent: agent, row: row)
         try await typedPiShim(client: client, transport: transport)
         try launchReadiness(row: row)
+        try await runtimeLockWait()
         print("AGENT LAUNCH API/STATE PASS")
+    }
+
+    /// A launch's runtime calls wait out the browser check's hold on the
+    /// runtime lock (`AgentRuntimeLockWait`): setup-busy only, every 100 ms,
+    /// for up to 5 s.
+    static func runtimeLockWait() async throws {
+        typealias Wait = AgentRuntimeLockWait
+        let busy = AgentRuntimeError.rejected("setup-busy")
+        check(Wait.interval == .milliseconds(100) && Wait.limit == .seconds(5), "waits every 100 ms for up to 5 s")
+        /// A call refused `times` times, then failing with `failure` or
+        /// succeeding, each taking `cost`, on a clock only the call and the
+        /// waits move.
+        func attempt(busy times: Int, then failure: Error? = nil, cost: Duration = .zero) async -> (result: Result<String, Error>, calls: Int, slept: [Duration]) {
+            var clock = ContinuousClock().now, slept: [Duration] = [], calls = 0
+            do {
+                let value = try await Wait.run(sleep: { slept.append($0); clock = clock.advanced(by: $0) }, now: { clock }) {
+                    calls += 1; clock = clock.advanced(by: cost)
+                    if calls <= times { throw busy }
+                    if let failure { throw failure }
+                    return "prepared"
+                }
+                return (.success(value), calls, slept)
+            } catch { return (.failure(error), calls, slept) }
+        }
+        func code(_ result: Result<String, Error>) -> String? {
+            guard case .failure(AgentRuntimeError.rejected(let code)) = result else { return nil }
+            return code
+        }
+        func transportFailure(_ result: Result<String, Error>) -> Bool {
+            guard case .failure(let error) = result else { return false }
+            return error is HostScriptError
+        }
+
+        let free = await attempt(busy: 0)
+        check(free.calls == 1 && free.slept.isEmpty && (try? free.result.get()) == "prepared", "a free lock is not waited for")
+        let twice = await attempt(busy: 2)
+        check(twice.calls == 3 && twice.slept == [.milliseconds(100), .milliseconds(100)] && (try? twice.result.get()) == "prepared",
+              "setup-busy twice: the third call succeeds after two 100 ms waits")
+        let held = await attempt(busy: .max)
+        check(code(held.result) == "setup-busy" && held.calls == 51 && held.slept.count == 50 && held.slept.reduce(.zero, +) == .seconds(5),
+              "a lock held throughout fails with setup-busy once 5 s have passed")
+        let slow = await attempt(busy: .max, cost: .seconds(1))
+        check(code(slow.result) == "setup-busy" && slow.calls == 5 && slow.slept.count == 4, "the calls' own time counts toward the 5 s")
+        let missing = await attempt(busy: 0, then: AgentRuntimeError.rejected("cli-missing"))
+        check(code(missing.result) == "cli-missing" && missing.calls == 1 && missing.slept.isEmpty, "cli-missing fails at once")
+        let transport = await attempt(busy: 0, then: HostScriptError(status: 1, message: "transport"))
+        check(transportFailure(transport.result) && transport.calls == 1 && transport.slept.isEmpty, "a script failure fails at once")
+        let afterBusy = await attempt(busy: 1, then: AgentRuntimeError.rejected("cli-missing"))
+        check(code(afterBusy.result) == "cli-missing" && afterBusy.calls == 2 && afterBusy.slept.count == 1, "another failure after a wait fails at once")
+
+        var cancelledCalls = 0
+        do {
+            try await Wait.run(sleep: { _ in throw CancellationError() }) { () async throws -> Void in cancelledCalls += 1; throw busy }
+            preconditionFailure("a cancelled wait went on")
+        } catch is CancellationError { check(cancelledCalls == 1, "a cancelled wait throws its cancellation and calls no more") }
+        let started = ContinuousClock().now
+        let task = Task { try await Wait.run { () async throws -> Void in throw busy } }
+        task.cancel()
+        do { try await task.value; preconditionFailure("a cancelled task's wait went on") }
+        catch is CancellationError { check(started.duration(to: ContinuousClock().now) < .seconds(1), "cancelling the task ends Task.sleep's wait at once") }
     }
 
     /// When a launch takes the agent it started for ready: before the
