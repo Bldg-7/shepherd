@@ -212,6 +212,13 @@ its macOS convenience initializer accepts the existing `HerdrClient`.
 - `PreparedAgentLaunch.isInjected(processArguments: [String]) -> Bool` uses
   reported process argv, not shell text. Global injection cannot be proved from
   argv and returns false; actual socket status remains phase2's authority.
+- `AgentBrowserStatus.inspect(…, connectedPID:, …)`: the MCP wrapper closes the
+  browser socket after ten minutes without a tool call (`timeouts.idle`) and
+  opens it again on the next call. The Claude Code or Codex process last seen
+  with the socket open stays connected, the green globe, for as long as the same
+  process (PID, one foreground process of its kind) runs, in either injection
+  mode. A different process in the pane does not inherit it. A Pi launch seen
+  with the socket open stays connected for that launch (`PiLaunchCoordinator.hasConnected`).
 - `PreparedAgentLaunch.resuming(sessionID: String) throws -> PreparedAgentLaunch`
   preserves config/profile/plugin args and appends Claude `--resume ID` or Codex
   `resume ID`. Conflicting resume flags or non-simple session IDs are rejected.
