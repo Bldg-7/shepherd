@@ -2591,24 +2591,24 @@
         }
       }
     },
-    "Drop files from Finder onto a terminal pane to paste their paths. For panes on another machine, PNG, JPEG, GIF, and WebP images are first uploaded to ~/.cache/shepherd/drops on that machine." : {
+    "Drop files from Finder onto a terminal pane to paste their paths. For panes on another machine, PNG, JPEG, GIF, and WebP images are first uploaded to ~/.cache/3rdr/drops on that machine." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Drop files from Finder onto a terminal pane to paste their paths. For panes on another machine, PNG, JPEG, GIF, and WebP images are first uploaded to ~/.cache/shepherd/drops on that machine."
+            "value" : "Drop files from Finder onto a terminal pane to paste their paths. For panes on another machine, PNG, JPEG, GIF, and WebP images are first uploaded to ~/.cache/3rdr/drops on that machine."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Finder からファイルをターミナルのペインにドロップすると、そのパスを貼り付けます。別のマシンのペインには、PNG、JPEG、GIF、WebP 画像を先にそのマシンの ~/.cache/shepherd/drops にアップロードします。"
+            "value" : "Finder からファイルをターミナルのペインにドロップすると、そのパスを貼り付けます。別のマシンのペインには、PNG、JPEG、GIF、WebP 画像を先にそのマシンの ~/.cache/3rdr/drops にアップロードします。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Finder에서 파일을 터미널 pane에 끌어다 놓으면 경로를 붙여 넣습니다. 다른 머신의 pane에는 PNG, JPEG, GIF, WebP 이미지를 그 머신의 ~/.cache/shepherd/drops에 먼저 올립니다."
+            "value" : "Finder에서 파일을 터미널 pane에 끌어다 놓으면 경로를 붙여 넣습니다. 다른 머신의 pane에는 PNG, JPEG, GIF, WebP 이미지를 그 머신의 ~/.cache/3rdr/drops에 먼저 올립니다."
           }
         }
       }
@@ -6991,24 +6991,24 @@
         }
       }
     },
-    "Uploads need sh and a writable ~/.cache/shepherd/drops on that machine." : {
+    "Uploads need sh and a writable ~/.cache/3rdr/drops on that machine." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Uploads need sh and a writable ~/.cache/shepherd/drops on that machine."
+            "value" : "Uploads need sh and a writable ~/.cache/3rdr/drops on that machine."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "アップロードするには、そのマシンに sh と書き込み可能な ~/.cache/shepherd/drops が必要です。"
+            "value" : "アップロードするには、そのマシンに sh と書き込み可能な ~/.cache/3rdr/drops が必要です。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "업로드하려면 그 머신에 sh와 쓸 수 있는 ~/.cache/shepherd/drops가 있어야 합니다."
+            "value" : "업로드하려면 그 머신에 sh와 쓸 수 있는 ~/.cache/3rdr/drops가 있어야 합니다."
           }
         }
       }

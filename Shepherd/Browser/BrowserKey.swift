@@ -11,7 +11,7 @@ nonisolated struct BrowserKey: Hashable, Codable, Sendable {
     /// host's own herdr.
     let herdrMachineID: String?
     /// The herdr session, "default" for herdr's default one — the name the
-    /// shepherd-browser skill derives from `HERDR_SOCKET_PATH` (B5).
+    /// 3rdr-browser skill derives from `HERDR_SOCKET_PATH` (B5).
     let session: String
     let paneID: String
 

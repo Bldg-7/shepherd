@@ -1,7 +1,8 @@
 import path from 'node:path';
 import {PiIntegrationError} from './pi-runtime.mjs';
 
-const SERVER = 'shepherd-browser';
+// runtime-core.mjs's SERVER, not imported: the extension loads no more than it needs.
+export const SERVER = '3rdr-browser';
 const fail = code => { throw new PiIntegrationError(code); };
 const absolute = value => typeof value === 'string' && path.isAbsolute(value) && !value.includes('\0');
 

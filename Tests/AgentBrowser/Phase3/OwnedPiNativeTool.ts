@@ -16,7 +16,7 @@ export default function(pi: ExtensionAPI) {
   pi.registerTool({name:'owned_browser_check',label:'Owned browser check',description:'Only the private local fixture page.',parameters:Type.Object({}),
     async execute(_id,_args,_signal,_update,ctx) {
       const call=(tool:string,args:Record<string,unknown>)=>config.backend==='adapter' ?
-        ctx.executeTool('mcp',{server:'shepherd-browser',tool,args}) : ctx.executeTool('mcp__shepherd_browser__'+tool,args);
+        ctx.executeTool('mcp',{server:'3rdr-browser',tool,args}) : ctx.executeTool('mcp__3rdr_browser__'+tool,args);
       const navigate=await call('browser_navigate',{url:config.baseURL+'/owned-page'});
       const snapshot=await call('browser_snapshot',{});
       const matched=JSON.stringify(snapshot.result).includes('OWNED_PI_NATIVE');

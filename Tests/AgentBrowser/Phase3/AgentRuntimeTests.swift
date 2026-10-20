@@ -21,6 +21,12 @@ struct AgentRuntimeTests {
         let existingResume = try fallback.resuming(sessionID: "owned-existing-session")
         precondition(existingResume.environment.isEmpty && existingResume.arguments.dropLast(2) == fallback.arguments[...])
         precondition(existingResume.isInjected(processArguments: ["codex"] + existingResume.arguments))
+        // The server is 3rdr-browser now; a session launched under its earlier name still counts.
+        for name in ["3rdr-browser", "shepherd-browser"] {
+            precondition(fallback.isInjected(processArguments: ["codex", "-c", "mcp_servers.\(name).args=[\"/owned/mcp.mjs\",\"/owned/session.json\"]"]), name)
+        }
+        precondition(!fallback.isInjected(processArguments: ["codex", "-c", "mcp_servers.other-browser.args=[\"/owned/mcp.mjs\",\"/owned/session.json\"]"]))
+        precondition(!fallback.isInjected(processArguments: ["codex", "-c", "mcp_servers.3rdr-browser.args=[\"/other/mcp.mjs\",\"/owned/session.json\"]"]))
         let oldNode = try JSONDecoder().decode(AgentCLIAvailability.self, from: Data("{\"kind\":\"codex\",\"executable\":\"codex\",\"version\":null,\"nodeVersion\":\"18.20.0\",\"nodeSupported\":false,\"readiness\":\"unsupportedPrerequisite\",\"sessionPlugin\":false,\"sessionConfiguration\":false,\"hookRewrite\":false}".utf8))
         precondition(!oldNode.nodeSupported && oldNode.readiness == .unsupportedPrerequisite)
         let piAvailability = try JSONDecoder().decode(AgentCLIAvailability.self, from: Data("{\"kind\":\"pi\",\"executable\":\"pi\",\"version\":\"1.1.0\",\"nodeVersion\":\"22.19.0\",\"nodeSupported\":true,\"readiness\":\"integrationUnavailable\",\"sessionPlugin\":false,\"sessionConfiguration\":false,\"hookRewrite\":false}".utf8))

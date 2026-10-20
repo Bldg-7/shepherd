@@ -130,14 +130,17 @@ nonisolated enum TerminalDropPaste {
     /// time — only those three arguments change — and checks them again
     /// itself.
     ///
-    /// The file is written to ~/.cache/shepherd/drops/<batch>/<name>, as
+    /// The file is written to ~/.cache/3rdr/drops/<batch>/<name>, as
     /// herdr keeps the images it carries: the folders only the account's
     /// (0700), the file too (0600), and the drops folder refused if it, or
     /// the folder it is in, is a symbolic link. Until it is complete it is
     /// `<name>.part`; anything short of a complete file of the stated size
     /// — a dropped connection, a cancelled upload — is removed on the way
     /// out, the batch's folder with it if that leaves it empty. Batches over
-    /// a day old are removed the next time anything is received.
+    /// a day old are removed the next time anything is received, and so are
+    /// those in ~/.cache/shepherd/drops, where earlier versions put them,
+    /// with that folder itself once it is empty; nothing outside it, and
+    /// nothing if it, or the folder it is in, is a symbolic link.
     ///
     /// The one line on stdout that counts is the last one starting
     /// `SHEPHERD_DROP_OK`, with the file's path: the account's shell
@@ -151,7 +154,7 @@ nonisolated enum TerminalDropPaste {
     static let receiveScript = [
         "set -u",
         "umask 077",
-        "base=${HOME:?}/.cache/shepherd/drops",
+        "base=${HOME:?}/.cache/3rdr/drops",
         "LC_ALL=C expr \"x$1\" : 'x[0-9a-f][0-9a-f-]*$' >/dev/null || exit 64",
         "LC_ALL=C expr \"x$2\" : 'x[A-Za-z0-9_][A-Za-z0-9._-]*$' >/dev/null || exit 64",
         "LC_ALL=C expr \"x$3\" : 'x[0-9][0-9]*$' >/dev/null || exit 64",
@@ -161,6 +164,8 @@ nonisolated enum TerminalDropPaste {
         "[ -L \"${base%/*}\" ] && exit 70",
         "chmod 700 \"$base\" && cd -- \"$base\" || exit 70",
         "find . -path './*' -prune -type d -mtime +0 -exec rm -rf -- {} + 2>/dev/null",
+        "old=$HOME/.cache/shepherd/drops",
+        "[ -L \"$old\" ] || [ -L \"${old%/*}\" ] || ( cd -- \"$old\" && find . -path './*' -prune -type d -mtime +0 -exec rm -rf -- {} + ; cd / && rmdir -- \"$old\" ) 2>/dev/null",
         "mkdir -p -- \"$1\" && cd -- \"$1\" || exit 71",
         "trap 'rm -f -- \"$2.part\"; cd .. && rmdir -- \"$1\" 2>/dev/null' EXIT",
         "[ -e \"$2\" ] && exit 72",
@@ -177,7 +182,7 @@ nonisolated enum TerminalDropPaste {
     /// The command line, for the login shell of the pane's machine, that
     /// receives one file: `receiveScript` in `sh -c`, each argument quoted.
     static func receiveCommand(batch: String, name: String, size: Int64) -> String {
-        "sh -c " + [receiveScript, "shepherd-drop", batch, name, String(size)].map(shellQuoted).joined(separator: " ")
+        "sh -c " + [receiveScript, "3rdr-drop", batch, name, String(size)].map(shellQuoted).joined(separator: " ")
     }
 
     /// The `ssh` arguments that run `receive` on one of herdr's machines:
@@ -210,7 +215,7 @@ nonisolated enum TerminalDropPaste {
     static func receivedPath(in output: String, batch: String, name: String) -> String? {
         guard let line = output.split(whereSeparator: \.isNewline).last(where: { $0.hasPrefix(receiptPrefix) }) else { return nil }
         let path = String(line.dropFirst(receiptPrefix.count))
-        guard path.hasPrefix("/"), path.hasSuffix("/.cache/shepherd/drops/\(batch)/\(name)"),
+        guard path.hasPrefix("/"), path.hasSuffix("/.cache/3rdr/drops/\(batch)/\(name)"),
               !containsControlCharacter(path) else { return nil }
         return path
     }

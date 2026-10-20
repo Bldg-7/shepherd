@@ -16,4 +16,4 @@ try {
     records.push({time:new Date().toISOString(),reason:result.reason});atomicWrite(log,JSON.stringify(records.slice(-128)));
   } catch {}
   if(result.rewritten) process.stdout.write(JSON.stringify({hookSpecificOutput:{hookEventName:'PreToolUse',updatedInput:{...event.tool_input,command:result.command}}})+'\n');
-} catch {process.stderr.write('Shepherd child command left unchanged.\n');}
+} catch {process.stderr.write('3rdr child command left unchanged.\n');}

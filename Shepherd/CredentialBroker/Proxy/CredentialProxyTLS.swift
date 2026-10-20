@@ -14,7 +14,7 @@ nonisolated final class CredentialProxyTLS: Sendable {
 
     init(now: Date = Date()) throws {
         let key = P256.Signing.PrivateKey()
-        let name = try DistinguishedName { CommonName("hrdrhrdrhrdr ephemeral credential transport") }
+        let name = try DistinguishedName { CommonName("3rdr ephemeral credential transport") }
         let certificate = try Certificate(version: .v3, serialNumber: .init(bytes: Array(UUID().uuidString.utf8.prefix(20))),
             publicKey: .init(key.publicKey), notValidBefore: now.addingTimeInterval(-60),
             notValidAfter: now.addingTimeInterval(600), issuer: name, subject: name,

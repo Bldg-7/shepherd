@@ -305,10 +305,10 @@ struct AddMachineView: View {
     private var deviceKeyComment: String {
         let nameSlug = slugify(displayName)
         if !nameSlug.isEmpty {
-            return "shepherd-\(nameSlug)"
+            return "3rdr-\(nameSlug)"
         }
         let modelSlug = slugify(deviceModelIdentifier)
-        return "shepherd-\(modelSlug.isEmpty ? "device" : modelSlug)"
+        return "3rdr-\(modelSlug.isEmpty ? "device" : modelSlug)"
     }
 
     /// The raw hardware model identifier (e.g. `MacBookPro18,3`, `iPhone16,2`)

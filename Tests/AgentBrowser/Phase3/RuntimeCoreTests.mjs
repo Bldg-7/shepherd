@@ -5,7 +5,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {execFileSync,spawn,spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {shellTokens,childCommand,quote,sessionName,injected,mergedInstructions,readCodex,resume,validateEndpoint,atomicWrite,detect,requireNode,nodeSupported} from '../../../Shepherd/Agents/AgentRuntime/runtime-core.mjs';
+import {shellTokens,childCommand,quote,sessionName,injected,mergedInstructions,readCodex,resume,validateEndpoint,atomicWrite,detect,requireNode,nodeSupported,SERVER,SERVERS,PLUGIN,PLUGINS,INSTRUCTIONS} from '../../../Shepherd/Agents/AgentRuntime/runtime-core.mjs';
 import {install,prepare,rewrite,cleanup,setMode,checkScope,registerPane,setupCodex,reserveLaunch,discardReservation,withLock} from '../../../Shepherd/Agents/AgentRuntime/runtime.mjs';
 let checks=0;const check=(name,operation)=>{operation();checks++;console.log('PASS',name);};
 const directory=fs.mkdtempSync(path.join(os.tmpdir(),'shepherd-runtime-unit-'));
@@ -21,6 +21,7 @@ try {
  const pane={machineID:'owned-machine',herdrMachineID:null,session:'owned session',paneID:'w1:p1',terminalID:'term-owned'};
  const endpoint={origin:'thisMac',url:'ws://127.0.0.1:19433/v1/herdr/owned%20session/pane/w1:p1',tokenFile:token};
  const request={root,kind:'claude',executable,pane,endpoint,codexHome,claudeSettingsFile};
+ check('this integration is 3rdr-browser in plugin 3rdr, and still knows its earlier names',()=>{assert.equal(SERVER,'3rdr-browser');assert.equal(PLUGIN,'3rdr');assert.deepEqual(SERVERS,['3rdr-browser','shepherd-browser']);assert.deepEqual(PLUGINS,['3rdr','shepherd']);assert(INSTRUCTIONS.startsWith('For web pages in this pane use 3rdr-browser, the In-app Browser that 3rdr shows'));assert(!/shepherd/i.test(INSTRUCTIONS));});
  for(const command of ['herdr agent start name --kind claude --pane w1:p1','herdr agent start \'two words\' --pane w1:p1 --kind codex -- \'--prompt=hello world\'']) check('literal child grammar '+command,()=>assert(childCommand(command)));
  for(const command of ['herdr agent start n --kind claude --pane w1:p1 && echo x','herdr agent start n --kind claude --pane w1:p1\necho x','herdr agent start "$NAME" --kind claude --pane w1:p1','herdr agent start `whoami` --kind claude --pane w1:p1','herdr --machine remote agent start n --kind claude --pane w1:p1','herdr pane run w1:p1 "claude"','herdr agent start n --kind claude --pane w1:p1 > file','herdr agent start n --kind claude --kind codex --pane w1:p1','herdr agent start n --kind claude --pane bad','herdr agent start n --kind claude --pane w1:p1 --timeout nope']) check('unsupported child unchanged '+command.replaceAll('\n','\\n'),()=>assert.equal(childCommand(command),null));
  for(const id of ['wE:p1C','w1P:pB','w1:pD']) check('opaque alphanumeric pane ID '+id,()=>assert.equal(childCommand('herdr agent start n --kind claude --pane '+id)?.pane,id));
@@ -173,8 +174,8 @@ fs.writeSync(1,JSON.stringify(result)+'\\n');`;
  check('unknown profile rejects',()=>assert.throws(()=>readCodex(codexHome,'absent'),/missing-profile/));
  check('global Codex plugin setup rejected without writes or CLI execution',()=>{assert.throws(()=>setupCodex({root,codexHome,executable}),/session-only-policy/);assert.equal(fs.readFileSync(path.join(codexHome,'config.toml'),'utf8'),config);assert.deepEqual(fs.readFileSync(path.join(root,'installation.json')),preimage);assert(!fs.readdirSync(root).some(n=>n.startsWith('.codex-')));});
  check('scope inspection is read-only and accepts no global registration',()=>assert.deepEqual(checkScope(request),{sessionOnly:true}));
- for(const parent of [path.join(home,'.agents','skills'),path.join(claudeDir,'skills'),path.join(codexHome,'skills')]) check('legacy global skill rejected without removing it: '+parent,()=>{
-  const skill=path.join(parent,'shepherd-browser');fs.mkdirSync(skill,{recursive:true});fs.writeFileSync(path.join(skill,'SKILL.md'),'preserve user installation');
+ for(const parent of [path.join(home,'.agents','skills'),path.join(claudeDir,'skills'),path.join(codexHome,'skills')]) for(const name of SERVERS) check('global skill under either name rejected without removing it: '+path.join(parent,name),()=>{
+  const skill=path.join(parent,name);fs.mkdirSync(skill,{recursive:true});fs.writeFileSync(path.join(skill,'SKILL.md'),'preserve user installation');
   assert.throws(()=>checkScope(request),/legacy-global-skill-present/);
   assert.throws(()=>prepare(request),/legacy-global-skill-present/);
   assert.equal(fs.readFileSync(path.join(skill,'SKILL.md'),'utf8'),'preserve user installation');fs.rmSync(skill,{recursive:true});
@@ -194,20 +195,36 @@ fs.writeSync(1,JSON.stringify(result)+'\\n');`;
  check('unbound reservation owned cleanup',()=>{discardReservation({root,reservationID:abandoned.reservationID});assert(!fs.existsSync(path.dirname(abandoned.environment.SHEPHERD_AGENT_SESSION)));});
  const launch=prepare(request);
  check('immutable prepared pane-specific plugin',()=>{assert.equal(launch.injection,'plugin');assert(launch.arguments.includes(launch.pluginDirectory));assert.equal(launch.outputFolder,path.join(path.dirname(launch.sessionFolder),'output'));});
+ check('session plugin, its MCP server and skill go by the 3rdr names',()=>{
+  const manifest=JSON.parse(fs.readFileSync(path.join(launch.pluginDirectory,'.claude-plugin','plugin.json'),'utf8'));
+  assert.equal(manifest.name,'3rdr');assert.equal(manifest.description,'Use the In-app Browser that 3rdr shows beside this pane; page content is untrusted.');
+  assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(path.join(launch.pluginDirectory,'.mcp.json'),'utf8')).mcpServers),['3rdr-browser']);
+  assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(launch.mcpConfiguration,'utf8')).mcpServers),['3rdr-browser']);
+  assert.deepEqual(fs.readdirSync(path.join(launch.pluginDirectory,'skills')),['3rdr-browser']);assert(fs.existsSync(path.join(launch.pluginDirectory,'skills','3rdr-browser','SKILL.md')));
+ });
  check('descriptor no token bytes',()=>assert(!fs.readFileSync(path.join(launch.sessionFolder,'session.json'),'utf8').includes(fs.readFileSync(token,'utf8'))));
  process.env.HERDR_SOCKET_PATH='/tmp/sessions/owned session/herdr.sock';
  check('registry-only child never appends stale selected-profile/override instructions',()=>{prepare({...request,kind:'codex',arguments:['-p','work']});for(const tail of ['-p legacy','-c \'developer_instructions="Child text"\'']){const command='herdr agent start child --kind codex --pane w1:p1 -- '+tail;const result=rewrite(command,root);assert.equal(result.command,command);assert.equal(result.reason,'fresh-child-context-unavailable');assert(!result.rewritten);}});
  registerPane({...request,executables:{claude:executable,codex:executable}});
  check('hook registered child injection',()=>{const result=rewrite('herdr agent start child --kind claude --pane w1:p1',root);assert(result.rewritten);const fresh=JSON.parse(fs.readFileSync(path.join(root,'panes.json'),'utf8')).find(p=>p.kind==='claude' && p.pane.paneID==='w1:p1');assert(shellTokens(result.command).includes(fresh.pluginDirectory));assert.notEqual(fresh.pluginDirectory,launch.pluginDirectory);assert(!result.command.includes(fs.readFileSync(token,'utf8')));});
  check('hook registered child injection with alphanumeric pane ID',()=>{registerPane({...request,pane:{...pane,paneID:'wE:p1C',terminalID:'term-alphanumeric'},endpoint:{...endpoint,url:endpoint.url.replace('w1:p1','wE:p1C')},executables:{claude:executable}});const result=rewrite('herdr agent start child --kind claude --pane wE:p1C',root);assert(result.rewritten);const fresh=JSON.parse(fs.readFileSync(path.join(root,'panes.json'),'utf8')).find(p=>p.kind==='claude' && p.pane.paneID==='wE:p1C');assert(shellTokens(result.command).includes(fresh.pluginDirectory));});
- check('lazy registered child prepare merges own arguments',()=>{registerPane({...request,pane:{...pane,paneID:'w1:p3',terminalID:'term-child'},endpoint:{...endpoint,url:endpoint.url.replace('w1:p1','w1:p3')},executables:{codex:executable}});const result=rewrite('herdr agent start child --kind codex --pane w1:p3 -- -p work',root);assert(result.rewritten);assert(result.command.includes('Named profile'));assert(result.command.includes('mcp_servers.shepherd-browser.args='));});
+ check('lazy registered child prepare merges own arguments',()=>{registerPane({...request,pane:{...pane,paneID:'w1:p3',terminalID:'term-child'},endpoint:{...endpoint,url:endpoint.url.replace('w1:p1','w1:p3')},executables:{codex:executable}});const result=rewrite('herdr agent start child --kind codex --pane w1:p3 -- -p work',root);assert(result.rewritten);assert(result.command.includes('Named profile'));assert(result.command.includes('mcp_servers.3rdr-browser.args='));assert(!result.command.includes('mcp_servers.shepherd-browser'));});
+ check('hook leaves a child injected under either server name as it is, as from a session launched before the rename',()=>{
+  const prepared=JSON.parse(fs.readFileSync(path.join(root,'panes.json'),'utf8')).find(p=>p.kind==='codex' && p.pane.paneID==='w1:p3');
+  for(const name of SERVERS) {
+   const args=['-c',`mcp_servers.${name}.args=${JSON.stringify(prepared.mcpArguments)}`];assert(injected('codex',args,prepared));
+   const command='herdr agent start child --kind codex --pane w1:p3 -- '+args.map(quote).join(' ');const result=rewrite(command,root);
+   assert.equal(result.reason,'already-injected');assert.equal(result.command,command);
+  }
+  assert(!injected('codex',['-c','mcp_servers.other-browser.args='+JSON.stringify(prepared.mcpArguments)],prepared));
+ });
  check('endpoint child profile/override is freshly merged instead of previous launch instructions',()=>{for(const tail of ['-p legacy','-c \'developer_instructions="Child text"\'']){const result=rewrite('herdr agent start child --kind codex --pane w1:p3 -- '+tail,root);assert(result.rewritten);assert(result.command.includes(tail.includes('legacy')?'Legacy profile':'Child text'));assert(!result.command.includes('Named profile'));}});
  check('hook idempotence',()=>{const first=rewrite('herdr agent start child --kind claude --pane w1:p1',root);assert.equal(rewrite(first.command,root).reason,'already-injected');});
  check('hook unknown pane unchanged',()=>assert.equal(rewrite('herdr agent start child --kind claude --pane w1:p2',root).reason,'unregistered-or-ambiguous-pane'));
  check('hook unsupported shell unchanged',()=>{const command='herdr agent start child --kind claude --pane w1:p1; echo hi';assert.equal(rewrite(command,root).command,command);});
- check('Codex always uses descriptor-specific configuration, never old global plugin metadata',()=>{const file=path.join(root,'installation.json');const bytes=fs.readFileSync(file);const state=JSON.parse(bytes);fs.writeFileSync(file,JSON.stringify({...state,codexPluginReady:true,codexPluginKey:'plugins.shepherd@fixture.enabled'}));process.env.SHEPHERD_AGENT_SESSION='/owned/stale-parent.json';try{const existing=prepare({...request,kind:'codex',arguments:['-p','work']});assert.equal(existing.injection,'codexConfigurationFallback');assert.deepEqual(existing.environment,{});assert(existing.arguments.includes('mcp_servers.shepherd-browser.args='+JSON.stringify(existing.mcpArguments)));assert(!existing.arguments.includes('plugins.shepherd@fixture.enabled=true'));const reservation=reserveLaunch({root});const bound=prepare({...request,kind:'codex',reservationID:reservation.reservationID});assert.equal(bound.injection,'codexConfigurationFallback');assert.deepEqual(bound.environment,reservation.environment);assert(!bound.arguments.includes('plugins.shepherd@fixture.enabled=true'));}finally{fs.writeFileSync(file,bytes);delete process.env.SHEPHERD_AGENT_SESSION;}});
+ check('Codex always uses descriptor-specific configuration, never old global plugin metadata',()=>{const file=path.join(root,'installation.json');const bytes=fs.readFileSync(file);const state=JSON.parse(bytes);fs.writeFileSync(file,JSON.stringify({...state,codexPluginReady:true,codexPluginKey:'plugins.shepherd@fixture.enabled'}));process.env.SHEPHERD_AGENT_SESSION='/owned/stale-parent.json';try{const existing=prepare({...request,kind:'codex',arguments:['-p','work']});assert.equal(existing.injection,'codexConfigurationFallback');assert.deepEqual(existing.environment,{});assert(existing.arguments.includes('mcp_servers.3rdr-browser.args='+JSON.stringify(existing.mcpArguments)));assert(!existing.arguments.includes('plugins.shepherd@fixture.enabled=true'));const reservation=reserveLaunch({root});const bound=prepare({...request,kind:'codex',reservationID:reservation.reservationID});assert.equal(bound.injection,'codexConfigurationFallback');assert.deepEqual(bound.environment,reservation.environment);assert(!bound.arguments.includes('plugins.shepherd@fixture.enabled=true'));}finally{fs.writeFileSync(file,bytes);delete process.env.SHEPHERD_AGENT_SESSION;}});
  const codexLaunch=prepare({...request,kind:'codex',arguments:['-p','work']});
- check('Codex tested config fallback instructions merge',()=>{assert.equal(codexLaunch.injection,'codexConfigurationFallback');assert(codexLaunch.arguments.some(a=>a.startsWith('developer_instructions="Named profile\\nmultiline')));assert(codexLaunch.arguments.some(a=>a.startsWith('mcp_servers.shepherd-browser.args=')));});
+ check('Codex tested config fallback instructions merge',()=>{assert.equal(codexLaunch.injection,'codexConfigurationFallback');assert(codexLaunch.arguments.some(a=>a.startsWith('developer_instructions="Named profile\\nmultiline')));assert(codexLaunch.arguments.some(a=>a.startsWith('mcp_servers.3rdr-browser.args=')));assert(codexLaunch.arguments.some(a=>a.startsWith('mcp_servers.3rdr-browser.command=')));assert(!codexLaunch.arguments.some(a=>a.startsWith('mcp_servers.shepherd-browser')));});
  check('user config/profile preimages unchanged',()=>{assert.equal(fs.readFileSync(path.join(codexHome,'config.toml'),'utf8'),config);assert.equal(fs.readFileSync(claudeSettingsFile,'utf8'),'{"userSetting":"preserve"}');});
  check('combined profile options preserve selected instructions',()=>{for(const arguments_ of [['--profile=work'],['-pwork']]){const p=prepare({...request,kind:'codex',arguments:arguments_});assert(p.arguments.at(-1).includes('Named profile'));}});
  check('typed profile selection is forwarded to actual CLI',()=>{const p=prepare({...request,kind:'codex',profile:'work'});assert.deepEqual(p.arguments.slice(0,2),['--profile','work']);});
@@ -216,15 +233,22 @@ fs.writeSync(1,JSON.stringify(result)+'\\n');`;
  check('optional competitors default off',()=>assert(!launch.arguments.includes('--disallowedTools')));
  check('optional Claude competitors per session only',()=>{const p=prepare({...request,preferences:{disableCompetingBrowsers:true,competingBrowserServers:['chrome']}});assert(p.arguments.includes('mcp__chrome__*'));assert(p.arguments.includes('--no-chrome'));});
  check('optional Codex competitors per session only',()=>assert(prepare({...request,kind:'codex',preferences:{disableCompetingBrowsers:true,competingBrowserServers:['chrome']}}).arguments.includes('mcp_servers.chrome.enabled=false')));
+ for(const name of SERVERS) check('the servers to block cannot name this integration: '+name,()=>{for(const kind of ['claude','codex'])assert.throws(()=>prepare({...request,kind,preferences:{disableCompetingBrowsers:true,competingBrowserServers:['chrome',name]}}),/invalid-server-name/);});
  check('output bound validation',()=>assert.throws(()=>prepare({...request,preferences:{outputMaxSize:1}}),/invalid-output-limit/));
  check('origin restriction validation',()=>assert.throws(()=>prepare({...request,preferences:{allowedOrigins:['file:///tmp']}}),/invalid-origin/));
- check('duplicate/unknown launch registration fails',()=>assert.throws(()=>prepare({...request,arguments:['--mcp-config','shepherd-browser']}),/uninspectable-claude-registration/));
- const otherMCP=path.join(directory,'other-mcp.json');const ownMCP=path.join(directory,'own-mcp.json');
- fs.writeFileSync(otherMCP,JSON.stringify({mcpServers:{other:{command:'sh',args:['-c','touch must-not-execute']}}}));fs.writeFileSync(ownMCP,JSON.stringify({mcpServers:{'shepherd-browser':{command:'owned'}}}));
- for(const args of [['--mcp-config',otherMCP,ownMCP],['--mcp-config',otherMCP,'--mcp-config='+ownMCP],['--mcp-config='+JSON.stringify({mcpServers:{'shepherd-browser':{command:'owned'}}})]]) check('all variadic/equal/multiple MCP values reject own duplicate',()=>assert.throws(()=>prepare({...request,arguments:args}),/duplicate-registration/));
- const collection=path.join(directory,'plugin-collection');fs.mkdirSync(collection);const safePlugin=path.join(collection,'safe');const ownPlugin=path.join(collection,'own');
- for(const [dir,name] of [[safePlugin,'other'],[ownPlugin,'shepherd']]){fs.mkdirSync(path.join(dir,'.claude-plugin'),{recursive:true});fs.writeFileSync(path.join(dir,'.claude-plugin','plugin.json'),JSON.stringify({name}));}
- for(const args of [['--plugin-dir',collection],['--plugin-dir='+collection],['--plugin-dir',safePlugin,'--plugin-dir='+ownPlugin],['--plugin-dir='+safePlugin,'--plugin-dir',ownPlugin]]) check('plugin collection and every repeated/equals directory reject duplicate',()=>assert.throws(()=>prepare({...request,arguments:args}),/duplicate-registration/));
+ check('duplicate/unknown launch registration fails',()=>assert.throws(()=>prepare({...request,arguments:['--mcp-config','3rdr-browser']}),/uninspectable-claude-registration/));
+ const otherMCP=path.join(directory,'other-mcp.json');
+ fs.writeFileSync(otherMCP,JSON.stringify({mcpServers:{other:{command:'sh',args:['-c','touch must-not-execute']}}}));
+ for(const name of SERVERS) {
+  const ownMCP=path.join(directory,'own-mcp-'+name+'.json');fs.writeFileSync(ownMCP,JSON.stringify({mcpServers:{[name]:{command:'owned'}}}));
+  for(const args of [['--mcp-config',otherMCP,ownMCP],['--mcp-config',otherMCP,'--mcp-config='+ownMCP],['--mcp-config='+JSON.stringify({mcpServers:{[name]:{command:'owned'}}})]]) check('all variadic/equal/multiple MCP values reject own duplicate: '+name,()=>assert.throws(()=>prepare({...request,arguments:args}),/duplicate-registration/));
+ }
+ let safePlugin;
+ for(const own of PLUGINS) {
+  const collection=path.join(directory,'plugin-collection-'+own);fs.mkdirSync(collection);safePlugin=path.join(collection,'safe');const ownPlugin=path.join(collection,'own');
+  for(const [dir,name] of [[safePlugin,'other'],[ownPlugin,own]]){fs.mkdirSync(path.join(dir,'.claude-plugin'),{recursive:true});fs.writeFileSync(path.join(dir,'.claude-plugin','plugin.json'),JSON.stringify({name}));}
+  for(const args of [['--plugin-dir',collection],['--plugin-dir='+collection],['--plugin-dir',safePlugin,'--plugin-dir='+ownPlugin],['--plugin-dir='+safePlugin,'--plugin-dir',ownPlugin]]) check('plugin collection and every repeated/equals directory reject duplicate: '+own,()=>assert.throws(()=>prepare({...request,arguments:args}),/duplicate-registration/));
+ }
  check('MCP equals form leaves following positional input unconsumed as actual CLI does',()=>{assert(prepare({...request,arguments:['--mcp-config='+otherMCP,'ordinary prompt']}).arguments.includes('ordinary prompt'));});
  check('uninspectable Claude config/plugin inputs reject before preparation',()=>{for(const args of [['--mcp-config'],['--mcp-config',path.join(directory,'missing.json')],['--plugin-dir',path.join(directory,'unknown.zip')],['--plugin-dir='],['--']])assert.throws(()=>prepare({...request,arguments:args}),/uninspectable-claude-registration/);});
  check('valid variadic/equal MCP values and safe plugin inspected without executing content',()=>{const p=prepare({...request,arguments:['--mcp-config',otherMCP,otherMCP,'--plugin-dir',safePlugin,'--mcp-config='+otherMCP]});assert(p.arguments.includes(p.pluginDirectory));assert(!fs.existsSync(path.join(process.cwd(),'must-not-execute')));});
@@ -236,8 +260,27 @@ fs.writeSync(1,JSON.stringify(result)+'\\n');`;
  const modeRequest={root,claudeSettingsFile,claudeSkillDirectory:path.join(claudeDir,'skills'),codexHome,mode:'global'};
  check('all legacy mode changes reject without changing any user config',()=>{const oldClaude=fs.readFileSync(claudeSettingsFile);const oldCodex=fs.readFileSync(path.join(codexHome,'config.toml'));for(const mode of ['global','plugin'])assert.throws(()=>setMode({...modeRequest,mode}),/session-only-policy/);assert.deepEqual(fs.readFileSync(claudeSettingsFile),oldClaude);assert.deepEqual(fs.readFileSync(path.join(codexHome,'config.toml')),oldCodex);});
  check('global preference cannot bypass scoped preparation',()=>assert.throws(()=>prepare({...request,preferences:{mode:'global'}}),/session-only-policy/));
- check('existing own-name MCP registration is preserved and fails closed',()=>{const original=fs.readFileSync(claudeSettingsFile);const global=JSON.stringify({mcpServers:{'shepherd-browser':{command:'other'}}});fs.writeFileSync(claudeSettingsFile,global);assert.throws(()=>prepare(request),/duplicate-registration/);assert.equal(fs.readFileSync(claudeSettingsFile,'utf8'),global);fs.writeFileSync(claudeSettingsFile,original);});
- check('Codex receives bundled skill guidance only in its invocation',()=>{const p=prepare({...request,kind:'codex'});assert(p.arguments.at(-1).includes('Opaque credential CLI'));assert.equal(p.codexPluginKey,null);assert(!injected('codex',['-c','null=true'],p));assert.equal(detect('codex',executable).sessionPlugin,false);assert.equal(fs.readFileSync(path.join(codexHome,'config.toml'),'utf8'),config);assert(!fs.existsSync(path.join(codexHome,'skills','shepherd-browser')));});
+ for(const name of SERVERS) check('existing own-name MCP registration is preserved and fails closed: '+name,()=>{const original=fs.readFileSync(claudeSettingsFile);const global=JSON.stringify({mcpServers:{[name]:{command:'other'}}});fs.writeFileSync(claudeSettingsFile,global);assert.throws(()=>prepare(request),/duplicate-registration/);assert.equal(fs.readFileSync(claudeSettingsFile,'utf8'),global);fs.writeFileSync(claudeSettingsFile,original);});
+ check('a Codex -c override of this integration under either name, bare or quoted, is a duplicate',()=>{
+  for(const key of ['mcp_servers.3rdr-browser.command','mcp_servers."3rdr-browser".args',"mcp_servers.'3rdr-browser'.enabled",'mcp_servers.3rdr-browser','mcp_servers.shepherd-browser.args','mcp_servers."shepherd-browser".command','plugins.3rdr@local.enabled','plugins.shepherd@local.enabled'])
+   for(const args of [['-c',key+'=true'],['--config='+key+'=true']]) assert.throws(()=>prepare({...request,kind:'codex',arguments:args}),/duplicate-registration/,key);
+  for(const key of ['mcp_servers.3rdr-browser-other.command','mcp_servers.shepherd-browsers.command','plugins.3rdr-tools@local.enabled']) assert(prepare({...request,kind:'codex',arguments:['-c',key+'=true']}).arguments.includes(key+'=true'),key);
+ });
+ check('a global registration of this integration under either name is found, and left as it is',()=>{
+  const claudeOriginal=fs.readFileSync(claudeSettingsFile),codexFile=path.join(codexHome,'config.toml');
+  const cases=[];
+  for(const name of SERVERS) {cases.push([claudeSettingsFile,JSON.stringify({mcpServers:{[name]:{command:'other'}}}),/duplicate-registration/]);cases.push([codexFile,config+`[mcp_servers.${name}]\ncommand = "other"\n`,/duplicate-registration/]);}
+  for(const plugin of PLUGINS) {cases.push([claudeSettingsFile,JSON.stringify({enabledPlugins:{[plugin+'@market']:true}}),/globally-enabled-shepherd-plugin/]);cases.push([codexFile,config+`[plugins."${plugin}@market"]\nenabled = true\n`,/globally-enabled-shepherd-plugin/]);}
+  try {
+   for(const [file,text,error] of cases) {
+    fs.writeFileSync(file,text);
+    for(const kind of ['claude','codex']) assert.throws(()=>prepare({...request,kind}),error,text);
+    assert.throws(()=>checkScope(request),error,text);assert.equal(fs.readFileSync(file,'utf8'),text);
+    fs.writeFileSync(claudeSettingsFile,claudeOriginal);fs.writeFileSync(codexFile,config);
+   }
+  } finally {fs.writeFileSync(claudeSettingsFile,claudeOriginal);fs.writeFileSync(codexFile,config);}
+ });
+ check('Codex receives bundled skill guidance only in its invocation',()=>{const p=prepare({...request,kind:'codex'});assert(p.arguments.at(-1).includes('Opaque credential CLI'));assert.equal(p.codexPluginKey,null);assert(!injected('codex',['-c','null=true'],p));assert.equal(detect('codex',executable).sessionPlugin,false);assert.equal(fs.readFileSync(path.join(codexHome,'config.toml'),'utf8'),config);assert(SERVERS.every(name=>!fs.existsSync(path.join(codexHome,'skills',name))));});
  check('complete user CLI home inventory unchanged by scoped preparation',()=>{
   const inventory=()=>fs.readdirSync(home,{recursive:true}).sort().map(name=>{const f=path.join(home,name),s=fs.lstatSync(f);return [name,s.mode&0o777,s.isFile()?crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex'):s.isSymbolicLink()?fs.readlinkSync(f):null];});
   const before=inventory();checkScope(request);prepare(request);prepare({...request,kind:'codex'});assert.deepEqual(inventory(),before);

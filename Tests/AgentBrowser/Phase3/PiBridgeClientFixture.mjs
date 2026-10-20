@@ -37,7 +37,7 @@ if(process.argv[3]==='intruder') {
   const api={
     on(name,fn){handlers.set(name,fn);},
     registerMcpServer(name,server){
-      assert.equal(name,'shepherd-browser');registerCount++;
+      assert.equal(name,'3rdr-browser');registerCount++;
       if(config.mode==='shadow')return; // configured server replaced our registration
       const child=spawn(server.command,server.args,{cwd:config.cwd,stdio:['pipe','pipe','pipe'],
         env:{HOME:config.home,PATH:process.env.PATH,LANG:'en_US.UTF-8'}});

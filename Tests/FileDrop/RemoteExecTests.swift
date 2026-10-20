@@ -43,7 +43,7 @@ struct TOFUHostKeyValidator: OwnedValidator {
         let progress = Meter()
         let first = try await host.upload(try file("one.png", big, as: "one.png"), batch: batch, progress: { progress.record($0) })
         let second = try await host.upload(try file("two.png", Data([5, 6]), as: "two.png"), batch: batch, progress: { _ in })
-        check(first == "\(hostHome)/.cache/shepherd/drops/\(batch)/one.png" && second == "\(hostHome)/.cache/shepherd/drops/\(batch)/two.png", "\(first) \(second)")
+        check(first == "\(hostHome)/.cache/3rdr/drops/\(batch)/one.png" && second == "\(hostHome)/.cache/3rdr/drops/\(batch)/two.png", "\(first) \(second)")
         check(FileManager.default.contents(atPath: first) == big && FileManager.default.contents(atPath: second) == Data([5, 6]), "every byte")
         check(progress.values.last == Int64(big.count) && progress.values == progress.values.sorted(), "progress rises to the size")
         let writes = await fake.writes
@@ -67,7 +67,7 @@ struct TOFUHostKeyValidator: OwnedValidator {
         // Startup-file noise around the receipt.
         await fake.set(override: nil, prefix: "echo 'Welcome'; echo 'SHEPHERD_DROP_OK /not/this'; echo 'motd' >&2; ")
         let noisy = try await again.upload(try file("noisy.png", Data([8]), as: "noisy.png"), batch: batch, progress: { _ in })
-        check(noisy == "\(hostHome)/.cache/shepherd/drops/\(batch)/noisy.png", "the receive script's own line counts")
+        check(noisy == "\(hostHome)/.cache/3rdr/drops/\(batch)/noisy.png", "the receive script's own line counts")
 
         // A command that ends well but says nothing.
         await fake.set(override: "cat >/dev/null")
@@ -81,8 +81,8 @@ struct TOFUHostKeyValidator: OwnedValidator {
         let viaHost = RemoteExecDropUploader(host: "owned-host.invalid", port: 2222, username: "owned", credential: HostCredential(), pinnedFingerprint: pin, on: machine)
         let machineBatch = UUID().uuidString.lowercased()
         let d = try await viaHost.upload(try file("d.png", big, as: "d.png"), batch: machineBatch, progress: { _ in })
-        check(d == "\(machineHome)/.cache/shepherd/drops/\(machineBatch)/d.png" && FileManager.default.contents(atPath: d) == big, "on the machine: \(d)")
-        check(!exists("\(hostHome)/.cache/shepherd/drops/\(machineBatch)"), "nothing on the host")
+        check(d == "\(machineHome)/.cache/3rdr/drops/\(machineBatch)/d.png" && FileManager.default.contents(atPath: d) == big, "on the machine: \(d)")
+        check(!exists("\(hostHome)/.cache/3rdr/drops/\(machineBatch)"), "nothing on the host")
         let last = (await fake.commands).last ?? ""
         check(last.hasPrefix("'ssh' '-T' '-o' 'BatchMode=yes'") && last.contains("'--' 'gpu'\\''$(touch INJECTED-d)'"), "the host's ssh, target after --: \(last)")
         check((try String(contentsOfFile: "\(bin)/ssh-targets.log", encoding: .utf8)).split(separator: "\n").last.map(String.init) == machine.target, "target as one argument")
@@ -122,7 +122,7 @@ struct TOFUHostKeyValidator: OwnedValidator {
         do { _ = try await task.value; check(false, "a cancelled upload must not succeed") } catch { checks += 1 }
         let closesAfter = await fake.closes
         check(closesAfter == closesBefore + 1, "cancelling closed the connection")
-        check(!exists("\(hostHome)/.cache/shepherd/drops/\(cancelBatch)"), "the far end removed the short file and its batch")
+        check(!exists("\(hostHome)/.cache/3rdr/drops/\(cancelBatch)"), "the far end removed the short file and its batch")
         do { _ = try await cancelled.upload(try file("after.png", Data([1]), as: "after.png"), batch: cancelBatch, progress: { _ in }); check(false, "closed stays closed") }
         catch is CancellationError { checks += 1 }
         await fake.set(override: nil)

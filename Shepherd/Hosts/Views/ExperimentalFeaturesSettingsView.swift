@@ -110,7 +110,7 @@ struct ExperimentalFeaturesSettingsView: View {
                     HStack {
                         Text("Terminal File Drop")
                         InfoButton(accessibilityLabel: "About Terminal File Drop",
-                                   explanation: "Drop files from Finder onto a terminal pane to paste their paths. For panes on another machine, PNG, JPEG, GIF, and WebP images are first uploaded to ~/.cache/shepherd/drops on that machine.")
+                                   explanation: "Drop files from Finder onto a terminal pane to paste their paths. For panes on another machine, PNG, JPEG, GIF, and WebP images are first uploaded to ~/.cache/3rdr/drops on that machine.")
                     }
                 }
                 .help("Uploaded images are removed after 24 hours, the next time you drop files on that machine.")

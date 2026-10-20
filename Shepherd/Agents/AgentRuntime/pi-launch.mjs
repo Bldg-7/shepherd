@@ -41,6 +41,6 @@ try {
   phase='import';
   await import(pathToFileURL(cli).href);
 } catch {
-  process.stderr.write(`Shepherd: pi-startup-${phase}-failed\n`);
+  process.stderr.write(`3rdr: pi-startup-${phase}-failed\n`);
   process.exitCode=1;
 }

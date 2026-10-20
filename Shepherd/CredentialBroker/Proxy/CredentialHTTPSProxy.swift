@@ -175,7 +175,7 @@ private nonisolated final class ProxyIngress: ChannelInboundHandler, RemovableCh
             }.whenFailure { _ in channel.close(promise: nil) }
         } catch {
             let head = HTTPResponseHead(version: .http1_1, status: .proxyAuthenticationRequired,
-                headers: HTTPHeaders([("proxy-authenticate", "Basic realm=\"Shepherd\""), ("content-length", "0"), ("connection", "close")]))
+                headers: HTTPHeaders([("proxy-authenticate", "Basic realm=\"3rdr\""), ("content-length", "0"), ("connection", "close")]))
             context.write(wrapOutboundOut(.head(head)), promise: nil)
             let channel = context.channel
             context.writeAndFlush(wrapOutboundOut(.end(nil))).whenComplete { _ in channel.close(promise: nil) }

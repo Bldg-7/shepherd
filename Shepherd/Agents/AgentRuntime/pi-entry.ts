@@ -17,7 +17,7 @@ export default function shepherdPi(pi: ExtensionAPI) {
   const nativeHost = createPiHost(bootstrap, {
     report: (state: string) => {
       pi.events.emit('shepherd:pi-status:v1', { state });
-      ui?.setStatus('shepherd-browser', state === 'off' ? undefined : `Shepherd: ${state}`);
+      ui?.setStatus('3rdr-browser', state === 'off' ? undefined : `3rdr: ${state}`);
     },
     onFailure,
   });

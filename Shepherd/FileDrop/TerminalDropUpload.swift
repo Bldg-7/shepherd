@@ -90,7 +90,7 @@ nonisolated enum TerminalDropError: Error, LocalizedError, Equatable {
         case .unusableTarget: String(localized: "This machine's SSH address can't be used for uploads.")
         case .failed(let status, let detail):
             switch status {
-            case 70, 71: String(localized: "Uploads need sh and a writable ~/.cache/shepherd/drops on that machine.")
+            case 70, 71: String(localized: "Uploads need sh and a writable ~/.cache/3rdr/drops on that machine.")
             case 72: String(localized: "A file with that name is already there.")
             case 73, 75: String(localized: "It couldn't be written on that machine.")
             case 74: String(localized: "It arrived incomplete on that machine.")

@@ -72,6 +72,6 @@ try {
   process.exitCode=await exited;
 } catch {
   if(child){child.stdin.end();child.kill('SIGTERM');}
-  process.stderr.write('Shepherd Pi MCP connection is unavailable.\n');
+  process.stderr.write('3rdr Pi MCP connection is unavailable.\n');
   process.exitCode=1;
 }

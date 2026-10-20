@@ -126,7 +126,8 @@ nonisolated struct PreparedAgentLaunch: Codable, Sendable {
             return zip(processArguments, processArguments.dropFirst()).contains { flag, value in
                 guard flag == "-c" || flag == "--config" else { return false }
                 if let codexPluginKey, value == codexPluginKey + "=true" { return true }
-                return value == "mcp_servers.shepherd-browser.args=" + Self.jsonString(mcpArguments)
+                // Either name: a session launched before the rename keeps the one it had.
+                return ["3rdr-browser", "shepherd-browser"].contains { value == "mcp_servers.\($0).args=" + Self.jsonString(mcpArguments) }
             }
         }
     }

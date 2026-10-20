@@ -3,7 +3,7 @@ import Foundation
 /// Local packaged skill / pinned MCP installer for Shepherd-managed sessions.
 /// User-global registration is not supported.
 nonisolated enum AgentSkillSetup {
-    static let skillName = "shepherd-browser"
+    static let skillName = "3rdr-browser"
 
     nonisolated struct Report: Equatable, Sendable {
         enum Registration: String, Sendable { case registered, missing, failed }

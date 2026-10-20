@@ -150,7 +150,7 @@ import NIOPosix
                 guard let data=String(line).data(using:.utf8), let object=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any],
                       let value=object["value"] as? [String:Any], value["state"] as? String == "ready",
                       let tools=object["tools"] as? [String] else { return false }
-                return tools.contains("mcp__shepherd_browser__browser_snapshot")
+                return tools.contains("mcp__3rdr_browser__browser_snapshot")
             }
         }
         while !(host.isMcpReady(launchID:id) && extensionReady()) && driver.isRunning && ContinuousClock().now<deadline { try await Task.sleep(for:.milliseconds(50)) }

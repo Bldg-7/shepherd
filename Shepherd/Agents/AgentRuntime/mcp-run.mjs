@@ -45,7 +45,7 @@ try {
       }
       child.stdin.write(JSON.stringify(message)+'\n');
     } catch {
-      process.stderr.write('Shepherd MCP rejected an invalid protocol input.\n');
+      process.stderr.write('3rdr MCP rejected an invalid protocol input.\n');
     }
   });
   input.on('close',()=>child.stdin.end());
@@ -57,11 +57,11 @@ try {
   const parent=process.ppid;
   const monitor=setInterval(()=>{if(process.ppid !== parent) child.kill('SIGTERM');},1000);
   const cleanup=()=>{clearInterval(monitor);try{fs.unlinkSync(configFile);}catch{}};
-  child.on('error',()=>{cleanup();process.stderr.write('Shepherd MCP could not start.\n');process.exitCode=1;process.stdin.destroy();});
+  child.on('error',()=>{cleanup();process.stderr.write('3rdr MCP could not start.\n');process.exitCode=1;process.stdin.destroy();});
   child.on('exit',(code,signal)=>{cleanup();process.exitCode=signal ? 1 : code;process.stdin.destroy();});
   for(const sig of ['SIGTERM','SIGINT']) process.on(sig,()=>child.kill(sig));
 } catch {
   if(configFile) try{fs.unlinkSync(configFile);}catch{}
-  process.stderr.write('Shepherd MCP configuration is unavailable or unsafe.\n');
+  process.stderr.write('3rdr MCP configuration is unavailable or unsafe.\n');
   process.exitCode=1;
 }

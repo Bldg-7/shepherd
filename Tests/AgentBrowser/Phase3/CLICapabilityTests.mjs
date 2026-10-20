@@ -79,7 +79,7 @@ async function run(executable,args,extra={}) {
 function assertCodexRegistration(result, instruction, label) {
  assert.equal(result.capture.cli,'codex');
  const own=result.capture.requests.filter(r=>r.url.includes('responses'));
- const toolsPresent=own.some(r=>r.tools.some(t=>/shepherd[-_]browser/.test(t) && t.endsWith('browser_navigate')));
+ const toolsPresent=own.some(r=>r.tools.some(t=>/3rdr[-_]browser/.test(t) && t.endsWith('browser_navigate')));
  const instructionsPresent=own.some(r=>r.system.includes(instruction) && r.system.includes(INSTRUCTIONS));
  console.log(JSON.stringify({label,invocation:result.capture.id,codexProviderRequests:own.length,ownShepherdTools:toolsPresent,mergedSelectedInstructions:instructionsPresent}));
  assert(own.length > 0,'this Codex invocation produced no provider requests');
@@ -106,9 +106,9 @@ try {
  const events=c.stdout.trim().split('\n').map(line=>{try{return JSON.parse(line);}catch{return null;}}).filter(Boolean);
  const init=events.find(e=>e.type==='system' && e.subtype==='init');
  assert(init,'Claude init event missing');
- assert(init.plugins?.some(p=>p.name==='shepherd'),'Claude plugin not loaded');
- assert(init.mcp_servers?.some(p=>p.name.includes('shepherd-browser') && p.status==='connected'),'Claude MCP not connected');
- assert(init.skills?.some(p=>p.includes('shepherd-browser')),'Claude skill v2 not loaded');
+ assert(init.plugins?.some(p=>p.name==='3rdr'),'Claude plugin not loaded');
+ assert(init.mcp_servers?.some(p=>p.name.includes('3rdr-browser') && p.status==='connected'),'Claude MCP not connected');
+ assert(init.skills?.some(p=>p.includes('3rdr-browser')),'Claude skill v2 not loaded');
  assert(c.stdout.includes('OWNED_PROVIDER_OK'));
  console.log('PASS real Claude session plugin, skill and pinned MCP startup under local provider');
  const fixtureBin=path.join(base,'fixture-bin');fs.mkdirSync(fixtureBin,{mode:0o700});
@@ -140,7 +140,7 @@ try {
  const grammarInit=grammar.stdout.split('\n').map(l=>{try{return JSON.parse(l);}catch{return null;}}).find(e=>e?.type==='system' && e.subtype==='init');
  console.log(JSON.stringify({claudeGrammarServers:grammarInit.mcp_servers.map(s=>({name:s.name,status:s.status})),claudeGrammarPlugins:grammarInit.plugins.map(p=>p.name)}));
  for(const name of ['owned-config-a','owned-config-b'])assert(grammarInit.mcp_servers.some(s=>s.name===name && s.status==='connected'));
- for(const name of ['owned-plugin-a','owned-plugin-b','owned-plugin-c','shepherd'])assert(grammarInit.plugins.some(p=>p.name===name));
+ for(const name of ['owned-plugin-a','owned-plugin-b','owned-plugin-c','3rdr'])assert(grammarInit.plugins.some(p=>p.name===name));
  console.log('PASS actual Claude consumes both separate variadic MCP files and collection/repeated/equals plugin directories');
  const equalPlan=prepare({...request,kind:'claude',executable:'claude',arguments:['--mcp-config='+files[0],'--mcp-config='+files[1]]});
  const equalRun=await run('claude',[...equalPlan.arguments,'-p','Return owned provider marker.','--output-format','stream-json','--verbose','--no-session-persistence','--model','owned-fixture-model'],equalPlan.environment);
@@ -177,13 +177,13 @@ try {
  assertCodexRegistration(r,'Existing pane override','argv-only real existing session resume');
  console.log('PASS actual argv-only existing pane and resumed session register own MCP with current override despite stale descriptor env');
  assert.throws(()=>setMode({root,mode:'global',claudeSettingsFile:request.claudeSettingsFile,claudeSkillDirectory:path.join(claudeDir,'skills'),codexHome}),/session-only-policy/);
- assert(!readCodex(codexHome).mcp_servers?.['shepherd-browser']);
+ assert(!readCodex(codexHome).mcp_servers?.['3rdr-browser']);
  const outsideClaude=await run('claude',['-p','Return owned provider marker.','--output-format','stream-json','--verbose','--no-session-persistence','--model','owned-fixture-model']);
  const outsideInit=outsideClaude.stdout.split('\n').map(l=>{try{return JSON.parse(l);}catch{return null;}}).find(e=>e?.type==='system' && e.subtype==='init');
- assert(outsideInit);assert(!outsideInit.plugins?.some(p=>p.name==='shepherd'));assert(!outsideInit.skills?.some(p=>p.includes('shepherd-browser')));assert(!outsideInit.mcp_servers?.some(p=>p.name.includes('shepherd-browser')));
+ assert(outsideInit);assert(!outsideInit.plugins?.some(p=>p.name==='3rdr'));assert(!outsideInit.skills?.some(p=>p.includes('3rdr-browser')));assert(!outsideInit.mcp_servers?.some(p=>p.name.includes('3rdr-browser')));
  const outsideCodex=await run('codex',['--profile','work',...providerArgs,'-c','mcp_servers.owned-other.enabled=false','exec','--skip-git-repo-check','--json','Return owned provider marker.']);
  const outsideRequests=outsideCodex.capture.requests.filter(v=>v.url.includes('responses'));
- assert(outsideRequests.length>0);assert(outsideRequests.every(v=>!v.tools.some(t=>/shepherd[-_]browser/.test(t))&&!v.system.includes(INSTRUCTIONS)));
+ assert(outsideRequests.length>0);assert(outsideRequests.every(v=>!v.tools.some(t=>/3rdr[-_]browser/.test(t))&&!v.system.includes(INSTRUCTIONS)));
  console.log('PASS ordinary CLI invocations outside Shepherd plans do not inherit Shepherd skill/MCP/instructions');
  console.log(JSON.stringify({localProviderRequests:requestCount,invocations:invocations.map(v=>({id:v.id,cli:v.cli,requests:v.requests.length})),providerPaths:[...new Set(invocations.flatMap(v=>v.requests.map(r=>r.url)))],passed:true}));
 } finally {

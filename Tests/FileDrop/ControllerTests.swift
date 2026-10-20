@@ -27,7 +27,7 @@ nonisolated final class FakeUploader: TerminalDropUploading, @unchecked Sendable
             try await Task.sleep(for: .seconds(60))
         }
         progress(file.size)
-        return "/home/u/.cache/shepherd/drops/\(batch)/\(file.remoteName)"
+        return "/home/u/.cache/3rdr/drops/\(batch)/\(file.remoteName)"
     }
 
     func close() async { lock.withLock { _closes += 1 } }
@@ -147,7 +147,7 @@ nonisolated final class FakeUploader: TerminalDropUploading, @unchecked Sendable
         await settle(mixed.controller)
         let batch = uploader.uploads.first?.batch ?? ""
         check(UUID(uuidString: batch) != nil && batch == batch.lowercased(), "a lowercase UUID batch")
-        check(mixed.pasted == ["/home/u/.cache/shepherd/drops/\(batch)/a.png "], "the uploaded path pasted: \(mixed.pasted)")
+        check(mixed.pasted == ["/home/u/.cache/3rdr/drops/\(batch)/a.png "], "the uploaded path pasted: \(mixed.pasted)")
         check(mixed.controller.activity == .finished(["Non-image items skipped (2): \(list(["notes.pdf", "folder"]))"]), "\(mixed.controller.activity)")
         check(uploader.closes == 1 && mixed.connects == 1, "one connection, closed")
 
@@ -169,7 +169,7 @@ nonisolated final class FakeUploader: TerminalDropUploading, @unchecked Sendable
         await settle(harness.controller)
         let batch = partial.uploads.first?.batch ?? ""
         check(partial.uploads.map(\.name) == ["a.png", "b.jpg", "c.gif"], "all tried")
-        check(harness.pasted == ["/home/u/.cache/shepherd/drops/\(batch)/a.png /home/u/.cache/shepherd/drops/\(batch)/c.gif "], "\(harness.pasted)")
+        check(harness.pasted == ["/home/u/.cache/3rdr/drops/\(batch)/a.png /home/u/.cache/3rdr/drops/\(batch)/c.gif "], "\(harness.pasted)")
         check(harness.controller.activity == .finished(["Couldn't upload b.jpg. A file with that name is already there."]), "\(harness.controller.activity)")
 
         // A failure the rest would meet too: not tried, named together.

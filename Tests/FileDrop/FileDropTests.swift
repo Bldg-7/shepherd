@@ -21,6 +21,7 @@ import Darwin
         try opening()
         try receiveScript()
         try cleanupAndLinks()
+        try earlierFolder()
         try throughHostSSH()
         try everyShell()
         try await localCommandInput()
@@ -71,14 +72,14 @@ import Darwin
 
     static func receipts() {
         let batch = "0f0e0d0c-0b0a-4908-8706-050403020100"
-        let good = "/home/me/.cache/shepherd/drops/\(batch)/shot.png"
+        let good = "/home/me/.cache/3rdr/drops/\(batch)/shot.png"
         check(TerminalDropPaste.receivedPath(in: "Welcome!\nSHEPHERD_DROP_OK /fake/x\nmotd\nSHEPHERD_DROP_OK \(good)\n", batch: batch, name: "shot.png") == good,
               "the last receipt line counts, whatever the startup files print")
         check(TerminalDropPaste.receivedPath(in: "SHEPHERD_DROP_OK \(good)\r\n", batch: batch, name: "shot.png") == good, "CRLF")
         check(TerminalDropPaste.receivedPath(in: "SHEPHERD_DROP_OK \(good)", batch: batch, name: "other.png") == nil, "another file's path is refused")
         check(TerminalDropPaste.receivedPath(in: "SHEPHERD_DROP_OK \(good)", batch: "ffffffff-0b0a-4908-8706-050403020100", name: "shot.png") == nil, "another batch's path is refused")
-        check(TerminalDropPaste.receivedPath(in: "SHEPHERD_DROP_OK home/.cache/shepherd/drops/\(batch)/shot.png", batch: batch, name: "shot.png") == nil, "a relative path is refused")
-        check(TerminalDropPaste.receivedPath(in: "SHEPHERD_DROP_OK /h\u{1b}[201~/.cache/shepherd/drops/\(batch)/shot.png", batch: batch, name: "shot.png") == nil, "a path with a control character is refused")
+        check(TerminalDropPaste.receivedPath(in: "SHEPHERD_DROP_OK home/.cache/3rdr/drops/\(batch)/shot.png", batch: batch, name: "shot.png") == nil, "a relative path is refused")
+        check(TerminalDropPaste.receivedPath(in: "SHEPHERD_DROP_OK /h\u{1b}[201~/.cache/3rdr/drops/\(batch)/shot.png", batch: batch, name: "shot.png") == nil, "a path with a control character is refused")
         check(TerminalDropPaste.receivedPath(in: "nothing here", batch: batch, name: "shot.png") == nil, "no receipt, no path")
         check(TerminalDropPaste.lastLine(of: "debug1: x\nssh: connect to host gpu port 22: Connection refused\r\n\n") == "ssh: connect to host gpu port 22: Connection refused", "ssh's last line")
         check(TerminalDropPaste.lastLine(of: "\u{1b}[31mred\u{1b}[0m") == "", "a line with control characters isn't shown")
@@ -165,11 +166,11 @@ import Darwin
         let batch = UUID().uuidString.lowercased()
         let bytes = Data((0..<70_000).map { UInt8($0 % 251) })
         let run = try shell(TerminalDropPaste.receiveCommand(batch: batch, name: "shot.png", size: Int64(bytes.count)), home: home, input: bytes)
-        let drops = "\(home)/.cache/shepherd/drops"
+        let drops = "\(home)/.cache/3rdr/drops"
         let expected = "\(drops)/\(batch)/shot.png"
         check(run.status == 0 && TerminalDropPaste.receivedPath(in: run.stdout, batch: batch, name: "shot.png") == expected, "received: \(run)")
         check(FileManager.default.contents(atPath: expected) == bytes, "every byte, unchanged")
-        check(mode("\(home)/.cache") == 0o700 && mode("\(home)/.cache/shepherd") == 0o700 && mode(drops) == 0o700 && mode("\(drops)/\(batch)") == 0o700,
+        check(mode("\(home)/.cache") == 0o700 && mode("\(home)/.cache/3rdr") == 0o700 && mode(drops) == 0o700 && mode("\(drops)/\(batch)") == 0o700,
               "folders only the account's")
         check(mode(expected) == 0o600 && !exists(expected + ".part"), "file only the account's, nothing partial left")
 
@@ -196,7 +197,7 @@ import Darwin
             ("\n", "a.png", "3"), (batch, "\n", "3"), (batch, "a.png", "\n"), (batch, "a.png", "+3"),
         ]
         for (b, n, s) in malformed {
-            let line = "sh -c " + [TerminalDropPaste.receiveScript, "shepherd-drop", b, n, s].map(shellQuoted).joined(separator: " ")
+            let line = "sh -c " + [TerminalDropPaste.receiveScript, "3rdr-drop", b, n, s].map(shellQuoted).joined(separator: " ")
             let result = try shell(line, home: home, input: Data([1, 2, 3]))
             check(result.status == 64, "\(b) \(n) \(s) refused: \(result.status)")
         }
@@ -207,7 +208,7 @@ import Darwin
 
     static func cleanupAndLinks() throws {
         let home = "\(work)/cleanup-home"
-        let drops = "\(home)/.cache/shepherd/drops"
+        let drops = "\(home)/.cache/3rdr/drops"
         let fm = FileManager.default
         for dir in ["\(drops)/old-batch", "\(drops)/new-batch", "\(home)/.cache/other-old"] {
             try fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
@@ -226,7 +227,7 @@ import Darwin
 
         // The drops folder, or the one it is in, a symbolic link: refused,
         // and nothing written where it points.
-        for (index, link) in ["\(work)/link-home-1/.cache/shepherd/drops", "\(work)/link-home-2/.cache/shepherd"].enumerated() {
+        for (index, link) in ["\(work)/link-home-1/.cache/3rdr/drops", "\(work)/link-home-2/.cache/3rdr"].enumerated() {
             let home = "\(work)/link-home-\(index + 1)"
             let elsewhere = "\(work)/elsewhere-\(index + 1)"
             try fm.createDirectory(atPath: elsewhere + "/drops", withIntermediateDirectories: true)
@@ -235,6 +236,52 @@ import Darwin
             let result = try shell(TerminalDropPaste.receiveCommand(batch: batch, name: "a.png", size: 1), home: home, input: Data([7]))
             check(result.status == 70, "a symbolic link in the way is refused: \(result.status)")
             check((try fm.contentsOfDirectory(atPath: elsewhere + "/drops")).isEmpty, "nothing written through the link")
+        }
+    }
+
+    /// ~/.cache/shepherd/drops, where earlier versions put uploads: its day-old
+    /// batches go as in the new folder, then the folder once empty, and
+    /// nothing else — not ~/.cache/shepherd, not what a link points to.
+    static func earlierFolder() throws {
+        let fm = FileManager.default
+        let twoDaysAgo = Date(timeIntervalSinceNow: -2 * 86_400)
+        func receive(_ home: String) throws -> Run {
+            try shell(TerminalDropPaste.receiveCommand(batch: UUID().uuidString.lowercased(), name: "a.png", size: 1), home: home, input: Data([7]))
+        }
+
+        let home = "\(work)/earlier-home"
+        let earlier = "\(home)/.cache/shepherd/drops"
+        for dir in ["\(earlier)/old-batch", "\(earlier)/recent-batch", "\(home)/.cache/shepherd/other"] {
+            try fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        }
+        try Data([1]).write(to: URL(fileURLWithPath: "\(earlier)/old-batch/x.png"))
+        try Data([1]).write(to: URL(fileURLWithPath: "\(earlier)/recent-batch/y.png"))
+        for path in ["\(earlier)/old-batch", "\(home)/.cache/shepherd/other"] {
+            try fm.setAttributes([.modificationDate: twoDaysAgo], ofItemAtPath: path)
+        }
+        let first = try receive(home)
+        check(first.status == 0 && first.stdout.contains("/.cache/3rdr/drops/"), "received into the new folder: \(first)")
+        check(!exists("\(earlier)/old-batch") && exists("\(earlier)/recent-batch/y.png"), "only the earlier folder's day-old batches go")
+        check(exists("\(home)/.cache/shepherd/other"), "nothing beside the earlier drops folder is touched")
+        try fm.setAttributes([.modificationDate: twoDaysAgo], ofItemAtPath: "\(earlier)/recent-batch")
+        let second = try receive(home)
+        check(second.status == 0 && !exists(earlier), "the earlier drops folder goes once empty: \(second.status)")
+        check(exists("\(home)/.cache/shepherd/other"), "and the folder it was in stays")
+        let third = try receive(home)
+        check(third.status == 0 && !exists(earlier), "no earlier folder, nothing to do")
+
+        // The earlier drops folder, or the one it is in, a symbolic link: left
+        // as it is, and nothing removed where it points.
+        for (index, link) in ["\(work)/earlier-link-1/.cache/shepherd/drops", "\(work)/earlier-link-2/.cache/shepherd"].enumerated() {
+            let home = "\(work)/earlier-link-\(index + 1)"
+            let elsewhere = "\(work)/earlier-elsewhere-\(index + 1)"
+            try fm.createDirectory(atPath: elsewhere + "/drops/old-batch", withIntermediateDirectories: true)
+            try fm.setAttributes([.modificationDate: twoDaysAgo], ofItemAtPath: elsewhere + "/drops/old-batch")
+            try fm.createDirectory(atPath: (link as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+            try fm.createSymbolicLink(atPath: link, withDestinationPath: index == 0 ? elsewhere + "/drops" : elsewhere)
+            let result = try receive(home)
+            check(result.status == 0, "a link in the earlier folder's place doesn't stop an upload: \(result.status)")
+            check(exists(link) && exists(elsewhere + "/drops/old-batch"), "nothing removed through the link")
         }
     }
 
@@ -248,7 +295,7 @@ import Darwin
         let batch = UUID().uuidString.lowercased()
         let line = TerminalDropPaste.hostCommand(target: target, receive: TerminalDropPaste.receiveCommand(batch: batch, name: "d.png", size: 4))
         let run = try shell(line, home: hostHome, input: Data([4, 3, 2, 1]), path: "\(bin):/usr/bin:/bin")
-        let expected = "\(machineHome)/.cache/shepherd/drops/\(batch)/d.png"
+        let expected = "\(machineHome)/.cache/3rdr/drops/\(batch)/d.png"
         check(run.status == 0 && TerminalDropPaste.receivedPath(in: run.stdout, batch: batch, name: "d.png") == expected, "through the host: \(run)")
         check(FileManager.default.contents(atPath: expected) == Data([4, 3, 2, 1]), "the bytes reach the machine")
         check(!exists("\(hostHome)/.cache"), "nothing is left on the host")
@@ -273,20 +320,20 @@ import Darwin
                 let path = TerminalDropPaste.receivedPath(in: run.stdout, batch: batch, name: "s.png")
                 check(run.status == 0 && path.flatMap { FileManager.default.contents(atPath: $0) } == bytes, "\(login) then sh in \(inner): \(run)")
                 let short = try shell(TerminalDropPaste.receiveCommand(batch: batch, name: "t.png", size: 9), home: home, input: Data([1]), path: inner, loginShell: login)
-                check(short.status == 74 && !exists("\(home)/.cache/shepherd/drops/\(batch)/t.png.part"), "\(login): a short file is removed")
+                check(short.status == 74 && !exists("\(home)/.cache/3rdr/drops/\(batch)/t.png.part"), "\(login): a short file is removed")
                 // Through the host's ssh: the host's login shell, then the
                 // machine's (the fake ssh's /bin/sh), then `sh`.
                 let hostBatch = UUID().uuidString.lowercased()
                 let line = TerminalDropPaste.hostCommand(target: "gpu'$(touch INJECTED-shell)", receive: TerminalDropPaste.receiveCommand(batch: hostBatch, name: "h.png", size: 3))
                 let hosted = try shell(line, home: "\(work)/host-home", input: Data([1, 2, 3]), path: "\(bin):" + inner, loginShell: login)
-                check(hosted.status == 0 && TerminalDropPaste.receivedPath(in: hosted.stdout, batch: hostBatch, name: "h.png") == "\(machineHome)/.cache/shepherd/drops/\(hostBatch)/h.png",
+                check(hosted.status == 0 && TerminalDropPaste.receivedPath(in: hosted.stdout, batch: hostBatch, name: "h.png") == "\(machineHome)/.cache/3rdr/drops/\(hostBatch)/h.png",
                       "\(login) on the host: \(hosted)")
             }
         }
         check(injected().isEmpty, "no shell ran an argument as code")
         // A day-old batch goes under dash's find as well as bash's.
         let home = "\(work)/shell-home"
-        let old = "\(home)/.cache/shepherd/drops/old"
+        let old = "\(home)/.cache/3rdr/drops/old"
         try FileManager.default.createDirectory(atPath: old, withIntermediateDirectories: true)
         try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -90_000)], ofItemAtPath: old)
         let run = try shell(TerminalDropPaste.receiveCommand(batch: UUID().uuidString.lowercased(), name: "a.png", size: 1), home: home, input: Data([1]), path: "\(dashBin):/usr/bin:/bin", loginShell: "/bin/dash")
@@ -319,7 +366,7 @@ import Darwin
         let file = try TerminalDropFile.open(URL(fileURLWithPath: source), remoteName: "c.png")
         let progress = Meter()
         let path = try await uploader.upload(file, batch: batch, progress: { progress.record($0) })
-        check(path == "\(machineHome)/.cache/shepherd/drops/\(batch)/c.png", "this Mac's ssh received it: \(path)")
+        check(path == "\(machineHome)/.cache/3rdr/drops/\(batch)/c.png", "this Mac's ssh received it: \(path)")
         check(FileManager.default.contents(atPath: path) == bytes, "every byte")
         check(progress.last == Int64(bytes.count), "progress reaches the size")
         check(injected().isEmpty, "the target didn't run as code")
@@ -365,7 +412,7 @@ import Darwin
         held.cancel()
         do { _ = try await held.value; check(false, "a cancelled upload must not succeed") }
         catch is CancellationError { check(ContinuousClock.now - cancelledAt < .seconds(5), "ssh ended within LocalCommand's stop budget") }
-        check(!exists("\(machineHome)/.cache/shepherd/drops/\(batch)/c4.png"), "nothing arrived")
+        check(!exists("\(machineHome)/.cache/3rdr/drops/\(batch)/c4.png"), "nothing arrived")
     }
 
     nonisolated final class Meter: @unchecked Sendable {

@@ -4,8 +4,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {detectPi, resolvePiExecutable, piNodeSupported, piInvocation, PI_MANAGED_LAUNCH_QUALIFIED} from '../../../Shepherd/Agents/AgentRuntime/pi-runtime.mjs';
-import {registerPiLifecycle} from '../../../Shepherd/Agents/AgentRuntime/pi-lifecycle.mjs';
-import {detect, injected, resume, childCommand} from '../../../Shepherd/Agents/AgentRuntime/runtime-core.mjs';
+import {registerPiLifecycle, SERVER as PI_SERVER} from '../../../Shepherd/Agents/AgentRuntime/pi-lifecycle.mjs';
+import {detect, injected, resume, childCommand, SERVER} from '../../../Shepherd/Agents/AgentRuntime/runtime-core.mjs';
 import {prepare, stagePi} from '../../../Shepherd/Agents/AgentRuntime/runtime.mjs';
 
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'shepherd-pi-fixture-'));
@@ -91,7 +91,7 @@ test('Launch resolves any Pi 1.x release and rejects the rest as an unsupported 
 });
 test('Qualified Pi still cannot use legacy injection, resume, child rewrite or prepare', () => {
   assert.equal(PI_MANAGED_LAUNCH_QUALIFIED, true);
-  assert.equal(injected('pi',['-c','mcp_servers.shepherd-browser.args=[]'],{mcpArguments:[]}), false);
+  for (const name of ['3rdr-browser','shepherd-browser']) assert.equal(injected('pi',['-c',`mcp_servers.${name}.args=[]`],{mcpArguments:[]}), false);
   assert.throws(() => resume('pi', [], 'session-id'), {code:'pi-resume-unqualified'});
   assert.equal(childCommand('herdr agent start child --kind pi --pane w1:p1'), null);
   assert.throws(() => prepare({root:path.join(directory,'runtime'),kind:'pi'}), {code:'pi-launch-unqualified'});
@@ -130,6 +130,7 @@ test('Lifecycle uses native ephemeral registration and settled, not agent_end', 
   const f=fixture(), c=ctx(); await f.emit('session_start',c);
   assert.equal(f.controller.state(),'ready');
   assert.equal(f.events.filter(e=>e[0]==='register').length,1);
+  assert.equal(PI_SERVER,SERVER);assert.equal(f.events.find(e=>e[0]==='register')[1],'3rdr-browser');
   assert.deepEqual(f.events.find(e=>e[0]==='register')[2],{ command:'/owned/node',args:['/owned/mcp-run.mjs','/owned/session.json'],exposure:'codemode' });
   await f.emit('agent_start',c); assert.equal(f.controller.state(),'busy');
   assert(!f.handlers.has('agent_end'));
