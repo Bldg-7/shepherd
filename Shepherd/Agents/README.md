@@ -84,6 +84,80 @@ and denied, not silently rebound; use a fresh managed launch. See
 `docs/pi-agent-support.md` for scope, security contracts, evidence and these
 explicit limitations.
 
+## Pane names for agent sessions
+
+When a pane is renamed in this app and herdr accepts the rename
+(`pane.rename`, in `AgentBoardView.rename`), the new name is passed on once to
+the session of the agent in that pane (`AgentSessionNaming.swift`). The name is
+trimmed, control characters and line breaks (U+2028 and U+2029 included) become
+spaces, and it is cut to 200 characters. An empty name, a tab rename, or a pane
+with no Claude Code, Codex or Pi agent passes nothing on. Renames made in herdr
+or another herdr client are not seen, nothing is read back from the agent, and
+no session file is written.
+
+### Claude Code and Codex
+
+`AgentSessionNamer` holds at most one name per pane, in memory only. A pane is
+identified by its Machine (This Mac or an SSH machine from Settings), its herdr
+machine if any, and its herdr pane ID. A newer rename replaces the held name.
+With the name, the namer records what was in the pane at rename time: pane ID,
+herdr terminal ID, agent kind, the agent session ID that herdr reports for it,
+Machine and herdr machine.
+
+On every snapshot of that herdr (`showSnapshot`, `showHerdrMachines`) the namer
+compares the pane with that record:
+
+- The pane is gone, its herdr machine was removed, or its terminal, agent kind
+  or agent session ID differs: the name is dropped.
+- herdr reported an agent session ID at rename time but reports none now: the
+  name is held, not dropped.
+- The agent is idle or done and not `launch_pending`: the name is sent, at most
+  once every 3 seconds per pane. `interactive_ready` is not required, because
+  herdr sets it only for agents started with `agent.start`, not for agents
+  started from a shell.
+
+Sending opens a connection of its own and goes through three steps:
+
+1. Read the visible screen (`pane.read`, visible, with ANSI; for a herdr machine
+   `herdr --machine <id> pane read … --format ansi`). Go on only if the agent's
+   input box is empty.
+2. Read the agent again with `agent.get`. Go on only if it is the same agent
+   session and still idle or done.
+3. Submit `/rename <name>` with `agent.prompt`, which pastes it in bracketed
+   paste mode and then presses Enter.
+
+The input box check is `AgentIdleStopPolicy.isEmptyEditor`, the check the app
+also uses before stopping an idle agent to resume its session. For naming only,
+a Claude Code prompt line that shows nothing but Claude's own placeholder
+suggestion (its first character drawn inverted as the cursor and the rest dim,
+or all of it dim) also counts as empty. The resume check still treats such a
+suggestion as typed text.
+
+After a send that doesn't go through:
+
+- The name is kept for a later snapshot after: a draft in the input box, a
+  question or review prompt on screen, `agent_blocked`, a timeout, or a failed
+  connection.
+- The name is dropped after: `agent_not_found`, `pane_not_found`, or a different
+  agent session.
+
+If a newer rename replaces a name while that name is being sent, the newer name
+is checked as soon as that send ends.
+
+### Pi
+
+Only a Pi launched by this app on This Mac is named
+(`AgentLaunchService.namePiSession`). `PiHostBridge.nameSession` gives each name
+for a launch a sequence number. Every `status` reply the bridge sends to that
+launch carries `sessionName: {sequence, name}`; replies to other launches don't.
+In Pi, `pi-host.mjs` polls `status` while the launch's bridge connection is up
+and hands the name to `pi-session-name.mjs`. That calls `pi.setSessionName()`
+once per sequence number: right away if Pi is idle with no message waiting to
+be sent, otherwise at Pi's next `agent_settled` event. When Pi starts a new
+session, a name not yet set is dropped. Nothing is typed into Pi. A Pi started
+from a shell is not renamed, and the name reaches Pi only while its launch's
+bridge connection is up.
+
 ## Packaging requirement — integration owner
 
 The source resource folder is **`Shepherd/Agents/AgentRuntime`**. Before packaging,

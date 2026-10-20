@@ -99,6 +99,8 @@ hand-off 뒤의 대기와 실패는 launcher가 아니라 사이드바에만 보
 상속된 `HERDR_SOCKET_PATH`나 `HERDR_PANE_ID`로 대상을 선택하지 않고 전역 hook도 설치하지 않는다.
 이 상태 보고는 UI/lifecycle 힌트이며 native browser 권한 자체가 아니다.
 
+`pi-session-name.mjs`는 앱의 Rename Pane이 정한 이름을 bridge의 `status` 응답(`sessionName`, launch마다 매기는 순번)으로 받는다. 순번마다 한 번 `pi.setSessionName()`을 호출하는데, Pi가 idle이고 보낼 메시지가 남아 있지 않으면 바로, 아니면 Pi의 다음 `agent_settled` 이벤트 때 호출한다. 터미널에는 아무것도 입력하지 않는다. Pi가 새 session을 시작하면 아직 적용하지 않은 이름은 버린다.
+
 `pi-entry.ts`는 TUI만 허용하고 `pi-lifecycle.mjs`를 nonblocking으로 시작한다.
 `agent_end` 대신 `agent_settled`, idle/pending 및 native quiescence를 사용한다.
 명시적인 전환 전에 동기 revoke → MCP unregister ack → native detach/프로세스 종료를 기다린다.

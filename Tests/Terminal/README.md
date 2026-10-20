@@ -196,6 +196,50 @@ A real keyboard, input method, full screen and the installed app are not
 covered. Nor is what the system does with a double-click in the title bar,
 because a never-shown window neither zooms nor minimizes.
 
+## Passing the name on to the agent's session
+
+```sh
+python3 Tests/Agents/run-session-naming-tests.py --output /tmp/shepherd-session-naming-FRESH
+```
+
+(`FRESH` stands for a new folder name of your choice, as in the other runners.)
+Needs no app, herdr, agent or SSH. The runner has three stages (build, the Swift
+tests, the Pi tests) and then source checks:
+
+- Swift tests (`Tests/Agents/SessionNamingTests.swift`), compiled with the real
+  `HerdrClient`, `TitleRename` and `BoardItem` (the sidebar's row type). They
+  check:
+  - the `/rename <name>` command;
+  - name clean-up: trimming, control characters, line breaks and U+2028 turned
+    into spaces, the cut at 200 characters, and nothing sent for an empty name;
+  - what a rename registers: nothing for a tab, an empty name or a pane with no
+    agent, and a Pi rename going to its launch;
+  - the verdicts: idle and done are sent; working, blocked, unknown and
+    `launch_pending` are held; a closed pane, or another terminal, agent kind or
+    agent session, drops the name;
+  - the input box check: Claude's empty prompt and its dim suggestion count as
+    empty, a draft or a prompt dialog does not, and the resume check still
+    treats a suggestion as text;
+  - held names: a newer rename replaces the held one, and the same pane ID on
+    another Machine or herdr machine is a different pane;
+  - sending, against a fake herdr written in the test: an empty input box gets
+    `agent.prompt` exactly once; a draft gets nothing until the box is empty;
+    blocked and a failed connection keep the name and send again later;
+    `agent_not_found` or another session drops it; two renames send only the
+    last name; a herdr machine is reached with `herdr --machine`, and a name
+    with quotes in it stays one argument.
+- Pi tests (`Tests/AgentBrowser/Phase3/PiIntegrationTests.mjs`):
+  `pi-session-name.mjs` sets each sequence number's name once, right away when Pi
+  is idle and after `agent_settled` when Pi is working, and sets the name of a
+  new number. The same runs through `createPiHost` against a fake bridge socket.
+- Source checks: only a rename herdr accepted is passed on, the sidebar passes
+  every snapshot to `AgentSessionNamer`, Pi is named through its launch and the
+  bridge, and the resource hash in `runtime.mjs` covers `pi-session-name.mjs`.
+
+`Tests/AgentBrowser/Phase3/run-pi-bridge-tests.py` checks the bridge itself:
+each launch's `status` replies carry only that launch's latest name, and invalid
+names are refused.
+
 ## Focus frame
 
 ```sh

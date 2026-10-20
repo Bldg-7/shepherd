@@ -45,6 +45,16 @@ The preview and experimental browser share the side-panel slot; switching visibi
 
 See [0.3.0 release notes](notes/0.3.0.md) for limits and validation scope.
 
+## Pane names and agent sessions
+
+When you rename a pane in hrdrhrdrhrdr (Rename Pane… in a row's menu, or a double-click on the title), the Claude Code or Codex session in that pane gets the same name, once. hrdrhrdrhrdr types the agent's own `/rename <name>` command into the agent through herdr. This works for panes on This Mac, on an SSH machine added in Settings → Machines, and on a herdr machine.
+
+The command is typed only when the agent is ready for your next message and its input box is empty. A grey suggestion that Claude Code shows in an empty box counts as empty. Otherwise the rename is held back: while the agent is working or starting, while it shows a question or approval prompt, or while you have typed something in its input box. A held rename is checked again each time the sidebar updates and is typed once the agent is ready. A newer rename replaces a held one. A held rename is dropped when the pane closes, when another agent or session takes the pane's place, or when hrdrhrdrhrdr quits. The `/rename` line stays in the agent's terminal and in its input history.
+
+A Pi session opened from the New Tab launcher gets the name through hrdrhrdrhrdr's Pi extension while Pi is idle, and nothing is typed. A Pi started from a shell is not renamed.
+
+These don't rename any session: clearing a pane's name (the session keeps its name), renaming a tab, renaming a pane outside hrdrhrdrhrdr (in herdr's own window, for example), and renaming a pane that has no agent. The name is passed on as a single line of at most 200 characters.
+
 ## herdr machines
 
 herdr can save other computers it connects to over SSH, with `herdr machine add`;
