@@ -818,6 +818,16 @@ struct FindRoot: View {
         check(documentScroll(in: host.view) === linedView && abs(place().y - 2500) < 2 && (lined.visibleLines.first ?? 0) > 80,
               "it stays where it was scrolled to, not taken back to the line")
         check(lined.showsSource && lined.link?.line == 40, "in the source, the line linked to kept")
+        // Read again shorter than where it was scrolled to: at its end.
+        let shorter = (1...60).map { "Line \($0) of the shorter plan" }.joined(separator: "\n")
+        try write(shorter)
+        check(press(reloadButton()) && settle(host.view) { text(lined) == shorter }, "read again, shorter")
+        drain(host.view)
+        check(settle(host.view) {
+            guard let scroll = documentScroll(in: host.view), let height = scroll.documentView?.frame.height else { return false }
+            let end = height - scroll.contentView.bounds.height
+            return end > 100 && abs(scroll.contentView.bounds.origin.y - end) < 2
+        }, "at its end, not its top")
 
         // The file gone: Cannot Preview File, Reload there too; back, Retry
         // shows it in the source at the place it was left. A list, its
