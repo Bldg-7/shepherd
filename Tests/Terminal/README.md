@@ -30,11 +30,34 @@ python3 Tests/Terminal/run-key-tests.py --output /tmp/shepherd-keys-FRESH \
   --swiftterm-products /path/to/DerivedData/Build/Products/Debug
 ```
 
-Sends real key-downs through SwiftTerm's `keyDown` into the production terminal
-view in a never-shown window, and checks the bytes it hands its delegate. ⌘⌫
-and ⇧⌘⌫ send Ctrl-U (0x15), with the kitty keyboard protocol pushed or not.
-⌫, ⌥⌫, ⌘←, ⌘→ and a letter send what SwiftTerm sent before. The private HOME
-keeps the user's own key bindings out.
+The test presses keys on the production terminal view (`FocusReportingTerminalView`)
+in never-shown windows and checks the bytes the view passes on, which are what
+the pane's program receives. It presses them the way AppKit delivers a key-down:
+first it offers the key to the window's views through `performKeyEquivalent`, and
+only if no view handles it there does the key go to SwiftTerm's `keyDown`. Byte
+strings below are written with CSI for `ESC [`.
+
+- ⌘← and ⌘→ while the program has turned on the kitty keyboard protocol, as Pi
+  does: the terminal view handles them in `performKeyEquivalent` and sends the
+  same bytes as the Home and End keys, `CSI H` and `CSI F`. The test covers the
+  three settings programs ask for, `CSI > 1 u`, `> 5 u` and `> 7 u` (Pi asks for
+  7). Under `> 7 u` a key held down repeats as `CSI 1;1:2H` and `CSI 1;1:2F`, as
+  Home and End do. With Caps Lock on they send what Home and End send with Caps
+  Lock on. Without this change SwiftTerm would send super+← and super+→, which
+  Pi ignores.
+- ⌘← and ⌘→ while the protocol is off, or after the program turns it off with
+  `CSI < u`: still `ESC b` and `ESC f`, as before.
+- ⌘⌫ and ⇧⌘⌫: Ctrl-U (0x15), with the protocol on or off, as before.
+- Every other key is left to SwiftTerm and sends what SwiftTerm sends for it,
+  which for some keys is nothing. The test presses ⇧⌘← and ⇧⌘→, ⌥⌘←, ⌃⌘→, ⌥← and ⌥→,
+  ⌃← and ⌃→, ⌘↑, ⌘↓, ⌫, ⌥⌫, ⌘⌦ and the letter a.
+- With two terminals in one window, only the one with keyboard focus turns ⌘←
+  into Home; when neither has focus, neither does. The same is checked with the
+  app's `TerminalHostView` placed inside an `NSHostingView`, as the app's window
+  holds it.
+
+The test runs with a private HOME, so the user's own key bindings can't change
+the result.
 
 ## Drawing while hidden
 
