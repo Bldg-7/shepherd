@@ -380,6 +380,12 @@
         "ja" : { "stringUnit" : { "state" : "translated", "value" : "書き込みに失敗しました: %@" } },
         "ko" : { "stringUnit" : { "state" : "translated", "value" : "쓰기 실패: %@" } }
       }
+    },
+    "The host didn't finish within %lld seconds." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ホストが %lld 秒以内に終わりませんでした。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "호스트가 %lld초 안에 끝내지 못했습니다." } }
+      }
     }
   },
   "version" : "1.1"

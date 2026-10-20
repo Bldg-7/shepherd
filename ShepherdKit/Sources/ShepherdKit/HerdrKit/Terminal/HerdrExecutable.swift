@@ -43,11 +43,17 @@ public nonisolated enum HerdrExecutable {
     /// fallback's whole command line once more for sh, and the script once
     /// more for the login shell.
     public static func remoteCommand(arguments: String) -> String {
+        "sh -c \(shellQuoted(execScript(arguments: arguments)))"
+    }
+
+    /// The lookup `remoteCommand` runs, for a POSIX shell that is already
+    /// running: replaces it with herdr, run with `arguments` (quoted with
+    /// `shellQuoted`, as for `remoteCommand`).
+    public static func execScript(arguments: String) -> String {
         let candidates = usualLocations
             .map { $0.hasPrefix("/") ? shellQuoted($0) : "\"$HOME\"/\(shellQuoted($0))" }
             .joined(separator: " ")
-        let script = "for h in \(candidates); do if [ -x \"$h\" ]; then exec \"$h\" \(arguments); fi; done; exec zsh -ic \(shellQuoted("herdr \(arguments)"))"
-        return "sh -c \(shellQuoted(script))"
+        return "for h in \(candidates); do if [ -x \"$h\" ]; then exec \"$h\" \(arguments); fi; done; exec zsh -ic \(shellQuoted("herdr \(arguments)"))"
     }
 
     /// The options herdr itself gives `ssh` for a saved machine (its

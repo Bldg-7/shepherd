@@ -36,6 +36,12 @@ public protocol HerdrTransport: Actor {
     /// host that isn't herdr's: setting its agents up for Shepherd, for one
     /// (see `AgentSkillSetup`).
     func runScript(_ script: String) async throws -> Data
+    /// `runScript`, given up on after `timeout` seconds with
+    /// `HostScriptTimedOut`. Meant for a script that keeps a deadline of its
+    /// own (see `HostStep`), so this is the backstop for a host that stops
+    /// answering, not the way the work is ended: on a host over SSH the
+    /// script is left to finish by itself.
+    func runScript(_ script: String, timeout: TimeInterval) async throws -> Data
 }
 
 extension HerdrTransport {
@@ -43,6 +49,100 @@ extension HerdrTransport {
 
     public func subscribe(params: JSONValue) async throws -> HerdrSubscriptionLines {
         throw HerdrSubscriptionError.unsupported
+    }
+
+    /// Races `runScript` against the clock. The script's own await is
+    /// cancelled when the time runs out, and not waited for: an SSH command
+    /// stream ends on cancellation, but its channel only closes once the
+    /// command has.
+    public func runScript(_ script: String, timeout: TimeInterval) async throws -> Data {
+        try await raceHostScript(timeout: timeout) { try await self.runScript(script) }
+    }
+}
+
+/// A script run with `HerdrTransport.runScript(_:timeout:)` that didn't
+/// finish in the time it was given.
+public nonisolated struct HostScriptTimedOut: Error, LocalizedError {
+    public let seconds: Int
+
+    public init(seconds: Int) {
+        self.seconds = seconds
+    }
+
+    public var errorDescription: String? {
+        String(localized: "The host didn't finish within \(seconds) seconds.", bundle: .shepherdKit)
+    }
+}
+
+/// Runs `operation`, and throws `HostScriptTimedOut` if it hasn't finished
+/// after `timeout` seconds, without waiting for it to notice being
+/// cancelled.
+nonisolated func raceHostScript(timeout: TimeInterval, _ operation: @escaping @Sendable () async throws -> Data) async throws -> Data {
+    let race = HostScriptRace()
+    return try await withTaskCancellationHandler {
+        try await withCheckedThrowingContinuation { continuation in
+            race.begin(continuation)
+            let work = Task {
+                do {
+                    race.finish(.success(try await operation()))
+                } catch {
+                    race.finish(.failure(error))
+                }
+            }
+            let timer = Task {
+                try? await Task.sleep(for: .seconds(timeout))
+                race.finish(.failure(HostScriptTimedOut(seconds: Int(timeout.rounded()))))
+            }
+            race.hold(work: work, timer: timer)
+        }
+    } onCancel: {
+        race.finish(.failure(CancellationError()))
+    }
+}
+
+/// The first outcome of `raceHostScript`, and the tasks to end with it.
+private nonisolated final class HostScriptRace: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Data, any Error>?
+    private var outcome: Result<Data, any Error>?
+    private var tasks: [Task<Void, Never>] = []
+
+    func begin(_ continuation: CheckedContinuation<Data, any Error>) {
+        lock.lock()
+        if let outcome {
+            lock.unlock()
+            continuation.resume(with: outcome)
+            return
+        }
+        self.continuation = continuation
+        lock.unlock()
+    }
+
+    func hold(work: Task<Void, Never>, timer: Task<Void, Never>) {
+        lock.lock()
+        let finished = outcome != nil
+        if !finished { tasks = [work, timer] }
+        lock.unlock()
+        if finished {
+            work.cancel()
+            timer.cancel()
+        }
+    }
+
+    func finish(_ result: Result<Data, any Error>) {
+        lock.lock()
+        guard outcome == nil else {
+            lock.unlock()
+            return
+        }
+        outcome = result
+        let continuation = self.continuation
+        self.continuation = nil
+        let tasks = self.tasks
+        self.tasks = []
+        lock.unlock()
+        for task in tasks { task.cancel() }
+        continuation?.resume(with: result)
     }
 }
 

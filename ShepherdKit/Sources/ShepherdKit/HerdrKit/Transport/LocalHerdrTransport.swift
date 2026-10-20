@@ -98,6 +98,16 @@ public actor LocalHerdrTransport: HerdrTransport {
         }
     }
 
+    /// On this Mac the script runs in a session of its own, which
+    /// `LocalCommand` ends — TERM, and KILL two seconds later — when the time
+    /// runs out or the call is cancelled.
+    public func runScript(_ script: String, timeout: TimeInterval) async throws -> Data {
+        let command = LocalCommand.Command(executable: URL(fileURLWithPath: "/bin/sh"), arguments: ["-c", script])
+        return try await LocalCommand.run(command, timeout: timeout) { status, stderr in
+            HostScriptError(status: status, message: stderr)
+        }
+    }
+
     /// Like `send`, the actor only hands out the id; the subscription's
     /// connection is read on `ioQueue` as lines arrive, whatever the reader
     /// is busy with. herdr drops a subscriber it can't write to for 5 s

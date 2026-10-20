@@ -49,8 +49,16 @@ public actor HerdrClient {
     /// The machines saved in herdr on the host, enabled ones only — a
     /// disabled machine is one herdr itself won't talk to.
     public func listHerdrMachines() async throws -> [HerdrMachine] {
+        try await listAllHerdrMachines().filter(\.enabled)
+    }
+
+    /// Every machine saved in herdr on the host, the disabled ones too:
+    /// what a new machine's label must not clash with, since herdr's
+    /// `--machine <label>` takes a label shared by two for ambiguous whether
+    /// or not one of them is switched off.
+    public func listAllHerdrMachines() async throws -> [HerdrMachine] {
         let output = try await transport.runHerdr(["machine", "list", "--json"])
-        return try JSONDecoder().decode([HerdrMachine].self, from: output).filter(\.enabled)
+        return try JSONDecoder().decode([HerdrMachine].self, from: output)
     }
 
     /// The panes, tabs and workspaces on one of the host's herdr machines,
@@ -404,6 +412,12 @@ public actor HerdrClient {
     /// `HerdrTransport.runScript`).
     public func runScript(_ script: String) async throws -> Data {
         try await transport.runScript(script)
+    }
+
+    /// `runScript`, given up on after `timeout` seconds (see
+    /// `HerdrTransport.runScript(_:timeout:)`).
+    public func runScript(_ script: String, timeout: TimeInterval) async throws -> Data {
+        try await transport.runScript(script, timeout: timeout)
     }
 
     /// Subscribes to every change of herdr's workspaces, tabs, panes and
