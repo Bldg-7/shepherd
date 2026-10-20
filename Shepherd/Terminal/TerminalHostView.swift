@@ -161,6 +161,44 @@ final class FocusReportingTerminalView: TerminalView {
         super.interpretKeyEvents(eventArray)
     }
 
+    /// ⌘← and ⌘→ go to the program as the Home and End keys while it has the
+    /// kitty keyboard protocol on, as Pi does. SwiftTerm 1.20.0 sends them
+    /// then as super+← and super+→ (`CSI 1;9D`, `CSI 1;9C`), which Pi binds
+    /// to nothing; Claude Code and Codex bind them to what they bind Home
+    /// and End to. With the kitty keyboard off they stay SwiftTerm's: macOS
+    /// makes them `moveToLeftEndOfLine:` and `moveToRightEndOfLine:`, which
+    /// SwiftTerm sends as `ESC b` and `ESC f`. With it on SwiftTerm encodes
+    /// an arrow before `interpretKeyEvents`, and its `keyDown` isn't open to
+    /// a subclass, but AppKit offers a ⌘ key-down here before `keyDown`. The
+    /// key goes on through SwiftTerm's own `keyDown` as Home or End, so it is
+    /// encoded for the mode the program asked for, with auto-repeat and Caps
+    /// Lock as a real Home or End key would have them. Only the terminal
+    /// with the keyboard takes it, and ⇧, ⌃ or ⌥ with ⌘ leaves it alone.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard event.type == .keyDown, window?.firstResponder === self,
+              !getTerminal().keyboardEnhancementFlags.isEmpty,
+              event.modifierFlags.intersection([.shift, .control, .option, .command]) == .command,
+              let key = Self.homeOrEnd(for: event)
+        else { return super.performKeyEquivalent(with: event) }
+        keyDown(with: key)
+        return true
+    }
+
+    /// The Home or End key-down standing in for a ⌘← or ⌘→ one.
+    private static func homeOrEnd(for event: NSEvent) -> NSEvent? {
+        let keyCode: UInt16, character: String
+        switch event.charactersIgnoringModifiers?.unicodeScalars.first.map({ Int($0.value) }) {
+        case NSLeftArrowFunctionKey: (keyCode, character) = (115, "\u{f729}") // kVK_Home, NSHomeFunctionKey
+        case NSRightArrowFunctionKey: (keyCode, character) = (119, "\u{f72b}") // kVK_End, NSEndFunctionKey
+        default: return nil
+        }
+        return NSEvent.keyEvent(with: .keyDown, location: event.locationInWindow,
+            modifierFlags: event.modifierFlags.intersection(.capsLock).union(.function),
+            timestamp: event.timestamp, windowNumber: event.windowNumber, context: nil,
+            characters: character, charactersIgnoringModifiers: character,
+            isARepeat: event.isARepeat, keyCode: keyCode)
+    }
+
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
         dropOperation(for: sender)
     }
