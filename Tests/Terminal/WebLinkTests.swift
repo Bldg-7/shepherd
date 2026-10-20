@@ -1,7 +1,7 @@
 import Foundation
 
 // Runtime-only enum dependency; actual Machine/pane/session models are intact.
-nonisolated enum AgentKind: String, Sendable {
+public nonisolated enum AgentKind: String, Sendable {
     case claude, codex, pi
     var supportsLegacySessionInspection: Bool { self != .pi }
 }

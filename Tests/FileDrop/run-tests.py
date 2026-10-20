@@ -23,12 +23,12 @@ def fresh_work(name):
  (bin/'machine-home').write_text(str(work/'machine-home'))
  for log in ['ssh-arguments.log','ssh-targets.log']:(bin/log).write_text('')
  return work
-swiftc=['xcrun','swiftc','-target',platform.machine()+'-apple-macos26.6.2','-swift-version','6','-default-isolation','MainActor','-parse-as-library']
+swiftc=['xcrun','swiftc','ShepherdKit/Sources/ShepherdKit/Resources.swift','-target',platform.machine()+'-apple-macos26.6.2','-swift-version','6','-default-isolation','MainActor','-parse-as-library']
 hashed=set()
 
 # 1. Paste text, plan, names, receipts and commands; the receive script under
 # /bin/sh; the host's ssh path and this Mac's machine uploader via fake ssh.
-drop=['Shepherd/FileDrop/TerminalDropPaste.swift','Shepherd/FileDrop/TerminalDropUpload.swift','Shepherd/FileDrop/LocalSSHDropUploader.swift','Shepherd/HerdrKit/Terminal/LocalCommand.swift','Shepherd/HerdrKit/Terminal/HerdrExecutable.swift','Shepherd/HerdrKit/Terminal/ShellQuoting.swift','Shepherd/HerdrKit/Models/HerdrMachine.swift']
+drop=['Shepherd/FileDrop/TerminalDropPaste.swift','Shepherd/FileDrop/TerminalDropUpload.swift','Shepherd/FileDrop/LocalSSHDropUploader.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/LocalCommand.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/HerdrExecutable.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/ShellQuoting.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/HerdrMachine.swift']
 stage('drop-build',120,swiftc+drop+['Tests/FileDrop/FileDropTests.swift','-o',str(out/'drop-tests')])
 work=fresh_work('drop-work')
 stage('drop-tests',90,[str(out/'drop-tests'),str(work),str(bin)],[f'PATH={fake_path}'])
@@ -45,7 +45,7 @@ nio=out/'TestNIO.swift';nio.write_text('''public struct ByteBuffer: Sendable {
 helpers=out/'TestHelpers.swift';helpers.write_text('public final class NIOLockedValueBox<T>: @unchecked Sendable { public init(_ value: T) {} }\n')
 for module,file,extra in [('NIOCore',nio,[]),('NIOConcurrencyHelpers',helpers,[]),('Citadel',ROOT/'Tests/FileDrop/FakeExecModule.swift',['-I',str(modules),'-L',str(modules),'-lNIOCore'])]:
  stage(module+'-test-module',90,['xcrun','swiftc','-swift-version','6','-emit-library','-emit-module','-module-name',module,str(file),*extra,'-emit-module-path',str(modules/(module+'.swiftmodule')),'-o',str(modules/('lib'+module+'.dylib'))])
-remote=['Shepherd/FileDrop/RemoteExecDropUploader.swift','Shepherd/FileDrop/TerminalDropPaste.swift','Shepherd/FileDrop/TerminalDropUpload.swift','Shepherd/HerdrKit/Terminal/LocalCommand.swift','Shepherd/HerdrKit/Terminal/HerdrExecutable.swift','Shepherd/HerdrKit/Terminal/ShellQuoting.swift','Shepherd/HerdrKit/Models/HerdrMachine.swift']
+remote=['Shepherd/FileDrop/RemoteExecDropUploader.swift','Shepherd/FileDrop/TerminalDropPaste.swift','Shepherd/FileDrop/TerminalDropUpload.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/LocalCommand.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/HerdrExecutable.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/ShellQuoting.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/HerdrMachine.swift']
 stage('remote-exec-build',120,swiftc+['-I',str(modules),'-L',str(modules),'-lCitadel','-lNIOCore','-lNIOConcurrencyHelpers','-Xlinker','-rpath','-Xlinker',str(modules),*remote,'Tests/FileDrop/RemoteExecTests.swift','-o',str(out/'remote-exec-tests')])
 work=fresh_work('remote-work')
 stage('remote-exec-tests',90,[str(out/'remote-exec-tests'),str(work),str(bin)])
@@ -53,7 +53,7 @@ hashed.update(remote+['Tests/FileDrop/RemoteExecTests.swift','Tests/FileDrop/Fak
 
 # 3. The actual controller with a fake uploader: routes, local paste, mixed
 # drops, the limit, partial and drop-ending failures, stalls, leaving.
-controller=['Shepherd/FileDrop/TerminalDropController.swift','Shepherd/FileDrop/TerminalDropPaste.swift','Shepherd/FileDrop/TerminalDropUpload.swift','Shepherd/HerdrKit/Transport/ConnectionFailureDescription.swift','Shepherd/HerdrKit/Terminal/LocalCommand.swift','Shepherd/HerdrKit/Terminal/HerdrExecutable.swift','Shepherd/HerdrKit/Terminal/ShellQuoting.swift','Shepherd/HerdrKit/Models/HerdrMachine.swift']
+controller=['Shepherd/FileDrop/TerminalDropController.swift','Shepherd/FileDrop/TerminalDropPaste.swift','Shepherd/FileDrop/TerminalDropUpload.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Transport/ConnectionFailureDescription.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/LocalCommand.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/HerdrExecutable.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/ShellQuoting.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/HerdrMachine.swift']
 stage('controller-build',120,swiftc+controller+['Tests/FileDrop/ControllerTests.swift','-o',str(out/'controller-tests')])
 work=out/'controller work';work.mkdir(mode=0o700)
 stage('controller-tests',90,[str(out/'controller-tests'),str(work)])

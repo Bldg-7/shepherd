@@ -1,7 +1,7 @@
 import SwiftUI
 
 // Runtime launch/authentication is not exercised by picking a launch preset.
-nonisolated enum AgentKind: String, Sendable {
+public nonisolated enum AgentKind: String, Sendable {
     case claude, codex, pi
     var supportsLegacySessionInspection: Bool { self != .pi }
 }

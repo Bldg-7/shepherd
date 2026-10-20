@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 // Runtime launch/authentication is not exercised by typing a name.
-nonisolated enum AgentKind: String, Sendable {
+public nonisolated enum AgentKind: String, Sendable {
     case claude, codex, pi
     var supportsLegacySessionInspection: Bool { self != .pi }
 }

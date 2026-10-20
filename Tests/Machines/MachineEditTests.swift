@@ -23,7 +23,7 @@ import Foundation
 }
 
 // Test-only transport constructors: no network, SSH accounts or actual Keychain.
-protocol HerdrTransport {}
+public protocol HerdrTransport {}
 struct LocalHerdrTransport: HerdrTransport {
     init() {}
     init(socketPath: String) {}

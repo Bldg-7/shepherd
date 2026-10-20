@@ -10,18 +10,18 @@ p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p
 a=p.parse_args();out=a.output.resolve();out.mkdir(mode=0o700,parents=True,exist_ok=False)
 for n in ['home','tmp','cache','socket']:(out/n).mkdir(mode=0o700)
 env=dict(os.environ,DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer',HOME=str(out/'home'),CFFIXED_USER_HOME=str(out/'home'),TMPDIR=str(out/'tmp'),CLANG_MODULE_CACHE_PATH=str(out/'cache'))
-models=['Shepherd/HerdrKit/Models/HerdrSubscription.swift','Shepherd/HerdrKit/Models/HerdrMessage.swift','Shepherd/HerdrKit/Models/JSONValue.swift']
-schedule=['Shepherd/HerdrKit/Live/HerdrRefreshSchedule.swift']
-local=models+['Shepherd/HerdrKit/Models/HerdrMachine.swift','Shepherd/HerdrKit/Transport/HerdrTransport.swift','Shepherd/HerdrKit/Transport/LocalHerdrTransport.swift',
- 'Shepherd/HerdrKit/Transport/ConnectionFailureDescription.swift','Shepherd/HerdrKit/Terminal/HerdrExecutable.swift','Shepherd/HerdrKit/Terminal/LocalCommand.swift','Shepherd/HerdrKit/Terminal/ShellQuoting.swift']
+models=['ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/HerdrSubscription.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/HerdrMessage.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/JSONValue.swift']
+schedule=['ShepherdKit/Sources/ShepherdKit/HerdrKit/Live/HerdrRefreshSchedule.swift']
+local=models+['ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/HerdrMachine.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Transport/HerdrTransport.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Transport/LocalHerdrTransport.swift',
+ 'ShepherdKit/Sources/ShepherdKit/HerdrKit/Transport/ConnectionFailureDescription.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/HerdrExecutable.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/LocalCommand.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/ShellQuoting.swift']
 # The real HerdrClient, built the way run-seen-marking-tests.py builds it, and the monitor.
-client=['Shepherd/Agents/AgentRuntime.swift','Shepherd/Agents/AgentSavedSession.swift','Shepherd/Agents/AgentIdleStopPolicy.swift','Shepherd/Agents/AgentLaunchState.swift',
- 'Shepherd/HerdrKit/HerdrClient.swift','Shepherd/HerdrKit/Transport/HerdrTransport.swift','Shepherd/HerdrKit/Terminal/ShellQuoting.swift']+[str(x.relative_to(ROOT)) for x in sorted((ROOT/'Shepherd/HerdrKit/Models').glob('*.swift'))]
-monitor=client+schedule+['Shepherd/Hosts/Monitoring/MachineMonitor.swift','Shepherd/HerdrKit/Transport/ConnectionFailureDescription.swift']
-live=monitor+['Shepherd/HerdrKit/Transport/LocalHerdrTransport.swift','Shepherd/HerdrKit/Terminal/HerdrExecutable.swift','Shepherd/HerdrKit/Terminal/LocalCommand.swift']
+client=['Shepherd/Agents/AgentRuntime.swift','ShepherdKit/Sources/ShepherdKit/Agents/AgentKind.swift','Shepherd/Agents/AgentSavedSession.swift','Shepherd/Agents/AgentIdleStopPolicy.swift','Shepherd/Agents/AgentLaunchState.swift',
+ 'ShepherdKit/Sources/ShepherdKit/HerdrKit/HerdrClient.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Transport/HerdrTransport.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/ShellQuoting.swift']+[str(x.relative_to(ROOT)) for x in sorted((ROOT/'ShepherdKit/Sources/ShepherdKit/HerdrKit/Models').glob('*.swift'))]
+monitor=client+schedule+['ShepherdKit/Sources/ShepherdKit/Machines/MachineMonitor.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Transport/ConnectionFailureDescription.swift']
+live=monitor+['ShepherdKit/Sources/ShepherdKit/HerdrKit/Transport/LocalHerdrTransport.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/HerdrExecutable.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/LocalCommand.swift']
 tests=['Tests/Agents/LiveUpdateModelTests.swift','Tests/Agents/LocalSubscribeTests.swift','Tests/Agents/MachineMonitorTests.swift','Tests/Agents/FakeHerdr.swift',
  'Tests/Agents/OptimizedSnapshotTests.swift','Tests/Agents/LiveHerdrSubscribeTests.swift']
-checked=['Shepherd/Hosts/Views/AgentBoardView.swift','Shepherd/Hosts/Monitoring/MachineMonitors.swift','Shepherd/HerdrKit/Transport/SSHHerdrTransport.swift',
+checked=['Shepherd/Hosts/Views/AgentBoardView.swift','ShepherdKit/Sources/ShepherdKit/Machines/MachineMonitors.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Transport/SSHHerdrTransport.swift',
  'Shepherd/Notifications/NotificationCoordinator.swift','Shepherd/Notifications/NotificationFeed.swift']
 (out/'source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in sorted(set(models+schedule+local+monitor+live+tests+checked))},indent=2))
 def stage(name,seconds,args,extraEnv=()):
@@ -29,7 +29,7 @@ def stage(name,seconds,args,extraEnv=()):
  code=subprocess.run([sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(seconds),'--natural-exit-grace','10','--log',str(log),
   *[f'--env={e}' for e in extraEnv],'--',*args],cwd=ROOT,env=env,timeout=seconds+40).returncode
  j=json.loads(log.with_suffix('.stage.json').read_text());assert code==0 and j['naturalExitConfirmed'] and not j['signalsSent'] and j['cleanupVerified'],name
-flags=['xcrun','swiftc','-swift-version','6','-default-isolation','MainActor','-target',platform.machine()+'-apple-macos26.6.2','-parse-as-library']
+flags=['xcrun','swiftc','ShepherdKit/Sources/ShepherdKit/Resources.swift','-swift-version','6','-default-isolation','MainActor','-target',platform.machine()+'-apple-macos26.6.2','-parse-as-library']
 stage('model-build',90,flags+models+schedule+['Tests/Agents/LiveUpdateModelTests.swift','-o',str(out/'model-tests')])
 stage('model-tests',20,[str(out/'model-tests')])
 stage('local-subscribe-build',90,flags+local+['Tests/Agents/LocalSubscribeTests.swift','-o',str(out/'local-subscribe-tests')])
@@ -109,22 +109,22 @@ for wrong in ['ack never arrives','ack never even arrives','acknowledgement neve
  hits=[n for n,t in swift.items() if wrong in t]
  assert not hits,(wrong,hits)
 # events() left the protocol; the transports don't keep it.
-assert not [n for n,t in swift.items() if n.startswith('Shepherd/HerdrKit/') and 'func events()' in t]
-transport=read('Shepherd/HerdrKit/Transport/LocalHerdrTransport.swift')
+assert not [n for n,t in swift.items() if n.startswith('ShepherdKit/Sources/ShepherdKit/HerdrKit/') and 'func events()' in t]
+transport=read('ShepherdKit/Sources/ShepherdKit/HerdrKit/Transport/LocalHerdrTransport.swift')
 assert 'answers an ordinary request on a connection and then closes it' in transport and '`events.subscribe`,\n/// `events.wait` and `agent.wait`' in transport
 assert 'a monitor polling that way' in transport and 'FD_CLOEXEC' in transport
-ssh=read('Shepherd/HerdrKit/Transport/SSHHerdrTransport.swift')
+ssh=read('ShepherdKit/Sources/ShepherdKit/HerdrKit/Transport/SSHHerdrTransport.swift')
 assert 'func subscribe(params: JSONValue) async throws -> HerdrSubscriptionLines' in ssh and 'ByteStreamBridge(continuation: inboundContinuation)' in ssh
 # Swift 6.3/6.4 -O drops `index` from `return (index, try await …, nil)` in a do with a catch
 # returning a tuple too (swiftlang/swift#92698, SHPHRD-54): nowhere, and the herdr machines'
 # task group takes the snapshot into a constant first.
 code=lambda t:'\n'.join(l for l in t.splitlines() if not l.lstrip().startswith('//'))
 assert not [n for n,t in swift.items() if re.search(r'return \(\w+, try await',code(t))]
-monitorSource=read('Shepherd/Hosts/Monitoring/MachineMonitor.swift')
+monitorSource=read('ShepherdKit/Sources/ShepherdKit/Machines/MachineMonitor.swift')
 assert 'let snapshot = try await client.snapshot(on: machine)\n                        return (index, snapshot, nil)' in monitorSource and 'swiftlang/swift#92698' in monitorSource and 'SHPHRD-54' in monitorSource
 assert 'acknowledgementTimeout: Duration = .seconds(5)' in monitorSource and 'snapshotTimeout: Duration = .seconds(15)' in monitorSource
 assert 'herdrMachineInterval: Duration = .seconds(5)' in monitorSource and 'stopDelay: Duration = .seconds(1)' in monitorSource
-sched=read('Shepherd/HerdrKit/Live/HerdrRefreshSchedule.swift')
+sched=read('ShepherdKit/Sources/ShepherdKit/HerdrKit/Live/HerdrRefreshSchedule.swift')
 assert 'gather: Duration = .milliseconds(100)' in sched and 'minimumInterval: Duration = .milliseconds(500)' in sched and 'idleRefresh: Duration = .seconds(25)' in sched
 assert re.findall(r'^import (\w+)',sched,re.M)==['Foundation'] and re.findall(r'^import (\w+)',read(models[0]),re.M)==['Foundation']
 (out/'validation.json').write_text(json.dumps({'passed':True,'stages':stages,'liveHerdrTestServer':liveRun,'actualHerdrClient':True,'usersHerdrTouched':False,'appRun':False,'ssh':False},indent=2))

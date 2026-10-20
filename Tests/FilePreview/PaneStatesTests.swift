@@ -2,7 +2,7 @@ import Foundation
 import CoreGraphics
 
 // Agent launches are not exercised: only the pane models need this.
-nonisolated enum AgentKind: String, Sendable {
+public nonisolated enum AgentKind: String, Sendable {
     case claude, codex, pi
     var supportsLegacySessionInspection: Bool { self != .pi }
 }

@@ -5,7 +5,7 @@ import AppKit
 // window that is never ordered, activated or sent GUI input. Files are the
 // runner's own; the local machine never reads a credential.
 // Agent launches are not exercised: only the pane models need this.
-nonisolated enum AgentKind: String, Sendable {
+public nonisolated enum AgentKind: String, Sendable {
     case claude, codex, pi
     var supportsLegacySessionInspection: Bool { self != .pi }
 }
