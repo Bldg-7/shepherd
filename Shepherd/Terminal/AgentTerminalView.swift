@@ -36,8 +36,16 @@ struct PaneTerminalView: View {
     @State private var attempt = 0
     @State private var dropController: TerminalDropController
     @AppStorage(TerminalFileDropFeature.preferenceKey) private var takesFileDrops = false
+    /// Whether a row dragged from the sidebar over the terminal would be
+    /// pasted into it (see `HerdrItemDrag`).
+    @State private var takesItemDrag = false
     @Environment(\.terminalPaneFocus) private var paneFocus
     private let paneID: String
+    /// The herdr server the pane is on: the connection, and its herdr
+    /// machine or nil for the host's own herdr. A row dragged from the
+    /// sidebar is pasted only from the same one.
+    private let connection: Machine.ConnectionIdentity
+    private let herdrMachineID: String?
     private let focusesWhenShown: Bool
     private let onFocusChange: ((Bool) -> Void)?
     private let onOpenLink: (String, TerminalLinkClick) -> Void
@@ -53,6 +61,8 @@ struct PaneTerminalView: View {
         onOpenWeb: ((TerminalWebLinkRequest) -> Void)? = nil
     ) {
         self.paneID = pane.id
+        self.connection = machine.connectionIdentity
+        self.herdrMachineID = pane.herdrMachine?.id
         self.focusesWhenShown = focusesWhenShown
         self.onFocusChange = onFocusChange
         self.onOpenLink = { link, click in
@@ -161,8 +171,13 @@ struct PaneTerminalView: View {
             onOpenLink: onOpenLink,
             // Only into a live attach, and one drop at a time.
             onDropFiles: takesFileDrops && viewModel.connectionState == .connected && !dropController.isUploading
-                ? { urls in dropController.drop(urls) } : nil
+                ? { urls in dropController.drop(urls) } : nil,
+            // A row from the sidebar, into any live attach, whatever the
+            // File Drop setting: its ID is pasted here, nothing uploaded.
+            textDrop: viewModel.connectionState == .connected
+                ? HerdrItemDrag.terminalDrop(connection: connection, herdrMachineID: herdrMachineID) { takesItemDrag = $0 } : nil
         )
+        .itemDropHighlight(takesItemDrag)
         .overlay(alignment: .bottom) {
             TerminalDropBanner(controller: dropController)
                 .environment(\.colorScheme, .dark)

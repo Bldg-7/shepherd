@@ -816,6 +816,8 @@ struct AgentBoardView: View {
             Divider()
             Button("Close Pane", role: .destructive) { closing = .pane(agent) }
         }
+        // Dropped on a terminal, the pane's ID is pasted there.
+        .herdrItemDrag(HerdrItemDrag.Item(pane: agent, on: machine.connectionIdentity))
     }
 
     /// A tab's row: name and actionable browser statuses only, without pane
@@ -851,6 +853,8 @@ struct AgentBoardView: View {
             Divider()
             Button("Close Tab", role: .destructive) { closing = .tab(tab) }
         }
+        // Dropped on a terminal, the tab's ID is pasted there.
+        .herdrItemDrag(HerdrItemDrag.Item(tab: tab, on: machine.connectionIdentity))
     }
 
     /// A status dot, or — with no agent's status to show — the mark of a

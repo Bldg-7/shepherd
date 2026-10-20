@@ -22,6 +22,10 @@ struct TerminalHostView {
     /// nil the terminal takes no drops at all, and a drag over it goes back
     /// where it came from, as it always did.
     var onDropFiles: (([URL]) -> Void)? = nil
+    /// Text pasted for a drag from inside the app that it marks: a row from
+    /// the sidebar (see `HerdrItemDrag`). While this is nil the terminal
+    /// takes no such drag.
+    var textDrop: TerminalTextDrop? = nil
 
     final class Coordinator: NSObject, TerminalViewDelegate {
         let onInput: (ArraySlice<UInt8>) -> Void
@@ -54,6 +58,29 @@ struct TerminalHostView {
     }
 }
 
+/// Text pasted into the terminal for a drag from inside the app that is
+/// marked with `type`. What the text is, and whether a drag is taken at
+/// all, `text` decides; the terminal checks only that the drag is marked
+/// and comes from this process, and pastes what `text` gives it with
+/// `sendPaste`, without taking the keyboard.
+struct TerminalTextDrop {
+    /// The pasteboard type that marks the drags this drop may take.
+    var type: NSPasteboard.PasteboardType
+    /// What to paste for a marked drag whose plain text is the one given,
+    /// or nil to refuse it.
+    var text: (String) -> String?
+    /// Told true when a drag over the terminal would be taken, and false
+    /// once it no longer would: it moved on, left, ended or was dropped.
+    var onTargetChange: (Bool) -> Void = { _ in }
+
+    /// How a drag is taken: the first of copy, generic and move that its
+    /// source allows, or not at all. A list's rows allow only move to a
+    /// drag inside the app.
+    static func operation(for mask: NSDragOperation) -> NSDragOperation {
+        [NSDragOperation.copy, .generic, .move].first { mask.contains($0) } ?? []
+    }
+}
+
 /// SwiftTerm's terminal, telling its owner when it gets and loses the
 /// keyboard, and able to take it once it is in a window.
 ///
@@ -72,14 +99,24 @@ final class FocusReportingTerminalView: TerminalView {
     /// See `TerminalHostView.onDropFiles`. Setting it registers the view
     /// for file drags, or stops it taking them.
     var onDropFiles: (([URL]) -> Void)? {
+        didSet { registerDraggedTypes() }
+    }
+    /// See `TerminalHostView.textDrop`. Setting it registers the view for
+    /// the drags it marks, or stops it taking them.
+    var textDrop: TerminalTextDrop? {
         didSet {
-            if onDropFiles == nil {
-                if !registeredDraggedTypes.isEmpty { unregisterDraggedTypes() }
-            } else if !registeredDraggedTypes.contains(.fileURL) {
-                registerForDraggedTypes([.fileURL])
+            registerDraggedTypes()
+            // Taken away while a drag it would take is over the terminal —
+            // the attach ended: the drag's highlight goes too, once the
+            // update that took it away is over.
+            if textDrop == nil, textDropTargeted, let oldValue {
+                textDropTargeted = false
+                DispatchQueue.main.async { oldValue.onTargetChange(false) }
             }
         }
     }
+    /// What `textDrop` was last told of the drag over the terminal.
+    private var textDropTargeted = false
     private var fileGesture = TerminalFileGesture()
     private var capturedFileHandler: ((String, TerminalLinkClick) -> Void)?
     private(set) var drawGate = TerminalDrawGate()
@@ -221,7 +258,21 @@ final class FocusReportingTerminalView: TerminalView {
         dropOperation(for: sender)
     }
 
+    override func draggingExited(_ sender: (any NSDraggingInfo)?) {
+        setTextDropTargeted(false)
+    }
+
+    override func draggingEnded(_ sender: any NSDraggingInfo) {
+        setTextDropTargeted(false)
+    }
+
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        if isMarkedForTextDrop(sender) {
+            setTextDropTargeted(false)
+            guard let text = droppedText(in: sender) else { return false }
+            sendPaste(text)
+            return true
+        }
         let urls = droppedFiles(in: sender)
         guard let onDropFiles, !urls.isEmpty else { return false }
         onDropFiles(urls)
@@ -229,11 +280,51 @@ final class FocusReportingTerminalView: TerminalView {
     }
 
     private func dropOperation(for sender: any NSDraggingInfo) -> NSDragOperation {
-        onDropFiles != nil && !droppedFiles(in: sender).isEmpty ? .copy : []
+        if isMarkedForTextDrop(sender) {
+            let operation = droppedText(in: sender) == nil ? [] : TerminalTextDrop.operation(for: sender.draggingSourceOperationMask)
+            setTextDropTargeted(!operation.isEmpty)
+            return operation
+        }
+        return onDropFiles != nil && !droppedFiles(in: sender).isEmpty ? .copy : []
     }
 
     private func droppedFiles(in sender: any NSDraggingInfo) -> [URL] {
         sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+    }
+
+    /// Whether the drag carries `textDrop`'s mark. Such a drag is the text
+    /// drop's to take or refuse, never a file drop.
+    private func isMarkedForTextDrop(_ sender: any NSDraggingInfo) -> Bool {
+        guard let textDrop else { return false }
+        return sender.draggingPasteboard.types?.contains(textDrop.type) == true
+    }
+
+    /// What `textDrop` pastes for a marked drag, or nil: only for one from
+    /// this process (another app's has no `draggingSource` here), with an
+    /// operation its source allows, and plain text that `textDrop` takes.
+    private func droppedText(in sender: any NSDraggingInfo) -> String? {
+        guard let textDrop, sender.draggingSource != nil,
+              !TerminalTextDrop.operation(for: sender.draggingSourceOperationMask).isEmpty,
+              let text = sender.draggingPasteboard.string(forType: .string) else { return nil }
+        return textDrop.text(text)
+    }
+
+    private func setTextDropTargeted(_ targeted: Bool) {
+        guard targeted != textDropTargeted else { return }
+        textDropTargeted = targeted
+        textDrop?.onTargetChange(targeted)
+    }
+
+    /// Registers the view for the drags it takes, and only those: file
+    /// drags while `onDropFiles` is set, and the drags `textDrop` marks
+    /// while it is.
+    private func registerDraggedTypes() {
+        var types: [NSPasteboard.PasteboardType] = []
+        if onDropFiles != nil { types.append(.fileURL) }
+        if let textDrop { types.append(textDrop.type) }
+        guard Set(registeredDraggedTypes) != Set(types) else { return }
+        unregisterDraggedTypes()
+        if !types.isEmpty { registerForDraggedTypes(types) }
     }
 
     /// Feeds the program's output to SwiftTerm, keeping the selection.
@@ -537,6 +628,7 @@ extension TerminalHostView: NSViewRepresentable {
         view.focusesWhenShown = focusesWhenShown
         view.onOpenFileGesture = onOpenLink
         view.onDropFiles = onDropFiles
+        view.textDrop = textDrop
         onCreate(view)
         return view
     }
@@ -545,6 +637,7 @@ extension TerminalHostView: NSViewRepresentable {
         context.coordinator.onOpenLink = onOpenLink
         (nsView as? FocusReportingTerminalView)?.onOpenFileGesture = onOpenLink
         (nsView as? FocusReportingTerminalView)?.onDropFiles = onDropFiles
+        (nsView as? FocusReportingTerminalView)?.textDrop = textDrop
     }
 }
 
