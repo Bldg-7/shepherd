@@ -8,8 +8,7 @@ python3 Tests/Terminal/run-usability-tests.py --output /tmp/usability-FRESH \
 Private HOME/defaults/cache, bounded natural-exit stages, no user files, sockets,
 SSH, credentials or vendor calls. Compiles actual production block parsing,
 board selection declaration, snapshot/identity models, picker view, native detail
-controller, SwiftTerm and shared terminal frame, and the new tab launcher's text
-field and launch attempt.
+controller, SwiftTerm and shared terminal frame, and the whole new tab launcher, including its text field and launch attempt.
 
 - Machines: edit/delete slots stay in place but are visible/enabled only during
   row hover; local machine stays protected; context-menu alternatives and delete
@@ -30,6 +29,25 @@ field and launch attempt.
   changes the launcher's text, and the stage log, kept with
   `OS_ACTIVITY_DT_MODE=1`, has no SwiftUI "Modifying state during view update"
   warning. No input method, app or user GUI is involved.
+- Launcher Tab: the test puts the whole `NewTabLauncher` in never-shown windows
+  and presses keys the way AppKit delivers a key-down: the window first checks
+  the key against its keyboard shortcuts (`performKeyEquivalent`), and only then
+  does the text field's editor get it. On the tab name step, Tab moves the Launch
+  picker to the next program (Shell, Claude Code, Codex, Pi, then Shell again)
+  and ⇧Tab to the previous one. Keyboard focus stays in the name field, and the
+  field's text, insertion point or selection, and a syllable still being
+  composed (set with `setMarkedText`, as a Korean input method sets it) are left
+  as they were. Return then opens the tab with the program picked. Tab and ⇧Tab
+  change nothing, and focus stays in the field, in these cases: after Return,
+  while the tab is being opened or the created pane is shown; when the target is
+  a herdr machine, where the picker is greyed out; and when the launcher shows no
+  picker (In-app Browser off, an SSH machine, or an Intel Mac). On the Machine
+  step, the Workspace step and the step that names a new workspace, Tab and ⇧Tab
+  are left to AppKit, which moves focus as before; this also holds when Backspace
+  on the tab name step goes back to the Workspace step. The test turns on
+  `OS_ACTIVITY_DT_MODE=1` so that SwiftUI's runtime warnings reach the stage log,
+  and the log has no "Modifying state during view update" warning. No real input
+  method, app or user GUI is involved.
 - Launch attempt: the launcher's actual `LaunchAttempt`, extracted together
   with `CreatedPaneLaunchError` and wired as the launcher wires it. An agent's
   tab is handed off once its start command is in the pane, and the launcher

@@ -21,7 +21,7 @@ Development evidence is not included. The existing public repository history is 
 
 ## Experimental browser and agents
 
-The browser is **OFF by default**. Enable it in **Settings → Experimental Features**, wait for Preparation, then choose Claude Code, Codex or Pi when opening a new tab.
+The browser is **OFF by default**. Enable it in **Settings → Experimental Features**, wait for Preparation, then choose Claude Code, Codex or Pi when opening a new tab. To choose, click one in the new tab launcher's Launch picker, or press the Tab key while you type the new tab's name: Tab moves the choice to the next of Shell, Claude Code, Codex and Pi, and ⇧Tab to the previous one. The text cursor stays in the name field, and the name you typed is kept.
 
 Resources are bundled and injected into the new session only. No global MCP/skill installation, runtime npm download, automatic trust approval or replacement of user instructions/extensions is performed. The authenticated native browser endpoint is pane-scoped.
 
