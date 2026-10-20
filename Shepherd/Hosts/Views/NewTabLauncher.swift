@@ -63,6 +63,17 @@ nonisolated enum LaunchProgram: String, CaseIterable, Sendable {
         switch self { case .shell: "Shell"; case .claude: "Claude Code"; case .codex: "Codex"; case .pi: "Pi" }
     }
     static var launchableCases: [Self] { allCases.filter { $0 == .shell || $0.agentKind?.supportsManagedBrowserLaunch == true } }
+
+    /// The program after this one among `choices` — before it, `backward` —
+    /// going round from the last to the first and from the first to the
+    /// last: what Tab and ⇧Tab pick on the launcher's Tab Name step. A
+    /// program not among them goes to the first, or the last; with no
+    /// choices, it stays.
+    func cycled(backward: Bool = false, among choices: [Self] = launchableCases) -> Self {
+        guard let first = choices.first, let last = choices.last else { return self }
+        guard let index = choices.firstIndex(of: self) else { return backward ? last : first }
+        return choices[(index + (backward ? choices.count - 1 : 1)) % choices.count]
+    }
 }
 
 nonisolated struct CreatedPaneLaunchError: Error, LocalizedError {
@@ -140,6 +151,8 @@ struct LaunchRequest {
 /// then the workspace, then the tab's name, each picked from a list that
 /// what is typed narrows down, or typed in. Each answer becomes a chip in the
 /// field; Backspace in an empty field takes the last one back and asks again.
+/// On the tab's name, Tab and ⇧Tab pick the next and the previous program in
+/// the Launch picker, the field keeping the keyboard.
 /// Esc, a click anywhere else and the app going to the background close it.
 ///
 /// With one machine only, that one is picked from the start; its chip can be
@@ -298,7 +311,7 @@ struct NewTabLauncher: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .disabled(isCreating || createdPaneRetained || !allowsBrowserAgents || target?.herdrMachine != nil)
+                .disabled(!canPickProgram)
                 .padding(.horizontal, 16)
                 .padding(.bottom, 12)
                 if !allowsBrowserAgents || target?.herdrMachine != nil {
@@ -383,7 +396,8 @@ struct NewTabLauncher: View {
             onMove: move,
             onSubmit: submit,
             onCancel: { close(restoringFocus: true) },
-            onDeleteBackwardInEmptyField: stepBack
+            onDeleteBackwardInEmptyField: stepBack,
+            onTab: cycleProgram
         )
         .onChange(of: text) { highlighted = 0 }
     }
@@ -594,6 +608,24 @@ struct NewTabLauncher: View {
         highlighted = 0
     }
 
+    /// Whether the Launch picker can be changed: browser agents allowed, on
+    /// the host's own herdr, with no Return on the tab name pending or kept.
+    private var canPickProgram: Bool {
+        allowsBrowserAgents && target?.herdrMachine == nil && !isCreating && !createdPaneRetained
+    }
+
+    /// Tab, or ⇧Tab with `backward`: on the Tab Name step, the next program
+    /// in the Launch picker — the previous one — where it can be changed,
+    /// and nothing more. The keyboard stays in the field, and what is typed
+    /// there stays as it is. On the other steps the key is left to AppKit.
+    private func cycleProgram(backward: Bool) -> Bool {
+        guard step == .tabName else { return false }
+        if canPickProgram {
+            program = program.cycled(backward: backward)
+        }
+        return true
+    }
+
     private var trimmedText: String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
@@ -665,7 +697,10 @@ final class OutsideClickWatcher {
 /// Return ends the composition, Backspace takes a jamo back — and acting on
 /// them here as well would open the tab without its last syllable, or take
 /// back a chip mid-word. So the keys are only acted on with nothing marked.
-/// The herdr machine setup overlay (`HerdrMachineSetupView`) has one too.
+/// Tab and ⇧Tab, which change nothing in the field, go to the launcher
+/// either way; whatever it doesn't take is left to AppKit, which moves the
+/// keyboard on. The herdr machine setup overlay (`HerdrMachineSetupView`)
+/// has one too.
 ///
 /// The field takes the keyboard when it comes up, and on its way out, when
 /// asked to, gives it back to whatever had it.
@@ -680,6 +715,9 @@ struct LauncherField: NSViewRepresentable {
     let onSubmit: () -> Void
     let onCancel: () -> Void
     let onDeleteBackwardInEmptyField: () -> Void
+    /// Tab, or ⇧Tab with `backward`. Whether it was taken; left out, as the
+    /// herdr machine setup overlay leaves it, neither is.
+    var onTab: (_ backward: Bool) -> Bool = { _ in false }
 
     final class Coordinator: NSObject, NSTextFieldDelegate {
         var parent: LauncherField
@@ -707,6 +745,14 @@ struct LauncherField: NSViewRepresentable {
         }
 
         func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            switch commandSelector {
+            case #selector(NSResponder.insertTab(_:)):
+                return parent.onTab(false)
+            case #selector(NSResponder.insertBacktab(_:)):
+                return parent.onTab(true)
+            default:
+                break
+            }
             guard !textView.hasMarkedText() else { return false }
             switch commandSelector {
             case #selector(NSResponder.insertNewline(_:)):
