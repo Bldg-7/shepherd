@@ -123,6 +123,18 @@ final class BrowserTab: NSObject, Identifiable {
         prompts = []
     }
 
+    /// Closes the page, with the history of where it has been, and leaves
+    /// the tab blank, for a page to be opened in it again at `about:blank`
+    /// (see `PaneBrowser.emptyLocalFileTabs`).
+    func empty() {
+        stop(force: true)
+        url = "about:blank"
+        title = ""
+        canGoBack = false
+        canGoForward = false
+        crashReason = nil
+    }
+
     func load(_ address: String) {
         url = address
         page?.loadURL(address)

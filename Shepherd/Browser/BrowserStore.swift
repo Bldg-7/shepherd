@@ -127,6 +127,15 @@ final class BrowserStore {
         browser(for: key) != nil
     }
 
+    /// Whether an agent is connected to the browser that `openBrowser` would
+    /// open a tab in for the pane: its own, not one an earlier pane with the
+    /// same ID left. Until the connection's cleanup is confirmed, as its
+    /// pages stay the agent's until then.
+    func agentIsConnected(toBrowserFor key: BrowserKey, terminalID: String) -> Bool {
+        guard let browser = browsers[key], browser.terminalID == terminalID else { return false }
+        return browser.agentConnected
+    }
+
     /// Opens a browser for the pane, or a new tab in the one it has (A3,
     /// B7: any pane can have one, with or without an agent).
     func openBrowser(for key: BrowserKey, terminalID: String, url: String = "about:blank") {

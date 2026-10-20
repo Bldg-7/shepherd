@@ -633,19 +633,44 @@ struct ContentView: View {
         case .tab(let tab): panes = tab.panes
         }
         guard let pane = request.pane(in: panes, on: request.machine) else { return }
+        // An HTML file on this Mac comes as a `file:` URL, and opens where a
+        // web link would (`TerminalPageLink`). Only from a pane of this
+        // Mac's own herdr, whose paths it is; the terminal sends no other.
+        let target: LinkDestinationPolicy.Target
         let url: String
-        do { url = try TerminalWebLink.validatedURL(request.rawURL) }
-        catch let failure as TerminalWebLinkError { webLinkFailure = failure; return }
-        catch { webLinkFailure = .invalidURL; return }
+        if TerminalPageLink.isPageURL(request.rawURL) {
+            guard TerminalPageLink.opensPages(in: pane, on: request.machine),
+                  let page = TerminalPageLink.validatedURL(request.rawURL) else { return }
+            target = .localFile
+            url = page
+        } else {
+            do { url = try TerminalWebLink.validatedURL(request.rawURL) }
+            catch let failure as TerminalWebLinkError { webLinkFailure = failure; return }
+            catch { webLinkFailure = .invalidURL; return }
+            target = .web
+        }
         // The same validation whichever browser it goes to. A click opens
         // the link in the pane's In-app Browser, ⌘-click in the default
-        // browser; so does a click while In-app Browser can't show it.
+        // browser; so does a click while In-app Browser can't show it, and
+        // a click on a file while an agent is connected to that browser.
         let commandHeld = request.click.commandHeld
         let browserEnabled = ShepherdBrowserFeature.shared.isEnabled, engineAvailable = BrowserEngine.isAvailable
-        switch LinkDestinationPolicy.destination(commandHeld: commandHeld, browserEnabled: browserEnabled, engineAvailable: engineAvailable) {
+        // Only asked of a browser the file could open in.
+        let agentConnected = target == .localFile && !commandHeld && browserEnabled && engineAvailable
+            && BrowserStore.shared.agentIsConnected(toBrowserFor: BrowserKey(machine: request.machine, pane: pane), terminalID: pane.terminalID)
+        switch LinkDestinationPolicy.destination(target, commandHeld: commandHeld, browserEnabled: browserEnabled,
+                                                 engineAvailable: engineAvailable, agentConnected: agentConnected) {
         case .system:
-            openInDefaultBrowser(url, browserUnavailable: LinkDestinationPolicy.saysBrowserUnavailable(
-                commandHeld: commandHeld, browserEnabled: browserEnabled, engineAvailable: engineAvailable))
+            let notice: String? = if LinkDestinationPolicy.saysBrowserUnavailable(
+                commandHeld: commandHeld, browserEnabled: browserEnabled, engineAvailable: engineAvailable) {
+                String(localized: "In-app Browser isn't available on this Mac, so the link opened in the default browser.")
+            } else if LinkDestinationPolicy.saysAgentUsesBrowser(target, commandHeld: commandHeld, browserEnabled: browserEnabled,
+                                                                 engineAvailable: engineAvailable, agentConnected: agentConnected) {
+                String(localized: "An agent is using this pane's In-app Browser, so the file opened in the default browser.")
+            } else {
+                nil
+            }
+            openInDefaultBrowser(url, notice: notice)
         case .shepherd:
             openInShepherdBrowser(url, in: pane, on: request.machine, selected: selected)
         }
@@ -667,15 +692,15 @@ struct ContentView: View {
         showsBrowser = true
     }
 
-    /// Opens `url`, validated, in the Mac's default browser.
-    /// `browserUnavailable` says it goes there only because In-app Browser,
-    /// though on, can't run on this Mac, which is said in a notice over the
-    /// terminal.
-    private func openInDefaultBrowser(_ url: String, browserUnavailable: Bool) {
+    /// Opens `url`, validated, in the Mac's default browser: a file in the
+    /// app that opens web links (`DefaultBrowserOpener`). `notice`, if any,
+    /// says over the terminal why it went there: In-app Browser, though on,
+    /// can't run on this Mac, or an agent is connected to the pane's.
+    private func openInDefaultBrowser(_ url: String, notice: String?) {
         guard let target = URL(string: url) else { webLinkFailure = .invalidURL; return }
-        NSWorkspace.shared.open(target)
-        guard browserUnavailable else { return }
-        linkNotice = LinkNotice(text: String(localized: "In-app Browser isn't available on this Mac, so the link opened in the default browser."))
+        DefaultBrowserOpener.workspace.open(target)
+        guard let notice else { return }
+        linkNotice = LinkNotice(text: notice)
     }
 
     /// The preview of `item`, the selected pane or tab. A view of its own for
@@ -1063,6 +1088,21 @@ struct ContentView: View {
         }
     }
 }
+
+#if os(macOS)
+extension DefaultBrowserOpener {
+    /// The Mac's own: the app that opens `https` links is the browser.
+    static var workspace: DefaultBrowserOpener {
+        DefaultBrowserOpener(
+            webBrowser: { NSWorkspace.shared.urlForApplication(toOpen: URL(string: "https://example.invalid/")!) },
+            openWithDefaultApp: { NSWorkspace.shared.open($0) },
+            openWithApp: { url, app in
+                NSWorkspace.shared.open([url], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
+            }
+        )
+    }
+}
+#endif
 
 #Preview {
     ContentView(machineStore: MachineStore())

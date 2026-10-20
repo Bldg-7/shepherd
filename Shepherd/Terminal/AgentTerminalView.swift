@@ -67,18 +67,16 @@ struct PaneTerminalView: View {
         self.onFocusChange = onFocusChange
         self.onOpenLink = { link, click in
             guard machineStore.isCurrentConnection(machine) else { return }
-            let raw = link.lowercased().hasPrefix("file:") ? link : link.trimmingCharacters(in: .whitespaces)
-            if TerminalWebLink.isWebLink(raw) {
-                onOpenWeb?(TerminalWebLinkRequest(machine: machine, pane: pane, url: raw, click: click))
+            // An HTML file on this Mac opens as a web link does, ⌘ and all;
+            // other files in the preview (see `TerminalLinkRoute`).
+            switch TerminalLinkRoute(link, in: pane, on: machine) {
+            case .web(let url), .page(let url):
+                onOpenWeb?(TerminalWebLinkRequest(machine: machine, pane: pane, url: url, click: click))
+            case .file(let raw):
+                onOpenFile?(FilePreviewRequest(machine: machine, pane: pane, link: raw))
+            case nil:
                 return
             }
-            do {
-                _ = try FilePreviewLink.resolve(raw, directory: pane.workingDirectory, hostname: machine.hostname,
-                    additionalHosts: machine.isLocal ? FilePreviewLink.localHostAliases : [])
-            }
-            catch FilePreviewError.unsupportedLink { return }
-            catch { /* Show file-path errors in the preview, without reading. */ }
-            onOpenFile?(FilePreviewRequest(machine: machine, pane: pane, link: raw))
         }
 
         let terminalID = pane.terminalID

@@ -6688,6 +6688,22 @@
         }
       }
     },
+    "An agent is using this pane's In-app Browser, so the file opened in the default browser." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "agent がこの pane の In-app Browser を使っているため、デフォルトブラウザで開きました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "agent가 이 pane의 In-app Browser를 쓰고 있어 기본 브라우저에서 열었습니다."
+          }
+        }
+      }
+    },
     "Add herdr Machine…" : {
       "localizations" : {
         "ja" : { "stringUnit" : { "state" : "translated", "value" : "herdr machine を追加…" } },

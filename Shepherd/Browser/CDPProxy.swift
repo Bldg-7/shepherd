@@ -318,6 +318,8 @@ final class PaneCDPConnection {
         self.socket = socket
         browser.agentConnected = true
         browser.agentSocketConnected = true
+        // A file of this Mac a person opened is not the agent's to see.
+        browser.emptyLocalFileTabs()
         browser.agentDownloadChanged = { [weak self] metadata in
             guard let self else { return }
             self.downloadDidChange(self.browser.key, metadata)

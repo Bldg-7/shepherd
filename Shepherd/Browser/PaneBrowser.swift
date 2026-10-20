@@ -96,6 +96,26 @@ final class PaneBrowser {
         store?.browserDidChange(self)
     }
 
+    /// Before an agent is given the browser: every tab that shows a file of
+    /// this Mac — an HTML file a terminal link opened, or a page it went on
+    /// to — is emptied, its page and history closed and a blank page opened
+    /// in its place, so that the agent can't see that file, or other files
+    /// of this Mac the page showed, in a screenshot or by reading the page.
+    /// An agent can't open a file itself (`CDPPolicy`, `BrowserEngine`), and
+    /// the person can't open one in its browser from a terminal link while
+    /// it is connected (`LinkDestinationPolicy`).
+    func emptyLocalFileTabs() {
+        let shown = tabs.filter { TerminalPageLink.isLocalFileAddress($0.url) }
+        guard !shown.isEmpty else { return }
+        for tab in shown {
+            tab.empty()
+        }
+        if !isSuspended {
+            startPages(of: shown)
+        }
+        store?.browserDidChange(self)
+    }
+
     /// Opens the pages of `tabs`, under the browser's profile. False if the
     /// browser engine couldn't be started.
     @discardableResult
