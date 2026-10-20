@@ -45,6 +45,9 @@ nonisolated struct PiBridgeLaunch: Sendable {
         var lifetime: PiProcessLifetime?
         var retired = false
         var attempts = Set<String>()
+        /// The launch's pane name for Pi's session, numbered from 1 by each
+        /// rename (`nameSession`).
+        var sessionName: (sequence: Int, name: String)?
     }
     private final class Entry {
         let launchID: String
@@ -117,6 +120,21 @@ nonisolated struct PiBridgeLaunch: Sendable {
         let count = bytes.withUnsafeBytes { Darwin.write(fd, $0.baseAddress, $0.count) }
         guard count == bytes.count else { try? FileManager.default.removeItem(atPath: launch.bootstrap); throw PiBridgeFailure.unavailable }
         registrations[launch.id] = Registration(launch: launch, capability: capability)
+    }
+
+    /// Gives the launch's Pi session `name`, the pane's new name in this app,
+    /// under the next number: every `status` reply for this launch, and for
+    /// no other, carries the latest one, and the extension sets it once Pi is
+    /// idle (`pi-session-name.mjs`). Pi is told nothing else, and nothing is
+    /// typed into it. A name is one line of at most 200 characters.
+    func nameSession(launchID: String, name: String) -> Bool {
+        guard var registration = registrations[launchID], !registration.retired, !name.isEmpty, name.count <= 200,
+              name == name.trimmingCharacters(in: .whitespaces),
+              !name.unicodeScalars.contains(where: { [.control, .lineSeparator, .paragraphSeparator].contains($0.properties.generalCategory) })
+        else { return false }
+        registration.sessionName = ((registration.sessionName?.sequence ?? 0) + 1, name)
+        registrations[launchID] = registration
+        return true
     }
 
     func bindProcess(launchID: String, pid: Int32) throws {
@@ -210,7 +228,9 @@ nonisolated struct PiBridgeLaunch: Sendable {
                 let live = mcpIsCurrent(entry)
                 let ready = live && entry.mcpReady
                 if entry.mcp != nil && !live { _ = revoke(entry) }
-                return Self.reply(["ok":true,"ready":ready,"quiescent":ready && entry.native.isQuiescent()])
+                var reply: [String: Any] = ["ok":true,"ready":ready,"quiescent":ready && entry.native.isQuiescent()]
+                if let named = registrations[launch.id]?.sessionName { reply["sessionName"] = ["sequence":named.sequence,"name":named.name] }
+                return Self.reply(reply)
             default: throw PiBridgeFailure.invalidRequest
             }
         } catch {

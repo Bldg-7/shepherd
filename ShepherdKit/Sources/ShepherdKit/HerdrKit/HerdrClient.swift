@@ -318,7 +318,22 @@ public actor HerdrClient {
         return PaneRead(text: text, truncated: truncated)
     }
 
-    public func visiblePaneANSI(paneID: String) async throws -> String {
+    /// What a pane's terminal shows on screen, with its SGR attributes. For a
+    /// pane on a herdr machine the CLI prints the text itself, as for
+    /// `readPane`, given the same time as the socket API's request.
+    public func visiblePaneANSI(paneID: String, on machine: HerdrMachine? = nil) async throws -> String {
+        if let machine {
+            let arguments = ["--machine", machine.id, "pane", "read", paneID, "--source", "visible", "--format", "ansi"]
+            return try await withThrowingTaskGroup(of: String.self) { group in
+                group.addTask { String(decoding: try await self.runHerdr(arguments), as: UTF8.self) }
+                group.addTask {
+                    try await Task.sleep(for: .milliseconds(5_000))
+                    throw HerdrErrorPayload(code: "agent_request_timeout", message: "Agent request timed out. Inspect this pane before trying again.")
+                }
+                defer { group.cancelAll() }
+                return try await group.next()!
+            }
+        }
         let result = try await agentRequest(method: "pane.read", params: ["pane_id": .string(paneID), "source": .string("visible"), "format": .string("ansi")], cli: [], on: nil, deadlineMs: 5_000)
         guard result["type"]?.stringValue == "pane_read", result["read"]?["pane_id"]?.stringValue == paneID,
               let text = result["read"]?["text"]?.stringValue else { throw Self.agentResponseError() }
@@ -358,6 +373,10 @@ public actor HerdrClient {
             defer { group.cancelAll() }
             return try await group.next()!
         }
+    }
+
+    private func runHerdr(_ arguments: [String]) async throws -> Data {
+        try await transport.runHerdr(arguments)
     }
 
     private static func agentResponseError() -> HerdrErrorPayload {

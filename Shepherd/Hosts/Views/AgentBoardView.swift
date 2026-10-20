@@ -1025,6 +1025,7 @@ struct AgentBoardView: View {
     private func rename(_ commit: TitleRenameCommit) {
         perform(failureTitle: String(localized: "Couldn't Rename"), succeeded: {
             if renameCommit?.id == commit.id { renameCommit?.readsSinceSent = 0 }
+            nameAgentSession(after: commit)
         }, failed: {
             if renameCommit?.id == commit.id { renameCommit = nil }
         }) { client in
@@ -1035,6 +1036,31 @@ struct AgentBoardView: View {
                 try await client.renamePane(pane.paneID, to: commit.name.isEmpty ? nil : commit.name, on: pane.herdrMachine)
             }
         }
+    }
+
+    /// Passes a pane's new name on, once, to the session of the agent in it
+    /// (`AgentSessionNaming`): to Claude Code or Codex as its `/rename`, when
+    /// a snapshot shows it ready for it, and to a Pi this app launched through
+    /// its extension. Nothing for a tab, a name taken away, or a pane with no
+    /// agent in it.
+    private func nameAgentSession(after commit: TitleRenameCommit) {
+        guard let rename = AgentSessionNaming.rename(after: commit, machineID: machine.id) else { return }
+        guard rename.kind == .pi else {
+            AgentSessionNamer.shared.add(rename)
+            return
+        }
+        #if os(macOS)
+        if case .pane(let pane) = commit.item {
+            AgentLaunchService.shared.namePiSession(rename.name, pane: pane, on: machine)
+        }
+        #endif
+    }
+
+    /// A connection of its own for `AgentSessionNamer`, made the way
+    /// `perform` makes one.
+    private static func namingConnection(_ machineStore: MachineStore, _ machine: Machine) throws -> HerdrClient {
+        guard machineStore.isCurrentConnection(machine) else { throw MachineStore.EditError.settingsChanged }
+        return HerdrClient(transport: try machineStore.makeHerdrTransport(for: try machineStore.currentMachine(matching: machine)))
     }
 
     /// Counts a read of the herdr `renameCommit`'s item is on — the host's
@@ -1240,6 +1266,14 @@ struct AgentBoardView: View {
                 settleRenameCommit(onHerdrMachine: id, panes: [], tabs: [])
             }
         }
+        // Names waiting for the sessions of agents on them, as for the host's.
+        let namer = AgentSessionNamer.shared
+        namer.keep(herdrMachineIDs: Set(groups.map(\.id)), machineID: machine.id)
+        for group in groups where group.error == nil && group.hasLoaded {
+            namer.observe(group.agents, machineID: machine.id, herdrMachineID: group.id) { [machineStore, machine] in
+                try Self.namingConnection(machineStore, machine)
+            }
+        }
         guard let selected = selection, let machine = selected.herdrMachine else { return }
         guard let group = groups.first(where: { $0.id == machine.id }) else {
             selection = nil
@@ -1261,6 +1295,9 @@ struct AgentBoardView: View {
         if !machine.isLocal { BrowserStore.shared.reconcile(machineID: machine.id, herdrMachineID: nil, panes: agents) }
         #endif
         settleRenameCommit(onHerdrMachine: nil, panes: agents, tabs: tabs)
+        AgentSessionNamer.shared.observe(agents, machineID: machine.id, herdrMachineID: nil) { [machineStore, machine] in
+            try Self.namingConnection(machineStore, machine)
+        }
         // A selection on a herdr machine is `showHerdrMachines`'s to keep.
         guard let selected = selection, selected.herdrMachine == nil else { return }
         reselect(selected, in: agents, tabs: tabs)

@@ -419,6 +419,13 @@ final class AgentLaunchService {
                         mode: installation?.mode ?? .plugin, fresh: fresh)
     }
 
+    /// Names the session of the Pi this service launched into `pane`, through
+    /// its extension once Pi is idle (`PiHostBridge.nameSession`). False for
+    /// a Pi started some other way, which is left as it is.
+    @discardableResult func namePiSession(_ name: String, pane: AgentSummary, on machine: Machine) -> Bool {
+        piLaunches[AgentPaneIdentity(key: BrowserKey(machine: machine, pane: pane), terminalID: pane.terminalID)]?.nameSession(name) == true
+    }
+
     func failure(for agent: AgentSummary, on machine: Machine) -> String? {
         failures[AgentPaneIdentity(key: BrowserKey(machine: machine, pane: agent), terminalID: agent.terminalID)]
     }

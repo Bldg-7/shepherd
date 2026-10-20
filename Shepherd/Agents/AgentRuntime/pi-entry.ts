@@ -3,6 +3,7 @@ import { createPiHost } from './pi-host.mjs';
 import { registerPiLifecycle } from './pi-lifecycle.mjs';
 import { createPiMcpRegistration } from './pi-mcp-registration.mjs';
 import { registerPiHerdr } from './pi-herdr.mjs';
+import { registerPiSessionNaming } from './pi-session-name.mjs';
 
 /** Loaded only by an explicitly prepared invocation; never installed globally. */
 export default function shepherdPi(pi: ExtensionAPI) {
@@ -13,6 +14,8 @@ export default function shepherdPi(pi: ExtensionAPI) {
   let controlHealthy = true;
   const onFailure = () => { controlHealthy = false; void controller?.shutdown(); };
   registerPiHerdr(pi, bootstrap, onFailure);
+  // The pane's name from the app's Rename Pane, set on the session while Pi is idle.
+  const naming = registerPiSessionNaming(pi);
   const registration = createPiMcpRegistration(pi);
   const nativeHost = createPiHost(bootstrap, {
     report: (state: string) => {
@@ -20,6 +23,7 @@ export default function shepherdPi(pi: ExtensionAPI) {
       ui?.setStatus('3rdr-browser', state === 'off' ? undefined : `3rdr: ${state}`);
     },
     onFailure,
+    sessionName: naming.offer,
   });
   const host = {
     report: nativeHost.report,

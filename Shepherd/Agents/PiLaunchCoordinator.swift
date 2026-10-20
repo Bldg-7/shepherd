@@ -78,6 +78,13 @@ import Foundation
             monitor = Task { await observe() }
         } catch { await stop(); throw error }
     }
+    /// The name for Pi's session, from the pane renamed in this app: carried
+    /// by the bridge's status replies to the extension, which sets it once
+    /// Pi is idle.
+    func nameSession(_ name: String) -> Bool {
+        !stopped && failure == nil && host.nameSession(launchID: stage.id, name: name)
+    }
+
     func waitUntilReady() async throws {
         let deadline = ContinuousClock().now.advanced(by: .seconds(20))
         while !isReady {

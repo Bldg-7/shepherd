@@ -5,7 +5,7 @@ import {control, readBootstrap} from './pi-control.mjs';
 import {PiIntegrationError} from './pi-runtime.mjs';
 
 const failed = () => new PiIntegrationError('pi-host-bridge-unavailable');
-export function createPiHost(bootstrapFile, { report = () => {}, onFailure = () => {} } = {}) {
+export function createPiHost(bootstrapFile, { report = () => {}, onFailure = () => {}, sessionName = () => {} } = {}) {
   // File validation only; factory loading never starts sockets/processes/timers.
   const bootstrap = readBootstrap(bootstrapFile);
   function revoke(attemptID) {
@@ -58,6 +58,8 @@ export function createPiHost(bootstrapFile, { report = () => {}, onFailure = () 
             if(!active)return;
             if(current.ok!==true)throw failed();
             status=current;statusTime=performance.now();
+            // The pane's name from the app, for Pi's session (pi-session-name.mjs).
+            if(current.sessionName!==undefined){try{sessionName(current.sessionName);}catch{}}
           } catch { if(active){stop();try{onFailure();}catch{}} }
         })().finally(()=>{polling=undefined;});
         return polling;
