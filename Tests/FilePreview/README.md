@@ -33,6 +33,25 @@ Coverage:
   a read that was cancelled when its pane was left starts again when the pane is
   selected again. The window's log has no SwiftUI "Modifying state during view
   update" warning.
+- Markdown table of contents. The markdown stage of
+  `Tests/Terminal/run-usability-tests.py` checks which headings are listed:
+  H1–H6, both `#` headings and headings underlined with `===` or `---`, named
+  by their text without Markdown; none from fenced code and none whose text is
+  empty. It also checks that each heading has the line number the source view
+  shows it on, also after a BOM, CRLF line ends, frontmatter, a lone CR or
+  U+2028, and which heading is highlighted for a given scroll place. The actual
+  panel is checked in an owned never-shown window. The test reads the list and
+  presses headings and buttons through the accessibility API, which it turns on
+  for its own process only. A heading pressed comes to the top of the rendering
+  and of the source, expanded or not, and is highlighted. The header button
+  hides the table of contents for one preview only, and a Markdown file opened
+  anew starts with it shown. With no headings the button is disabled; a file
+  that isn't Markdown has no button. Showing the table of contents doesn't
+  change where a pane's scroll place comes back when the pane is selected
+  again: within 2 points in the source, and in the rendering of a file whose
+  blocks above the scroll place are paragraphs of one height; for a file that
+  mixes headings and code blocks, the same place as with it hidden. Its strings
+  have Korean and Japanese, and nothing of it is written to UserDefaults.
 
 ## Product behavior
 
@@ -84,6 +103,31 @@ characters with a visible notice. Maximum file size is 4 MiB. Common bitmap imag
 use an ImageIO thumbnail (first frame, max 2048px); metadata is capped at 16 MP
 and 16,000 pixels per dimension before decoding. HTML/SVG are inert source;
 there is no WebView, script execution, remote image fetch or external URL launch.
+
+A Markdown file has a table of contents of its headings on a Liquid Glass panel
+at the top right of the preview, in rendered and source modes, expanded or not.
+It lists headings H1–H6, both `#` headings and underlined ones, by their text
+without Markdown (bold, code and links become plain text), and none from fenced
+code. Closing `#` characters, as in `## Title ##`, are not taken off: the
+rendering shows them in the heading, and the table of contents shows them too.
+The panel is half the preview's width, from 160 to 260 points, and at most the
+preview's height less 24 points; a longer list scrolls inside it. Clicking a
+heading brings it to the top: its block in the rendering, its line in the
+source. The heading you are reading is highlighted. That is the last heading at
+or above the first block or line visible at the top of the preview; above the
+first heading, none is highlighted. The list scrolls to keep the highlighted
+heading in view. The list button beside Source hides or shows the table of
+contents for that preview only. Whether it is shown is kept with the pane's
+preview, like its file and scroll place: in memory while the window is open,
+not saved. Opening a Markdown file, or reading it again with Retry, starts with
+it shown. With no headings the button is disabled. Esc and `#anchor` links in
+the preview behave as they did before.
+
+A known limit, with or without the table of contents: in the rendering, a
+Markdown file that mixes blocks of different heights, such as headings and code
+blocks, can come back a few dozen to a few hundred points away from where it was
+left when its pane is selected again. A file of paragraphs of one height comes
+back where it was left.
 
 Only the clicked Machine is accessed. Localhost in a file URI denotes that source
 machine. Other URI hosts must match the configured hostname (or known local Mac
