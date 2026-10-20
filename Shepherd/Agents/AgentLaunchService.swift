@@ -89,6 +89,9 @@ final class AgentLaunchService {
     private var preparationRetries: [AgentPaneIdentity: AgentDirectPreparation.Retry] = [:]
     private var registrationRetries: [AgentPaneIdentity: AgentDirectPreparation.Retry] = [:]
     private var piLaunches: [AgentPaneIdentity: PiLaunchCoordinator] = [:]
+    /// The Claude Code or Codex process last seen with its pane's browser
+    /// socket open (`AgentBrowserStatus.inspect`'s `connectedPID`).
+    private var connectedPIDs: [AgentPaneIdentity: UInt32] = [:]
     /// The settings each pane was last registered with.
     private var registered: [AgentPaneIdentity: AgentRuntimePreferences] = [:]
     /// When the settings were last saved: the field saves them as they are typed.
@@ -403,7 +406,7 @@ final class AgentLaunchService {
         if let pi = piLaunches[identity], agent.agentName.flatMap(AgentKind.init(herdrName:)) == .pi {
             if let failure = pi.failure { return .failed(failure) }
             guard pi.isReady else { return .unknown }
-            return BrowserStore.shared.browser(for: key)?.agentSocketConnected == true ? .connected : .injectedDisconnected
+            return BrowserStore.shared.browser(for: key)?.agentSocketConnected == true || pi.hasConnected ? .connected : .injectedDisconnected
         }
         let inspection = inspections[identity]
         let observed = inspection?.agent ?? agent
@@ -412,7 +415,7 @@ final class AgentLaunchService {
             return fresh && inspection?.process.isShellForeground == true ? .shell : .unknown
         }
         return .inspect(agent: observed, process: inspection?.process, prepared: plans[identity],
-                        socketConnected: BrowserStore.shared.browser(for: key)?.agentSocketConnected == true,
+                        socketConnected: BrowserStore.shared.browser(for: key)?.agentSocketConnected == true, connectedPID: connectedPIDs[identity],
                         mode: installation?.mode ?? .plugin, fresh: fresh)
     }
 
@@ -428,7 +431,7 @@ final class AgentLaunchService {
               inspection.agent.terminalID == agent.terminalID, inspection.received.duration(to: ContinuousClock().now) < .seconds(6) else { return false }
         let inspectedStatus = AgentBrowserStatus.inspect(agent: inspection.agent, process: inspection.process, prepared: plans[identity],
             socketConnected: BrowserStore.shared.browser(for: BrowserKey(machine: machine, pane: agent))?.agentSocketConnected == true,
-            mode: installation?.mode ?? .plugin, fresh: MachineBrowserService.shared.errors[machine.id] == nil)
+            connectedPID: connectedPIDs[identity], mode: installation?.mode ?? .plugin, fresh: MachineBrowserService.shared.errors[machine.id] == nil)
         return AgentResumeEligibility.sessionID(agent: inspection.agent, process: inspection.process, status: inspectedStatus, fresh: true) != nil
     }
 
@@ -601,6 +604,7 @@ final class AgentLaunchService {
             for old in Array(rejectedPreparations.keys) where moved(old) { rejectedPreparations[current] = rejectedPreparations.removeValue(forKey: old) }
             for old in Array(preparationRetries.keys) where moved(old) { preparationRetries[current] = preparationRetries.removeValue(forKey: old) }
             for old in Array(registrationRetries.keys) where moved(old) { registrationRetries[current] = registrationRetries.removeValue(forKey: old) }
+            for old in Array(connectedPIDs.keys) where moved(old) { connectedPIDs[current] = connectedPIDs.removeValue(forKey: old) }
         }
         scheduleConsumer()
     }
@@ -658,6 +662,12 @@ final class AgentLaunchService {
                     inspectedCount += 1
                     inspected[identity] = Inspection(agent: row ?? pane, process: process, received: ContinuousClock().now,
                                                      pane: pane, row: row, processReceived: processReceived)
+                    // Remembered while the socket is open, for after its MCP idles out.
+                    if BrowserStore.shared.browser(for: BrowserKey(machine: snapshot.machine, pane: pane))?.agentSocketConnected == true,
+                       let kind = (row ?? pane).agentName.flatMap(AgentKind.init(herdrName:)) {
+                        if kind == .pi { piLaunches[identity]?.hasConnected = true }
+                        else if let pid = process.agentProcess(for: kind)?.pid, connectedPIDs[identity] != pid { connectedPIDs[identity] = pid }
+                    }
                 }
             } catch {
                 if !inspected.isEmpty { inspections.merge(inspected) { _, new in new } }
@@ -741,7 +751,7 @@ final class AgentLaunchService {
                     try await runtime.cleanup(pane: identity, on: .thisMac)
                     disappeared.remove(identity); registered[identity] = nil; plans[identity] = nil
                     inspections[identity] = nil; failures[identity] = nil; rejectedPreparations[identity] = nil
-                    preparationRetries[identity] = nil; registrationRetries[identity] = nil
+                    preparationRetries[identity] = nil; registrationRetries[identity] = nil; connectedPIDs[identity] = nil
                 } catch { reported = connectionFailureDescription(error) }
             }
             await client.disconnect()

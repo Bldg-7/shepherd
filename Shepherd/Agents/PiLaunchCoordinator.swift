@@ -31,6 +31,9 @@ import Foundation
     private var monitor: Task<Void, Never>?
     private(set) var failure: String?
     private(set) var stopped = false
+    /// Its browser socket has been open: it stays connected after its MCP
+    /// idles out and closes it (`AgentLaunchService.status`).
+    var hasConnected = false
     #if DEBUG
     private var bindingSamples: [[String: Any]] = []
     var fixtureDiagnostics: [String: Any] { ["requests":host.requestCount,"nativeFailure":host.lastFailure?.rawValue ?? "none","failure":failure ?? "none","samples":bindingSamples] }

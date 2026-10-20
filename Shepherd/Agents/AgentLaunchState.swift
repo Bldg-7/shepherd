@@ -19,13 +19,18 @@ nonisolated enum AgentBrowserStatus: Equatable, Sendable {
         }
     }
 
-    static func inspect(agent: AgentSummary, process: PaneProcessInfo?, prepared: PreparedAgentLaunch?, socketConnected: Bool, mode: AgentInjectionMode, fresh: Bool) -> Self {
+    /// `connectedPID`: the agent process seen with the socket open before. Its
+    /// MCP closes the socket after ten idle minutes and opens it again on the
+    /// next call, so that process stays connected while it runs.
+    static func inspect(agent: AgentSummary, process: PaneProcessInfo?, prepared: PreparedAgentLaunch?, socketConnected: Bool, connectedPID: UInt32?,
+                        mode: AgentInjectionMode, fresh: Bool) -> Self {
         guard fresh else { return .unknown }
         if let name = agent.agentName, let kind = AgentKind(herdrName: name), !kind.supportsLegacySessionInspection { return .unknown }
         if socketConnected { return .connected }
         if agent.launchPending == true { return .launchPending }
         guard let name = agent.agentName else { return .shell }
         guard let kind = AgentKind(herdrName: name), let argv = process?.agentArguments(for: kind), !argv.isEmpty else { return .unknown }
+        if let connectedPID, process?.agentProcess(for: kind)?.pid == connectedPID { return .connected }
         // Global injection is not argv-provable. Only a live socket proves it.
         if mode == .global { return .unknown }
         guard let prepared, prepared.kind == kind else { return .unknown }

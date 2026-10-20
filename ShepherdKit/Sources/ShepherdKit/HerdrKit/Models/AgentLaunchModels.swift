@@ -59,6 +59,12 @@ public nonisolated struct PaneProcessInfo: Decodable, Sendable {
     }
 
     public func agentArguments(for kind: AgentKind) -> [String]? {
+        guard let argv = agentProcess(for: kind)?.argv, let first = argv.first, !first.isEmpty else { return nil }
+        return argv
+    }
+
+    /// The one foreground process of `kind`, or nil if there is none or more than one.
+    public func agentProcess(for kind: AgentKind) -> ForegroundProcess? {
         // Pi always uses the native process/session bridge. Enabling its
         // launcher does not make a process name or copied argv an identity proof.
         guard kind.supportsLegacySessionInspection else { return nil }
@@ -67,8 +73,7 @@ public nonisolated struct PaneProcessInfo: Decodable, Sendable {
             $0.argv?.first.map { AgentKind(herdrName: Self.commandName($0)) == kind } == true
         }
         guard matching.count == 1 else { return nil }
-        guard let argv = matching[0].argv, let first = argv.first, !first.isEmpty else { return nil }
-        return argv
+        return matching[0]
     }
 
     /// The last component of argv0, from the text alone. A URL would resolve
