@@ -13,6 +13,10 @@ struct FilePreviewPanel: View {
     var isExpanded = false
     var onToggleExpanded: (() -> Void)? = nil
     @State private var reload = 0
+    /// What is shown of the text read, worked out once for each read.
+    @State private var shownText = PreviewTextCache()
+    /// Which blocks of the Markdown rendering its scroll view shows.
+    @State private var shownBlocks = PreviewVisibleRows()
     #if os(macOS)
     @FocusState private var panelFocused: Bool
     #endif
@@ -39,13 +43,16 @@ struct FilePreviewPanel: View {
                 Image(systemName: "doc.text")
                 Text(verbatim: title).font(.headline).lineLimit(1)
                 Spacer(minLength: 8)
-                if case .loaded(let document) = model.state, case .text(_, let markdown) = document.content, markdown {
+                if case .loaded(let document) = model.state, case .text(let text, let markdown) = document.content, markdown {
                     // The other view of the file starts at its top, as it
                     // always did, not at the place the one left was at.
                     Toggle("Source", isOn: Binding(get: { model.showsSource }, set: { shows in
                         model.scrollOffset = nil
+                        model.visibleBlocks = []; model.visibleLines = []
                         model.showsSource = shows
                     })).toggleStyle(.button)
+                    let headings = shownText.shown(text, markdown: true, limit: renderCharacters).markdown?.headings ?? []
+                    outlineToggle(hasHeadings: !headings.isEmpty)
                 }
                 #if os(macOS)
                 if let onToggleExpanded {
@@ -122,18 +129,38 @@ struct FilePreviewPanel: View {
     @ViewBuilder private func content(_ document: FilePreviewDocument) -> some View {
         switch document.content {
         case .text(let text, let markdown):
-            let rendered = String(text.prefix(renderCharacters))
+            let shown = shownText.shown(text, markdown: markdown, limit: renderCharacters)
             VStack(spacing: 0) {
-                if text.count > renderCharacters {
+                if shown.truncated {
                     Text("Preview truncated to 120,000 characters.").font(.caption).foregroundStyle(.secondary).padding(8)
                 }
-                if markdown && !model.showsSource {
-                    ScrollView { MarkdownPreview(text: rendered) }
-                        .modifier(PreviewScrollPlace(restoring: model.scrollOffset, onScroll: keepScrollOffset))
-                } else {
-                    SourceFilePreview(text: rendered, selectedLine: model.link?.line,
-                                      language: .filename(model.link?.path),
-                                      restoredOffset: model.scrollOffset, onScroll: keepScrollOffset)
+                ScrollViewReader { proxy in
+                    Group {
+                        if let markdown = shown.markdown, !model.showsSource {
+                            ScrollView {
+                                MarkdownPreview(document: markdown) { block, frame in
+                                    keepVisibleBlocks(shownBlocks.place(block, at: frame))
+                                }
+                            }
+                            .modifier(PreviewScrollPlace(restoring: model.scrollOffset, onScroll: keepScrollOffset))
+                            .onScrollGeometryChange(for: CGRect.self) { $0.visibleRect } action: { _, visible in
+                                keepVisibleBlocks(shownBlocks.show(visible))
+                            }
+                        } else {
+                            SourceFilePreview(text: shown.text, selectedLine: model.link?.line,
+                                              language: .filename(model.link?.path),
+                                              restoredOffset: model.scrollOffset, onScroll: keepScrollOffset,
+                                              onVisibleLines: { model.visibleLines = $0 })
+                        }
+                    }
+                    .onChange(of: model.scrollRequest) { _, request in
+                        scroll(proxy, to: request, inSource: shown.markdown == nil || model.showsSource)
+                    }
+                }
+                .overlay(alignment: .topTrailing) {
+                    if let markdown = shown.markdown, model.showsOutline, !markdown.headings.isEmpty {
+                        PreviewOutlineOverlay(model: model, headings: markdown.headings)
+                    }
                 }
             }
         case .image(let data):
@@ -154,6 +181,33 @@ struct FilePreviewPanel: View {
         model.scrollOffset = offset
     }
 
+    private func keepVisibleBlocks(_ blocks: [Int]?) {
+        if let blocks { model.visibleBlocks = blocks }
+    }
+
+    /// Brings what `request` asks for to the top, when it is in the view
+    /// shown: a block of the rendering, or a line of the source.
+    private func scroll(_ proxy: ScrollViewProxy, to request: PreviewScrollRequest?, inSource: Bool) {
+        switch request?.target {
+        case .block(let id)? where !inSource: proxy.scrollTo(PreviewBlockAnchor(block: id), anchor: .top)
+        case .line(let line)? where inSource: proxy.scrollTo(line, anchor: .top)
+        default: break
+        }
+    }
+
+    /// Shows or hides the table of contents of this preview. With no
+    /// headings to list, it is off and can't be turned on.
+    private func outlineToggle(hasHeadings: Bool) -> some View {
+        Toggle(isOn: Binding(get: { hasHeadings && model.showsOutline }, set: { model.showsOutline = $0 })) {
+            Label("Table of Contents", systemImage: "list.bullet.indent")
+        }
+        .toggleStyle(.button)
+        .labelStyle(.iconOnly)
+        .disabled(!hasHeadings)
+        .help(!hasHeadings ? "No Headings" : model.showsOutline ? "Hide Table of Contents" : "Show Table of Contents")
+        .accessibilityIdentifier("preview.outline.toggle")
+    }
+
     private func thumbnail(_ data: Data) -> CGImage? {
         guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
@@ -168,5 +222,54 @@ struct FilePreviewPanel: View {
             kCGImageSourceCreateThumbnailWithTransform: true,
             kCGImageSourceShouldCacheImmediately: true
         ] as CFDictionary)
+    }
+}
+
+/// The table of contents over the top right of a Markdown preview, at most
+/// as tall as the preview less 24 points. It marks the heading at the top of
+/// what the preview shows, and a heading chosen in it is brought to the top.
+/// It, not the panel, follows what is shown, so scrolling redraws only it.
+private struct PreviewOutlineOverlay: View {
+    let model: FilePreviewModel
+    let headings: [PreviewMarkdownHeading]
+
+    var body: some View {
+        let inSource = model.showsSource
+        let current = PreviewOutline.current(in: headings, firstVisible: (inSource ? model.visibleLines : model.visibleBlocks).first,
+                                             inSource: inSource)
+        GeometryReader { geometry in
+            PreviewOutlinePanel(headings: headings, current: current, maxHeight: max(0, geometry.size.height - 24)) { heading in
+                model.reveal(inSource ? .line(heading.line) : .block(heading.id))
+            }
+            .frame(width: PreviewOutline.width(for: geometry.size.width))
+            .padding(12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+        }
+    }
+}
+
+/// What the panel shows of a text file, worked out once for each file read
+/// rather than each time the panel is drawn: the part rendered, whether that
+/// is all of it, and for Markdown, its blocks, headings and inline renders.
+final class PreviewTextCache {
+    struct Shown {
+        /// The text up to the render limit.
+        let text: String
+        /// Whether the file goes on past the limit.
+        let truncated: Bool
+        /// The rendered text as Markdown, for a Markdown file.
+        let markdown: PreviewMarkdownDocument?
+    }
+    private var source: String?
+    private var cached: Shown?
+
+    func shown(_ text: String, markdown: Bool, limit: Int) -> Shown {
+        // The same read is the same string: this compares no characters.
+        if let cached, source == text, (cached.markdown != nil) == markdown { return cached }
+        let end = text.index(text.startIndex, offsetBy: limit, limitedBy: text.endIndex) ?? text.endIndex
+        let shown = String(text[..<end])
+        let result = Shown(text: shown, truncated: end < text.endIndex, markdown: markdown ? PreviewMarkdownDocument(shown) : nil)
+        source = text; cached = result
+        return result
     }
 }

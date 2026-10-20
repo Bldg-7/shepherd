@@ -25,6 +25,30 @@
         "ko" : { "stringUnit" : { "state" : "translated", "value" : "미리보기 크기 복원" } }
       }
     },
+    "Table of Contents" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "目次" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "목차" } }
+      }
+    },
+    "Show Table of Contents" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "目次を表示" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "목차 보기" } }
+      }
+    },
+    "Hide Table of Contents" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "目次を隠す" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "목차 숨기기" } }
+      }
+    },
+    "No Headings" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "見出しなし" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "목차에 넣을 제목 없음" } }
+      }
+    },
     "Frontmatter" : {
       "localizations" : {
         "ja" : { "stringUnit" : { "state" : "translated", "value" : "フロントマター" } },

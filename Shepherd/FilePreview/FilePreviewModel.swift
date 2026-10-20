@@ -31,6 +31,19 @@ struct FilePreviewRequest: Identifiable {
     }
 }
 
+/// A place a preview is asked to bring to the top of its scroll view. Each
+/// request is a new one, so asking for the same place again scrolls again.
+nonisolated struct PreviewScrollRequest: Equatable, Sendable {
+    enum Target: Equatable, Sendable {
+        /// A block of the Markdown rendering, by its `id`.
+        case block(Int)
+        /// A 1-based line of the source view.
+        case line(Int)
+    }
+    let id = UUID()
+    let target: Target
+}
+
 /// One preview's file, read, and how it is being looked at. It is kept with
 /// the pane or tab it was opened from (see `FilePreviewPaneStates`), so all
 /// of this comes back when that pane is selected again.
@@ -49,10 +62,28 @@ struct FilePreviewRequest: Identifiable {
     /// shown again. Not observed: it is written on every scroll, and nothing
     /// on screen follows it.
     @ObservationIgnored var scrollOffset: CGPoint?
+    /// Whether a Markdown file shows its table of contents. Each new read
+    /// starts with it shown; turned off, it stays off for this preview only.
+    var showsOutline = true
+    /// The last place the preview was asked to scroll to (see `reveal`).
+    private(set) var scrollRequest: PreviewScrollRequest?
+    /// The blocks the Markdown rendering shows now, by `id`, in order, as
+    /// its scroll view reports them.
+    var visibleBlocks: [Int] = []
+    /// The 1-based lines the source view shows now, in order, as its scroll
+    /// view reports them.
+    var visibleLines: [Int] = []
     /// The request whose read has ended, loaded or failed. A read that was
     /// cancelled hasn't, and is made again (see `loadIfNeeded`).
     @ObservationIgnored private(set) var finishedRequestID: UUID?
     private var generation = UUID()
+
+    /// Brings `target` to the top of the preview's scroll view: a block when
+    /// the preview shows the Markdown rendering, a line when it shows the
+    /// source. A target of the other view is left alone.
+    func reveal(_ target: PreviewScrollRequest.Target) {
+        scrollRequest = PreviewScrollRequest(target: target)
+    }
 
     /// Reads the file unless this request's read has already ended: a
     /// preview that comes back with its pane shows what was read, without
@@ -67,6 +98,7 @@ struct FilePreviewRequest: Identifiable {
         generation = epoch
         state = .loading; link = nil
         finishedRequestID = nil; showsSource = false; scrollOffset = nil
+        showsOutline = true; scrollRequest = nil; visibleBlocks = []; visibleLines = []
         let reader = FilePreviewReader()
         do {
             try Task.checkCancellation()
