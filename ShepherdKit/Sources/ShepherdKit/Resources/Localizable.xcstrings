@@ -398,6 +398,312 @@
         "ja" : { "stringUnit" : { "state" : "translated", "value" : "このマシンの herdr は、マシンの保存に初めて対応した 0.9.0 より古いバージョンです。マシンを追加するには herdr をアップデートしてください。" } },
         "ko" : { "stringUnit" : { "state" : "translated", "value" : "이 머신의 herdr는 머신 저장을 처음 지원한 0.9.0보다 오래되었습니다. herdr를 업데이트해야 머신을 추가할 수 있습니다." } }
       }
+    },
+    "A name can't have control characters in it." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "名前に制御文字は使えません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "이름에 제어 문자를 넣을 수 없습니다." } }
+      }
+    },
+    "Add %@" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "%@ を追加" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "%@ 추가" } }
+      }
+    },
+    "Adding the host key to %@…" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "%@ にホスト鍵を追加中…" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "%@에 호스트 키를 추가하는 중…" } }
+      }
+    },
+    "An SSH target can't have spaces in it." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "SSH の接続先に空白は使えません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "SSH 대상에는 공백을 넣을 수 없습니다." } }
+      }
+    },
+    "An SSH target can't start with “-”." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "SSH の接続先は「-」で始められません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "SSH 대상은 ‘-’로 시작할 수 없습니다." } }
+      }
+    },
+    "Another machine is called “%@” already." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%@」という名前のマシンがすでにあります。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "‘%@’(이)라는 이름의 머신이 이미 있습니다." } }
+      }
+    },
+    "Checking whether herdr saved it anyway…" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "herdr が保存したかどうかを確認中…" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "그래도 herdr가 저장했는지 확인하는 중…" } }
+      }
+    },
+    "Continue in a terminal, where OpenSSH can ask about it." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "OpenSSH が確認できるターミナルで続けてください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "OpenSSH가 직접 물어볼 수 있는 터미널에서 계속하십시오." } }
+      }
+    },
+    "Couldn't open a tab on %@: %@" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "%1$@ で tab を開けませんでした: %2$@" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "%1$@에서 tab을 열 수 없습니다: %2$@" } }
+      }
+    },
+    "Fetching the host key didn't finish within %lld seconds." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ホスト鍵の取得が %lld 秒以内に終わりませんでした。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "호스트 키 가져오기가 %lld초 안에 끝나지 않았습니다." } }
+      }
+    },
+    "Leave the password out of the target: herdr signs in with keys only." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "接続先からパスワードを外してください。herdr は鍵でのみログインします。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "대상에서 암호를 빼십시오. herdr는 키로만 로그인합니다." } }
+      }
+    },
+    "Nothing was changed. If the machine was set up again, remove its old key with `ssh-keygen -R %@` on %@, then try again." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "何も変更していません。マシンを再セットアップした場合は、%2$@ で `ssh-keygen -R %1$@` を実行して古い鍵を削除してから再試行してください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "아무것도 바꾸지 않았습니다. 머신을 다시 설치했다면 %2$@에서 `ssh-keygen -R %1$@`로 이전 키를 지운 뒤 다시 시도하십시오." } }
+      }
+    },
+    "OpenSSH couldn't read its configuration for this target." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "OpenSSH がこの接続先の設定を読み取れませんでした。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "OpenSSH가 이 대상의 설정을 읽지 못했습니다." } }
+      }
+    },
+    "OpenSSH didn't answer within %lld seconds." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "OpenSSH が %lld 秒以内に応答しませんでした。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "OpenSSH가 %lld초 안에 응답하지 않았습니다." } }
+      }
+    },
+    "OpenSSH didn't hand over the target's host key — it may be reached through a machine whose key isn't known yet. Continue in a terminal, where OpenSSH can ask about it." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "OpenSSH が接続先のホスト鍵を渡しませんでした。鍵がまだ分からない別のマシンを経由する接続先かもしれません。OpenSSH が確認できるターミナルで続けてください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "OpenSSH가 대상의 호스트 키를 넘겨주지 않았습니다. 키를 아직 모르는 다른 머신을 거쳐 연결하는 대상일 수 있습니다. OpenSSH가 직접 물어볼 수 있는 터미널에서 계속하십시오." } }
+      }
+    },
+    "OpenSSH still doesn't know the host key after it was added. Continue in a terminal, where OpenSSH can ask about it." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ホスト鍵を追加しても OpenSSH はまだその鍵を認識していません。OpenSSH が確認できるターミナルで続けてください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "호스트 키를 추가했는데도 OpenSSH가 여전히 그 키를 모릅니다. OpenSSH가 직접 물어볼 수 있는 터미널에서 계속하십시오." } }
+      }
+    },
+    "OpenSSH's configuration gives this target a RemoteCommand, which leaves herdr no way to run its own commands there. Use a Host alias without one." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "OpenSSH の設定でこの接続先に RemoteCommand が指定されているため、herdr はそこで自分のコマンドを実行できません。RemoteCommand のない Host エイリアスを使ってください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "OpenSSH 설정이 이 대상에 RemoteCommand를 지정하고 있어 herdr가 그곳에서 자기 명령을 실행할 수 없습니다. RemoteCommand가 없는 Host 별칭을 쓰십시오." } }
+      }
+    },
+    "OpenSSH's configuration keeps no known host keys for this target (UserKnownHostsFile /dev/null), so herdr's strict host key checking could never pass." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "OpenSSH の設定がこの接続先のホスト鍵を保存しない(UserKnownHostsFile /dev/null)ため、herdr の厳格なホスト鍵の確認を通過できません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "OpenSSH 설정이 이 대상의 호스트 키를 보관하지 않으므로(UserKnownHostsFile /dev/null) herdr의 엄격한 호스트 키 확인을 통과할 수 없습니다." } }
+      }
+    },
+    "Reconnect %@" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "%@ に再接続" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "%@ 다시 연결" } }
+      }
+    },
+    "Signed in, but the target didn't run the check that reads where herdr is." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ログインしましたが、接続先で herdr の場所を調べるコマンドが実行されませんでした。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "로그인했지만 대상에서 herdr 위치를 확인하는 명령이 실행되지 않았습니다." } }
+      }
+    },
+    "Signing in didn't finish within %lld seconds." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ログインが %lld 秒以内に終わりませんでした。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "로그인이 %lld초 안에 끝나지 않았습니다." } }
+      }
+    },
+    "Signing in to this target wants a browser (%@). Continue in a terminal to sign in." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "この接続先へのログインにはブラウザが必要です(%@)。ターミナルで続けてログインしてください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "이 대상에 로그인하려면 브라우저가 필요합니다(%@). 터미널에서 계속해 로그인하십시오." } }
+      }
+    },
+    "Stopped. The machine wasn't saved." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "停止しました。マシンは保存されていません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "중지했습니다. 머신은 저장되지 않았습니다." } }
+      }
+    },
+    "Stopping…" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "停止中…" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "중지하는 중…" } }
+      }
+    },
+    "That SSH target is too long." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "SSH の接続先が長すぎます。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "SSH 대상이 너무 깁니다." } }
+      }
+    },
+    "That name is too long." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "名前が長すぎます。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "이름이 너무 깁니다." } }
+      }
+    },
+    "The host didn't report how the step went." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ホストがステップの結果を返しませんでした。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "호스트가 단계 결과를 알려 주지 않았습니다." } }
+      }
+    },
+    "The host key can't be added to the known_hosts file OpenSSH's configuration names (%@). Continue in a terminal, where OpenSSH can add it." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "OpenSSH の設定が指定する known_hosts ファイル(%@)にホスト鍵を追加できません。OpenSSH が追加できるターミナルで続けてください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "OpenSSH 설정이 지정한 known_hosts 파일(%@)에 호스트 키를 추가할 수 없습니다. OpenSSH가 직접 추가할 수 있는 터미널에서 계속하십시오." } }
+      }
+    },
+    "The host key couldn't be added to %@." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "%@ にホスト鍵を追加できませんでした。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "%@에 호스트 키를 추가하지 못했습니다." } }
+      }
+    },
+    "The host key isn't known yet. Fetching it…" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "まだ認識していないホスト鍵です。取得中…" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "아직 모르는 호스트 키입니다. 가져오는 중…" } }
+      }
+    },
+    "The host key of the machine this target is reached through isn't known yet. Continue in a terminal, where OpenSSH can ask about it." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "この接続先へ経由するマシンのホスト鍵がまだ分かりません。OpenSSH が確認できるターミナルで続けてください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "이 대상에 연결할 때 거치는 머신의 호스트 키를 아직 모릅니다. OpenSSH가 직접 물어볼 수 있는 터미널에서 계속하십시오." } }
+      }
+    },
+    "The host stopped answering, and the machine wasn't saved." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ホストが応答しなくなり、マシンは保存されませんでした。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "호스트가 응답하지 않게 되어 머신이 저장되지 않았습니다." } }
+      }
+    },
+    "The target's host key has been revoked." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "接続先のホスト鍵は失効しています。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "대상의 호스트 키가 폐기되었습니다." } }
+      }
+    },
+    "The target's host key isn't the one known for it. That happens when a machine is set up again — and when someone is in between." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "接続先のホスト鍵が既知の鍵と異なります。マシンを再セットアップしたときにも起きますが、誰かが間に入っているときにも起きます。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "대상의 호스트 키가 알고 있던 키와 다릅니다. 머신을 다시 설치했을 때도 그렇지만, 누군가 중간에 끼어들었을 때도 그렇습니다." } }
+      }
+    },
+    "This target is saved already, as “%@”." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "この接続先はすでに「%@」として保存されています。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "이 대상은 이미 ‘%@’(으)로 저장되어 있습니다." } }
+      }
+    },
+    "Type a name." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "名前を入力してください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "이름을 입력하십시오." } }
+      }
+    },
+    "Type an SSH target: a Host alias, user@host or ssh://user@host:port." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "SSH の接続先を入力してください: Host エイリアス、user@host または ssh://user@host:port。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "SSH 대상을 입력하십시오: Host 별칭, user@host 또는 ssh://user@host:port." } }
+      }
+    },
+    "Waiting for you to trust the host key." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ホスト鍵を信頼するかの確認待ちです。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "호스트 키를 신뢰할지 기다리는 중입니다." } }
+      }
+    },
+    "herdr %@" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "herdr %@" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "herdr %@" } }
+      }
+    },
+    "herdr asks about this in a terminal. Continue there to approve it." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "herdr はこれをターミナルで確認します。ターミナルで続けて承認してください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "herdr는 이 내용을 터미널에서 묻습니다. 터미널에서 계속해 승인하십시오." } }
+      }
+    },
+    "herdr at %@" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "%@ の herdr" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "%@의 herdr" } }
+      }
+    },
+    "herdr didn't finish removing the machine within %lld seconds." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "herdr が %lld 秒以内にマシンの削除を終えませんでした。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "herdr가 %lld초 안에 머신 제거를 끝내지 못했습니다." } }
+      }
+    },
+    "herdr didn't finish within %lld seconds, and was stopped. The machine wasn't saved." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "herdr が %lld 秒以内に終わらなかったため停止しました。マシンは保存されていません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "herdr가 %lld초 안에 끝나지 않아 중지했습니다. 머신은 저장되지 않았습니다." } }
+      }
+    },
+    "herdr didn't reach the machine within %lld seconds." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "herdr が %lld 秒以内にマシンへ接続できませんでした。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "herdr가 %lld초 안에 머신에 연결하지 못했습니다." } }
+      }
+    },
+    "herdr isn't installed there yet" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "herdr はまだインストールされていません" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "아직 herdr가 설치되어 있지 않음" } }
+      }
+    },
+    "herdr on %@ reaches “%@” again." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "%1$@ の herdr が再び「%2$@」に接続できます。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "%1$@의 herdr가 다시 ‘%2$@’에 연결됩니다." } }
+      }
+    },
+    "herdr signs in without asking for a password, so it needs a key: load yours into ssh-agent with `ssh-add`, or set this account up for key login. Then try again." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "herdr はパスワードを尋ねずにログインするため、鍵が必要です。`ssh-add` で鍵を ssh-agent に読み込むか、このアカウントで鍵によるログインを設定してから再試行してください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "herdr는 암호를 묻지 않고 로그인하므로 키가 필요합니다. `ssh-add`로 키를 ssh-agent에 올리거나, 이 계정에 키 로그인을 설정한 뒤 다시 시도하십시오." } }
+      }
+    },
+    "ssh exited with status %lld." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ssh はステータス %lld で終了しました。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "ssh가 상태 %lld로 종료했습니다." } }
+      }
+    },
+    "via %@" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "%@ 経由" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "%@ 경유" } }
+      }
+    },
+    "via a ProxyCommand" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ProxyCommand 経由" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "ProxyCommand 경유" } }
+      }
+    },
+    "“%@” is saved in herdr on %@." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%1$@」を %2$@ の herdr に保存しました。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "‘%1$@’을(를) %2$@의 herdr에 저장했습니다." } }
+      }
     }
   },
   "version" : "1.1"
