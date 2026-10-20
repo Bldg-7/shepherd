@@ -218,6 +218,12 @@ cat > "$WORK/ExportOptions.plist" <<EOF
 EOF
 xcodebuild -exportArchive -quiet \
     -archivePath "$ARCHIVE" -exportPath "$WORK/export" -exportOptionsPlist "$WORK/ExportOptions.plist"
+# CEF starts its helpers by the name the app hands it, from Contents/Frameworks.
+# A helper missing or misnamed there still builds and signs, and the whole app
+# goes down when the browser starts (0.5.0). A helper under an earlier name,
+# left there by a reused DerivedData, is refused too.
+python3 "$ROOT/Tests/AgentBrowser/run-cef-helper-name-tests.py" --app "$APP" \
+    || fail "the exported app's browser helpers don't match the name it starts them by"
 codesign --verify --deep --strict "$APP"
 [[ "$(codesign --display --verbose=2 "$APP" 2>&1)" == *"TeamIdentifier=$TEAM_ID"* ]] \
     || fail "the exported app isn't signed by team $TEAM_ID"

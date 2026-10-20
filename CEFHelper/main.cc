@@ -1,7 +1,7 @@
 // The helper executable of the macOS app's browser: every Chromium
 // sub-process (renderer, GPU, network and the rest) runs this. It is built by
 // scripts/cef.sh, not by Xcode, and copied five times under the names CEF
-// looks for ("Shepherd Helper", "Shepherd Helper (Renderer)", ...), which
+// looks for ("3rdr Helper", "3rdr Helper (Renderer)", ...), which
 // only differ in the entitlements they are signed with.
 
 #include "include/cef_app.h"

@@ -22,7 +22,7 @@ def sign(path,entitlements=None):
  os.utime(path,None)
 for library in sorted((framework/'Versions/A/Libraries').glob('*.dylib')):sign(library)
 sign(framework)
-for name in ['Shepherd Helper','Shepherd Helper (Alerts)','Shepherd Helper (GPU)','Shepherd Helper (Plugin)','Shepherd Helper (Renderer)']:
+for name in ['3rdr Helper','3rdr Helper (Alerts)','3rdr Helper (GPU)','3rdr Helper (Plugin)','3rdr Helper (Renderer)']:
  bundle=out/(name+'.app');assert bundle.is_dir(),name
  entitlement=root/'CEFHelper'/('Helper-Plugin.entitlements' if name.endswith('(Plugin)') else 'Helper.entitlements')
  sign(bundle,entitlement)

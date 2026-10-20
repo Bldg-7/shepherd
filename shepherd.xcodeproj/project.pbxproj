@@ -18,11 +18,11 @@
 		C0CD00000000000000000032 /* NIOHTTP1 in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = C0CD00000000000000000042 /* NIOHTTP1 */; };
 		C0CD00000000000000000033 /* NIOWebSocket in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = C0CD00000000000000000043 /* NIOWebSocket */; };
 		C0EF00000000000000000020 /* Chromium Embedded Framework.framework in Embed Browser Engine */ = {isa = PBXBuildFile; fileRef = C0EF00000000000000000010 /* Chromium Embedded Framework.framework */; platformFilters = (macos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		C0EF00000000000000000021 /* Shepherd Helper.app in Embed Browser Engine */ = {isa = PBXBuildFile; fileRef = C0EF00000000000000000011 /* Shepherd Helper.app */; platformFilters = (macos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		C0EF00000000000000000022 /* Shepherd Helper (Alerts).app in Embed Browser Engine */ = {isa = PBXBuildFile; fileRef = C0EF00000000000000000012 /* Shepherd Helper (Alerts).app */; platformFilters = (macos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		C0EF00000000000000000023 /* Shepherd Helper (GPU).app in Embed Browser Engine */ = {isa = PBXBuildFile; fileRef = C0EF00000000000000000013 /* Shepherd Helper (GPU).app */; platformFilters = (macos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		C0EF00000000000000000024 /* Shepherd Helper (Plugin).app in Embed Browser Engine */ = {isa = PBXBuildFile; fileRef = C0EF00000000000000000014 /* Shepherd Helper (Plugin).app */; platformFilters = (macos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		C0EF00000000000000000025 /* Shepherd Helper (Renderer).app in Embed Browser Engine */ = {isa = PBXBuildFile; fileRef = C0EF00000000000000000015 /* Shepherd Helper (Renderer).app */; platformFilters = (macos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		C0EF00000000000000000021 /* 3rdr Helper.app in Embed Browser Engine */ = {isa = PBXBuildFile; fileRef = C0EF00000000000000000011 /* 3rdr Helper.app */; platformFilters = (macos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		C0EF00000000000000000022 /* 3rdr Helper (Alerts).app in Embed Browser Engine */ = {isa = PBXBuildFile; fileRef = C0EF00000000000000000012 /* 3rdr Helper (Alerts).app */; platformFilters = (macos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		C0EF00000000000000000023 /* 3rdr Helper (GPU).app in Embed Browser Engine */ = {isa = PBXBuildFile; fileRef = C0EF00000000000000000013 /* 3rdr Helper (GPU).app */; platformFilters = (macos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		C0EF00000000000000000024 /* 3rdr Helper (Plugin).app in Embed Browser Engine */ = {isa = PBXBuildFile; fileRef = C0EF00000000000000000014 /* 3rdr Helper (Plugin).app */; platformFilters = (macos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		C0EF00000000000000000025 /* 3rdr Helper (Renderer).app in Embed Browser Engine */ = {isa = PBXBuildFile; fileRef = C0EF00000000000000000015 /* 3rdr Helper (Renderer).app */; platformFilters = (macos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		EB28238D51316AC7C2A3FB0D /* Sparkle in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = 50A33A9511F4A8743DB7A373 /* Sparkle */; };
 /* End PBXBuildFile section */
 
@@ -33,11 +33,11 @@
 			dstSubfolder = Frameworks;
 			files = (
 				C0EF00000000000000000020 /* Chromium Embedded Framework.framework in Embed Browser Engine */,
-				C0EF00000000000000000021 /* Shepherd Helper.app in Embed Browser Engine */,
-				C0EF00000000000000000022 /* Shepherd Helper (Alerts).app in Embed Browser Engine */,
-				C0EF00000000000000000023 /* Shepherd Helper (GPU).app in Embed Browser Engine */,
-				C0EF00000000000000000024 /* Shepherd Helper (Plugin).app in Embed Browser Engine */,
-				C0EF00000000000000000025 /* Shepherd Helper (Renderer).app in Embed Browser Engine */,
+				C0EF00000000000000000021 /* 3rdr Helper.app in Embed Browser Engine */,
+				C0EF00000000000000000022 /* 3rdr Helper (Alerts).app in Embed Browser Engine */,
+				C0EF00000000000000000023 /* 3rdr Helper (GPU).app in Embed Browser Engine */,
+				C0EF00000000000000000024 /* 3rdr Helper (Plugin).app in Embed Browser Engine */,
+				C0EF00000000000000000025 /* 3rdr Helper (Renderer).app in Embed Browser Engine */,
 			);
 			name = "Embed Browser Engine";
 		};
@@ -48,11 +48,11 @@
 		000000000000000000000120 /* Shepherd.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Shepherd.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		403320BAC8DC4590AAED06E2 /* Shepherd/Agents/AgentRuntime */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Shepherd/Agents/AgentRuntime; sourceTree = SOURCE_ROOT; };
 		C0EF00000000000000000010 /* Chromium Embedded Framework.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = "Chromium Embedded Framework.framework"; sourceTree = "<group>"; };
-		C0EF00000000000000000011 /* Shepherd Helper.app */ = {isa = PBXFileReference; lastKnownFileType = wrapper.application; path = "Shepherd Helper.app"; sourceTree = "<group>"; };
-		C0EF00000000000000000012 /* Shepherd Helper (Alerts).app */ = {isa = PBXFileReference; lastKnownFileType = wrapper.application; path = "Shepherd Helper (Alerts).app"; sourceTree = "<group>"; };
-		C0EF00000000000000000013 /* Shepherd Helper (GPU).app */ = {isa = PBXFileReference; lastKnownFileType = wrapper.application; path = "Shepherd Helper (GPU).app"; sourceTree = "<group>"; };
-		C0EF00000000000000000014 /* Shepherd Helper (Plugin).app */ = {isa = PBXFileReference; lastKnownFileType = wrapper.application; path = "Shepherd Helper (Plugin).app"; sourceTree = "<group>"; };
-		C0EF00000000000000000015 /* Shepherd Helper (Renderer).app */ = {isa = PBXFileReference; lastKnownFileType = wrapper.application; path = "Shepherd Helper (Renderer).app"; sourceTree = "<group>"; };
+		C0EF00000000000000000011 /* 3rdr Helper.app */ = {isa = PBXFileReference; lastKnownFileType = wrapper.application; path = "3rdr Helper.app"; sourceTree = "<group>"; };
+		C0EF00000000000000000012 /* 3rdr Helper (Alerts).app */ = {isa = PBXFileReference; lastKnownFileType = wrapper.application; path = "3rdr Helper (Alerts).app"; sourceTree = "<group>"; };
+		C0EF00000000000000000013 /* 3rdr Helper (GPU).app */ = {isa = PBXFileReference; lastKnownFileType = wrapper.application; path = "3rdr Helper (GPU).app"; sourceTree = "<group>"; };
+		C0EF00000000000000000014 /* 3rdr Helper (Plugin).app */ = {isa = PBXFileReference; lastKnownFileType = wrapper.application; path = "3rdr Helper (Plugin).app"; sourceTree = "<group>"; };
+		C0EF00000000000000000015 /* 3rdr Helper (Renderer).app */ = {isa = PBXFileReference; lastKnownFileType = wrapper.application; path = "3rdr Helper (Renderer).app"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -128,11 +128,11 @@
 			isa = PBXGroup;
 			children = (
 				C0EF00000000000000000010 /* Chromium Embedded Framework.framework */,
-				C0EF00000000000000000011 /* Shepherd Helper.app */,
-				C0EF00000000000000000012 /* Shepherd Helper (Alerts).app */,
-				C0EF00000000000000000013 /* Shepherd Helper (GPU).app */,
-				C0EF00000000000000000014 /* Shepherd Helper (Plugin).app */,
-				C0EF00000000000000000015 /* Shepherd Helper (Renderer).app */,
+				C0EF00000000000000000011 /* 3rdr Helper.app */,
+				C0EF00000000000000000012 /* 3rdr Helper (Alerts).app */,
+				C0EF00000000000000000013 /* 3rdr Helper (GPU).app */,
+				C0EF00000000000000000014 /* 3rdr Helper (Plugin).app */,
+				C0EF00000000000000000015 /* 3rdr Helper (Renderer).app */,
 			);
 			name = "Browser Engine";
 			path = Vendor/CEF/out;

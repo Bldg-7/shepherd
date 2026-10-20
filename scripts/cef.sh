@@ -6,7 +6,7 @@
 #   include/                         CEF's headers
 #   lib/Debug, lib/Release           libcef_dll_wrapper.a, CEF's C++ API
 #   Chromium Embedded Framework.framework
-#   Shepherd Helper*.app             the five helper apps (CEFHelper/)
+#   3rdr Helper*.app                 the five helper apps (CEFHelper/)
 #
 # CEF is too big to keep in the repository (plan item H4 in
 # docs/agent-browser-plan.md), so this downloads a pinned version and checks
@@ -33,7 +33,7 @@ ARCHIVE="$VENDOR/downloads/$NAME.tar.bz2"
 DIST="$VENDOR/$NAME"
 OUT="$VENDOR/out"
 HELPER_SOURCES="$ROOT/CEFHelper"
-HELPER_NAME="Shepherd Helper"
+HELPER_NAME="3rdr Helper"
 # The name suffixes CEF looks for, each with the bundle ID suffix and the
 # entitlements its helper is signed with ("<name>:<id>:<entitlements>").
 HELPERS=(

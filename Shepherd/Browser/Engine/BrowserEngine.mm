@@ -324,7 +324,7 @@ CefScopedLibraryLoader *gLibraryLoader = nullptr;
   }
 
   NSString *helper = [NSBundle.mainBundle.privateFrameworksPath
-      stringByAppendingPathComponent:@"Shepherd Helper.app/Contents/MacOS/Shepherd Helper"];
+      stringByAppendingPathComponent:@"3rdr Helper.app/Contents/MacOS/3rdr Helper"];
   char *trustedArgv[] = {(*_NSGetArgv())[0], nullptr};
   CefMainArgs args(1, trustedArgv);
   CefSettings settings;
