@@ -20,6 +20,32 @@ goes to the TUI. A double click on a word still selects it with mouse reporting
 off, and still goes to the program with it on. Invalid URLs and
 stale ownership never fall back or auto-enable browsing. URL validation rejects
 credentials, control characters and unsupported schemes.
+
+An OSC8 target that is an `.html` or `.htm` file is claimed like any other file
+target: zero bytes to the PTY, and one open for a double or triple click. In a
+pane of This Mac (not of a herdr machine), `TerminalLinkRoute` then hands it to
+the window's `openWeb` as a `file://` URL, together with whether ⌘ was held, the
+way it hands an HTTP(S) URL; in a pane of an SSH machine or a herdr machine it
+still goes to the preview. `run-pointer-tests.py` clicks `report.html`,
+`file:///…/Report.HTM#sec` and `report.html:12`, plainly and with ⌘, with one,
+two and three presses, and sends each through the app's own `TerminalLinkRoute`
+for a pane of This Mac and for a pane elsewhere. `run-web-link-tests.py`
+checks:
+- the page URLs: the extension in any letter case, a file link's `#fragment`
+  kept, a `path:line` link's line dropped, a query or another host left to the
+  preview, Korean names kept composed;
+- the four pane locations: This Mac, a herdr machine of This Mac, an SSH
+  machine, and a herdr machine of an SSH machine;
+- the destination table in section 10 of `docs/link-opening-ux.md`: plain
+  click or ⌘, In-app Browser on or off, Intel, an agent connected or not, and
+  the two notices (In-app Browser unavailable, an agent using it);
+- that a file for the default browser goes to the app that opens `https`
+  links, with a stand-in opener (nothing is actually opened);
+- by reading the source, that `openWeb` asks whether an agent is connected only
+  about the browser the file would open in, and that an agent connecting to a
+  pane's browser empties its `file:` tabs before the agent is given control of
+  its pages.
+
 Non-link clicks retain the complete remote TUI press/release gesture. No user GUI or SSH server is
 operated. Live remote acceptance remains separate.
 

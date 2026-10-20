@@ -180,13 +180,19 @@ actual detail width, not an orientation assumption. Back/Close dismisses preview
 
 Markdown is native and intentionally a basic renderer: headings, inline
 emphasis/links, fenced code, quotes and bullets. Fences use their language label
-for native lexical highlighting and wrap to the panel width. Tables/nested lists/
-full CommonMark fidelity are not promised. Source mode is available; source line links open that
-mode and highlight the line. Text must be UTF-8 and rendering stops at 120,000
-characters with a visible notice. Maximum file size is 4 MiB. Common bitmap images
-use an ImageIO thumbnail (first frame, max 2048px); metadata is capped at 16 MP
-and 16,000 pixels per dimension before decoding. HTML/SVG are inert source;
-there is no WebView, script execution, remote image fetch or external URL launch.
+for native lexical highlighting and wrap to the panel width. Tables/nested
+lists/ full CommonMark fidelity are not promised. Source mode is available;
+source line links open that mode and highlight the line. Text must be UTF-8 and
+rendering stops at 120,000 characters with a visible notice. Maximum file size
+is 4 MiB. Common bitmap images use an ImageIO thumbnail (first frame, max
+2048px); metadata is capped at 16 MP and 16,000 pixels per dimension before
+decoding. HTML/SVG are inert source; there is no WebView, script execution,
+remote image fetch or external URL launch. A terminal link to an `.html` or
+`.htm` file in a pane of This Mac (not of a herdr machine) no longer reaches the
+preview: it opens in a browser, as an HTTP(S) link does (see
+`Tests/Terminal/README.md`). HTML files in panes of SSH machines and herdr
+machines, links to HTML files clicked inside a preview, and `.xhtml`/`.svg`
+files still open in the preview as inert source.
 
 A Markdown file has a table of contents of its headings on a Liquid Glass panel
 at the top right of the preview, in rendered and source modes, expanded or not.

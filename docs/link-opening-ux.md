@@ -203,19 +203,23 @@ nonisolated enum LinkDestinationPolicy {
 3. 원격 머신 pane의 `localhost` 링크는 Mac의 localhost를 가리킨다 (README). 기본 브라우저로 보내도 같은 문제이므로 이 설계에서는 다루지 않지만, F(도메인 규칙)를 넣을 때 함께 본다.
 4. 우클릭 메뉴(A)를 넣을지, 넣는다면 마우스 리포팅이 켜진 TUI에서의 규칙.
 
-## 10. 지금 규칙 (SHPHRD-86)
+## 10. 지금 규칙 (SHPHRD-86, SHPHRD-90)
 
-파일 링크 클릭과 같은 경험을 주려고 설정과 팝오버를 없애고 고정 규칙으로 바꿨다.
+파일 링크 클릭과 같은 경험을 주려고 설정과 팝오버를 없애고 고정 규칙으로 바꿨다. SHPHRD-90부터는 This Mac의 pane(herdr machine의 pane 제외)에서 클릭한 HTML 파일 링크도 미리보기 대신 아래 표를 따른다.
 
 | 상황 | 그냥 클릭 | ⌘-클릭 |
 |---|---|---|
 | In-app Browser 켜짐, Apple silicon | 클릭한 pane의 In-app Browser 새 탭 | 기본 브라우저 |
+| 켜짐, Apple silicon, 그 pane의 In-app Browser에 에이전트 연결됨, HTML 파일 링크 | 기본 브라우저, 터미널 아래에 에이전트가 그 브라우저를 쓰고 있어서라는 알림(웹 링크는 첫 행대로 In-app Browser 새 탭) | 기본 브라우저 |
 | In-app Browser 꺼짐 | 기본 브라우저, 알림 없음 | 기본 브라우저 |
 | 켜져 있지만 이 Mac에서 실행할 수 없음(Intel) | 기본 브라우저, 터미널 아래에 그 이유를 알리는 알림 | 기본 브라우저 |
 
-- Settings에 추가한 SSH machine의 pane에서도, host의 herdr에 저장된 herdr machine의 pane에서도 같다. 잘못된 URL은 어느 브라우저로 갈지와 상관없이 "Could Not Open Link" 알림창을 띄운다.
+- 웹 링크는 Settings에 추가한 SSH machine의 pane에서도, host의 herdr에 저장된 herdr machine의 pane에서도 같다. 잘못된 URL은 어느 브라우저로 갈지와 상관없이 "Could Not Open Link" 알림창을 띄운다.
+- This Mac의 pane(herdr machine의 pane 제외)에서 클릭한 `.html`·`.htm`(대소문자 무시) 파일 링크(OSC 8)는 미리보기 대신 위 표를 따른다(SHPHRD-90). 경로는 미리보기와 같은 방법으로 풀고(`FilePreviewLink.resolve`), `file://` 링크의 `#fragment`는 페이지에 넘기며, `path:줄`의 줄은 버린다. query가 있거나 다른 host를 가리키는 링크, 작업 디렉터리를 모르는 상대 경로는 지금처럼 미리보기로 가고, 미리보기가 그 파일을 열 수 없는 이유를 보여 준다. 열기 전에 파일이 있는지 보지 않는다. SSH machine과 herdr machine의 pane, `.xhtml`·`.svg`, 미리보기 안에서 클릭한 링크는 전처럼 미리보기에서 소스로 보인다(`TerminalLinkRoute`, `TerminalPageLink`).
+- 기본 브라우저로 여는 파일은 `.html`의 기본 앱(편집기일 수 있다)이 아니라 `https` 링크를 여는 앱으로 연다. 그런 앱이 없으면 `.html`의 기본 앱으로 연다(`DefaultBrowserOpener`).
+- 에이전트가 pane의 In-app Browser에 연결되는 순간, 그 브라우저에서 이 Mac의 파일(`file:`, `view-source:file:`)을 보이던 탭은 기록째 닫히고 빈 탭(about:blank)이 된다(`PaneBrowser.emptyLocalFileTabs`, `PaneCDPConnection.init`). 에이전트가 화면 캡처나 페이지 읽기로 그 파일과, 그 페이지가 img·iframe으로 불러온 다른 로컬 파일을 보지 못하게 하려는 것이다. 에이전트가 직접 `file://`을 여는 것은 전처럼 엔진과 CDP 정책이 막는다.
 - ⌘-클릭 안내는 Settings → Experimental Features → In-app Browser의 ⓘ 설명에 있다.
 - 0.5.x가 이 설정을 저장하던 UserDefaults 키 `links.destination`은 읽지도 지우지도 않는다. 설정에서 "Default Browser"를 골랐던 사람도 이제 그냥 클릭하면 In-app Browser에서 열린다.
 - 링크를 더블·트리플 클릭해도 한 번만 열린다. 링크를 연 첫 누름에 이어지는 둘째·셋째 누름(clickCount 2 이상)도 터미널 프로그램에 보내지 않고 앱이 가져가며, 아무것도 열지 않는다. 첫 클릭으로 pane 옆에 In-app Browser가 나타나 화면 배치가 바뀌는 바람에 둘째 누름이 링크 밖에 떨어져도 마찬가지로 가져간다(`TerminalFileGesture`). 링크가 아닌 곳의 더블클릭은 전과 같다. 마우스 리포팅(터미널 프로그램이 마우스 입력을 받겠다고 켠 상태)이 꺼져 있으면 단어를 선택하고, 켜져 있으면 프로그램이 받는다.
 - ⇧를 누른 채 시작한 누름은 링크 위에서도 hrdrhrdrhrdr가 링크로 가져가지 않는다(SHPHRD-93). ⇧-드래그는 텍스트를 선택하고, ⇧-클릭은 링크를 열지 않으며 선택이 있으면 넓힌다. ⇧를 썼는지는 마우스 버튼을 누르는 순간에 정하고, 버튼을 놓을 때까지 마우스 리포팅을 꺼 둔다. 프로그램이 XTSHIFTESCAPE로 ⇧를 달라고 했으면 ⇧ 누름도 전처럼 링크로 가져간다. 마우스 리포팅이 꺼진 pane(셸, 기본 화면의 Claude Code)에서 링크 위에서 시작한 수정키 없는 드래그는 8pt를 넘게 움직이면 누른 자리부터 선택이 되고, 링크는 열리지 않는다. 그 밖의 누름, 곧 마우스 리포팅이 켜진 pane의 수정키 없는 누름과 ⌘·⌥·⌃ 누름은 전처럼 링크로 가져가고, 8pt 안에서 놓은 수정키 없는 클릭과 ⌘-클릭은 링크를 연다(`FocusReportingTerminalView.mouseDown`·`mouseDragged`).
-- 목적지를 정하는 함수: `LinkDestinationPolicy.destination(commandHeld:browserEnabled:engineAvailable:)`. 알림을 띄울지 정하는 함수: `saysBrowserUnavailable(commandHeld:browserEnabled:engineAvailable:)`.
+- 목적지를 정하는 함수: `LinkDestinationPolicy.destination(_:commandHeld:browserEnabled:engineAvailable:agentConnected:)`. 알림을 띄울지 정하는 함수: `saysBrowserUnavailable(commandHeld:browserEnabled:engineAvailable:)`, `saysAgentUsesBrowser(_:commandHeld:browserEnabled:engineAvailable:agentConnected:)`.
