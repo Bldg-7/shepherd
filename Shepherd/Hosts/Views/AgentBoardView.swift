@@ -91,6 +91,10 @@ struct AgentBoardView: View {
     /// not while a name is being typed into the window's title, nor over a
     /// confirmation or a failure the board still shows.
     let closeRequests: Int
+    /// Goes up each time the File menu's Remove herdr Machine… is chosen,
+    /// to ask about removing the herdr machine the selection is on, as its
+    /// group header's menu would.
+    let removeHerdrMachineRequests: Int
     /// Brings up the panel that adds a herdr machine to the host, or checks
     /// a failing one again — from a group header's menu.
     var onHerdrMachineSetup: (HerdrMachineSetup.Mode) -> Void
@@ -106,6 +110,9 @@ struct AgentBoardView: View {
     @Binding var renameCommit: TitleRenameCommit?
     /// The pane or tab waiting for the person to confirm it is to be closed.
     @State private var closing: BoardItem?
+    /// The herdr machine waiting for the person to confirm it is to be
+    /// removed from the host's herdr.
+    @State private var removing: HerdrMachine?
     /// Why the last rename or close didn't go through.
     @State private var actionFailure: ActionFailure?
     /// The groups the person has folded away, by group ID, one per line.
@@ -133,6 +140,7 @@ struct AgentBoardView: View {
         launchTargets: Binding<[LaunchTarget]>,
         refreshRequests: Int,
         closeRequests: Int,
+        removeHerdrMachineRequests: Int = 0,
         onHerdrMachineSetup: @escaping (HerdrMachineSetup.Mode) -> Void = { _ in },
         renaming: Binding<TitleRenameSession?>,
         renameCommit: Binding<TitleRenameCommit?>,
@@ -145,6 +153,7 @@ struct AgentBoardView: View {
         self._launchTargets = launchTargets
         self.refreshRequests = refreshRequests
         self.closeRequests = closeRequests
+        self.removeHerdrMachineRequests = removeHerdrMachineRequests
         self.onHerdrMachineSetup = onHerdrMachineSetup
         self._renaming = renaming
         self._renameCommit = renameCommit
@@ -203,6 +212,24 @@ struct AgentBoardView: View {
     private static let seenDelay: Duration = .milliseconds(500)
 
     var body: some View {
+        board
+            // Kept apart from the rest of `board`, which is as long a chain
+            // of modifiers as the compiler takes in reasonable time.
+            .confirmationDialog(removeTitle, isPresented: isRemoving, titleVisibility: .visible, presenting: removing) { herdrMachine in
+                Button("Remove", role: .destructive) { remove(herdrMachine) }
+                Button("Cancel", role: .cancel) {}
+            } message: { _ in
+                Text(removeMessage)
+            }
+            .onChange(of: removeHerdrMachineRequests) {
+                guard renaming == nil, closing == nil, removing == nil, actionFailure == nil,
+                      let id = selection?.herdrMachine?.id,
+                      let group = herdrMachineGroups.first(where: { $0.id == id }) else { return }
+                removing = group.machine
+            }
+    }
+
+    private var board: some View {
         agentList
         // A list of its own for each mode. Switching between tab rows and
         // pane rows replaces every row at once, and left to diff one set
@@ -434,6 +461,8 @@ struct AgentBoardView: View {
                                         Button("Reconnect…") { onHerdrMachineSetup(.reconnect(group.machine)) }
                                             .disabled(!monitor.canManageHerdrMachines)
                                     }
+                                    Button("Remove \u{201C}\(group.machine.label)\u{201D}…") { removing = group.machine }
+                                        .disabled(!monitor.canManageHerdrMachines)
                                 }
                         }
                     }
@@ -1032,6 +1061,36 @@ struct AgentBoardView: View {
                 try await client.closePane(pane.paneID, on: pane.herdrMachine)
             }
         }
+    }
+
+    /// Removes a herdr machine from the host's herdr, which forgets it and
+    /// stops connecting to it; nothing on the machine is touched. The board
+    /// reads its herdr machines again straight away, and the machine's
+    /// group goes.
+    private func remove(_ herdrMachine: HerdrMachine) {
+        perform(failureTitle: String(localized: "Couldn't Remove")) { client in
+            try await HerdrMachineRemoval.remove(herdrMachine, using: HerdrClientStepRunner(client: client))
+        }
+    }
+
+    private var removeTitle: Text {
+        Text("Remove \u{201C}\(removing?.label ?? "")\u{201D} from herdr on \(machine.displayName)?")
+    }
+
+    /// What removing a herdr machine does, and what it leaves alone.
+    private var removeMessage: String {
+        var lines = [String(localized: "herdr forgets the machine and stops connecting to it. Its sessions keep running there, and the agents in them.")]
+        #if os(macOS)
+        if ShepherdBrowserFeature.shared.isEnabled {
+            lines.append(String(localized: "The In-app Browsers of its panes close, and their profiles are deleted."))
+        }
+        #endif
+        lines.append(String(localized: "Its host key stays in known_hosts."))
+        return lines.joined(separator: " ")
+    }
+
+    private var isRemoving: Binding<Bool> {
+        Binding(get: { removing != nil }, set: { if !$0 { removing = nil } })
     }
 
     private var closeTitle: Text {

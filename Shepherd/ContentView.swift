@@ -54,6 +54,9 @@ struct ContentView: View {
     /// Adding a herdr machine to the active machine's herdr, or checking a
     /// failing one again, while its panel is up (see `HerdrMachineSetupView`).
     @State private var herdrMachineSetup: HerdrMachineSetup?
+    /// Goes up to have the board ask about removing the herdr machine the
+    /// selection is on (see `AgentBoardView.removeHerdrMachineRequests`).
+    @State private var removeHerdrMachineRequests = 0
     /// The file preview of each pane or tab, kept while another one is
     /// selected (see `FilePreviewPaneStates`).
     @State private var filePreviews = FilePreviewPaneStates()
@@ -121,6 +124,7 @@ struct ContentView: View {
                         launchTargets: $launchTargets,
                         refreshRequests: boardRefreshRequests,
                         closeRequests: closeRequests,
+                        removeHerdrMachineRequests: removeHerdrMachineRequests,
                         onHerdrMachineSetup: { mode in showHerdrMachineSetup(mode, on: machine) },
                         renaming: Binding(get: { titleRename }, set: { beginTitleRename($0, on: machine) }),
                         renameCommit: $renameCommit,
@@ -430,7 +434,8 @@ struct ContentView: View {
         // Workspace… (⌘T), the launcher.
         .focusedSceneValue(\.launcherStart, machine == nil || isShowingPaneSwitcher || isShowingSettings || herdrMachineSetup != nil ? nil : $launcherStart)
         .focusedSceneValue(\.isShowingPaneSwitcher, machine == nil || isShowingSettings || launcherStart != nil || herdrMachineSetup != nil ? nil : $isShowingPaneSwitcher)
-        // And its Add herdr Machine…, this panel.
+        // And its Add herdr Machine… and Remove herdr Machine…, this panel
+        // and the board's confirmation.
         .focusedSceneValue(\.herdrMachineCommand, herdrMachineCommand(on: machine))
         // And its Close Tab or Close Pane (⌘W), the board's close.
         .focusedSceneValue(\.closeCommand, CloseCommand(target: closeCommandTarget(on: machine), requests: $closeRequests))
@@ -864,15 +869,19 @@ struct ContentView: View {
     }
 
     #if os(macOS)
-    /// What the File menu's Add herdr Machine… acts on, or nil with no
-    /// machine to add one to.
+    /// What the File menu's Add herdr Machine… and Remove herdr Machine…
+    /// act on, or nil with no machine to add one to.
     private func herdrMachineCommand(on machine: Machine?) -> HerdrMachineCommand? {
         guard let machine else { return nil }
         let monitor = monitor(for: machine)
+        let selected = selection(on: machine).wrappedValue?.herdrMachine
         let isFree = herdrMachineSetup == nil && launcherStart == nil && !isShowingSettings && !isShowingPaneSwitcher
         return HerdrMachineCommand(
             canAdd: isFree && monitor.canManageHerdrMachines,
-            add: { showHerdrMachineSetup(.add, on: machine) }
+            selectedMachine: selected.flatMap { herdrMachine in monitor.herdrMachineGroups.first { $0.id == herdrMachine.id }?.machine ?? herdrMachine },
+            canRemove: isFree && monitor.canManageHerdrMachines && !previewCoversTerminal(on: machine),
+            add: { showHerdrMachineSetup(.add, on: machine) },
+            remove: { removeHerdrMachineRequests += 1 }
         )
     }
     #endif

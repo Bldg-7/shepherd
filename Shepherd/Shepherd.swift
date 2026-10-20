@@ -174,8 +174,8 @@ extension FocusedValues {
     /// What the window's Close Tab or Close Pane would close — see
     /// `CloseCommands`. Nil only while there is no window.
     @Entry var closeCommand: CloseCommand?
-    /// What the File menu's Add herdr Machine… acts on — see
-    /// `NewTabCommands`. Nil while there is no machine.
+    /// What the File menu's Add herdr Machine… and Remove herdr Machine…
+    /// act on — see `NewTabCommands`. Nil while there is no machine.
     @Entry var herdrMachineCommand: HerdrMachineCommand?
 }
 
@@ -185,7 +185,13 @@ struct HerdrMachineCommand {
     /// Whether a herdr machine can be added to the active machine's herdr
     /// now: it can have them, and nothing else is up over the window.
     let canAdd: Bool
+    /// The herdr machine the selection is on, which Remove herdr Machine…
+    /// is for; nil, and the item not there, for a selection on the host's
+    /// own herdr or none.
+    let selectedMachine: HerdrMachine?
+    let canRemove: Bool
     let add: () -> Void
+    let remove: () -> Void
 }
 
 /// The window's side of `CloseCommands`: what ⌘W would close, and the
@@ -225,7 +231,9 @@ private struct CloseCommands: Commands {
 /// Window, and its ⌘N: the app has the one window.
 ///
 /// After them, Add herdr Machine…, which brings up the panel that adds one
-/// to the active machine's herdr. No shortcut: it is rarely wanted.
+/// to the active machine's herdr, and — while a pane or tab on a herdr
+/// machine is selected — Remove herdr Machine “…”…, which asks about
+/// removing that one. No shortcuts: they are rarely wanted.
 private struct NewTabCommands: Commands {
     @FocusedValue(\.launcherStart) private var launcherStart
     @FocusedValue(\.herdrMachineCommand) private var herdrMachineCommand
@@ -247,6 +255,12 @@ private struct NewTabCommands: Commands {
                 herdrMachineCommand?.add()
             }
             .disabled(herdrMachineCommand?.canAdd != true)
+            if let machine = herdrMachineCommand?.selectedMachine {
+                Button("Remove herdr Machine \u{201C}\(machine.label)\u{201D}…") {
+                    herdrMachineCommand?.remove()
+                }
+                .disabled(herdrMachineCommand?.canRemove != true)
+            }
         }
     }
 
