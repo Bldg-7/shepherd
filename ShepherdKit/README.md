@@ -12,6 +12,10 @@ both depend on it (docs/mobile-design.md, section 8).
   things: the pane, tab and workspace models that herdr's snapshots are read
   into; the agent event JSON contract, `AgentEvent`; and `TerminalSession`,
   which attaches to a pane's terminal over SSH.
+  `HerdrMachineSetup/` adds herdr machines (computers saved in a host's herdr) to a
+  host's herdr, checks one that fails to connect, and removes one. Each check is a
+  script run on the host with a deadline (`HostStep`), and `HerdrMachineSetup` is the
+  state machine that the macOS app's setup overlay shows.
 - `Machines/`: a `Machine` (a saved SSH host running herdr), the Keychain
   store for its credential, `MachineStore`, and `MachineMonitor`, which keeps
   one machine's panes up to date for the board, the list of panes the apps

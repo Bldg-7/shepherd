@@ -41,6 +41,45 @@ The preview and experimental browser share the side-panel slot; switching visibi
 
 See [0.3.0 release notes](notes/0.3.0.md) for limits and validation scope.
 
+## herdr machines
+
+herdr can save other computers it connects to over SSH, with `herdr machine add`;
+herdr calls each one a machine, and the sidebar shows each in its own group. In
+this section, the host is the machine hrdrhrdrhrdr is connected to (This Mac, or a
+machine added in Settings), and a herdr machine is a computer saved in the host's
+herdr. hrdrhrdrhrdr can add a herdr machine to the host's herdr, check one that
+fails to connect, and remove one. This needs herdr 0.9.0 or later on the host.
+
+- **Add:** use any of these:
+  - File → Add herdr Machine…
+  - Add herdr Machine… in the host's group header menu
+  - the last row of the New Tab launcher's Machine step. If no herdr machine is
+    saved yet, the launcher skips that step; press Backspace while the Workspace
+    step's field is empty to go back to it.
+
+  Then pick a Host alias from the host's `~/.ssh/config`, or type an SSH target,
+  and name the new machine. hrdrhrdrhrdr runs these checks on the host:
+  1. It resolves the target with `ssh -G`.
+  2. It signs in to the target from the host the way herdr will, with `BatchMode`
+     and strict host key checking.
+  3. If the target's host key is new to the host, hrdrhrdrhrdr shows the key's
+     fingerprint. When you trust the key, hrdrhrdrhrdr adds it to the host's
+     `known_hosts`. It never overwrites a key that has changed or been revoked.
+  4. It runs `herdr machine add`.
+- Three cases need you to answer at a terminal: herdr asks to install or update
+  itself on the new machine, the target is reached through a jump host whose key
+  the host doesn't know, or the sign-in asks you to log in in a browser.
+  hrdrhrdrhrdr then opens a new tab on the host that runs `herdr machine add`
+  there, so you can answer.
+- A target that accepts only a password, or a password plus a one-time code,
+  can't be added, because herdr signs in only with SSH keys or ssh-agent.
+- **Check again:** Reconnect… in the group header menu of a herdr machine that
+  fails to connect runs the checks again.
+- **Remove:** Remove “workbox”… in the group header menu of a herdr machine named
+  workbox, or File → Remove herdr Machine “workbox”…, removes that machine from the
+  host's herdr. The herdr sessions running on workbox keep running, and workbox's
+  host key stays in the host's `known_hosts`.
+
 ## Build from source
 
 Use Xcode 27 and its command-line tools. The repository pins Swift dependencies in `Package.resolved`, Chromium/CEF in `scripts/cef.sh`, and browser Node packages in `package-lock.json`.
