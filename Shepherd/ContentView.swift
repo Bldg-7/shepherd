@@ -51,6 +51,9 @@ struct ContentView: View {
     /// Goes up to have the board close the selection (see
     /// `AgentBoardView.closeRequests`).
     @State private var closeRequests = 0
+    /// Adding a herdr machine to the active machine's herdr, or checking a
+    /// failing one again, while its panel is up (see `HerdrMachineSetupView`).
+    @State private var herdrMachineSetup: HerdrMachineSetup?
     /// The file preview of each pane or tab, kept while another one is
     /// selected (see `FilePreviewPaneStates`).
     @State private var filePreviews = FilePreviewPaneStates()
@@ -118,6 +121,7 @@ struct ContentView: View {
                         launchTargets: $launchTargets,
                         refreshRequests: boardRefreshRequests,
                         closeRequests: closeRequests,
+                        onHerdrMachineSetup: { mode in showHerdrMachineSetup(mode, on: machine) },
                         renaming: Binding(get: { titleRename }, set: { beginTitleRename($0, on: machine) }),
                         renameCommit: $renameCommit,
                         onNavigationDestinations: { destinations in
@@ -260,6 +264,9 @@ struct ContentView: View {
             isShowingPaneSwitcher = false
             justCreatedID = nil
             launcherStart = nil
+            // Its herdr machines are the other machine's: a save still
+            // running is stopped.
+            herdrMachineSetup?.close()
             // The file previews stay with their panes, and come back when a
             // pane is selected again on this machine. Those of a connection
             // that is gone go with it (see `machineStore.allMachines`).
@@ -340,10 +347,18 @@ struct ContentView: View {
                     targets: launchTargets,
                     preset: launcherPreset(launcherStart, on: machine),
                     allowsBrowserAgents: allowsBrowserAgents(on: machine),
+                    addHerdrMachine: addHerdrMachineOffer(on: machine),
+                    onAddHerdrMachine: { showHerdrMachineSetup(.add, on: machine) },
                     create: { request, handOff in try await openTab(request, on: machine, handOff: handOff) },
                     onClose: { self.launcherStart = nil }
                 )
             }
+            #if os(macOS)
+            if let herdrMachineSetup {
+                HerdrMachineSetupView(setup: herdrMachineSetup)
+                    .id(ObjectIdentifier(herdrMachineSetup))
+            }
+            #endif
         }
         .alert("Could Not Open Link", isPresented: Binding<Bool>(
             get: { webLinkFailure != nil }, set: { if !$0 { webLinkFailure = nil } }
@@ -413,8 +428,10 @@ struct ContentView: View {
         .focusedSceneValue(\.isShowingSettings, $isShowingSettings)
         // And the File menu's New Tab… (⌘N) and New Tab in Current
         // Workspace… (⌘T), the launcher.
-        .focusedSceneValue(\.launcherStart, machine == nil || isShowingPaneSwitcher || isShowingSettings ? nil : $launcherStart)
-        .focusedSceneValue(\.isShowingPaneSwitcher, machine == nil || isShowingSettings || launcherStart != nil ? nil : $isShowingPaneSwitcher)
+        .focusedSceneValue(\.launcherStart, machine == nil || isShowingPaneSwitcher || isShowingSettings || herdrMachineSetup != nil ? nil : $launcherStart)
+        .focusedSceneValue(\.isShowingPaneSwitcher, machine == nil || isShowingSettings || launcherStart != nil || herdrMachineSetup != nil ? nil : $isShowingPaneSwitcher)
+        // And its Add herdr Machine…, this panel.
+        .focusedSceneValue(\.herdrMachineCommand, herdrMachineCommand(on: machine))
         // And its Close Tab or Close Pane (⌘W), the board's close.
         .focusedSceneValue(\.closeCommand, CloseCommand(target: closeCommandTarget(on: machine), requests: $closeRequests))
         #endif
@@ -508,6 +525,7 @@ struct ContentView: View {
             showsTabs: showsTabs && AgentBoardView.offersTabs,
             coversTerminal: launcherStart != nil || isShowingSettings || isShowingPaneSwitcher
                 || previewCoversTerminal(on: machine) || webLinkFailure != nil || linkChoice != nil
+                || herdrMachineSetup != nil
         )
     }
 
@@ -819,7 +837,7 @@ struct ContentView: View {
         Button { isShowingPaneSwitcher = true } label: {
             Label("Go to Agent or Pane…", systemImage: "magnifyingglass")
         }
-        .disabled(machineStore.activeMachine == nil || isShowingSettings || launcherStart != nil)
+        .disabled(machineStore.activeMachine == nil || isShowingSettings || launcherStart != nil || herdrMachineSetup != nil)
         .help("Go to Agent or Pane… (⌘P)")
     }
 
@@ -829,7 +847,106 @@ struct ContentView: View {
         } label: {
             Label("New Tab", systemImage: "plus")
         }
-        .disabled(machineStore.activeMachine == nil)
+        .disabled(machineStore.activeMachine == nil || herdrMachineSetup != nil)
+    }
+
+    // MARK: herdr machines
+
+    /// The active machine's monitor, which knows its herdr machines.
+    private func monitor(for machine: Machine) -> MachineMonitor {
+        MachineMonitors.shared.monitor(for: machine, in: machineStore)
+    }
+
+    /// The launcher's row that adds a herdr machine: greyed out, with why,
+    /// while the host's herdr can't have one added.
+    private func addHerdrMachineOffer(on machine: Machine) -> AddHerdrMachineOffer {
+        AddHerdrMachineOffer(unavailableReason: monitor(for: machine).herdrMachineManagementBlocker)
+    }
+
+    #if os(macOS)
+    /// What the File menu's Add herdr Machine… acts on, or nil with no
+    /// machine to add one to.
+    private func herdrMachineCommand(on machine: Machine?) -> HerdrMachineCommand? {
+        guard let machine else { return nil }
+        let monitor = monitor(for: machine)
+        let isFree = herdrMachineSetup == nil && launcherStart == nil && !isShowingSettings && !isShowingPaneSwitcher
+        return HerdrMachineCommand(
+            canAdd: isFree && monitor.canManageHerdrMachines,
+            add: { showHerdrMachineSetup(.add, on: machine) }
+        )
+    }
+    #endif
+
+    /// Brings up the panel that adds a herdr machine to `machine`'s herdr,
+    /// or checks one of them again. Its steps run over a connection of
+    /// their own, closed once nothing of it runs on the host any more.
+    private func showHerdrMachineSetup(_ mode: HerdrMachineSetup.Mode, on machine: Machine) {
+        guard herdrMachineSetup == nil, machineStore.isCurrentConnection(machine),
+              machineStore.activeMachine?.connectionIdentity == machine.connectionIdentity,
+              let transport = try? machineStore.makeHerdrTransport(for: machine) else { return }
+        launcherStart = nil
+        isShowingPaneSwitcher = false
+        let client = HerdrClient(transport: transport)
+        let runner = HerdrClientStepRunner(client: client, connectsFirst: true)
+        let monitor = monitor(for: machine)
+        let setup = HerdrMachineSetup(
+            mode: mode,
+            hostName: machine.displayName,
+            runner: runner,
+            savedMachines: { monitor.savedHerdrMachines ?? [] },
+            listMachines: {
+                try await runner.connect()
+                return try await client.listAllHerdrMachines()
+            }
+        )
+        setup.onMachinesChanged = { monitor.refreshNow() }
+        setup.onTerminal = { handoff in try await openTerminalTab(handoff, on: machine) }
+        setup.onClose = { [weak setup] in
+            if let setup, herdrMachineSetup === setup { herdrMachineSetup = nil }
+        }
+        setup.onEnded = { Task { await runner.disconnect() } }
+        herdrMachineSetup = setup
+    }
+
+    /// Opens a tab on `machine`'s own herdr for what only a person at a
+    /// terminal can answer, runs the command in it, if there is one, and
+    /// selects it. The tab stays: it is the person's to close. It goes in
+    /// the workspace of the selection, if that is on the host's own herdr,
+    /// otherwise in the host's first workspace, or a new one.
+    private func openTerminalTab(_ handoff: HerdrMachineSetup.TerminalHandoff, on machine: Machine) async throws {
+        guard machineStore.isCurrentConnection(machine) else { throw MachineStore.EditError.settingsChanged }
+        let client = HerdrClient(transport: try machineStore.makeHerdrTransport(for: machine))
+        let selected = selection(on: machine).wrappedValue
+        let hostWorkspaces = launchTargets.first { $0.herdrMachine == nil }?.workspaces.map(\.workspace.workspaceID) ?? []
+        let workspaceID = selected?.herdrMachine == nil ? selected?.workspaceID.flatMap { hostWorkspaces.contains($0) ? $0 : nil } ?? hostWorkspaces.first : hostWorkspaces.first
+        let tabName = handoff.tabName.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            try await client.connect()
+            guard machineStore.isCurrentConnection(machine) else { throw MachineStore.EditError.settingsChanged }
+            let created: HerdrClient.CreatedTab
+            if let workspaceID {
+                created = try await client.createTab(inWorkspace: workspaceID, label: tabName.isEmpty ? nil : tabName, on: nil)
+            } else {
+                created = try await client.createWorkspace(label: nil, on: nil)
+                if !tabName.isEmpty {
+                    try await client.renameTab(created.tab.tabID, to: tabName, on: nil)
+                }
+            }
+            if let argv = handoff.argv {
+                try await client.runCommand(paneID: created.pane.paneID, argv: argv)
+            }
+            await client.disconnect()
+            guard machineStore.isCurrentConnection(machine),
+                  machineStore.activeMachine?.connectionIdentity == machine.connectionIdentity else { return }
+            let item: BoardItem = showsTabs && AgentBoardView.offersTabs ? .tab(created.tab) : .pane(created.pane)
+            justCreatedID = item.id
+            selection = MachineSelection(connection: machine.connectionIdentity, item: item)
+            boardRefreshRequests += 1
+        } catch {
+            await client.disconnect()
+            boardRefreshRequests += 1
+            throw error
+        }
     }
 
     /// What the launcher comes up with already picked: nothing, or — for

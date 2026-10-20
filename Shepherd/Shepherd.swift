@@ -174,6 +174,18 @@ extension FocusedValues {
     /// What the window's Close Tab or Close Pane would close — see
     /// `CloseCommands`. Nil only while there is no window.
     @Entry var closeCommand: CloseCommand?
+    /// What the File menu's Add herdr Machine… acts on — see
+    /// `NewTabCommands`. Nil while there is no machine.
+    @Entry var herdrMachineCommand: HerdrMachineCommand?
+}
+
+/// The window's side of the File menu's herdr machine items (see
+/// `NewTabCommands`).
+struct HerdrMachineCommand {
+    /// Whether a herdr machine can be added to the active machine's herdr
+    /// now: it can have them, and nothing else is up over the window.
+    let canAdd: Bool
+    let add: () -> Void
 }
 
 /// The window's side of `CloseCommands`: what ⌘W would close, and the
@@ -211,8 +223,12 @@ private struct CloseCommands: Commands {
 /// Workspace… (⌘T), which brings it up with the machine and the workspace
 /// of the selected pane or tab already picked. They take the place of New
 /// Window, and its ⌘N: the app has the one window.
+///
+/// After them, Add herdr Machine…, which brings up the panel that adds one
+/// to the active machine's herdr. No shortcut: it is rarely wanted.
 private struct NewTabCommands: Commands {
     @FocusedValue(\.launcherStart) private var launcherStart
+    @FocusedValue(\.herdrMachineCommand) private var herdrMachineCommand
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
@@ -226,6 +242,11 @@ private struct NewTabCommands: Commands {
             }
             .keyboardShortcut("t")
             .disabled(launcherStart == nil)
+            Divider()
+            Button("Add herdr Machine…") {
+                herdrMachineCommand?.add()
+            }
+            .disabled(herdrMachineCommand?.canAdd != true)
         }
     }
 

@@ -6765,6 +6765,132 @@
         "ja" : { "stringUnit" : { "state" : "translated", "value" : "herdr machine を追加…" } },
         "ko" : { "stringUnit" : { "state" : "translated", "value" : "herdr machine 추가…" } }
       }
+    },
+    "%lld s" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "%lld 秒" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "%lld초" } }
+      }
+    },
+    "Continue in Terminal" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ターミナルで続ける" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "터미널에서 계속" } }
+      }
+    },
+    "Name the machine and press Return. Left empty, it is called “%@”." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "名前を入力して Return キーを押してください。空欄のままにすると「%@」になります。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "이름을 입력하고 Return 키를 누르십시오. 비워 두면 이름은 ‘%@’이(가) 됩니다." } }
+      }
+    },
+    "No Host aliases in ~/.ssh/config. Type a target." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "~/.ssh/config に Host エイリアスがありません。接続先を入力してください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "~/.ssh/config에 Host 별칭이 없습니다. 대상을 입력하십시오." } }
+      }
+    },
+    "Open Terminal" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ターミナルを開く" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "터미널 열기" } }
+      }
+    },
+    "Pick a Host alias from ~/.ssh/config on %@, or type an SSH target — user@host, or ssh://user@host:port — and press Return." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "%@ の ~/.ssh/config にある Host エイリアスを選ぶか、SSH の接続先(user@host または ssh://user@host:port)を入力して Return キーを押してください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "%@의 ~/.ssh/config에 있는 Host 별칭을 고르거나, SSH 대상(user@host 또는 ssh://user@host:port)을 입력하고 Return 키를 누르십시오." } }
+      }
+    },
+    "Reach the machine's herdr" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "マシンの herdr に接続" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "머신의 herdr에 연결" } }
+      }
+    },
+    "Reconnect…" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "再接続…" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "다시 연결…" } }
+      }
+    },
+    "Resolve the SSH target" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "SSH の接続先を確認" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "SSH 대상 확인" } }
+      }
+    },
+    "SSH Target" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "SSH の接続先" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "SSH 대상" } }
+      }
+    },
+    "Save in herdr" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "herdr に保存" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "herdr에 저장" } }
+      }
+    },
+    "Saved as “%@”" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%@」として保存済み" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "‘%@’(으)로 저장됨" } }
+      }
+    },
+    "Sign in the way herdr will" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "herdr と同じ方法でログイン" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "herdr와 같은 방식으로 로그인" } }
+      }
+    },
+    "Stopping herdr…" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "herdr を停止中…" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "herdr 중지 중…" } }
+      }
+    },
+    "Trust and Continue" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "信頼して続ける" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "신뢰하고 계속" } }
+      }
+    },
+    "Trust the host key of “%@”?" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%@」のホスト鍵を信頼しますか?" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "‘%@’의 호스트 키를 신뢰하겠습니까?" } }
+      }
+    },
+    "Trusting adds it to %@ on %@, as OpenSSH does when you answer yes to it. Compare it with the fingerprint the machine's administrator gives you first." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "信頼すると、OpenSSH で yes と答えたときと同じように %2$@ の %1$@ に追加します。先にマシンの管理者から伝えられたフィンガープリントと照合してください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "신뢰하면 OpenSSH에서 yes로 답할 때처럼 %2$@의 %1$@에 추가합니다. 먼저 머신 관리자가 알려 준 지문과 비교하십시오." } }
+      }
+    },
+    "Try Again" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "再試行" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "다시 시도" } }
+      }
+    },
+    "Use “%@”" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%@」を使用" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "‘%@’ 사용" } }
+      }
+    },
+    "herdr is saving the machine. Press Esc to stop it." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "herdr がマシンを保存しています。止めるには Esc キーを押してください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "herdr가 머신을 저장하는 중입니다. 중지하려면 Esc 키를 누르십시오." } }
+      }
+    },
+    "herdr on the machine" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "マシンの herdr" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "머신의 herdr" } }
+      }
     }
   },
   "version" : "1.1"

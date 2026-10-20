@@ -612,8 +612,10 @@ struct NewTabLauncher: View {
 /// list and the terminals are AppKit views, and AppKit hands them a click
 /// on them before SwiftUI sees it. A local event monitor sees every click
 /// first; one outside the panel closes the launcher and goes no further.
+/// The herdr machine setup overlay (`HerdrMachineSetupView`) uses it the
+/// same way.
 @MainActor
-private final class OutsideClickWatcher {
+final class OutsideClickWatcher {
     /// The panel's frame in the window's top-left-origin coordinates.
     var panelFrame: CGRect = .zero
     /// The launcher's window, once its field is in it. Clicks in other
@@ -663,10 +665,11 @@ private final class OutsideClickWatcher {
 /// Return ends the composition, Backspace takes a jamo back — and acting on
 /// them here as well would open the tab without its last syllable, or take
 /// back a chip mid-word. So the keys are only acted on with nothing marked.
+/// The herdr machine setup overlay (`HerdrMachineSetupView`) has one too.
 ///
 /// The field takes the keyboard when it comes up, and on its way out, when
 /// asked to, gives it back to whatever had it.
-private struct LauncherField: NSViewRepresentable {
+struct LauncherField: NSViewRepresentable {
     @Binding var text: String
     let prompt: String
     let isEnabled: Bool

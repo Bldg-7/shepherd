@@ -91,6 +91,9 @@ struct AgentBoardView: View {
     /// not while a name is being typed into the window's title, nor over a
     /// confirmation or a failure the board still shows.
     let closeRequests: Int
+    /// Brings up the panel that adds a herdr machine to the host, or checks
+    /// a failing one again — from a group header's menu.
+    var onHerdrMachineSetup: (HerdrMachineSetup.Mode) -> Void
     var onNavigationDestinations: ([PaneDestination]) -> Void
 
     /// The rename being typed into the window's title, if there is one.
@@ -130,6 +133,7 @@ struct AgentBoardView: View {
         launchTargets: Binding<[LaunchTarget]>,
         refreshRequests: Int,
         closeRequests: Int,
+        onHerdrMachineSetup: @escaping (HerdrMachineSetup.Mode) -> Void = { _ in },
         renaming: Binding<TitleRenameSession?>,
         renameCommit: Binding<TitleRenameCommit?>,
         onNavigationDestinations: @escaping ([PaneDestination]) -> Void = { _ in }
@@ -141,6 +145,7 @@ struct AgentBoardView: View {
         self._launchTargets = launchTargets
         self.refreshRequests = refreshRequests
         self.closeRequests = closeRequests
+        self.onHerdrMachineSetup = onHerdrMachineSetup
         self._renaming = renaming
         self._renameCommit = renameCommit
         self.onNavigationDestinations = onNavigationDestinations
@@ -398,6 +403,10 @@ struct AgentBoardView: View {
                         }
                     } header: {
                         groupHeader(machine.displayName, panes: agents, rowCount: hostRows.count, groupID: Self.hostGroupID)
+                            .contextMenu {
+                                Button("Add herdr Machine…") { onHerdrMachineSetup(.add) }
+                                    .disabled(!monitor.canManageHerdrMachines)
+                            }
                     }
                 }
                 ForEach(herdrMachineGroups) { group in
@@ -418,6 +427,14 @@ struct AgentBoardView: View {
                             }
                         } header: {
                             groupHeader(group.machine.label, panes: group.agents, rowCount: groupRows.count, groupID: group.id)
+                                .contextMenu {
+                                    // Checking it again is for a machine herdr
+                                    // can't reach now.
+                                    if group.error != nil {
+                                        Button("Reconnect…") { onHerdrMachineSetup(.reconnect(group.machine)) }
+                                            .disabled(!monitor.canManageHerdrMachines)
+                                    }
+                                }
                         }
                     }
                 }
