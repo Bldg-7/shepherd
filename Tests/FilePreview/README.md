@@ -52,6 +52,41 @@ Coverage:
   blocks above the scroll place are paragraphs of one height; for a file that
   mixes headings and code blocks, the same place as with it hidden. Its strings
   have Korean and Japanese, and nothing of it is written to UserDefaults.
+- Find (⌘F), in two parts.
+  - `FindTests.swift`, a stage of this runner, checks the search without a
+    window. Matching ignores case, and a Korean syllable stored as one composed
+    character (NFC) matches the same syllable stored as separate jamo (NFD), in
+    both directions. A rendered Markdown file is searched in its visible text:
+    inline Markdown rendered, link targets left out, code, table cells, and
+    frontmatter keys and values. The source view is searched line by line. The
+    first match is the first at or after the line or block at the top, and next
+    and previous wrap around. A match at the very end of the 120,000 characters
+    shown is found. The highlights have the right ranges and two colors, and
+    link and syntax colors stay under them. The test also lists which keys the
+    preview takes.
+  - The actual panel in an owned never-shown window, beside a view that stands
+    in for the terminal. Keys are sent through the window's
+    `performKeyEquivalent`, as AppKit sends ⌘ keys, and the keyboard is moved
+    between the views only with `makeFirstResponder`. While the terminal view
+    has the keyboard, the preview takes neither ⌘F nor ⌘G. While the preview has
+    it, ⌘F opens the find bar with the keyboard in its field. Typing, ⌘G, ⇧⌘G
+    and Return move the current match, and the preview scrolls to it, in the
+    rendering and in the source. The bar reads 1 / 4 with a current match, 0 / 6
+    right after switching to Source (no current match yet), and No Results. Esc
+    in the field closes only the bar; with the keyboard in the preview, the
+    first Esc closes the bar and the next one the preview. Selecting another
+    pane and coming back keeps the search, and a new read clears it. A text file
+    is searched in its first 120,000 characters only. ⌘F does nothing for a
+    file that couldn't be read. The table of contents sits below the bar.
+  - Clicks: a real click can't be sent to a window that is never shown. The
+    test checks instead which part of the window a click position falls in (the
+    text, the terminal, the find field, the rest of the find bar) and what a
+    click there does with the keyboard. After the test gives the preview the
+    keyboard the same way, returning an expanded preview to its place or
+    closing the preview gives the keyboard back to the terminal view.
+  - The new strings have Korean and Japanese translations. The preview's
+    sources use no SwiftUI `keyboardShortcut`: such a shortcut would take ⌘F
+    even while the terminal has the keyboard.
 
 ## Product behavior
 
@@ -122,6 +157,40 @@ preview, like its file and scroll place: in memory while the window is open,
 not saved. Opening a Markdown file, or reading it again with Retry, starts with
 it shown. With no headings the button is disabled. Esc and `#anchor` links in
 the preview behave as they did before.
+
+Find. ⌘F belongs to the preview only while the preview has the keyboard. A
+click anywhere in the preview gives it the keyboard, beside the terminal as well
+as expanded; before, only an expanded preview had it. After such a click,
+typing goes to the preview until the terminal is clicked, and ⌘F while the
+terminal has the keyboard is the terminal's. ⌘F opens a find bar at the top of
+the preview, above the text. The bar is a Liquid Glass capsule like the
+sidebar's Filter, and the table of contents sits below it. The keyboard goes to
+the bar's field, with the last search, if any, selected in it. Matching ignores
+case; there are no options such as whole words. A Korean syllable matches
+whether it is stored composed or as separate jamo. A rendered Markdown file is
+searched in its visible text, without `**` or link targets but with code,
+tables and frontmatter. Source and other text files are searched line by line
+as written, within the 120,000 characters shown. The bar finds as you type and
+goes to the first match at or after the top of the view. Return, ⌘G or the down
+arrow button goes to the next match; ⇧Return, ⇧⌘G or the up arrow button to the
+previous one, wrapping around at either end. While the bar is closed, ⌘G or
+⇧⌘G opens it and moves to the next or previous match; if no search has been
+typed yet, it only opens the bar, as ⌘F does. Every match has a light yellow
+background and the current one an orange one. The bar shows 3 / 17, or 0 / 17
+while no match is current yet, or No Results. The current match's line in
+Source, or its block in the rendering, comes to the top unless it is already
+fully in view; in a block or line too long to fit, the preview scrolls to about
+where the match is. Switching between the rendering and Source keeps the
+search, with no current match until the next ⌘G or Return. Esc or the close
+button closes the bar and removes the highlights, keeping the search for the
+next ⌘F. With the bar closed and the keyboard in the preview, Esc returns an
+expanded preview to its place, or closes one beside the terminal. Closing the
+preview, or returning an expanded one to its place, gives the keyboard back to
+the terminal that had it. Each pane's preview keeps its bar, search and current
+match while another pane is selected; opening a file or Retry starts them over.
+Not included: Find menu items in the Edit menu, Use Selection for Find (⌘E),
+the find text shared with other apps, replace, regular expressions, and find in
+the In-app Browser.
 
 A known limit, with or without the table of contents: in the rendering, a
 Markdown file that mixes blocks of different heights, such as headings and code
