@@ -3,7 +3,16 @@
 <!--
   Merged into the Info.plist Xcode generates, for iOS and iPadOS only.
   Shepherd has one window: no second scene, on an iPad with Stage Manager
-  either (docs/mobile-design.md, section 7).
+  either (docs/mobile-design.md, section 7). The scene manifest is this
+  file's alone: the target doesn't generate one, which would say yes.
+
+  The app's only encryption is SSH's, by standard algorithms (swift-crypto,
+  swift-nio-ssh), and the App Store doesn't offer it in France, which would
+  ask for a declaration of it: so no export compliance documents, and no
+  question about them at each upload.
+
+  A machine on the local network asks for the local network permission the
+  first time the app connects to it.
 -->
 <plist version="1.0">
 <dict>
@@ -12,5 +21,9 @@
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<false/>
 	</dict>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>hrdrhrdrhrdr connects over SSH to computers on your local network that you add.</string>
 </dict>
 </plist>

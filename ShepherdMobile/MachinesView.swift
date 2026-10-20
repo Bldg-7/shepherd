@@ -2,10 +2,14 @@ import SwiftUI
 import ShepherdKit
 
 /// The machines, each a herdr reached over SSH. Tapping one shows its
-/// board; the plus adds one.
+/// board; the plus adds one. The About menu has the privacy policy, which
+/// opens in the browser, and the open-source licenses.
 struct MachinesView: View {
     let machineStore: MachineStore
     @State private var isAdding = false
+    @State private var isShowingLicenses = false
+
+    private static let privacyPolicy = URL(string: "https://bldg-7.github.io/shepherd/privacy/")!
 
     var body: some View {
         NavigationStack {
@@ -41,6 +45,20 @@ struct MachinesView: View {
                 ConversationView(destination: destination, machineStore: machineStore)
             }
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Menu {
+                        Link(destination: Self.privacyPolicy) {
+                            Label("Privacy Policy", systemImage: "hand.raised")
+                        }
+                        Button {
+                            isShowingLicenses = true
+                        } label: {
+                            Label("Open Source Licenses", systemImage: "doc.text")
+                        }
+                    } label: {
+                        Label("About", systemImage: "info.circle")
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         isAdding = true
@@ -51,6 +69,9 @@ struct MachinesView: View {
             }
             .sheet(isPresented: $isAdding) {
                 AddMachineView(machineStore: machineStore)
+            }
+            .sheet(isPresented: $isShowingLicenses) {
+                OpenSourceLicensesView()
             }
         }
     }
