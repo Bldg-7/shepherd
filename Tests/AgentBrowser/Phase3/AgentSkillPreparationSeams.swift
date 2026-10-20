@@ -60,11 +60,13 @@ actor LocalHerdrTransport: HerdrTransport {
     let hasWork = false
     let isReady = false
     let failure: String? = "native-fixture-required"
+    var hasConnected = false
     init(stage: PiStagedLaunch, owner: AgentPaneIdentity, machine: Machine, client: HerdrClient, cwd: String, preferences: AgentRuntimePreferences) throws {
         throw PiBridgeFailure.unavailable
     }
     func prepare() async throws { throw PiBridgeFailure.unavailable }
     func waitUntilReady() async throws { throw PiBridgeFailure.unavailable }
+    func nameSession(_ name: String) -> Bool { false }
     func stop() async {}
 }
 @MainActor final class MachineStore {
