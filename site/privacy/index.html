@@ -151,7 +151,7 @@
   <h2>hrdrhrdrhrdr for iPhone and iPad</h2>
   <h3>What stays on your device</h3>
   <ul>
-    <li>The machines you add: the name you give each one, its host name, user name and port, and the herdr session to use. They are kept in the app’s own storage on the device.</li>
+    <li>The machines you add: the name you give each one, its host name, user name and port, and the herdr session to use. They are kept in the app’s own storage on the device and, like other app data, in the device’s backups.</li>
     <li>The SSH key the app makes for each machine. Its private key is kept in the device’s Keychain, only on this device: it isn’t synced with iCloud Keychain and doesn’t move to another device.</li>
     <li>Each machine’s host key fingerprint, remembered the first time the app connects, so that the app can refuse a machine whose key has changed.</li>
   </ul>
@@ -174,7 +174,7 @@
 
   <h2>Keeping and deleting your data</h2>
   <ul>
-    <li>Everything the app keeps stays on your device, for as long as you keep it there. We hold no copy.</li>
+    <li>Everything the app keeps stays on your device, and in the backups you make of it, for as long as you keep it there. We hold no copy.</li>
     <li>Removing a machine in the app deletes its details and its saved key or password from the Keychain.</li>
     <li>Deleting the app doesn’t always delete everything: iOS may keep Keychain items after an app is deleted, and on a Mac the app’s preferences, its folder and its Keychain items stay when you move the app to the Trash. To delete the keys too, remove your machines in the app before you delete it.</li>
     <li>If you added a key from the app to a machine’s <code>~/.ssh/authorized_keys</code>, remove that line, the one the app showed you when you added the machine, to take away the device’s access to it.</li>
@@ -203,7 +203,7 @@
   <h2>iPhone·iPad용 hrdrhrdrhrdr</h2>
   <h3>기기에만 보관되는 것</h3>
   <ul>
-    <li>사용자가 추가한 machine: 각 machine에 붙인 이름, 호스트 이름, 사용자 이름, 포트, 사용할 herdr 세션. 기기 안의 앱 저장 공간에 보관됩니다.</li>
+    <li>사용자가 추가한 machine: 각 machine에 붙인 이름, 호스트 이름, 사용자 이름, 포트, 사용할 herdr 세션. 기기 안의 앱 저장 공간에 보관되며, 다른 앱 데이터처럼 기기 백업에도 포함됩니다.</li>
     <li>앱이 machine마다 만드는 SSH 키. 개인 키는 기기의 Keychain에 이 기기 전용으로 보관되어 iCloud 키체인과 동기화되지 않고 다른 기기로 옮겨지지 않습니다.</li>
     <li>각 machine의 호스트 키 지문. 처음 연결할 때 기억해 두었다가, 키가 바뀐 machine에는 연결하지 않습니다.</li>
   </ul>
@@ -226,7 +226,7 @@
 
   <h2>보관과 삭제</h2>
   <ul>
-    <li>앱이 보관하는 모든 정보는 사용자가 지우기 전까지 사용자의 기기에만 있습니다. 저희는 사본을 갖고 있지 않습니다.</li>
+    <li>앱이 보관하는 모든 정보는 사용자가 지우기 전까지 사용자의 기기와 사용자가 만든 그 기기의 백업에만 있습니다. 저희는 사본을 갖고 있지 않습니다.</li>
     <li>앱에서 machine을 삭제하면 그 machine의 정보와, Keychain에 저장된 키나 비밀번호가 함께 삭제됩니다.</li>
     <li>앱을 삭제해도 모든 것이 지워지지는 않습니다. iOS는 앱이 삭제된 뒤에도 Keychain 항목을 남겨 둘 수 있고, Mac에서는 앱을 휴지통으로 옮겨도 앱의 환경설정, 앱 폴더, Keychain 항목이 남습니다. 키까지 지우려면 앱을 삭제하기 전에 앱에서 machine을 먼저 삭제하세요.</li>
     <li>앱이 만든 키를 machine의 <code>~/.ssh/authorized_keys</code>에 추가했다면, machine을 추가할 때 앱이 보여 준 그 줄을 지워 기기의 접근 권한을 없애세요.</li>
