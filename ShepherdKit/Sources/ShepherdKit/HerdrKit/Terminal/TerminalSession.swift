@@ -46,6 +46,9 @@ public actor TerminalSession: TerminalSessionProviding {
     private let terminalID: String
     /// The herdr machine the pane is on, or nil for the host's own herdr.
     private let herdrMachine: HerdrMachine?
+    /// Whether the attach runs with mouse capture off (see
+    /// `HerdrExecutable.attachConfiguration`). The Mac app's attaches do.
+    private let withoutMouseCapture: Bool
 
     private var client: SSHClient?
     private var outbound: TTYStdinWriter?
@@ -61,7 +64,7 @@ public actor TerminalSession: TerminalSessionProviding {
     /// that it should unwind instead of going on to attach.
     private var stopRequested = false
 
-    public init(host: String, port: Int, username: String, credential: HostCredential, sessionName: String = "", pinnedFingerprint: String?, terminalID: String, on herdrMachine: HerdrMachine? = nil) {
+    public init(host: String, port: Int, username: String, credential: HostCredential, sessionName: String = "", pinnedFingerprint: String?, terminalID: String, on herdrMachine: HerdrMachine? = nil, withoutMouseCapture: Bool = false) {
         self.host = host
         self.port = port
         self.username = username
@@ -70,6 +73,7 @@ public actor TerminalSession: TerminalSessionProviding {
         self.pinnedFingerprint = pinnedFingerprint
         self.terminalID = terminalID
         self.herdrMachine = herdrMachine
+        self.withoutMouseCapture = withoutMouseCapture
     }
 
     /// Connects, attaches to the pane, and returns the live output stream
@@ -111,31 +115,10 @@ public actor TerminalSession: TerminalSessionProviding {
             terminalPixelHeight: 0,
             terminalModes: SSHTerminalModes([:])
         )
-        // The exec string goes through more than one shell before herdr
-        // sees its arguments (see `HerdrExecutable.remoteCommand`), so each
-        // dynamic argument is quoted here, for the shell that finally runs
-        // herdr, and the layers above add their own. Quoting only for the
-        // outermost shell would hand the inner one the session name and
-        // terminal ID bare: a space would split the argument, and `;` or
-        // `$(…)` would run as code.
-        var arguments: [String] = []
-        if !sessionName.isEmpty {
-            arguments += ["--session", shellQuoted(sessionName)]
-        }
-        arguments += HerdrExecutable.attachArguments(terminalID: terminalID).map(shellQuoted)
-        let command: String
-        if let herdrMachine {
-            // A pane on one of the host's herdr machines: the host's own
-            // `ssh` carries the attach on, as it carries herdr's requests to
-            // that machine. `sessionName` is this connection's session on
-            // the host, not the machine's — `sshAttachArguments` uses the
-            // machine's own.
-            command = (["ssh"] + HerdrExecutable.sshAttachArguments(to: herdrMachine, terminalID: terminalID))
-                .map(shellQuoted)
-                .joined(separator: " ")
-        } else {
-            command = HerdrExecutable.remoteCommand(arguments: arguments.joined(separator: " "))
-        }
+        // A pane on one of the host's herdr machines is attached to over
+        // the host's own `ssh` (see `HerdrExecutable.remoteAttachCommand`).
+        let command = HerdrExecutable.remoteAttachCommand(sessionName: sessionName, terminalID: terminalID,
+                                                          herdrMachine: herdrMachine, withoutMouseCapture: withoutMouseCapture)
 
         var outputContinuation: AsyncStream<ByteBuffer>.Continuation!
         let outputStream = AsyncStream<ByteBuffer> { outputContinuation = $0 }

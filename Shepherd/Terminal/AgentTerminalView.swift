@@ -95,7 +95,10 @@ struct PaneTerminalView: View {
                     sessionName: current.sessionName,
                     pinnedFingerprint: current.pinnedHostKeyFingerprint,
                     terminalID: terminalID,
-                    on: herdrMachine
+                    on: herdrMachine,
+                    // So that a drag selects text in a pane whose program
+                    // doesn't take the mouse (see `HerdrExecutable.attachConfiguration`).
+                    withoutMouseCapture: true
                 )
             }
             throw MachineStore.EditError.missingCredential
@@ -200,6 +203,10 @@ struct PaneTerminalView: View {
         }
     }
 }
+
+/// The attach's output keeps the terminal's selection (see
+/// `FocusReportingTerminalView.feedKeepingSelection`).
+extension FocusReportingTerminalView: SelectionKeepingTerminal {}
 
 #Preview {
     NavigationStack {

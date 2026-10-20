@@ -83,6 +83,20 @@ final class FocusReportingTerminalView: TerminalView {
     private var fileGesture = TerminalFileGesture()
     private var capturedFileHandler: ((String, TerminalLinkClick) -> Void)?
     private(set) var drawGate = TerminalDrawGate()
+    /// The press of a plain click on a link in a pane whose program doesn't
+    /// take the mouse, until it is released or dragged into a selection.
+    private var linkPressForSelection: NSEvent?
+    /// Whether a press that SwiftTerm handles is down: a selection being
+    /// dragged out may cross cells the program is redrawing.
+    private var pressInProgress = false
+    /// `allowMouseReporting` as it was before a ⇧ press set it off, until
+    /// that press is released.
+    private var reportingBeforeShiftPress: Bool?
+    /// The selection as `feedKeepingSelection` last left it, with its text.
+    private var keptSelection: (start: Position, end: Position, text: String)?
+    private var wheelMonitor: Any?
+    /// Wheel motion not yet a whole line, as SwiftTerm keeps it.
+    private var wheelRemainder: CGFloat = 0
 
     // While the window can't be seen, SwiftTerm still takes every byte and
     // keeps its screen up to date, but what it asks to redraw is only noted
@@ -222,28 +236,209 @@ final class FocusReportingTerminalView: TerminalView {
         sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
     }
 
+    /// Feeds the program's output to SwiftTerm, keeping the selection.
+    ///
+    /// SwiftTerm drops the selection at every byte of output while
+    /// `allowMouseReporting` is on, which it stays so that a program that
+    /// asks for the mouse gets it; and herdr sends the pane's screen many
+    /// times a second while an agent works. So the selection is put back on
+    /// the same cells after each piece of output, unless
+    /// - the text in those cells changed: herdr draws the pane on the
+    ///   alternate screen cell by cell, so output that scrolls lands in the
+    ///   same cells, and the selection can't follow it. Not while the
+    ///   selection is still being dragged out;
+    /// - the program went over to the alternate screen or back.
+    ///
+    /// A key, a press that doesn't select (`mouseDown`) and a change of size
+    /// still end it, as SwiftTerm has them.
+    func feedKeepingSelection(_ bytes: ArraySlice<UInt8>) {
+        guard let selection, selection.active else {
+            keptSelection = nil
+            feed(byteArray: bytes)
+            return
+        }
+        let (start, end) = (selection.start, selection.end)
+        // The text read after the last output, while the selection hasn't
+        // moved since; only the output changes what is in its cells.
+        let text = keptSelection.flatMap { $0.start == start && $0.end == end ? $0.text : nil } ?? selection.getSelectedText()
+        let alternate = getTerminal().isCurrentBufferAlternate
+        feed(byteArray: bytes)
+        guard getTerminal().isCurrentBufferAlternate == alternate else {
+            keptSelection = nil
+            selectNone()
+            return
+        }
+        if !selection.active { selection.setSelection(start: start, end: end) }
+        let now = selection.getSelectedText()
+        if now != text, !pressInProgress {
+            keptSelection = nil
+            selectNone()
+            return
+        }
+        keptSelection = (selection.start, selection.end, now)
+    }
+
+    /// Sends the wheel over this terminal to herdr as a mouse report, the
+    /// one SwiftTerm sends while mouse reporting is on, when it is off and
+    /// the alternate screen is up: that is where herdr draws the pane, and
+    /// where SwiftTerm would otherwise send ↑ and ↓ for the wheel, which a
+    /// shell and Claude Code take as going through their history. The
+    /// attach, which no longer turns mouse reporting on (see
+    /// `HerdrExecutable.attachConfiguration`), still scrolls herdr's
+    /// scrollback for the report, as it did. Lines are counted as SwiftTerm
+    /// counts them. Returns whether the event was taken; SwiftTerm's own
+    /// `scrollWheel` isn't open to a subclass, so this is called from a
+    /// local event monitor, before the event reaches it.
+    ///
+    /// While a ⇧ press is down, which turns `allowMouseReporting` off only
+    /// to keep its selection, the wheel goes where it went with it on: to
+    /// herdr as above, or to a program with mouse reporting on as SwiftTerm
+    /// reports it, rather than as ↑ and ↓.
+    ///
+    /// Left to SwiftTerm: the wheel elsewhere, or over something drawn over
+    /// the terminal; the program having mouse reporting on, outside a ⇧
+    /// press; the normal screen, with its own scrollback; and ⇧, which
+    /// SwiftTerm keeps from the program unless it asked for it.
+    func reportWheel(_ event: NSEvent) -> Bool {
+        guard event.type == .scrollWheel, let window, event.window === window, !isHiddenOrHasHiddenAncestor else { return false }
+        let terminal = getTerminal()
+        let flags = event.modifierFlags
+        let toHerdr = terminal.mouseMode == .off && terminal.isCurrentBufferAlternate
+        let toProgram = terminal.mouseMode != .off && reportingBeforeShiftPress != nil
+        guard toHerdr || toProgram, reportingBeforeShiftPress ?? allowMouseReporting,
+              !(flags.contains(.shift) && !terminal.mouseShiftCapture), event.scrollingDeltaY != 0 else { return false }
+        let point = convert(event.locationInWindow, from: nil)
+        let root = window.contentView?.superview ?? window.contentView
+        guard bounds.contains(point), let root,
+              let hit = root.hitTest(root.superview?.convert(event.locationInWindow, from: nil) ?? event.locationInWindow),
+              hit === self || hit.isDescendant(of: self) else { return false }
+        let scale = window.backingScaleFactor
+        guard let pixels = cellSizeInPixels(source: terminal), pixels.width > 0, scale > 0 else { return false }
+        let cell = CGSize(width: CGFloat(pixels.width) / scale, height: caretFrame.height)
+        guard cell.height > 0 else { return false }
+        // SwiftTerm's `scrollWheel`: a trackpad's points add up to lines, a
+        // wheel's notch is at least one.
+        let delta = event.scrollingDeltaY * scrollSensitivity
+        let lines: Int
+        if event.hasPreciseScrollingDeltas {
+            wheelRemainder += delta
+            lines = Int(wheelRemainder / cell.height)
+            wheelRemainder -= CGFloat(lines) * cell.height
+        } else {
+            wheelRemainder = 0
+            let rounded = Int(delta.rounded())
+            lines = rounded != 0 ? rounded : (event.scrollingDeltaY > 0 ? 1 : -1)
+        }
+        guard lines != 0 else { return true }
+        let column = min(max(0, Int(point.x / cell.width)), terminal.cols - 1)
+        let row = min(max(0, Int((bounds.height - point.y) / cell.height)), terminal.rows - 1)
+        if toProgram {
+            let button = terminal.encodeButton(button: lines > 0 ? 4 : 5, release: false, shift: flags.contains(.shift),
+                                               meta: flags.contains(.option), control: flags.contains(.control))
+            let pixelX = Int(min(max(point.x, 0), bounds.width)), pixelY = Int(bounds.height - min(max(point.y, 0), bounds.height))
+            for _ in 0..<abs(lines) { terminal.sendEvent(buttonFlags: button, x: column, y: row, pixelX: pixelX, pixelY: pixelY) }
+            return true
+        }
+        var button = lines > 0 ? 64 : 65
+        if flags.contains(.shift) { button |= 4 }
+        if flags.contains(.option) { button |= 8 }
+        if flags.contains(.control) { button |= 16 }
+        let report = Array("\u{1b}[<\(button);\(column + 1);\(row + 1)M".utf8)
+        for _ in 0..<abs(lines) { send(data: report[...]) }
+        return true
+    }
+
+    /// Listens for the wheel while the view is in a window (`reportWheel`).
+    private func followWheel() {
+        if window == nil {
+            if let wheelMonitor { NSEvent.removeMonitor(wheelMonitor) }
+            wheelMonitor = nil
+        } else if wheelMonitor == nil {
+            wheelMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+                MainActor.assumeIsolated { self?.reportWheel(event) == true } ? nil : event
+            }
+        }
+    }
+
+    /// Whether a local event monitor is listening for the wheel.
+    var followsWheel: Bool { wheelMonitor != nil }
+
+    /// Ends a ⇧ press that set mouse reporting off, putting it back.
+    private func endShiftPress() {
+        guard let reporting = reportingBeforeShiftPress else { return }
+        reportingBeforeShiftPress = nil
+        allowMouseReporting = reporting
+    }
+
     override func mouseDown(with event: NSEvent) {
+        // A release that never came (the view left its window mid-press).
+        endShiftPress()
         fileGesture.cancel()
         capturedFileHandler = nil
+        linkPressForSelection = nil
+        pressInProgress = false
         let point = convert(event.locationInWindow, from: nil)
+        let modifiers = event.modifierFlags.intersection([.shift, .control, .option, .command])
+        // ⇧ selects, as in other terminals: SwiftTerm's own selection, on a
+        // link too, decided at the press for the whole drag, and with mouse
+        // reporting off until the release, so that output arriving
+        // meanwhile doesn't drop it. Unless the program has asked for ⇧
+        // presses (XTSHIFTESCAPE), which then go to it as before.
+        if modifiers == .shift, !getTerminal().mouseShiftCapture {
+            reportingBeforeShiftPress = allowMouseReporting
+            allowMouseReporting = false
+            pressInProgress = true
+            super.mouseDown(with: event)
+            return
+        }
+        // Any other press ends the selection, as a click does in any
+        // terminal, and goes where it went before.
+        if selection?.active == true { selectNone() }
         // The second and third press of a double or triple click on a link
         // are claimed too, and open nothing (see `TerminalFileGesture`).
-        if fileGesture.begin(link: TerminalFileHit.link(in: self, point: point), at: point, clickCount: event.clickCount) {
+        let link = TerminalFileHit.link(in: self, point: point)
+        if fileGesture.begin(link: link, at: point, clickCount: event.clickCount) {
             capturedFileHandler = onOpenFileGesture // owner at press, not release
+            // A plain drag from a link selects, where the program doesn't
+            // take the mouse (see `mouseDragged`).
+            if link != nil, modifiers.isEmpty, event.clickCount <= 1, getTerminal().mouseMode == .off {
+                linkPressForSelection = event
+            }
             return // no remote press, including explicit OSC8/file URI targets
         }
+        pressInProgress = true
         super.mouseDown(with: event)
     }
 
     override func mouseDragged(with event: NSEvent) {
         if fileGesture.ownsPointer {
             fileGesture.move(to: convert(event.locationInWindow, from: nil))
+            // A plain drag from a link that has gone far enough not to open
+            // it (`TerminalFileGesture`) selects from where it was pressed,
+            // while the program still doesn't take the mouse. The link
+            // opens nothing.
+            if let press = linkPressForSelection, fileGesture.dragged, getTerminal().mouseMode == .off {
+                linkPressForSelection = nil
+                fileGesture.cancel()
+                capturedFileHandler = nil
+                pressInProgress = true
+                super.mouseDown(with: press)
+                if let first = NSEvent.mouseEvent(with: .leftMouseDragged, location: press.locationInWindow,
+                    modifierFlags: event.modifierFlags, timestamp: event.timestamp, windowNumber: event.windowNumber,
+                    context: nil, eventNumber: event.eventNumber, clickCount: press.clickCount, pressure: event.pressure) {
+                    super.mouseDragged(with: first)
+                }
+                super.mouseDragged(with: event)
+            }
             return
         }
         super.mouseDragged(with: event)
     }
 
     override func mouseUp(with event: NSEvent) {
+        linkPressForSelection = nil
+        pressInProgress = false
+        defer { endShiftPress() }
         if fileGesture.ownsPointer {
             let handler = capturedFileHandler
             capturedFileHandler = nil
@@ -288,6 +483,10 @@ final class FocusReportingTerminalView: TerminalView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         observeWindowVisibility()
+        followWheel()
+        endShiftPress()
+        pressInProgress = false
+        linkPressForSelection = nil
         guard focusesWhenShown, window != nil else { return }
         focusesWhenShown = false
         // On the next turn of the run loop: the view lands in its window in

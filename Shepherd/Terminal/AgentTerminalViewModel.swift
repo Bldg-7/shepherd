@@ -228,6 +228,16 @@ final class AgentTerminalViewModel {
     private func feed(_ buffer: ByteBuffer) {
         guard let terminalView else { return }
         let bytes = Array(buffer.readableBytesView)
-        terminalView.feed(byteArray: bytes[...])
+        if let keeping = terminalView as? SelectionKeepingTerminal {
+            keeping.feedKeepingSelection(bytes[...])
+        } else {
+            terminalView.feed(byteArray: bytes[...])
+        }
     }
+}
+
+/// A terminal view that keeps its selection through the program's output
+/// (`FocusReportingTerminalView`).
+@MainActor protocol SelectionKeepingTerminal: AnyObject {
+    func feedKeepingSelection(_ bytes: ArraySlice<UInt8>)
 }

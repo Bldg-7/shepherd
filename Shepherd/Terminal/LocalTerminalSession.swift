@@ -64,12 +64,18 @@ actor LocalTerminalSession: TerminalSessionProviding {
         let process = LocalProcess(delegate: bridge, dispatchQueue: queue)
         self.process = process
 
-        // herdr is started directly where it is normally installed, and only
-        // looked up through an interactive zsh otherwise (see
-        // `HerdrExecutable`). Started directly, the arguments go straight to
-        // execvp with no shell to quote for; the fallback's `-c` string is
-        // parsed by that one zsh, so they are quoted for it.
-        //
+        // How herdr is reached, with what environment: see
+        // `LocalAttachLaunch`. The attach configuration is written, if it
+        // has to be, before the fork.
+        let launch = LocalAttachLaunch.make(
+            terminalID: terminalID,
+            herdrMachine: herdrMachine,
+            herdrPath: herdrMachine == nil ? HerdrExecutable.localPath() : nil,
+            configurationPath: herdrMachine == nil ? HerdrExecutable.localAttachConfiguration(in: LocalAttachLaunch.configurationFolder) : nil,
+            baseEnvironment: Terminal.getEnvironmentVariables(termName: "xterm-256color"),
+            inherited: ProcessInfo.processInfo.environment
+        )
+
         // SwiftTerm forks right here, on this actor's dispatch thread, and
         // the child keeps that thread's signal mask through exec. Dispatch
         // threads block SIGHUP and SIGTERM, so a herdr started directly would
@@ -84,33 +90,7 @@ actor LocalTerminalSession: TerminalSessionProviding {
         }
         var previousMask = sigset_t()
         pthread_sigmask(SIG_UNBLOCK, &hangupSignals, &previousMask)
-        if let herdrMachine {
-            // A pane on one of this Mac's herdr machines is attached to over
-            // this Mac's own `ssh`, the one herdr uses to reach that machine
-            // (looked up on PATH, as herdr does). SwiftTerm's default
-            // environment for a child has the terminal basics and who the
-            // user is, but no PATH — `env` would then look only in
-            // /usr/bin:/bin — and no SSH_AUTH_SOCK, without which ssh can't
-            // use the agent holding the keys herdr's own requests go out
-            // with. Both are passed on from the app's environment.
-            var environment = Terminal.getEnvironmentVariables(termName: "xterm-256color")
-            let inherited = ProcessInfo.processInfo.environment
-            for name in ["PATH", "SSH_AUTH_SOCK"] {
-                if let value = inherited[name] {
-                    environment.append("\(name)=\(value)")
-                }
-            }
-            process.startProcess(
-                executable: "/usr/bin/env",
-                args: ["ssh"] + HerdrExecutable.sshAttachArguments(to: herdrMachine, terminalID: terminalID),
-                environment: environment
-            )
-        } else if let herdr = HerdrExecutable.localPath() {
-            process.startProcess(executable: herdr, args: HerdrExecutable.attachArguments(terminalID: terminalID))
-        } else {
-            let attach = (["herdr"] + HerdrExecutable.attachArguments(terminalID: terminalID).map(shellQuoted)).joined(separator: " ")
-            process.startProcess(executable: "/bin/zsh", args: ["-ic", attach])
-        }
+        process.startProcess(executable: launch.executable, args: launch.arguments, environment: launch.environment)
         pthread_sigmask(SIG_SETMASK, &previousMask, nil)
 
         return stream

@@ -14,7 +14,9 @@ import CoreGraphics
 nonisolated struct TerminalFileGesture {
     private var link: String?
     private var origin = CGPoint.zero
-    private var dragged = false
+    /// Whether the pointer has gone more than 8pt from the press, so that
+    /// the release opens nothing.
+    private(set) var dragged = false
     private var owned = false
     /// Whether presses that continue this click, as a double or triple
     /// click, are taken without opening anything.
