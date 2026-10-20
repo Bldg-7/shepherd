@@ -4,7 +4,14 @@ A native macOS workspace for Herdr terminals and coding agents.
 
 [Download hrdrhrdrhrdr](https://github.com/Bldg-7/shepherd/releases/latest/download/hrdrhrdrhrdr.dmg) · [Website](https://bldg-7.github.io/shepherd/) · [Releases](https://github.com/Bldg-7/shepherd/releases)
 
-This repository contains the **macOS application source**, its required shared dependencies, website and signed releases. Mobile application branches and development evidence are not included. The existing public repository history is preserved.
+This repository contains:
+
+- the source of the **macOS application**
+- the source of the **iPhone and iPad application** (`ShepherdMobile/`)
+- the `ShepherdKit` package that both applications use
+- their required shared dependencies, the website, and signed releases
+
+Development evidence is not included. The existing public repository history is preserved.
 
 ## Requirements
 
