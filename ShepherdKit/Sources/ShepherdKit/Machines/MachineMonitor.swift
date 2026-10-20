@@ -123,6 +123,14 @@ public final class MachineMonitor {
     /// The herdr machines saved on the host (see `HerdrMachine`), each with
     /// what was last heard from it. Empty while the host has none.
     public private(set) var herdrMachineGroups: [HerdrMachineGroup] = []
+    /// Every herdr machine saved on the host, the disabled ones included,
+    /// as last listed; nil until the host's herdr has listed them once over
+    /// this connection — before that, and for good from a herdr older than
+    /// 0.9.0, which has no saved machines.
+    public private(set) var savedHerdrMachines: [HerdrMachine]?
+    /// Why the host's herdr machines couldn't be listed the last time they
+    /// were asked for, or nil once they were.
+    public private(set) var herdrMachineListError: String?
     /// How many snapshots of the host's herdr have come since it started,
     /// and how many rounds over its herdr machines: what the board goes by
     /// to bring its selection up to date with each. Nought for none yet.
@@ -271,8 +279,23 @@ public final class MachineMonitor {
         loadError = nil
         isRetrying = false
         herdrMachineGroups = []
+        savedHerdrMachines = nil
+        herdrMachineListError = nil
         snapshotCount = 0
         herdrMachineRoundCount = 0
+    }
+
+    /// Whether herdr machines can be added to the host and removed from it
+    /// now: its herdr listed them the last time it was asked.
+    public var canManageHerdrMachines: Bool {
+        savedHerdrMachines != nil && herdrMachineListError == nil
+    }
+
+    /// Why herdr machines can't be added or removed now, or nil when they
+    /// can — or when it isn't known yet.
+    public var herdrMachineManagementBlocker: String? {
+        if let herdrMachineListError { return herdrMachineListError }
+        return savedHerdrMachines == nil ? String(localized: "Loading…", bundle: .shepherdKit) : nil
     }
 
     private func cancelRun() {
@@ -690,8 +713,29 @@ public final class MachineMonitor {
         var failureDelay = timing.herdrMachineInterval
         while !Task.isCancelled {
             let delay: Duration
-            if let machines = try? await session.client.listHerdrMachines() {
+            let listed: [HerdrMachine]?
+            do {
+                listed = try await session.client.listAllHerdrMachines()
+            } catch {
                 guard !Task.isCancelled else { return }
+                // Kept with its reason rather than dropped: it is what the
+                // menus that add and remove herdr machines are greyed out
+                // for, and what the new tab launcher says in their place.
+                let reason = Self.herdrMachineListFailure(error)
+                if herdrMachineListError != reason {
+                    herdrMachineListError = reason
+                }
+                listed = nil
+            }
+            if let listed {
+                guard !Task.isCancelled else { return }
+                if savedHerdrMachines != listed {
+                    savedHerdrMachines = listed
+                }
+                if herdrMachineListError != nil {
+                    herdrMachineListError = nil
+                }
+                let machines = listed.filter(\.enabled)
                 let groups = await Self.fetchSnapshots(on: machines, previous: herdrMachineGroups, client: session.client)
                 guard !Task.isCancelled else { return }
                 show(groups)
@@ -821,6 +865,18 @@ public final class MachineMonitor {
         #else
         return false
         #endif
+    }
+
+    /// What to say for a host whose herdr couldn't list its herdr machines.
+    /// A herdr older than 0.9.0, which brought saved machines, turns the
+    /// `machine` command down as one it doesn't know (exit status 2,
+    /// "unknown command: machine" — herdr 0.9.1's own check for commands it
+    /// doesn't have, src/main.rs), and that is said in so many words.
+    public nonisolated static func herdrMachineListFailure(_ error: any Error) -> String {
+        if let error = error as? HerdrCommandError, error.message.contains("unknown command: machine") {
+            return String(localized: "This machine's herdr is older than 0.9.0, the first to save machines. Update herdr to add machines to it.", bundle: .shepherdKit)
+        }
+        return connectionFailureDescription(error)
     }
 
     /// A snapshot that didn't come back within `snapshotTimeout`.

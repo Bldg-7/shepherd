@@ -386,6 +386,18 @@
         "ja" : { "stringUnit" : { "state" : "translated", "value" : "ホストが %lld 秒以内に終わりませんでした。" } },
         "ko" : { "stringUnit" : { "state" : "translated", "value" : "호스트가 %lld초 안에 끝내지 못했습니다." } }
       }
+    },
+    "Loading…" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "読み込み中…" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "불러오는 중…" } }
+      }
+    },
+    "This machine's herdr is older than 0.9.0, the first to save machines. Update herdr to add machines to it." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "このマシンの herdr は、マシンの保存に初めて対応した 0.9.0 より古いバージョンです。マシンを追加するには herdr をアップデートしてください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "이 머신의 herdr는 머신 저장을 처음 지원한 0.9.0보다 오래되었습니다. herdr를 업데이트해야 머신을 추가할 수 있습니다." } }
+      }
     }
   },
   "version" : "1.1"
