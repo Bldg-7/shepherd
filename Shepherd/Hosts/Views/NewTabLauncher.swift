@@ -142,9 +142,11 @@ struct LaunchRequest {
 /// field; Backspace in an empty field takes the last one back and asks again.
 /// Esc, a click anywhere else and the app going to the background close it.
 ///
-/// With one machine only, that one is picked from the start, and its chip
-/// can't be taken back. The workspace list always ends with a way to make a
-/// new workspace — the only way forward on a herdr that has none.
+/// With one machine only, that one is picked from the start; its chip can be
+/// taken back only to get to the machine list's last row, which adds a herdr
+/// machine to the host (`AddHerdrMachineOffer`) — the way to the first one.
+/// The workspace list always ends with a way to make a new workspace — the
+/// only way forward on a herdr that has none.
 ///
 /// Given a `preset`, it comes up with that machine and workspace picked, as
 /// if they had been answered here: their chips are in the field, and can be
@@ -152,6 +154,10 @@ struct LaunchRequest {
 struct NewTabLauncher: View {
     let targets: [LaunchTarget]
     let allowsBrowserAgents: Bool
+    /// The machine list's row that adds a herdr machine, or nil for none.
+    let addHerdrMachine: AddHerdrMachineOffer?
+    /// Closes the launcher and starts adding a herdr machine.
+    let onAddHerdrMachine: () -> Void
     /// Makes the tab. Throws what went wrong, which is shown in place —
     /// unless the tab was handed off first (`handOff`), as an agent's is once
     /// the agent's start command is in the new pane. The launcher closes at
@@ -168,14 +174,14 @@ struct NewTabLauncher: View {
 
     /// What a list step offers.
     private enum Option: Identifiable {
-        case target(LaunchTarget)
+        case machine(LauncherMachineStep.Entry)
         case workspace(LaunchWorkspace)
         /// Makes a new workspace, named after what is typed, if anything.
         case newWorkspace
 
         var id: String {
             switch self {
-            case .target(let target): "target/\(target.id)"
+            case .machine(let entry): entry.id
             case .workspace(let workspace): "workspace/\(workspace.id)"
             case .newWorkspace: "new"
             }
@@ -200,9 +206,12 @@ struct NewTabLauncher: View {
     @State private var outsideClicks = OutsideClickWatcher()
 
     init(targets: [LaunchTarget], preset: LaunchPreset? = nil, allowsBrowserAgents: Bool = false,
+         addHerdrMachine: AddHerdrMachineOffer? = nil, onAddHerdrMachine: @escaping () -> Void = {},
          create: @escaping (LaunchRequest, _ handOff: @escaping @MainActor () -> Void) async throws -> Void, onClose: @escaping () -> Void) {
         self.targets = targets
         self.allowsBrowserAgents = allowsBrowserAgents
+        self.addHerdrMachine = addHerdrMachine
+        self.onAddHerdrMachine = onAddHerdrMachine
         self.create = create
         self.onClose = onClose
         _targetID = State(initialValue: preset?.targetID ?? (targets.count == 1 ? targets.first?.id : nil))
@@ -381,6 +390,10 @@ struct NewTabLauncher: View {
 
     // MARK: - The list steps
 
+    private var machineStep: LauncherMachineStep {
+        LauncherMachineStep(targets: targets, addHerdrMachine: addHerdrMachine)
+    }
+
     private var options: [Option] {
         let terms = text.split(whereSeparator: \.isWhitespace).map(String.init)
         func matches(_ label: String) -> Bool {
@@ -388,7 +401,7 @@ struct NewTabLauncher: View {
         }
         switch step {
         case .machine:
-            return targets.filter { matches($0.label) }.map(Option.target)
+            return machineStep.entries(matching: text).map(Option.machine)
         case .workspace:
             let workspaces = (target?.workspaces ?? []).filter { matches($0.workspace.label) }.map(Option.workspace)
             return workspaces + [.newWorkspace]
@@ -435,12 +448,24 @@ struct NewTabLauncher: View {
     private func optionRow(_ option: Option, isHighlighted: Bool) -> some View {
         HStack(spacing: 10) {
             switch option {
-            case .target(let target):
+            case .machine(.target(let target)):
                 Image(systemName: target.herdrMachine == nil ? "laptopcomputer" : "server.rack")
                     .frame(width: 20)
                 Text(verbatim: target.label)
                 Spacer(minLength: 8)
                 if let reason = target.unavailableReason {
+                    Text(verbatim: reason)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            case .machine(.addHerdrMachine(let offer)):
+                Image(systemName: "plus")
+                    .frame(width: 20)
+                Text("Add herdr Machine…")
+                Spacer(minLength: 8)
+                if let reason = offer.unavailableReason {
                     Text(verbatim: reason)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -475,8 +500,8 @@ struct NewTabLauncher: View {
     }
 
     private func isEnabled(_ option: Option) -> Bool {
-        if case .target(let target) = option {
-            return target.unavailableReason == nil
+        if case .machine(let entry) = option {
+            return entry.isEnabled
         }
         return true
     }
@@ -525,9 +550,14 @@ struct NewTabLauncher: View {
 
     private func choose(_ option: Option) {
         switch option {
-        case .target(let picked):
+        case .machine(.target(let picked)):
             guard picked.unavailableReason == nil else { return }
             targetID = picked.id
+        case .machine(.addHerdrMachine(let offer)):
+            guard offer.unavailableReason == nil else { return }
+            close(restoringFocus: false)
+            onAddHerdrMachine()
+            return
         case .workspace(let picked):
             workspace = .existing(picked.workspace)
         case .newWorkspace:
@@ -543,7 +573,8 @@ struct NewTabLauncher: View {
 
     /// Backspace in an empty field: takes the last chip back and asks that
     /// step's question again. The machine is only taken back where there is
-    /// another one to pick.
+    /// another one to pick, or a herdr machine to add
+    /// (`LauncherMachineStep.canGoBack`).
     private func stepBack() {
         guard !isCreating else { return }
         failure = nil
@@ -554,7 +585,7 @@ struct NewTabLauncher: View {
         case .newWorkspaceName:
             isNamingNewWorkspace = false
         case .workspace:
-            if targets.count > 1 {
+            if machineStep.canGoBack {
                 targetID = nil
             }
         case .machine:

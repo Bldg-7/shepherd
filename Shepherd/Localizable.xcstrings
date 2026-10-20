@@ -6759,6 +6759,12 @@
           }
         }
       }
+    },
+    "Add herdr Machine…" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "herdr machine を追加…" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "herdr machine 추가…" } }
+      }
     }
   },
   "version" : "1.1"
