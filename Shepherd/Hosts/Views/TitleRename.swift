@@ -54,8 +54,8 @@ enum TitleRename {
     }
 }
 
-/// One name being typed into the window's title, from a row's Rename item
-/// until the field is done with it.
+/// One name being typed into the window's title, from a row's Rename item —
+/// or a double-click on the title — until the field is done with it.
 ///
 /// A reference, and nothing on screen follows it: the field writes what is
 /// typed into `text` as it goes, and nothing about that may change SwiftUI's

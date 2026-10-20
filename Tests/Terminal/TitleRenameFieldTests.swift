@@ -84,6 +84,26 @@ struct Host: View {
         ((view as? TitleRenameTextField).map { [$0] } ?? []) + view.subviews.flatMap(fields(in:))
     }
 
+    /// Where the first thing drawn inside `field` starts, from its left
+    /// end: the first column past the bezel's end with a pixel in the middle
+    /// of the field's height that stands out from its background.
+    static func inkStart(_ field: NSTextField) -> CGFloat? {
+        let container = field.superview!, rect = field.frame
+        guard let image = container.bitmapImageRepForCachingDisplay(in: rect) else { return nil }
+        container.cacheDisplay(in: rect, to: image)
+        let scale = CGFloat(image.pixelsWide) / rect.width
+        func luminance(_ x: Int, _ y: Int) -> CGFloat {
+            guard let color = image.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { return 1 }
+            return 0.299 * color.redComponent + 0.587 * color.greenComponent + 0.114 * color.blueComponent
+        }
+        let first = Int(3 * scale), rows = Int(CGFloat(image.pixelsHigh) * 0.3)..<Int(CGFloat(image.pixelsHigh) * 0.7)
+        let background = luminance(first, image.pixelsHigh / 2)
+        for x in first..<image.pixelsWide where rows.contains(where: { abs(luminance(x, $0) - background) > 0.15 }) {
+            return CGFloat(x) / scale
+        }
+        return nil
+    }
+
     static func pane(_ label: String?) -> AgentSummary {
         var json: [String: JSONValue] = ["pane_id": .string("w1:p1"), "tab_id": .string("w1:t1"), "terminal_id": .string("terminal-1"),
                                          "terminal_title_stripped": .string("zsh")]
@@ -219,7 +239,36 @@ struct Host: View {
             check(probe.calls.filter { $0.id == session.id }.allSatisfy { $0.ending == .left }, "only ever as that")
         }
 
+        // Where what is typed starts: further in from the bezel's left end
+        // than AppKit puts it, and the prompt with it.
+        do {
+            let (_, field, text) = begin(.pane(pane("zsh")))
+            text.setSelectedRange(NSRange(location: 0, length: 0))
+            var actual = NSRange()
+            let caret = field.convert(window.convertFromScreen(text.firstRect(forCharacterRange: NSRange(location: 0, length: 0), actualRange: &actual)), from: nil)
+            let glyph = field.convert(window.convertFromScreen(text.firstRect(forCharacterRange: NSRange(location: 0, length: 1), actualRange: &actual)), from: nil)
+            check(abs(caret.minX - 12) < 0.5 && abs(glyph.minX - caret.minX) < 0.5, "the insertion point and the text start 12pt in from the field's left end")
+            text.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
+            spin(until: { fields(in: window.contentView!).isEmpty }, "the field goes away")
+            // Fields whose renames are over before they land, which leave the
+            // keyboard alone and only show what they start out with.
+            func shown(_ item: BoardItem) -> TitleRenameTextField {
+                let session = TitleRenameSession(item: item)
+                _ = session.end()
+                probe.session = session
+                spin(until: { fields(in: window.contentView!).map(\.stringValue) == [session.startText] }, "the field is in the window")
+                return fields(in: window.contentView!)[0]
+            }
+            let named = shown(.pane(pane("zsh"))), textInk = inkStart(named)
+            let unnamed = shown(.pane(pane(nil))), promptInk = inkStart(unnamed)
+            check(unnamed.placeholderString == "zsh" && unnamed.currentEditor() == nil, "an empty field shows the prompt")
+            check(textInk.map { $0 >= 12 && $0 < 14 } == true, "the text is drawn from there too")
+            check(promptInk != nil && abs(promptInk! - textInk!) < 0.5, "and so is the prompt")
+            probe.session = nil
+            spin(until: { fields(in: window.contentView!).isEmpty }, "the field goes away")
+        }
+
         window.close()
-        print("PASS \(checks) title rename field keyboard/Return/Escape/IME composition/board refresh/focus loss/removal checks; owned never-shown window, no app or herdr")
+        print("PASS \(checks) title rename field keyboard/Return/Escape/IME composition/board refresh/focus loss/removal/text inset checks; owned never-shown window, no app or herdr")
     }
 }

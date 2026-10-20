@@ -122,6 +122,11 @@ struct TitleRenameField: NSViewRepresentable {
 /// SwiftUI's update, and the window's own handling of that could still move
 /// the keyboard on after it.
 final class TitleRenameTextField: NSTextField {
+    override class var cellClass: AnyClass? {
+        get { TitleRenameFieldCell.self }
+        set {}
+    }
+
     weak var session: TitleRenameSession?
     private var takesKeyboardOnLanding = true
 
@@ -145,6 +150,22 @@ final class TitleRenameTextField: NSTextField {
             return field
         }
         return responder
+    }
+}
+
+/// The field's cell, which keeps what is typed further in from the ends of
+/// the rounded bezel than AppKit does. AppKit leaves 4pt, and the editor 2pt
+/// more, which puts the insertion point right up against the bezel's left
+/// end. The placeholder and the editor are laid out in the same rect, so
+/// they move in with the text.
+final class TitleRenameFieldCell: NSTextFieldCell {
+    /// How much further in, on either side.
+    static let horizontalInset: CGFloat = 6
+
+    override func drawingRect(forBounds rect: NSRect) -> NSRect {
+        let drawing = super.drawingRect(forBounds: rect)
+        let inset = min(Self.horizontalInset, drawing.width / 2)
+        return NSRect(x: drawing.minX + inset, y: drawing.minY, width: drawing.width - 2 * inset, height: drawing.height)
     }
 }
 

@@ -73,7 +73,7 @@ struct ContentView: View {
     @State private var terminalPaneFocus: TerminalPaneFocus?
     /// The name being typed into the window's title, in place of the title,
     /// if one is (see `TitleRenameField`). A row's Rename item starts it on
-    /// the board; it is ended here.
+    /// the board, a double-click on the title here; it is ended here.
     @State private var titleRename: TitleRenameSession?
     /// The last name typed into the title, which the title shows until
     /// herdr reports it (see `TitleRenameCommit`). The board sends it.
@@ -187,6 +187,10 @@ struct ContentView: View {
             // (The terminal views set it too, and theirs is the one taken:
             // see `AgentTerminalView.title`.)
             .navigationTitle(detailNavigationTitle(on: machine))
+            // A double-click on the title has a new name typed into it.
+            .background {
+                TitleDoubleClick(rename: { renameFromTitle(on: machine) })
+            }
             // While a name is typed into the title, the field stands in its
             // place.
             .toolbar(removing: titleRenameShown(on: machine) == nil ? nil : .title)
@@ -202,6 +206,10 @@ struct ContentView: View {
                         .frame(minWidth: 160, idealWidth: 280, maxWidth: 420)
                     }
                     .sharedBackgroundVisibility(.hidden)
+                    // The title took up the rest of the bar, which kept the
+                    // buttons after it at its far end; the field only takes
+                    // its own width, and this the rest.
+                    ToolbarSpacer(.flexible, placement: .navigation)
                 }
                 if ShepherdBrowserFeature.shared.isEnabled {
                 ToolbarItem(placement: .primaryAction) {
@@ -444,6 +452,17 @@ struct ContentView: View {
         }
         terminalPaneFocus = nil
         titleRename = session
+    }
+
+    /// Starts a rename of what is selected on `machine`, for a double-click
+    /// on the window's title (see `TitleDoubleClick`): of what ⌘W would
+    /// close — nothing while something covers the terminal — and not while
+    /// a name is typed into the title already. False if there is nothing to
+    /// rename.
+    private func renameFromTitle(on machine: Machine?) -> Bool {
+        guard titleRename == nil, let machine, let item = closeCommandTarget(on: machine).item else { return false }
+        beginTitleRename(TitleRenameSession(item: item), on: machine)
+        return true
     }
 
     /// Ends a rename typed into the window's title. Of the ways one can
