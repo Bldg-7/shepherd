@@ -87,6 +87,53 @@ Coverage:
   - The new strings have Korean and Japanese translations. The preview's
     sources use no SwiftUI `keyboardShortcut`: such a shortcut would take ⌘F
     even while the terminal has the keyboard.
+- Reload (↻ and ⌘R), in three parts.
+  - The actual model and MachineStore, with in-memory secrets and SSH. A reload
+    keeps the link, the Source choice, the scroll place, the table of contents
+    switch and the find bar's search. When the text changed, the find bar has
+    no current match; a file read the same as before is not written to the
+    model again and keeps its current match. A link to a line opens the file
+    in Source the first time the file is shown, also when that is a Retry
+    after the first read failed; a reload doesn't switch to Source again. A
+    deleted file, a file over 4 MiB, a directory and
+    a pane on a herdr machine fail as on a first read, and the model keeps how
+    the file was looked at for the next read that works. While a remote file
+    is read again, the old text stays and the model marks it as being read
+    again; a preview that had failed shows Reading File… instead. When the
+    pane is left during a remote reload, the reload is cancelled: its
+    connection is closed and the old text stays. When the pane is selected
+    again, the reload is made again, once. The same holds for a reload started
+    from a failed preview. A late reload doesn't override a newer read of another
+    file. Each remote reload makes one SSH connection, reads the Keychain once
+    and checks the pinned host key; a local reload reads no credential.
+  - The actual panel in an owned never-shown window, beside a view that stands
+    in for the terminal, read and pressed through the accessibility API. The
+    button is named Reload, its help is Reload (⌘R), and it is enabled after
+    a read ends, whether the read worked or failed. On a Markdown file it is between the
+    table of contents button and Expand; on another file and on an image it is
+    left of Expand. Reloaded at 900 points, the new text is in the same scroll
+    view at 900 points, and a new heading is listed in the table of contents.
+    A preview brought back to 900 points by selecting its pane again, then
+    scrolled to 1,500 points and reloaded, stays at 1,500. A source view opened from a link to
+    line 40 and scrolled away stays where it was, the line still highlighted;
+    read again shorter, it stops at its end. A table of contents turned off
+    stays off. The find bar stays open with its search and the keyboard in its
+    field, and its count goes from five matches to 0 / 6 (no current match,
+    six matches). With the file
+    deleted, Reload shows Cannot Preview File with Retry; with the file back,
+    Retry shows it in Source at the same place. ⌘R sent through the window's
+    `performKeyEquivalent` is not taken while the terminal view has the
+    keyboard, and nothing is read. While the preview or its find field has the
+    keyboard, ⌘R reads, from the failed screen too, and three ⌘R presses in a
+    row leave the file shown once, at its place. An image keeps its horizontal
+    and vertical scroll place.
+  - `FindTests.swift` checks that ⌘R, with or without Caps Lock, is the
+    preview's, and that ⇧⌘R, ⌥⌘R, a bare r and a key-up are not. Static checks:
+    ⌘R is among the keys `PreviewKeyCatcher` takes; there is no SwiftUI
+    `keyboardShortcut`; only the close button is Liquid Glass; the button is
+    disabled while the file is read; only a new read, not a reload, clears the
+    find bar; and the strings "Reload" and "Reload (⌘R)" have Korean and
+    Japanese translations.
 
 ## Product behavior
 
@@ -113,17 +160,19 @@ macOS: the preview and the browser share one side-panel column. Each pane, or
 each tab with Group by Tab on, keeps its own preview while another one is
 selected. Selecting it again shows the same file, already loaded, in the same
 source or rendered view and at the same scroll place. Closing the preview and
-showing it again with the toolbar's Show Preview reads the file again, and so
-does Retry. A shown preview covers the browser column in its own pane only;
-other panes show the browser column if Show Browser is on. Choosing Show Browser
-in a pane that shows a preview closes the preview but keeps its file, so Show
-Preview can bring it back. Switching between the preview and the browser hides
-the browser region, not the browser feature or its tabs/profiles/agent
-connection. Moving to another pane or tab while the preview is expanded ends the
-expansion. Previews stay through a machine switch. A pane's preview is dropped
-when a herdr that answered no longer lists the pane, or when the pane's Machine
-is removed or edited to connect differently. Files and file contents are
-window-local memory state, not SceneStorage or global shared state.
+showing it again with the toolbar's Show Preview reads the file again, starting
+over in the rendered view at the top. Reload, ⌘R and Retry read it again too,
+keeping how it is looked at (see Reload below). A shown preview covers the
+browser column in its own pane only; other panes show the browser column if Show
+Browser is on. Choosing Show Browser in a pane that shows a preview closes the
+preview but keeps its file, so Show Preview can bring it back. Switching between
+the preview and the browser hides the browser region, not the browser feature or
+its tabs/profiles/agent connection. Moving to another pane or tab while the
+preview is expanded ends the expansion. Previews stay through a machine switch.
+A pane's preview is dropped when a herdr that answered no longer lists the pane,
+or when the pane's Machine is removed or edited to connect differently. Files
+and file contents are window-local memory state, not SceneStorage or global
+shared state.
 
 iPhone: Navigation push. iPad: a detail-area width of 760 points or greater
 shows terminal + preview; narrower windows push the preview alone. Resize uses
@@ -153,50 +202,87 @@ or above the first block or line visible at the top of the preview; above the
 first heading, none is highlighted. The list scrolls to keep the highlighted
 heading in view. The list button beside Source hides or shows the table of
 contents for that preview only. Whether it is shown is kept with the pane's
-preview, like its file and scroll place: in memory while the window is open,
-not saved. Opening a Markdown file, or reading it again with Retry, starts with
-it shown. With no headings the button is disabled. Esc and `#anchor` links in
-the preview behave as they did before.
+preview, like its file and scroll place: in memory while the window is open, not
+saved. Opening a Markdown file starts with it shown; reading it again with
+Reload, ⌘R or Retry keeps it shown or hidden. With no headings the button is
+disabled. Esc and `#anchor` links in the preview behave as they did before.
 
-Find. ⌘F belongs to the preview only while the preview has the keyboard. A
-click anywhere in the preview gives it the keyboard, beside the terminal as well
-as expanded; before, only an expanded preview had it. After such a click,
-typing goes to the preview until the terminal is clicked, and ⌘F while the
-terminal has the keyboard is the terminal's. ⌘F opens a find bar at the top of
-the preview, above the text. The bar is a Liquid Glass capsule like the
-sidebar's Filter, and the table of contents sits below it. The keyboard goes to
-the bar's field, with the last search, if any, selected in it. Matching ignores
-case; there are no options such as whole words. A Korean syllable matches
-whether it is stored composed or as separate jamo. A rendered Markdown file is
-searched in its visible text, without `**` or link targets but with code,
-tables and frontmatter. Source and other text files are searched line by line
-as written, within the 120,000 characters shown. The bar finds as you type and
-goes to the first match at or after the top of the view. Return, ⌘G or the down
-arrow button goes to the next match; ⇧Return, ⇧⌘G or the up arrow button to the
-previous one, wrapping around at either end. While the bar is closed, ⌘G or
-⇧⌘G opens it and moves to the next or previous match; if no search has been
-typed yet, it only opens the bar, as ⌘F does. Every match has a light yellow
-background and the current one an orange one. The bar shows 3 / 17, or 0 / 17
-while no match is current yet, or No Results. The current match's line in
-Source, or its block in the rendering, comes to the top unless it is already
-fully in view; in a block or line too long to fit, the preview scrolls to about
-where the match is. Switching between the rendering and Source keeps the
-search, with no current match until the next ⌘G or Return. Esc or the close
-button closes the bar and removes the highlights, keeping the search for the
-next ⌘F. With the bar closed and the keyboard in the preview, Esc returns an
-expanded preview to its place, or closes one beside the terminal. Closing the
-preview, or returning an expanded one to its place, gives the keyboard back to
-the terminal that had it. Each pane's preview keeps its bar, search and current
-match while another pane is selected; opening a file or Retry starts them over.
-Not included: Find menu items in the Edit menu, Use Selection for Find (⌘E),
-the find text shared with other apps, replace, regular expressions, and find in
-the In-app Browser.
+Find. ⌘F belongs to the preview only while the preview has the keyboard. A click
+anywhere in the preview gives it the keyboard, beside the terminal as well as
+expanded; before, only an expanded preview had it. After such a click, typing
+goes to the preview until the terminal is clicked, and ⌘F while the terminal has
+the keyboard is the terminal's. ⌘F opens a find bar at the top of the preview,
+above the text. The bar is a Liquid Glass capsule like the sidebar's Filter, and
+the table of contents sits below it. The keyboard goes to the bar's field, with
+the last search, if any, selected in it. Matching ignores case; there are no
+options such as whole words. A Korean syllable matches whether it is stored
+composed or as separate jamo. A rendered Markdown file is searched in its
+visible text, without `**` or link targets but with code, tables and
+frontmatter. Source and other text files are searched line by line as written,
+within the 120,000 characters shown. The bar finds as you type and goes to the
+first match at or after the top of the view. Return, ⌘G or the down arrow button
+goes to the next match; ⇧Return, ⇧⌘G or the up arrow button to the previous one,
+wrapping around at either end. While the bar is closed, ⌘G or ⇧⌘G opens it and
+moves to the next or previous match; if no search has been typed yet, it only
+opens the bar, as ⌘F does. Every match has a light yellow background and the
+current one an orange one. The bar shows 3 / 17, or 0 / 17 while no match is
+current yet, or No Results. The current match's line in Source, or its block in
+the rendering, comes to the top unless it is already fully in view; in a block
+or line too long to fit, the preview scrolls to about where the match is.
+Switching between the rendering and Source keeps the search, with no current
+match until the next ⌘G or Return. Esc or the close button closes the bar and
+removes the highlights, keeping the search for the next ⌘F. With the bar closed
+and the keyboard in the preview, Esc returns an expanded preview to its place,
+or closes one beside the terminal. Closing the preview, or returning an expanded
+one to its place, gives the keyboard back to the terminal that had it. Each
+pane's preview keeps its bar, search and current match while another pane is
+selected; opening a file starts them over, and Reload, ⌘R and Retry keep them.
+Not included: Find menu items in the Edit menu, Use Selection for Find (⌘E), the
+find text shared with other apps, replace, regular expressions, and find in the
+In-app Browser.
+
+Reload. The preview's header has a Reload button (`arrow.clockwise`), a plain
+borderless icon like Expand and the In-app Browser's Reload. On a Markdown file
+it is between the table of contents button and Expand; on any other file, an
+image or a failed preview, it is left of Expand. Its help is Reload (⌘R). The
+button, ⌘R and Retry read the same file again from the same machine and path:
+a remote file over a new SFTP connection with the saved credential (one
+Keychain read) and the pinned host key; a pane on a herdr machine gets the same
+error as before. ⌘R belongs to the preview only while the preview has the
+keyboard, its find field included; while the terminal has the keyboard, ⌘R is
+the terminal's. There is no menu item. While a shown file is read again, it
+stays on screen with its header buttons and find bar, and a small spinner
+takes the button's place. While a first read, or a read after a failure, is
+under way, Reading File… is shown instead. The button is disabled while the
+file is being read, so pressing it or ⌘R again starts no second read. If the
+file's contents haven't changed, nothing on screen changes. Otherwise the new text replaces the old in the
+same scroll view, which keeps its place, or stops at the end when the text is
+now shorter. The rendering or Source stays chosen. A link's line stays
+highlighted with its Line N, but the preview doesn't scroll back to it. The
+table of contents stays shown or hidden and lists the new headings. The find
+bar stays open with its search, its matches counted in the new text, with no
+current match until the next ⌘G or Return. A text selection in the preview may
+be cleared when the text changes. An image keeps its horizontal and vertical
+scroll place and is drawn again. A
+read that fails (the file deleted, no permission, over 4 MiB, not UTF-8, or
+over 15 seconds) shows Cannot Preview File with the reason and Retry, and keeps
+how the file was looked at: the next read that works shows it in the same view
+and, as when its pane is selected again, at the place it was left. Selecting
+another pane while the file is read again cancels the read (a remote read's
+connection is closed) and keeps the old text; selecting the pane again makes
+that read again. Opening another file, closing the preview or choosing Show
+Browser while the file is read drops the read, as before. The preview never
+reads a file again on its own, and selecting its pane again doesn't read it
+again.
 
 A known limit, with or without the table of contents: in the rendering, a
 Markdown file that mixes blocks of different heights, such as headings and code
 blocks, can come back a few dozen to a few hundred points away from where it was
-left when its pane is selected again. A file of paragraphs of one height comes
-back where it was left.
+left when its pane is selected again, or when a failed read is followed by one
+that works. A file of paragraphs of one height comes back where it was left. In
+Source, too, a file whose lines wrap to different heights can come back some
+tens of points away from where it was left: 30 points for a file of 250 wrapped
+paragraphs left at 1,200 points.
 
 Only the clicked Machine is accessed. Localhost in a file URI denotes that source
 machine. Other URI hosts must match the configured hostname (or known local Mac
