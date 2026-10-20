@@ -23,6 +23,69 @@ credentials, control characters and unsupported schemes.
 Non-link clicks retain the complete remote TUI press/release gesture. No user GUI or SSH server is
 operated. Live remote acceptance remains separate.
 
+## Selection
+
+```sh
+python3 Tests/Terminal/run-selection-tests.py --output /tmp/shepherd-selection-FRESH \
+  --swiftterm-products /path/to/DerivedData/Build/Products/Debug
+```
+
+The test presses, drags, types and turns the wheel on the production terminal
+view (`FocusReportingTerminalView`) in never-shown windows. A kernel PTY that
+the test opens itself stands in for the herdr attach, and the test checks what
+the view writes to it. It feeds the view what herdr sends: the pane on the
+alternate screen, frames wrapped in synchronized-output markers, and, when the
+pane's program uses the mouse, the mouse modes that `herdr terminal attach`
+turns on. Each case runs twice: with mouse reporting off, as in a shell or
+Claude Code, and on, as in Pi or Codex.
+
+- A plain drag selects with mouse reporting off and writes nothing. With it on,
+  the drag goes to the program with the same bytes as before and selects nothing.
+- ⇧-drag selects with mouse reporting on or off, also when it starts on a web or
+  file link, and writes nothing. When the mouse button goes down with ⇧ held,
+  the view turns mouse reporting off until that button comes up, even if ⇧ is
+  let go during the drag. Reporting is turned back on when the button comes up,
+  at the next button press if the button-up never arrived, and when the view
+  leaves its window. ⇧-click on a link opens nothing and extends a selection if
+  there is one. A ⇧ double click selects a word.
+- A program that asked for ⇧ clicks (XTSHIFTESCAPE, `CSI > 1 s`) gets ⇧ presses
+  as before, and a ⇧-click on a link opens it.
+- A selection stays through frames that change other cells, or that redraw its
+  own cells unchanged, and ends when a frame changes the text in it. Changes
+  that arrive while it is still being dragged out don't end it. A plain, ⌥ or ⌘
+  click, a typed key, a change of size, and a switch between the normal and
+  alternate screens end it. The selected text is what ⌘C would copy; the test
+  reads it with `getSelection()` and does not touch the pasteboard.
+- Plain and ⌘ clicks on links open them once and write nothing, as before. With
+  mouse reporting off, a plain drag that starts on a link becomes a selection,
+  starting where the button went down, once it has moved more than 8pt; within
+  8pt it is still a click that opens the link. With mouse reporting on, and for
+  ⌘ and ⌥ drags, a drag that starts on a link selects nothing and opens nothing.
+- ⌥-drag, ⌃-click and double clicks do what they did before: SwiftTerm's own
+  selection with mouse reporting off, and the same bytes to the program with it
+  on.
+- The wheel. With mouse reporting off and the alternate screen up, an event
+  monitor the view installs turns each line of scrolling into a wheel report at
+  the cell under the pointer (`CSI < 64 ; col ; row M` up, `65` down), with ⌥
+  and ⌃ added the way SwiftTerm adds them, so that herdr scrolls its scrollback.
+  Trackpad scrolling is added up into lines. With mouse reporting on, the same
+  events give the same bytes from SwiftTerm itself. While the button of a ⇧
+  press is down, the wheel still goes to herdr (or, with mouse reporting on, to
+  the program). The monitor leaves the event to SwiftTerm when ⇧ is held, when
+  another view is drawn over the terminal, for another window, for a hidden
+  terminal, and on the normal screen. A view outside a window has no monitor.
+- `AgentTerminalViewModel` passes an attach's output to the view through
+  `feedKeepingSelection`. It runs with an in-memory session and a stand-in for
+  swift-nio's `ByteBuffer`.
+
+The test makes wheel events from CoreGraphics scroll events and sends them
+through `NSApp.sendEvent`, which hands them to local event monitors. AppKit has
+no public way to make a scroll event for a given window, so the test sets the
+target window through CGEvent field 51 (the field AppKit reads the window number
+from) and the position in that window through the private
+`CGEventSetWindowLocation`, looked up at run time. The app uses neither. A real
+mouse or trackpad, the pasteboard, herdr and the installed app are not covered.
+
 ## Keys
 
 ```sh

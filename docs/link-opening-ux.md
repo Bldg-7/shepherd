@@ -31,7 +31,7 @@ In-app Browser가 켜져 있을 때, 터미널 안의 `http(s)` 링크를 **In-a
 이 기능이 지켜야 하는 것들이다. 선택지 비교의 기준이기도 하다.
 
 1. **TUI 입력과 충돌하지 않는다.** 클릭 선점은 `mouseDown`에서 결정되고, 선점되지 않은 클릭은 그대로 TUI 것이다. 어떤 UX도 "링크가 아닌 곳의 클릭"을 가로채면 안 된다.
-2. **마우스 리포팅을 존중한다.** vim, lazygit, Claude Code 같은 TUI는 마우스를 직접 쓴다. xterm 마우스 프로토콜은 Shift, Alt(Option), Ctrl을 클릭과 함께 TUI에 보내므로, hrdrhrdrhrdr가 그 키들에 뜻을 주면 TUI가 기대하는 입력을 빼앗게 된다. **Command는 이 프로토콜에 없어서 TUI에 전달되지 않는다.** 그래서 hrdrhrdrhrdr가 가져다 써도 TUI와 충돌하지 않는 수정키는 ⌘뿐이다. 우클릭은 TUI가 받을 수 있는 입력이다.
+2. **마우스 리포팅을 존중한다.** vim, lazygit, Pi 같은 TUI는 마우스를 직접 쓴다. xterm 마우스 프로토콜은 Alt(Option)와 Ctrl을 클릭과 함께 TUI에 보내므로, hrdrhrdrhrdr가 그 키들에 뜻을 주면 TUI가 기대하는 입력을 빼앗게 된다. Shift는 다르다. 다른 터미널들처럼 SwiftTerm도 ⇧-클릭과 ⇧-드래그를 TUI에 보내지 않고 텍스트 선택에 쓰며, 프로그램이 XTSHIFTESCAPE(`CSI > 1 s`)로 ⇧를 달라고 했을 때만 보낸다. hrdrhrdrhrdr도 ⇧를 선택에 쓴다(10절). **Command는 이 프로토콜에 없어서 TUI에 전달되지 않는다.** 그래서 링크를 여는 데 hrdrhrdrhrdr가 쓸 수 있는 수정키는 ⌘뿐이다. 우클릭도 TUI가 받는 입력이라 링크를 여는 데 쓰지 않는다.
 3. **사람의 탐색과 에이전트의 브라우저를 섞지 않는다.** 사람이 링크를 열어도 에이전트 권한이 생기지 않는다는 현재 주석의 원칙을 유지한다 (`TerminalWebLinkRequest`, `ContentView.openWeb`).
 4. **URL 검증은 목적지와 무관하게 같다.** `TerminalWebLink.urlToOpen`의 검사(스키마, 자격증명 포함 금지, 제어문자 금지, 8 KB 제한)는 기본 브라우저로 보낼 때도 똑같이 거친다. 다만 "브라우저 켜짐/엔진 가능" 검사는 In-app Browser 목적지에만 해당한다.
 5. **창은 하나다.** 선택 UI는 팝오버, 메뉴, 알림 수준이어야 하고 새 창을 만들지 않는다.
@@ -217,4 +217,5 @@ nonisolated enum LinkDestinationPolicy {
 - ⌘-클릭 안내는 Settings → Experimental Features → In-app Browser의 ⓘ 설명에 있다.
 - 0.5.x가 이 설정을 저장하던 UserDefaults 키 `links.destination`은 읽지도 지우지도 않는다. 설정에서 "Default Browser"를 골랐던 사람도 이제 그냥 클릭하면 In-app Browser에서 열린다.
 - 링크를 더블·트리플 클릭해도 한 번만 열린다. 링크를 연 첫 누름에 이어지는 둘째·셋째 누름(clickCount 2 이상)도 터미널 프로그램에 보내지 않고 앱이 가져가며, 아무것도 열지 않는다. 첫 클릭으로 pane 옆에 In-app Browser가 나타나 화면 배치가 바뀌는 바람에 둘째 누름이 링크 밖에 떨어져도 마찬가지로 가져간다(`TerminalFileGesture`). 링크가 아닌 곳의 더블클릭은 전과 같다. 마우스 리포팅(터미널 프로그램이 마우스 입력을 받겠다고 켠 상태)이 꺼져 있으면 단어를 선택하고, 켜져 있으면 프로그램이 받는다.
+- ⇧를 누른 채 시작한 누름은 링크 위에서도 hrdrhrdrhrdr가 링크로 가져가지 않는다(SHPHRD-93). ⇧-드래그는 텍스트를 선택하고, ⇧-클릭은 링크를 열지 않으며 선택이 있으면 넓힌다. ⇧를 썼는지는 마우스 버튼을 누르는 순간에 정하고, 버튼을 놓을 때까지 마우스 리포팅을 꺼 둔다. 프로그램이 XTSHIFTESCAPE로 ⇧를 달라고 했으면 ⇧ 누름도 전처럼 링크로 가져간다. 마우스 리포팅이 꺼진 pane(셸, 기본 화면의 Claude Code)에서 링크 위에서 시작한 수정키 없는 드래그는 8pt를 넘게 움직이면 누른 자리부터 선택이 되고, 링크는 열리지 않는다. 그 밖의 누름, 곧 마우스 리포팅이 켜진 pane의 수정키 없는 누름과 ⌘·⌥·⌃ 누름은 전처럼 링크로 가져가고, 8pt 안에서 놓은 수정키 없는 클릭과 ⌘-클릭은 링크를 연다(`FocusReportingTerminalView.mouseDown`·`mouseDragged`).
 - 목적지를 정하는 함수: `LinkDestinationPolicy.destination(commandHeld:browserEnabled:engineAvailable:)`. 알림을 띄울지 정하는 함수: `saysBrowserUnavailable(commandHeld:browserEnabled:engineAvailable:)`.
