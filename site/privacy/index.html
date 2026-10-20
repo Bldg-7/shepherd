@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="synth">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Privacy Policy — hrdrhrdrhrdr</title>
+<meta name="description" content="How hrdrhrdrhrdr for iPhone, iPad and Mac handles your data: it sends nothing to us, and keeps what it needs on your device.">
+<link rel="icon" type="image/png" href="../assets/favicon.png">
+<link rel="apple-touch-icon" href="../assets/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,800;0,900;1,900&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* The site's page (../index.html) in its two themes: the same colours,
+     type, frame, bar and footer, around a document in place of the hero. */
+  :root {
+    --bg: #0d0221; --panel: #13052b; --ink: #f6eaff; --dim: #d2c0ee;
+    --faint: #a58fcb; --faint2: #8571ab; --line: #24113f; --line2: #3b2266;
+    --grid: #160631;
+    --spot: #ff2975; --spot-ink: #fff; --cyan: #2de2e6;
+    --disp: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --body: "Inter", system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Hiragino Sans", sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --gut: 34px;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; color: var(--ink);
+    font-family: var(--body); font-size: 15px; line-height: 1.65;
+    background-color: #07010f;
+    background-image: linear-gradient(#140628 1px, transparent 1px), linear-gradient(90deg, #140628 1px, transparent 1px);
+    background-size: 72px 72px;
+    overflow-x: clip;
+  }
+  ::selection { background: var(--spot); color: var(--spot-ink); }
+  a { color: inherit; }
+  .frame { max-width: 1440px; margin: 0 auto; background: var(--bg); border-left: 1px solid var(--line2); border-right: 1px solid var(--line2); border-bottom: 1px solid var(--line2); box-shadow: 0 0 60px rgba(178, 15, 216, .14); }
+  .wrap { padding: 0 var(--gut); }
+
+  /* bar */
+  .nav { border-bottom: 1px solid var(--line); background: rgba(13, 2, 33, .88); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); position: sticky; top: 0; z-index: 10; }
+  .nav .wrap { display: flex; align-items: center; gap: 22px; height: 60px; }
+  .brand { display: flex; align-items: center; gap: 9px; text-decoration: none; }
+  .brand .dog-mark { width: 34px; height: 26px; flex: none; transform: scaleX(-1); color: var(--spot); filter: drop-shadow(0 0 6px rgba(255, 41, 117, .6)); --dog-collar: var(--cyan); }
+  .brand b { font-family: var(--disp); font-weight: 900; font-size: 20px; letter-spacing: -.045em; }
+  .nav .links { display: flex; gap: 20px; margin-left: auto; font-family: var(--mono); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
+  .nav .links a { text-decoration: none; color: var(--faint); }
+  .nav .links a:hover { color: var(--ink); }
+  .seg { display: flex; border: 1px solid var(--line2); font-family: var(--mono); font-size: 11px; letter-spacing: .06em; }
+  .seg a { padding: 5px 9px; color: var(--faint2); text-decoration: none; }
+  .seg a:hover { color: var(--ink); }
+
+  /* document */
+  .doc { padding: 56px 0 64px; }
+  .doc article { max-width: 760px; }
+  .doc article + article { margin-top: 72px; padding-top: 56px; border-top: 1px solid var(--line); }
+  .eyebrow { display: flex; align-items: center; gap: 12px; font-family: var(--mono); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--cyan); text-shadow: 0 0 10px rgba(45, 226, 230, .7); }
+  .eyebrow::before { content: ""; width: 40px; height: 1px; background: currentColor; }
+  h1 { font-family: var(--disp); font-weight: 900; font-style: italic; letter-spacing: -.05em; line-height: .95; font-size: clamp(38px, 5.4vw, 76px); margin: 18px 0 0; color: #fff; text-shadow: 0 0 2px rgba(255, 255, 255, .5), 0 0 26px rgba(255, 41, 170, .5); }
+  article[lang="ko"] h1 { font-style: normal; letter-spacing: -.035em; line-height: 1.08; }
+  article[lang="ko"] { word-break: keep-all; }
+  .effective { margin: 18px 0 0; font-family: var(--mono); font-size: 12px; color: var(--faint2); }
+  .summary { margin: 28px 0 0; padding: 18px 20px; border: 1px solid var(--line2); background: var(--panel); color: var(--ink); }
+  h2 { font-family: var(--disp); font-weight: 800; letter-spacing: -.03em; font-size: 22px; margin: 44px 0 0; }
+  article[lang="ko"] h2 { letter-spacing: -.01em; }
+  h3 { font-size: 15px; font-weight: 600; margin: 24px 0 0; color: var(--ink); }
+  p, li { color: var(--dim); }
+  p { margin: 12px 0 0; }
+  ul { margin: 10px 0 0; padding-left: 20px; }
+  li { margin: 6px 0 0; }
+  li::marker { color: var(--spot); }
+  code { font-family: var(--mono); font-size: 13px; color: var(--ink); overflow-wrap: anywhere; }
+  .doc a { color: var(--ink); text-decoration-color: var(--spot); text-underline-offset: 3px; overflow-wrap: anywhere; }
+  .doc a:hover { color: var(--spot); }
+
+  footer { border-top: 1px solid var(--line); }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; padding-top: 20px; padding-bottom: 36px; font-family: var(--mono); font-size: 12px; color: var(--faint2); }
+  footer a { text-decoration: none; color: var(--faint); }
+  footer a:hover { color: var(--ink); }
+  footer .brand b { font-size: 15px; color: var(--ink); }
+  footer .brand .dog-mark { width: 23px; height: 18px; }
+  footer .note { flex-basis: 100%; }
+
+  @media (max-width: 860px) {
+    :root { --gut: 16px; }
+    .nav .links { display: none; }
+    .nav .wrap { gap: 10px; }
+    .brand b { font-size: 18px; }
+    .seg { margin-left: auto; }
+    .doc { padding: 40px 0 48px; }
+  }
+
+  /* paper, as the site's page has it when that theme was chosen there */
+  [data-theme="paper"] {
+    --bg: #f6f8fb; --panel: #eef3f9; --ink: #0f1d3a; --dim: #34466b;
+    --faint: #5d6f92; --faint2: #8392ad; --line: #dde5ef; --line2: #c3cfe0;
+    --spot: #1d4ed8; --spot-ink: #fff; --cyan: #2f6fd6; --blocked: #e8590c;
+  }
+  [data-theme="paper"] body { background-color: #eef2f7; background-image: linear-gradient(#dde5f0 1px, transparent 1px), linear-gradient(90deg, #dde5f0 1px, transparent 1px); }
+  [data-theme="paper"] .frame { box-shadow: none; }
+  [data-theme="paper"] .nav { background: rgba(246, 248, 251, .92); }
+  [data-theme="paper"] .brand .dog-mark { filter: none; --dog-collar: var(--blocked); }
+  [data-theme="paper"] .eyebrow { text-shadow: none; }
+  [data-theme="paper"] h1 { color: var(--ink); text-shadow: none; }
+</style>
+<script>
+  // The theme chosen on the site's page, if any; nothing is stored here.
+  try { if (localStorage.getItem('shepherd.theme') === 'paper') document.documentElement.setAttribute('data-theme', 'paper'); } catch (e) {}
+</script>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+<defs>
+<path id="dog-mark-body" fill-rule="evenodd" d="M393.6 1020.1C388.9 1019.1 385.0 1015.1 385.0 1011.1C385.0 1006.6 387.6 999.4 391.0 993.9C395.1 987.6 401.6 983.1 409.9 980.8C417.8 978.6 419.4 977.2 422.1 970.1C430.5 947.7 430.3 907.2 421.4 853.0C418.9 837.5 415.1 819.6 414.5 820.2C413.6 821.1 410.9 857.6 410.0 881.1C409.4 895.6 408.5 912.4 408.1 918.3C407.2 928.5 407.0 929.4 403.0 936.0C400.5 940.2 396.2 950.2 392.5 960.9C385.7 980.5 382.7 986.6 376.9 992.1C370.9 998.0 366.0 999.1 345.5 999.7C324.5 1000.3 315.0 999.2 311.3 995.8C309.1 993.8 308.9 992.9 309.3 988.4C310.0 981.9 313.0 975.7 318.4 970.2C323.6 964.7 328.4 962.2 337.1 960.5C341.0 959.8 345.0 958.4 346.1 957.4C349.1 954.7 354.6 942.5 356.9 933.4C360.5 919.1 361.4 903.5 360.1 877.2C358.5 844.1 355.0 803.6 351.9 781.3C350.8 773.6 350.8 773.5 343.8 766.2C336.8 758.8 328.7 747.3 325.3 740.0C324.3 737.8 323.2 736.0 322.9 736.0C322.0 736.0 317.0 751.4 317.0 754.2C317.0 755.5 316.6 757.1 316.1 757.9C313.9 761.3 300.3 747.4 294.5 736.0C286.0 719.2 284.8 696.7 291.1 673.5C292.1 669.7 293.0 666.2 293.0 665.7C293.0 664.5 285.4 670.6 280.1 675.9C277.8 678.4 273.6 683.7 270.9 687.7C268.2 691.7 265.5 695.0 265.1 695.0C263.6 695.0 260.0 686.6 258.5 679.4C254.6 661.1 258.0 638.8 268.4 614.3C269.8 610.9 271.0 607.8 271.0 607.5C271.0 606.2 259.0 615.5 251.1 623.0C246.4 627.4 242.4 630.7 242.1 630.4C240.9 629.3 240.8 616.3 242.0 609.2C243.7 598.3 247.8 588.2 259.1 566.2C264.5 555.6 269.0 546.2 269.0 545.4C269.0 543.5 267.7 543.9 255.7 549.1C250.9 551.3 246.5 553.0 246.0 553.0C244.5 553.0 244.8 546.2 246.5 539.5C247.4 536.2 250.4 528.5 253.3 522.5C259.5 509.2 260.6 502.0 257.1 495.2C251.9 485.1 242.6 481.9 211.6 480.0C195.0 479.0 184.1 477.2 177.1 474.3C170.4 471.5 160.5 464.2 156.8 459.2C149.5 449.6 141.0 427.3 142.4 421.6C143.3 417.8 147.0 414.7 153.2 412.2C212.0 389.2 219.1 386.1 222.2 381.9C223.5 380.2 224.5 376.5 225.1 371.4C226.4 360.2 228.3 355.9 234.9 349.2C239.8 344.2 259.9 330.5 265.3 328.4C266.8 327.9 267.0 326.0 267.0 316.0C267.0 302.5 265.9 298.3 262.3 297.4C260.9 297.0 255.1 297.7 249.5 298.9C237.5 301.4 233.2 301.6 232.4 299.5C231.5 297.4 236.3 287.7 241.4 281.2C246.3 275.0 253.0 269.5 259.7 266.1C268.7 261.6 289.4 260.9 298.3 264.8C304.0 267.3 307.1 271.3 313.6 284.1C316.5 290.1 319.9 295.4 320.9 296.0C324.9 298.1 326.6 297.2 328.5 292.3C331.5 284.3 336.0 275.7 339.6 271.4C346.3 263.1 353.9 262.0 367.8 267.3C377.6 271.1 386.2 273.4 398.8 275.6C410.3 277.6 415.1 279.8 418.1 284.6C420.2 288.0 420.5 289.7 420.4 297.5C420.4 303.6 419.7 308.6 418.4 313.0L416.3 319.6L422.7 326.5C433.1 337.8 440.9 356.2 441.0 369.3L441.0 373.2L434.2 372.5C430.5 372.2 426.4 371.7 425.0 371.4C422.7 370.9 422.7 371.0 424.1 372.7C439.7 390.5 458.1 416.7 464.2 429.6C468.1 437.9 470.1 444.6 468.4 443.9C467.9 443.6 464.8 442.2 461.5 440.6C458.2 439.1 454.2 437.4 452.7 436.9C450.2 436.2 449.9 436.3 450.5 437.8C450.9 438.7 452.1 442.4 453.3 446.0C455.0 451.3 457.0 454.4 463.8 462.3C472.9 472.9 473.1 473.0 491.0 480.0C496.7 482.2 503.6 485.5 506.4 487.1C511.6 490.4 521.0 498.1 521.0 499.1C521.0 499.5 518.7 500.0 516.0 500.4C505.3 501.8 505.5 502.1 519.9 509.4C527.2 513.1 537.4 518.6 542.4 521.5C584.4 545.7 611.2 551.8 670.5 550.7C686.5 550.4 708.0 549.4 718.5 548.5C732.7 547.3 744.3 547.0 764.5 547.3C788.7 547.7 792.8 548.1 803.5 550.4C820.7 554.1 832.7 558.2 847.5 565.4C877.3 580.0 898.3 601.1 924.2 642.5C931.3 653.8 947.2 683.2 963.2 714.5C973.1 733.8 984.1 754.0 987.8 759.5C999.4 776.8 1013.3 789.9 1028.0 797.3C1051.5 809.2 1081.6 808.6 1102.4 795.9C1105.0 794.2 1107.5 793.2 1107.9 793.5C1108.2 793.9 1108.7 798.6 1108.8 804.0C1109.4 820.2 1105.4 830.5 1094.3 841.1L1087.9 847.3L1093.0 846.6C1099.9 845.7 1107.9 842.6 1114.0 838.5L1119.0 835.1L1119.0 839.8C1118.9 856.3 1109.1 875.3 1095.1 885.8C1085.7 892.9 1076.3 896.5 1063.2 898.3L1053.8 899.5L1058.2 902.6C1060.5 904.3 1064.9 906.9 1067.8 908.4C1074.2 911.6 1073.8 912.8 1065.3 916.0C1042.3 924.6 1014.5 922.9 995.4 911.7C992.1 909.7 985.5 904.4 980.7 899.8L972.0 891.5L972.0 896.2C972.0 899.9 971.6 901.0 970.4 901.0C967.8 901.0 952.9 885.2 945.1 874.2C936.4 862.0 924.9 841.7 919.4 828.9L915.5 819.8L915.2 828.8C914.6 847.0 919.8 860.8 932.4 874.9C940.9 884.4 941.9 886.8 944.9 903.0C946.0 908.9 949.2 923.9 952.0 936.5C958.4 965.3 959.8 976.8 958.3 988.9C957.0 999.4 954.6 1005.2 949.9 1009.8C942.7 1016.9 937.2 1018.0 910.2 1018.0C888.8 1017.9 884.1 1017.2 880.0 1013.5C877.2 1010.9 876.7 1006.8 878.5 999.8C881.4 988.5 887.7 981.9 899.5 978.0C906.8 975.6 908.9 973.7 909.7 968.6C910.8 961.9 906.4 944.7 899.7 929.0C886.0 897.3 867.4 874.9 835.0 851.2C813.8 835.6 792.4 817.4 779.0 803.4C770.6 794.6 756.7 778.1 751.8 771.1C749.1 767.2 748.8 769.0 750.9 777.1C756.8 800.2 767.0 816.0 785.9 831.4C791.7 836.2 792.8 837.6 793.4 840.9C794.6 848.9 801.4 866.9 807.6 878.7C812.0 887.2 814.0 892.1 814.0 894.6C814.0 900.0 811.8 907.5 803.7 929.5C783.7 983.5 781.8 987.2 771.5 992.5C765.7 995.5 765.6 995.5 745.6 995.8C720.2 996.3 715.6 995.7 711.7 991.9C709.0 989.2 708.8 988.5 709.4 984.2C711.3 970.3 722.3 959.4 737.3 956.8C748.0 954.9 751.7 949.5 757.6 926.8C759.6 919.2 760.3 913.9 760.4 906.5C760.5 897.2 760.3 896.0 757.2 889.6C752.2 879.0 748.2 874.2 724.5 850.0C703.0 828.0 695.6 818.9 687.3 804.0C681.0 792.8 675.3 776.7 671.6 759.8C671.0 757.2 670.6 757.0 665.9 757.0C654.2 757.0 639.4 761.7 605.0 776.3C587.1 783.9 575.4 787.5 562.0 789.5C544.6 792.2 528.8 791.0 514.0 786.0C509.4 784.4 505.4 783.2 505.3 783.4C505.1 783.5 507.2 787.9 510.0 793.2C515.5 803.6 522.0 822.0 522.0 826.9C522.0 829.6 521.7 829.9 520.2 829.1C517.0 827.4 500.7 822.0 500.2 822.4C500.0 822.7 500.7 824.1 501.7 825.7C510.6 838.6 515.0 852.3 515.7 869.7C516.0 876.3 516.0 883.0 515.6 884.4L514.9 887.1L510.7 884.5C508.4 883.1 503.8 880.5 500.6 878.9C495.7 876.3 494.8 876.1 495.5 877.7C501.6 892.9 503.5 902.5 502.8 915.9C502.6 920.9 502.1 925.2 501.8 925.5C501.5 925.9 498.8 924.3 495.9 922.1C492.9 919.8 490.2 918.0 489.8 918.0C489.3 918.0 489.0 920.8 489.0 924.2C488.9 934.3 486.9 942.1 482.2 949.1C479.0 954.1 477.5 957.9 475.5 966.5C474.1 972.6 472.0 981.4 470.9 986.3C466.8 1003.2 460.0 1013.4 449.5 1018.2C444.8 1020.3 443.1 1020.5 421.0 1020.7C408.1 1020.8 395.7 1020.5 393.6 1020.1ZM267.3 393.9C276.3 391.4 277.8 377.4 269.5 373.0C268.1 372.2 265.3 371.7 263.4 371.7C251.0 372.1 248.4 389.2 260.0 393.9C263.2 395.2 262.9 395.2 267.3 393.9ZM373.3 343.0C378.8 337.0 378.3 334.9 367.8 320.3C364.6 315.8 360.2 308.6 358.0 304.3L354.0 296.5L354.0 302.0C354.0 309.1 355.2 313.3 360.8 325.4C364.3 333.1 365.4 336.9 365.8 342.1C366.3 350.0 367.0 350.1 373.3 343.0Z"/>
+<path id="dog-mark-collar" d="M288.2 557.8L288.5 542.7L296.5 540.9C317.1 536.5 345.7 526.1 370.5 514.1C398.9 500.3 423.2 485.1 439.4 471.0C443.2 467.7 446.9 465.0 447.5 465.0C448.1 465.0 449.7 466.1 451.0 467.5C454.3 471.0 455.4 469.4 455.4 461.0C455.4 457.1 455.7 454.0 456.0 454.0C456.3 454.0 460.3 458.3 464.8 463.5C469.3 468.7 473.5 473.0 474.0 473.0C475.7 473.0 473.1 478.1 467.8 485.2C455.1 502.4 417.5 527.7 378.5 545.3C355.0 556.0 326.2 565.6 303.8 570.5C286.2 574.3 287.9 575.7 288.2 557.8Z"/>
+</defs>
+<symbol id="dog-mark" viewBox="138 258 985 767"><use href="#dog-mark-body" style="fill: var(--dog-fill, currentColor); stroke: var(--dog-line, none); stroke-width: var(--dog-line-width, 1.25px)"/><use href="#dog-mark-collar" style="fill: var(--dog-collar, var(--spot)); stroke: var(--dog-line, none); stroke-width: var(--dog-line-width, 1.25px)"/></symbol>
+</svg>
+<div class="frame">
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="../" aria-label="hrdrhrdrhrdr">
+      <svg class="dog-mark" aria-hidden="true"><use href="#dog-mark"/></svg>
+      <b>hrdrhrdrhrdr</b>
+    </a>
+    <nav class="links">
+      <a href="https://herdr.dev" rel="noopener">for herdr ↗</a>
+      <a href="https://github.com/Bldg-7/shepherd/releases">Releases</a>
+    </nav>
+    <div class="seg" role="group" aria-label="Language">
+      <a href="#en" lang="en">EN</a><a href="#ko" lang="ko">KO</a>
+    </div>
+  </div>
+</header>
+
+<main class="doc">
+  <div class="wrap">
+
+<article id="en" lang="en">
+  <div class="eyebrow">hrdrhrdrhrdr</div>
+  <h1>Privacy Policy</h1>
+  <p class="effective">Effective October 20, 2026</p>
+
+  <p class="summary">hrdrhrdrhrdr doesn't send anything to us. We run no server for it, and it has no analytics, advertising or tracking code. What it needs, it keeps on your device. It connects to the computers you add, and on a Mac also to GitHub for updates and to the websites you open in its optional In-app Browser; to nothing else.</p>
+
+  <h2>Who we are</h2>
+  <p>hrdrhrdrhrdr is made by Bldg.7. This policy covers hrdrhrdrhrdr for iPhone and iPad and hrdrhrdrhrdr for Mac (“the app”). herdr, the program the app works with, is a separate project by Herdr, Inc.</p>
+
+  <h2>hrdrhrdrhrdr for iPhone and iPad</h2>
+  <h3>What stays on your device</h3>
+  <ul>
+    <li>The machines you add: the name you give each one, its host name, user name and port, and the herdr session to use. They are kept in the app’s own storage on the device.</li>
+    <li>The SSH key the app makes for each machine. Its private key is kept in the device’s Keychain, only on this device: it isn’t synced with iCloud Keychain and doesn’t move to another device.</li>
+    <li>Each machine’s host key fingerprint, remembered the first time the app connects, so that the app can refuse a machine whose key has changed.</li>
+  </ul>
+  <h3>What leaves your device</h3>
+  <p>Only the SSH connections the app makes to the machines you add, at the addresses you enter. Over them it runs herdr on that machine to read its workspaces, panes and agents, their status and recent output, and it sends the prompts and keys you type. Nothing is sent to us or to anyone else.</p>
+  <p>When a machine is on your local network, iOS asks whether the app may use it; the app uses the local network only to connect to the machines you add.</p>
+  <p>The machines are computers you or your organization run. What herdr and the coding agents on them do with your data is up to those machines and those programs, not this app.</p>
+
+  <h2>hrdrhrdrhrdr for Mac</h2>
+  <p>The Mac app works the same way: it sends nothing to us and has no analytics, advertising or tracking code. In addition:</p>
+  <ul>
+    <li>The machines you add are kept in the app’s preferences on the Mac, and each one’s SSH credential (a private key, one the app makes or one you paste in, or a password) in the Mac’s Keychain, only on this Mac. The app remembers each machine’s host key fingerprint, as on iPhone and iPad.</li>
+    <li>It talks to herdr on this Mac through herdr’s local socket, and to your other machines over SSH.</li>
+    <li>Updates: the app asks GitHub for its update feed (<code>https://github.com/Bldg-7/shepherd/releases/latest/download/appcast.xml</code>) when you choose Check for Updates, or on its own if you allow automatic checks, and downloads an update you install from GitHub. The request carries the app’s name and version; the app doesn’t send the optional system profile its update framework (Sparkle) can send. GitHub’s privacy statement applies to these requests.</li>
+    <li>The In-app Browser, an experimental feature that is off unless you turn it on, loads the pages you or your agents open directly from those websites, as any browser does. Text you type into its address bar that isn’t a web address is searched on Google. Website data such as cookies and the cache are kept in the app’s folder on your Mac.</li>
+  </ul>
+
+  <h2>Crash reports</h2>
+  <p>If you choose to share analytics with app developers in your device’s settings, Apple may give us crash reports and other diagnostics about the app. Apple handles that data under its own privacy policy; we use what we receive only to find and fix problems.</p>
+
+  <h2>Keeping and deleting your data</h2>
+  <ul>
+    <li>Everything the app keeps stays on your device, for as long as you keep it there. We hold no copy.</li>
+    <li>Removing a machine in the app deletes its details and its saved key or password from the Keychain.</li>
+    <li>Deleting the app doesn’t always delete everything: iOS may keep Keychain items after an app is deleted, and on a Mac the app’s preferences, its folder and its Keychain items stay when you move the app to the Trash. To delete the keys too, remove your machines in the app before you delete it.</li>
+    <li>If you added a key from the app to a machine’s <code>~/.ssh/authorized_keys</code>, remove that line, the one the app showed you when you added the machine, to take away the device’s access to it.</li>
+  </ul>
+
+  <h2>Children</h2>
+  <p>The app is a tool for software developers and is not directed to children. We don’t collect personal data from anyone, children included.</p>
+
+  <h2>Changes to this policy</h2>
+  <p>If this policy changes, we will post the new version on this page with a new effective date.</p>
+
+  <h2>Contact</h2>
+  <p>For questions about this policy, open an issue at <a href="https://github.com/Bldg-7/shepherd/issues">github.com/Bldg-7/shepherd/issues</a>. Issues are public, so please don’t include personal information in one.</p>
+</article>
+
+<article id="ko" lang="ko">
+  <div class="eyebrow">hrdrhrdrhrdr</div>
+  <h1>개인정보 처리방침</h1>
+  <p class="effective">시행일: 2026년 10월 20일</p>
+
+  <p class="summary">hrdrhrdrhrdr는 저희에게 아무것도 보내지 않습니다. 저희는 이 앱을 위한 서버를 운영하지 않으며, 앱에는 분석·광고·추적 코드가 없습니다. 앱에 필요한 정보는 사용자의 기기에만 보관합니다. 앱은 사용자가 추가한 컴퓨터에 연결하고, Mac에서는 이에 더해 업데이트를 위해 GitHub에, 선택 기능인 In-app Browser에서 연 웹사이트에 연결합니다. 그 밖의 곳에는 연결하지 않습니다.</p>
+
+  <h2>운영 주체</h2>
+  <p>hrdrhrdrhrdr는 Bldg.7이 만듭니다. 이 방침은 iPhone·iPad용 hrdrhrdrhrdr와 Mac용 hrdrhrdrhrdr(이하 “앱”)에 적용됩니다. 앱이 함께 쓰는 프로그램인 herdr는 Herdr, Inc.의 별도 프로젝트입니다.</p>
+
+  <h2>iPhone·iPad용 hrdrhrdrhrdr</h2>
+  <h3>기기에만 보관되는 것</h3>
+  <ul>
+    <li>사용자가 추가한 machine: 각 machine에 붙인 이름, 호스트 이름, 사용자 이름, 포트, 사용할 herdr 세션. 기기 안의 앱 저장 공간에 보관됩니다.</li>
+    <li>앱이 machine마다 만드는 SSH 키. 개인 키는 기기의 Keychain에 이 기기 전용으로 보관되어 iCloud 키체인과 동기화되지 않고 다른 기기로 옮겨지지 않습니다.</li>
+    <li>각 machine의 호스트 키 지문. 처음 연결할 때 기억해 두었다가, 키가 바뀐 machine에는 연결하지 않습니다.</li>
+  </ul>
+  <h3>기기 밖으로 나가는 것</h3>
+  <p>사용자가 추가한 machine으로, 사용자가 입력한 주소로 맺는 SSH 연결뿐입니다. 앱은 이 연결로 그 machine의 herdr를 실행해 workspace, pane, agent와 그 상태, 최근 출력을 읽고, 사용자가 입력한 프롬프트와 키를 보냅니다. 저희나 다른 누구에게도 아무것도 보내지 않습니다.</p>
+  <p>machine이 로컬 네트워크에 있으면 iOS가 앱의 로컬 네트워크 사용 허용 여부를 묻습니다. 앱은 로컬 네트워크를 사용자가 추가한 machine에 연결하는 데에만 씁니다.</p>
+  <p>machine은 사용자나 사용자의 조직이 운영하는 컴퓨터입니다. 그 machine의 herdr와 코딩 agent가 데이터를 어떻게 다루는지는 이 앱이 아니라 해당 machine과 그 프로그램들에 달려 있습니다.</p>
+
+  <h2>Mac용 hrdrhrdrhrdr</h2>
+  <p>Mac 앱도 같은 원칙으로 동작합니다. 저희에게 아무것도 보내지 않으며 분석·광고·추적 코드가 없습니다. 이에 더해:</p>
+  <ul>
+    <li>사용자가 추가한 machine은 Mac의 앱 환경설정에, 각 machine의 SSH 자격 증명(앱이 만들거나 사용자가 붙여 넣은 개인 키, 또는 비밀번호)은 Mac의 Keychain에 이 Mac 전용으로 보관됩니다. 각 machine의 호스트 키 지문도 iPhone·iPad에서처럼 기억합니다.</li>
+    <li>이 Mac의 herdr와는 herdr의 로컬 소켓으로, 다른 machine과는 SSH로 통신합니다.</li>
+    <li>업데이트: 사용자가 ‘업데이트 확인’을 고르거나 자동 확인을 허용한 경우, 앱은 GitHub에 업데이트 피드(<code>https://github.com/Bldg-7/shepherd/releases/latest/download/appcast.xml</code>)를 요청하고, 사용자가 설치하는 업데이트를 GitHub에서 내려받습니다. 이 요청에는 앱의 이름과 버전이 담깁니다. 앱은 업데이트 프레임워크(Sparkle)가 보낼 수 있는 선택 항목인 시스템 프로필은 보내지 않습니다. 이 요청에는 GitHub의 개인정보 처리방침이 적용됩니다.</li>
+    <li>In-app Browser는 사용자가 켜야만 동작하는 실험 기능으로, 사용자나 agent가 연 페이지를 일반 브라우저처럼 해당 웹사이트에서 직접 불러옵니다. 주소창에 입력한 텍스트가 웹 주소가 아니면 Google에서 검색합니다. 쿠키와 캐시 같은 웹사이트 데이터는 Mac의 앱 폴더에 보관됩니다.</li>
+  </ul>
+
+  <h2>크래시 리포트</h2>
+  <p>사용자가 기기 설정에서 앱 개발자와 분석 정보를 공유하기로 선택한 경우, Apple이 앱의 크래시 리포트와 기타 진단 정보를 저희에게 전달할 수 있습니다. 이 데이터는 Apple이 자체 개인정보 처리방침에 따라 처리하며, 저희는 전달받은 정보를 문제를 찾아 고치는 데에만 씁니다.</p>
+
+  <h2>보관과 삭제</h2>
+  <ul>
+    <li>앱이 보관하는 모든 정보는 사용자가 지우기 전까지 사용자의 기기에만 있습니다. 저희는 사본을 갖고 있지 않습니다.</li>
+    <li>앱에서 machine을 삭제하면 그 machine의 정보와, Keychain에 저장된 키나 비밀번호가 함께 삭제됩니다.</li>
+    <li>앱을 삭제해도 모든 것이 지워지지는 않습니다. iOS는 앱이 삭제된 뒤에도 Keychain 항목을 남겨 둘 수 있고, Mac에서는 앱을 휴지통으로 옮겨도 앱의 환경설정, 앱 폴더, Keychain 항목이 남습니다. 키까지 지우려면 앱을 삭제하기 전에 앱에서 machine을 먼저 삭제하세요.</li>
+    <li>앱이 만든 키를 machine의 <code>~/.ssh/authorized_keys</code>에 추가했다면, machine을 추가할 때 앱이 보여 준 그 줄을 지워 기기의 접근 권한을 없애세요.</li>
+  </ul>
+
+  <h2>아동</h2>
+  <p>이 앱은 소프트웨어 개발자를 위한 도구이며 아동을 대상으로 하지 않습니다. 저희는 아동을 포함해 누구의 개인정보도 수집하지 않습니다.</p>
+
+  <h2>방침의 변경</h2>
+  <p>이 방침이 바뀌면 새 시행일과 함께 이 페이지에 게시합니다.</p>
+
+  <h2>문의</h2>
+  <p>이 방침에 관한 문의는 <a href="https://github.com/Bldg-7/shepherd/issues">github.com/Bldg-7/shepherd/issues</a>에 이슈를 열어 주세요. 이슈는 공개되므로 개인정보는 적지 마세요.</p>
+</article>
+
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <a class="brand" href="../"><svg class="dog-mark" aria-hidden="true"><use href="#dog-mark"/></svg><b>hrdrhrdrhrdr</b></a>
+    <a href="https://github.com/Bldg-7/shepherd/releases">releases</a>
+    <a href="https://herdr.dev">herdr ↗</a>
+    <a href="./">privacy</a>
+    <span>© 2026 Bldg.7</span>
+    <span class="note"><span lang="en">hrdrhrdrhrdr is made by Bldg.7. herdr is a separate project by Herdr, Inc.</span> <span lang="ko">hrdrhrdrhrdr는 Bldg.7이 만듭니다. herdr는 Herdr, Inc.의 별도 프로젝트입니다.</span></span>
+  </div>
+</footer>
+</div>
+</body>
+</html>
