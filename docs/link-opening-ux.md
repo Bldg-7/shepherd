@@ -1,5 +1,7 @@
 # 터미널 링크를 어디서 열지 고르는 UX (설계 초안)
 
+> **바뀜 (SHPHRD-86).** 이 문서의 추천안 중 0.5.0에 들어간 "Open links in" 설정(5절의 1층 "기본값"과 7절)과 첫 클릭 팝오버(6절)는 없앴다. 지금 규칙은 10절에 있다.
+
 In-app Browser가 켜져 있을 때, 터미널 안의 `http(s)` 링크를 **In-app Browser**로 열지 **macOS 기본 브라우저**로 열지 사용자가 고를 수 있어야 한다. 이 문서는 가능한 방식들을 모아 비교하고 추천안을 적는다. 코드 변경은 포함하지 않는다.
 
 **결론부터.** 한 가지 방식으로는 부족하고, 세 층을 겹쳐 쓰기를 추천한다. (1) 설정에 "링크를 여는 곳" 기본값을 두되 초기값은 "처음 한 번 묻기"로 하고, (2) ⌘를 누른 채 클릭하면 기본값의 반대쪽에서 열며, (3) In-app Browser 안에서 본 페이지를 기본 브라우저로 보내는 메뉴를 둔다. 우클릭 메뉴는 TUI의 마우스 입력과 겹치므로 보류한다. 근거는 3절과 4절, 세부는 5절부터다.
@@ -200,3 +202,19 @@ nonisolated enum LinkDestinationPolicy {
 2. 마크다운 프리뷰 안의 `http(s)` 링크는 지금 아무것도 하지 않는다 ([FilePreviewPanel.swift:101](../Shepherd/FilePreview/FilePreviewPanel.swift:101)). 같은 정책을 적용할지.
 3. 원격 머신 pane의 `localhost` 링크는 Mac의 localhost를 가리킨다 (README). 기본 브라우저로 보내도 같은 문제이므로 이 설계에서는 다루지 않지만, F(도메인 규칙)를 넣을 때 함께 본다.
 4. 우클릭 메뉴(A)를 넣을지, 넣는다면 마우스 리포팅이 켜진 TUI에서의 규칙.
+
+## 10. 지금 규칙 (SHPHRD-86)
+
+파일 링크 클릭과 같은 경험을 주려고 설정과 팝오버를 없애고 고정 규칙으로 바꿨다.
+
+| 상황 | 그냥 클릭 | ⌘-클릭 |
+|---|---|---|
+| In-app Browser 켜짐, Apple silicon | 클릭한 pane의 In-app Browser 새 탭 | 기본 브라우저 |
+| In-app Browser 꺼짐 | 기본 브라우저, 알림 없음 | 기본 브라우저 |
+| 켜져 있지만 이 Mac에서 실행할 수 없음(Intel) | 기본 브라우저, 터미널 아래에 그 이유를 알리는 알림 | 기본 브라우저 |
+
+- Settings에 추가한 SSH machine의 pane에서도, host의 herdr에 저장된 herdr machine의 pane에서도 같다. 잘못된 URL은 어느 브라우저로 갈지와 상관없이 "Could Not Open Link" 알림창을 띄운다.
+- ⌘-클릭 안내는 Settings → Experimental Features → In-app Browser의 ⓘ 설명에 있다.
+- 0.5.x가 이 설정을 저장하던 UserDefaults 키 `links.destination`은 읽지도 지우지도 않는다. 설정에서 "Default Browser"를 골랐던 사람도 이제 그냥 클릭하면 In-app Browser에서 열린다.
+- 링크를 더블·트리플 클릭해도 한 번만 열린다. 링크를 연 첫 누름에 이어지는 둘째·셋째 누름(clickCount 2 이상)도 터미널 프로그램에 보내지 않고 앱이 가져가며, 아무것도 열지 않는다. 첫 클릭으로 pane 옆에 In-app Browser가 나타나 화면 배치가 바뀌는 바람에 둘째 누름이 링크 밖에 떨어져도 마찬가지로 가져간다(`TerminalFileGesture`). 링크가 아닌 곳의 더블클릭은 전과 같다. 마우스 리포팅(터미널 프로그램이 마우스 입력을 받겠다고 켠 상태)이 꺼져 있으면 단어를 선택하고, 켜져 있으면 프로그램이 받는다.
+- 목적지를 정하는 함수: `LinkDestinationPolicy.destination(commandHeld:browserEnabled:engineAvailable:)`. 알림을 띄울지 정하는 함수: `saysBrowserUnavailable(commandHeld:browserEnabled:engineAvailable:)`.

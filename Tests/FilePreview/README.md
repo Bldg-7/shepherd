@@ -41,11 +41,14 @@ for hrdrhrdrhrdr preview. Plain text is never a file link, even when it looks li
 path, a source location (`path:line:column`), `~/…` or a `file://` URI: its click
 is TUI input like any other text, with or without Cmd. File intent is claimed at
 mouse-down before any remote input. HTTP(S) links, plain text or OSC8, are also
-claimed and routed, as the Open links in setting says, to the clicked pane's
-In-app Browser or the Mac's default browser, with ⌘ for the other one and a
-prompt the first time; non-link clicks remain TUI input, not a second preview on
-release. Browser OFF/unavailable sends links to the default browser; invalid web
-URLs show a local error, without remote or automatic-enable fallback. Localhost URLs resolve on this Mac;
+claimed at mouse-down. A plain click opens one in a new tab of the clicked
+pane's In-app Browser, and a ⌘-click opens it in the Mac's default browser; a
+double or triple click opens it once. Clicks off a link remain TUI input, and
+releasing them opens no preview. With In-app Browser OFF, links open in the
+default browser. With In-app Browser on but unable to run on this Mac, links
+also open in the default browser, and a notice says why. An invalid web URL
+shows the Could Not Open Link alert on the Mac; it is not sent to the remote
+machine, and In-app Browser is not turned on for it. Localhost URLs resolve on this Mac;
 opening a URL does not create an SSH tunnel or remote browser-agent grant.
 iOS recognizes file touches at began and owns the full gesture before native TUI
 recognizers can emit a tap/drag. Non-file gestures remain native TUI behavior. Markdown file links stay in the same preview and
