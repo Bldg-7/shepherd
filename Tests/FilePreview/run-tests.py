@@ -39,12 +39,18 @@ stage('pane-states-tests',20,[str(out/'pane-states-tests')])
 # to P, each with its own read, source choice and scroll place. SwiftUI's
 # faults go to the log, which must not say state was changed during a view
 # update.
-panel=paneStates+['Shepherd/FilePreview/FilePreviewPanel.swift','Shepherd/FilePreview/MarkdownPreview.swift','Shepherd/FilePreview/PreviewOutline.swift','Shepherd/FilePreview/SourceFilePreview.swift','Shepherd/FilePreview/PreviewSyntaxHighlighter.swift','Shepherd/FilePreview/PreviewSyntaxRendering.swift']
+panel=paneStates+['Shepherd/FilePreview/FilePreviewPanel.swift','Shepherd/FilePreview/MarkdownPreview.swift','Shepherd/FilePreview/PreviewOutline.swift','Shepherd/FilePreview/SourceFilePreview.swift','Shepherd/FilePreview/PreviewSyntaxHighlighter.swift','Shepherd/FilePreview/PreviewSyntaxRendering.swift','Shepherd/FilePreview/PreviewFind.swift','Shepherd/FilePreview/PreviewFindBar.swift','Shepherd/FilePreview/PreviewKeyCatcher.swift']
 (out/'panel-files').mkdir(mode=0o700)
 stage('panel-window-build',120,['xcrun','swiftc','ShepherdKit/Sources/ShepherdKit/Resources.swift','-target',platform.machine()+'-apple-macos26.6.2','-swift-version','6','-default-isolation','MainActor','-parse-as-library',*panel,'Tests/FilePreview/PanelWindowTests.swift','-framework','AppKit','-o',str(out/'panel-window-tests')])
 stage('panel-window-tests',60,[str(out/'panel-window-tests'),str(out/'panel-files')],mirrorsLog=True)
 assert 'Modifying state during view update' not in (out/'panel-window-tests.log').read_text()
 (out/'pane-source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in panel+['Tests/FilePreview/PaneStatesTests.swift','Tests/FilePreview/PanelWindowTests.swift']},indent=2))
+# Find: what it looks in and matches, where it goes next, its marks and the
+# preview's keys, without a window.
+find=['Shepherd/FilePreview/MarkdownPreview.swift','Shepherd/FilePreview/PreviewSyntaxHighlighter.swift','Shepherd/FilePreview/PreviewSyntaxRendering.swift','Shepherd/FilePreview/PreviewFind.swift','Shepherd/FilePreview/PreviewKeyCatcher.swift','Shepherd/FilePreview/PreviewFindBar.swift','Tests/FilePreview/FindTests.swift']
+stage('find-build',90,['xcrun','swiftc','ShepherdKit/Sources/ShepherdKit/Resources.swift','-target',platform.machine()+'-apple-macos26.6.2','-swift-version','6','-default-isolation','MainActor','-parse-as-library',*find,'-framework','AppKit','-o',str(out/'find-tests')])
+stage('find-tests',30,[str(out/'find-tests')])
+(out/'find-source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in find},indent=2))
 if args.swiftterm_products:
  import shutil
  products=args.swiftterm_products.resolve()
@@ -65,4 +71,16 @@ for name in sorted((ROOT/'Shepherd/FilePreview').glob('*.swift')):
 fp=(ROOT/'Shepherd/FilePreview/FilePreviewPanel.swift').read_text()
 assert 'model.reveal(inSource ? .line(heading.line) : .block(heading.id))' in fp and 'systemImage: "list.bullet.indent"' in fp and '.disabled(!hasHeadings)' in fp
 assert '.scrollTargetLayout(' not in ''.join(n.read_text() for n in (ROOT/'Shepherd/FilePreview').glob('*.swift')),'scroll target layouts change how a kept scroll place comes back'
-(out/'validation.json').write_text(json.dumps({'passed':True,'userFilesRead':False,'realKeychainAccess':False,'networkAccess':False,'actualSwiftTerm':bool(args.swiftterm_products),'stages':15 if args.swiftterm_products else 13},indent=2))
+# Find: ⌘F is taken by the preview's own AppKit view only while the preview
+# has the keyboard; a SwiftUI shortcut would take it from a terminal beside
+# it. Its strings are in Korean and Japanese, and each new read starts it
+# over in one place of the model's load.
+previewSources=''.join(n.read_text() for n in (ROOT/'Shepherd/FilePreview').glob('*.swift'))
+assert '.keyboardShortcut(' not in previewSources,'the preview takes its keys in PreviewKeyCatcher, not with SwiftUI shortcuts'
+for key in ['Find','No Results','Find Previous','Find Next','Find Previous (⇧⌘G)','Find Next (⌘G)','Close Find Bar']:
+ assert all(strings[key]['localizations'][l]['stringUnit']['state']=='translated' and strings[key]['localizations'][l]['stringUnit']['value'] for l in ['ko','ja']),key
+model=(ROOT/'Shepherd/FilePreview/FilePreviewModel.swift').read_text()
+load=model[model.index('    func load('):]
+assert [l.strip() for l in model.splitlines()].count('find = PreviewFindState()')==1 and load.index('find = PreviewFindState()')<load.index('let reader = FilePreviewReader()')
+assert 'PreviewKeyCatcher(keyboard: keyboard, perform: perform' in fp and '.focusable()' in fp and 'if model.find.isShown { closeFind() }' in fp
+(out/'validation.json').write_text(json.dumps({'passed':True,'userFilesRead':False,'realKeychainAccess':False,'networkAccess':False,'actualSwiftTerm':bool(args.swiftterm_products),'stages':17 if args.swiftterm_products else 15},indent=2))

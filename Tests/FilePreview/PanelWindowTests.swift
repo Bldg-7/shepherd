@@ -31,6 +31,31 @@ struct PanelRoot: View {
     }
 }
 
+/// Stands in for a terminal beside the preview: an AppKit view that takes
+/// the keyboard.
+final class OwnedTerminal: NSView {
+    override var acceptsFirstResponder: Bool { true }
+}
+final class CloseCount { var count = 0 }
+
+/// The panel at the side, as `ContentView.previewPanel` makes it, its
+/// closes counted.
+struct FindRoot: View {
+    let entry: FilePreviewPaneStates.Entry?
+    let store: MachineStore
+    let closes: CloseCount
+    var expanded = false
+    var body: some View {
+        if let entry {
+            FilePreviewPanel(request: entry.request, model: entry.model, machineStore: store, onClose: { closes.count += 1 }, onFileLink: { _ in })
+                .previewExpansion(isExpanded: expanded, onToggle: {})
+                .id(entry.model.id)
+        } else {
+            Color.clear
+        }
+    }
+}
+
 @main @MainActor enum PanelWindowTests {
     static var checks = 0
     static func check(_ value: Bool, _ message: String) { precondition(value, message); checks += 1 }
@@ -187,7 +212,9 @@ struct PanelRoot: View {
         drain(host.view)
         let previewChecks = checks
         try tableOfContents(directory: directory, store: store, local: local, states: states, host: host)
-        print("PASS \(checks) actual preview panel checks in an owned never-shown window: per-pane read, source and scroll kept across P→Q→P, no reread, no scroll carried between panes (\(previewChecks)); the Markdown table of contents (\(checks - previewChecks))")
+        let outlineChecks = checks - previewChecks
+        try find(directory: directory, store: store, local: local, states: states)
+        print("PASS \(checks) actual preview panel checks in an owned never-shown window: per-pane read, source and scroll kept across P→Q→P, no reread, no scroll carried between panes (\(previewChecks)); the Markdown table of contents (\(outlineChecks)); find, ⌘F beside a terminal (\(checks - previewChecks - outlineChecks))")
     }
 
     /// The table of contents of a Markdown preview, read and chosen through
@@ -367,6 +394,235 @@ struct PanelRoot: View {
         check(toggle() == nil && outlineShown().isEmpty && accessibility(host.view)["preview.outline"] == nil,
               "a file that isn't Markdown has neither the button nor a table of contents, even with a # line")
         host.rootView = PanelRoot(entry: nil, store: store)
+        drain(host.view)
+    }
+
+    static func views<T: NSView>(of type: T.Type, in view: NSView) -> [T] {
+        ((view as? T).map { [$0] } ?? []) + view.subviews.flatMap { views(of: type, in: $0) }
+    }
+
+    /// Find, in a second owned never-shown window: the panel beside a view
+    /// standing in for a terminal, keys sent as AppKit sends key
+    /// equivalents, and the keyboard moved only with `makeFirstResponder`,
+    /// by the test or by the preview. Accessibility is on from the table of
+    /// contents' checks.
+    static func find(directory: String, store: MachineStore, local: Machine, states: FilePreviewPaneStates) throws {
+        var parts = ["# Find plan"]
+        for n in 1...200 {
+            switch n {
+            case 30: parts.append("**Deploy** step one, with [the notes](deploy.md).")
+            case 60: parts.append("## Rollout")
+            case 90: parts.append("**Deploy** step two, with [the notes](deploy.md).")
+            case 150: parts.append("| Stage | Owner |\n| --- | --- |\n| deploy | ops |")
+            case 190: parts.append("```sh\n./deploy.sh\n```")
+            default: parts.append("Paragraph \(n) of the owned find plan, long enough to wrap once or twice in a side panel of this width.")
+            }
+        }
+        let plan = parts.joined(separator: "\n\n")
+        try Data(plan.utf8).write(to: URL(fileURLWithPath: directory + "/find.md"))
+        let planLines = plan.components(separatedBy: "\n")
+        let deployLines = planLines.indices.filter { planLines[$0].lowercased().contains("deploy") }.map { $0 + 1 }
+        check(deployLines == [61, 181, 303, 384], "the plan's deploy lines")
+        // A text file longer than the 120,000 characters shown: a needle
+        // inside them, and one past them.
+        let huge = (1...1_250).map { n -> String in
+            let line = n == 600 || n == 1_220 ? "needle at line \(n) " : ""
+            return line + String(repeating: "x", count: 99 - line.count)
+        }.joined(separator: "\n")
+        try Data(huge.utf8).write(to: URL(fileURLWithPath: directory + "/huge.txt"))
+
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 520), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 900, height: 520))
+        window.contentView = container
+        let terminal = OwnedTerminal(frame: NSRect(x: 0, y: 0, width: 340, height: 520))
+        container.addSubview(terminal)
+        let closes = CloseCount()
+        let host = NSHostingController(rootView: FindRoot(entry: nil, store: store, closes: closes))
+        host.sizingOptions = []
+        host.view.frame = NSRect(x: 340, y: 0, width: 560, height: 520)
+        container.addSubview(host.view)
+        drain(host.view)
+
+        let f = pane("w2:p1", terminal: "term_f", cwd: directory), g = pane("w2:p2", terminal: "term_g", cwd: directory)
+        let fItem = TerminalIdentity(connection: local.connectionIdentity, itemID: f.id)
+        let gItem = TerminalIdentity(connection: local.connectionIdentity, itemID: g.id)
+        func select(_ item: TerminalIdentity, _ pane: AgentSummary, expanded: Bool = false) {
+            host.rootView = FindRoot(entry: states.entry(for: item, panes: [pane]), store: store, closes: closes, expanded: expanded)
+        }
+        func send(_ characters: String, _ modifiers: NSEvent.ModifierFlags, keyCode: UInt16) -> Bool {
+            window.performKeyEquivalent(with: NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: modifiers,
+                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil,
+                characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: keyCode)!)
+        }
+        func commandF() -> Bool { send("f", .command, keyCode: 3) }
+        func commandG() -> Bool { send("g", .command, keyCode: 5) }
+        func shiftCommandG() -> Bool { send("G", [.command, .shift], keyCode: 5) }
+        func esc() {
+            let key = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: window.windowNumber, context: nil, characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53)!
+            (window.firstResponder as? NSView)?.keyDown(with: key)
+        }
+        func field() -> PreviewFindTextField? { views(of: PreviewFindTextField.self, in: host.view).first }
+        /// The find field's editor, while it has the keyboard.
+        func editor() -> NSTextView? {
+            guard let editor = window.firstResponder as? NSTextView, let field = field(), editor.delegate === field else { return nil }
+            return editor
+        }
+        func type(_ text: String) {
+            editor()!.selectAll(nil)
+            editor()!.insertText(text, replacementRange: NSRange(location: NSNotFound, length: 0))
+        }
+        /// What the bar says of its matches, as VoiceOver reads it.
+        func count() -> String? { accessibility(host.view)["preview.find.count"]?.value(forKey: "accessibilityValue") as? String }
+        func bar() -> NSObject? { accessibility(host.view)["preview.find"] }
+        func inPreview() -> Bool { PreviewKeyCatcherView.isInPreview(window.firstResponder, root: host.view) }
+        func frame(_ element: NSObject?) -> NSRect? { (element?.value(forKey: "accessibilityFrame") as? NSValue)?.rectValue }
+
+        // F: the plan, rendered.
+        states.open(FilePreviewRequest(machine: local, pane: f, link: "find.md"), for: fItem)
+        let fModel = states.entry(for: fItem, panes: [f])!.model
+        select(fItem, f)
+        check(settle(host.view) { text(fModel) == plan && fModel.visibleBlocks.first == 0 }, "F's plan is read and rendered from its top")
+        check(fModel.find == PreviewFindState(), "with no find bar")
+
+        // The terminal has the keyboard: ⌘F and ⌘G go past the preview.
+        window.makeFirstResponder(terminal)
+        check(!commandF() && !commandG() && !shiftCommandG() && !fModel.find.isShown, "with the terminal's keyboard, the preview takes neither ⌘F nor ⌘G")
+        drain(host.view)
+        check(window.firstResponder === terminal && bar() == nil, "the terminal keeps the keyboard, and no find bar shows")
+
+        // The preview has it: ⌘F shows the bar, the keyboard in its field.
+        window.makeFirstResponder(host.view)
+        check(commandF() && fModel.find.isShown, "with the preview's keyboard, ⌘F is the preview's: the find bar shows")
+        check(settle(host.view) { bar() != nil && editor() != nil }, "with the keyboard in its field")
+        check(settle(host.view) {
+            guard let bar = frame(bar()), let outline = frame(accessibility(host.view)["preview.outline"]) else { return false }
+            return bar.minY >= outline.maxY - 0.5
+        }, "the table of contents is under the find bar, not under it")
+
+        // Typed: the first match from where the view is, brought to the top.
+        type("DEPLOY")
+        check(fModel.find.query == "DEPLOY" && fModel.find.current == 0, "what is typed is looked for, case ignored: at the first match")
+        check(settle(host.view) { fModel.visibleBlocks.first == 30 }, "the first Deploy's block is brought to the top")
+        check(settle(host.view) { count() == "1 / 4" }, "1 / 4: two Deploys, a table cell and the code, not the link targets")
+        check(commandG() && fModel.find.current == 1 && settle(host.view) { fModel.visibleBlocks.first == 90 }, "⌘G: the next, at the top")
+        check(settle(host.view) { count() == "2 / 4" }, "2 / 4")
+        check(commandG() && settle(host.view) { fModel.find.current == 2 && fModel.visibleBlocks.first == 150 }, "the table")
+        check(commandG() && settle(host.view) { fModel.find.current == 3 && fModel.visibleBlocks.contains(190) }, "the code, near the end")
+        // Coming back up a lazy stack, it may report a block or two it let
+        // go of as still shown: the match's block is in view, the code not.
+        check(commandG() && settle(host.view) { fModel.find.current == 0 && fModel.visibleBlocks.contains(30) && !fModel.visibleBlocks.contains(190) },
+              "past the last, round to the first")
+        check(shiftCommandG() && settle(host.view) { fModel.find.current == 3 && fModel.visibleBlocks.contains(190) }, "⇧⌘G from the first: round to the last")
+        editor()?.doCommand(by: #selector(NSResponder.insertNewline(_:)))
+        check(settle(host.view) { fModel.find.current == 0 && fModel.visibleBlocks.contains(30) && !fModel.visibleBlocks.contains(190) }, "Return in the field: the next")
+        check(editor() != nil, "the field keeps the keyboard through ⌘G, ⇧⌘G and Return")
+        type("zzz")
+        check(fModel.find.current == nil && settle(host.view) { count() == "No Results" }, "nothing found: No Results")
+        type("deploy")
+        check(fModel.find.current == 0 && settle(host.view) { count() == "1 / 4" }, "found again from where the view is")
+
+        // The source: what is looked for is kept, in the source's lines.
+        check(press(accessibility(host.view)["preview.source"]), "Source can be chosen")
+        check(settle(host.view) { fModel.showsSource && fModel.visibleLines.first == 1 } && fModel.find.query == "deploy" && fModel.find.current == nil,
+              "in the source, from its top: what is looked for kept, at no match yet")
+        check(settle(host.view) { count() == "0 / 6" }, "0 / 6: in the source, the link targets count")
+        check(commandG() && settle(host.view) { fModel.find.current == 0 && fModel.visibleLines.first == deployLines[0] }, "⌘G: the first, its line at the top")
+        check(commandG() && settle(host.view) { fModel.find.current == 1 && fModel.visibleLines.first == deployLines[0] }, "the same line's second")
+        check(commandG() && settle(host.view) { fModel.find.current == 2 && fModel.visibleLines.first == deployLines[1] }, "the next line")
+
+        // Esc in the field closes the bar only.
+        editor()?.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
+        check(!fModel.find.isShown && fModel.find.query == "deploy" && closes.count == 0, "Esc in the field closes the find bar, not the preview, keeping what it looked for")
+        check(settle(host.view) { bar() == nil && editor() == nil && inPreview() }, "the bar gone, its marks with it, the keyboard with the preview")
+        check(commandF() && settle(host.view) { editor() != nil && editor()?.selectedRange() == NSRange(location: 0, length: 6) },
+              "⌘F again: the bar, what it looked for selected in its field")
+        check(fModel.find.current == 2, "opened anew, at the first match from where the view is")
+
+        // Esc with the keyboard in the preview, not in the field: the bar
+        // closes first, then the preview at the side.
+        views(of: PreviewKeyCatcherView.self, in: host.view).first?.takeKeyboard()
+        check(settle(host.view) { editor() == nil && inPreview() && window.firstResponder !== host.view },
+              "a click in the preview takes the keyboard from the field to the preview, with SwiftUI's focus")
+        esc()
+        check(settle(host.view) { !fModel.find.isShown } && closes.count == 0, "Esc closes the find bar first")
+        esc()
+        check(settle(host.view) { closes.count == 1 }, "and then the preview, at the side as well")
+
+        // Another pane and back: F's find bar as it was left.
+        check(commandF() && settle(host.view) { editor() != nil }, "the bar again")
+        check(commandG(), "⌘G")
+        let kept = fModel.find
+        check(kept.isShown && kept.query == "deploy" && kept.current == 3, "at the fourth match")
+        states.open(FilePreviewRequest(machine: local, pane: g, link: "plan.md"), for: gItem)
+        let gModel = states.entry(for: gItem, panes: [g])!.model
+        select(gItem, g)
+        check(settle(host.view) { text(gModel) != nil } && gModel.find == PreviewFindState() && bar() == nil, "G has no find bar of its own")
+        check(fModel.find == kept, "leaving F keeps its find bar, what it looks for and the match it is at")
+        select(fItem, f)
+        check(settle(host.view) { field()?.stringValue == "deploy" && count() == "4 / 6" }, "back to F: its bar, what it looked for, at the same match")
+        drain(host.view)
+        check(editor() == nil && fModel.find == kept, "coming back doesn't put the keyboard in the field")
+
+        // A new read of F starts its find bar over.
+        let request = states.entry(for: fItem, panes: [f])!.request
+        let reading = Task { await fModel.load(request, store: store) }
+        check(settle(host.view) { fModel.find == PreviewFindState() && text(fModel) == plan && bar() == nil }, "a new read: no bar, nothing looked for")
+        reading.cancel()
+
+        // A text file: found in its first 120,000 characters, as shown.
+        states.open(FilePreviewRequest(machine: local, pane: g, link: "huge.txt"), for: gItem)
+        let hModel = states.entry(for: gItem, panes: [g])!.model
+        select(gItem, g)
+        check(settle(host.view) { text(hModel) == huge && hModel.visibleLines.first == 1 }, "huge.txt is read")
+        window.makeFirstResponder(host.view)
+        check(commandG() && settle(host.view) { editor() != nil } && hModel.find.isShown,
+              "a text file has the find bar too: with nothing looked for yet, ⌘G shows it as ⌘F does")
+        type("NEEDLE")
+        check(settle(host.view) { count() == "1 / 1" && hModel.visibleLines.first == 600 },
+              "only the needle in the 120,000 characters shown is found, its line brought to the top")
+        // No text: ⌘F isn't the preview's.
+        states.open(FilePreviewRequest(machine: local, pane: g, link: "missing.md"), for: gItem)
+        let missing = states.entry(for: gItem, panes: [g])!.model
+        select(gItem, g)
+        check(settle(host.view) { if case .failed = missing.state { return true } else { return false } }, "missing.md can't be read")
+        window.makeFirstResponder(host.view)
+        check(!commandF() && !missing.find.isShown, "with no text shown, ⌘F goes past the preview")
+
+        // A click: where it gives the preview the keyboard, and what it
+        // does. The preview gone, the keyboard goes back to the terminal.
+        select(fItem, f)
+        check(settle(host.view) { text(fModel) == plan && fModel.visibleBlocks.first == 0 }, "F again")
+        window.makeFirstResponder(terminal)
+        check(commandF() == false, "the terminal's keyboard")
+        window.makeFirstResponder(host.view)
+        check(commandF() && settle(host.view) { editor() != nil }, "the bar, for its field")
+        let catcher = views(of: PreviewKeyCatcherView.self, in: host.view).first!
+        func point(_ view: NSView) -> NSPoint { view.convert(NSPoint(x: view.bounds.midX, y: view.bounds.midY), to: nil) }
+        let body = host.view.convert(NSPoint(x: host.view.bounds.midX, y: host.view.bounds.maxY - 300), to: nil)
+        check(!catcher.takesKeyboard(forClickAt: point(field()!)), "a click on the find field is the field's own")
+        check(!catcher.takesKeyboard(forClickAt: NSPoint(x: host.view.convert(host.view.bounds, to: nil).maxX - 20, y: point(field()!).y)),
+              "a click elsewhere on the find bar, as on its buttons, leaves the keyboard in its field")
+        check(catcher.takesKeyboard(forClickAt: body), "a click in the preview's text takes the keyboard from the field")
+        window.makeFirstResponder(terminal)
+        check(catcher.takesKeyboard(forClickAt: body), "with the terminal's keyboard, a click in the preview's text takes it")
+        check(!catcher.takesKeyboard(forClickAt: point(terminal)), "a click on the terminal doesn't")
+        catcher.takeKeyboard()
+        check(settle(host.view) { inPreview() && window.firstResponder !== host.view }, "the click's taking: AppKit's keyboard and SwiftUI's focus in the preview")
+        check(!catcher.takesKeyboard(forClickAt: body), "a click with the keyboard in the preview already changes nothing")
+        check(commandF(), "⌘F is then the preview's")
+        // Expanded and restored to its size, as before: the keyboard goes
+        // back to the terminal it came from.
+        select(fItem, f, expanded: true)
+        check(settle(host.view) { inPreview() && window.firstResponder !== host.view }, "expanded, the preview keeps the keyboard")
+        select(fItem, f)
+        check(settle(host.view) { window.firstResponder === terminal }, "restored to its size, the terminal has the keyboard back")
+        catcher.takeKeyboard()
+        check(settle(host.view) { inPreview() }, "a click in the preview again")
+        host.rootView = FindRoot(entry: nil, store: store, closes: closes)
+        check(settle(host.view) { window.firstResponder === terminal }, "the preview gone, the terminal has the keyboard back")
         drain(host.view)
     }
 }
