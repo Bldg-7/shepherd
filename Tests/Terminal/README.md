@@ -213,6 +213,80 @@ Not covered: a real mouse drag, the system's drag pasteboard, real drops from
 other apps (the test only marks a drag as coming from one), and the installed
 app.
 
+## Reordering the sidebar's groups
+
+```sh
+python3 Tests/Terminal/run-board-group-order-tests.py --output /tmp/shepherd-group-order-FRESH \
+  --swiftterm-products /path/to/DerivedData/Build/Products/Debug
+```
+
+(`FRESH` stands for a new folder name of your choice, as in the other runners.)
+One test program (`BoardGroupOrderTests.swift`), built with the pinned SwiftTerm,
+then source checks. It uses never-shown windows, named pasteboards of its own
+(not the general one) for the row drag it compares against, and a kernel PTY it
+opens itself. It starts no real drag session, and doesn't touch the user's
+pasteboard or defaults, herdr, SSH or the installed app.
+
+- The rules (`BoardGroupOrder`, `BoardGroupFolding`):
+  - The order is kept as one group ID per line. Groups in the kept order come
+    first, in that order. The others follow in herdr's order, the host's own
+    first. IDs of groups that are gone are ignored.
+  - A header let go at a given height goes into the gap above the first header
+    whose middle is below it.
+  - When a search hides some groups, a group moves only among the shown ones:
+    moved up, it goes right before the shown group just below the line; moved
+    down, right after the shown group just above the line. Hidden groups keep
+    their places.
+  - While a header is dragged, no group lists its rows, whatever the search or
+    the groups the person folded. The saved folding (which groups the person
+    folded) is not written during a drag, and a header click changes it only
+    when no drag is going on.
+- The drag (`BoardGroupDrag`), with AppKit views standing in for the list and
+  its headers:
+  - The first move starts it. The line goes between the two headers the group
+    would go between, and isn't drawn over the group's own place or outside the
+    list.
+  - The headers' positions are read from AppKit views, so after the list moves
+    a header, its new position is used.
+  - Let go inside the list, the group moves to the line. Let go outside the
+    list, over the group's own place or outside the window, nothing moves.
+    Escape also moves nothing, and the rest of that drag is ignored.
+  - When the mouse button comes up and the gesture hasn't ended the drag, the
+    drag ends shortly after. A mouse button going down ends a drag still open
+    at once.
+  - After a drop the groups change in three steps: first the order changes
+    while every group still shows only its header; then every group but the
+    last unfolds as it was; then the last one does.
+- The board: the production header drag and insertion line, in a sidebar List
+  laid out as `AgentBoardView`'s, beside the production terminal view. The test
+  calls the drag as the gesture's `onChanged` and `onEnded` would. It checks:
+  - every group shows its header alone while a header is dragged, and its rows
+    again after a drop, Escape, or the mouse coming up or going down;
+  - the saved folding is never written by a drag;
+  - the selected row stays selected, and ↓ and ↑ follow the new order;
+  - a header let go over the terminal changes no order and writes zero bytes to
+    the PTY, so no group name is pasted; a row dragged onto the terminal still
+    pastes its ID;
+  - headers give the List nothing to drag, and rows still do;
+  - a group herdr adds goes last, and one that is gone is left out the next time
+    the order is kept.
+
+  The run fails if the system log shows SwiftUI's "Modifying state during view
+  update", AppKit's `layoutSubtreeIfNeeded` warning or its reentrant table view
+  warning.
+- Source checks (reading the source files): the order is kept per host under
+  `AgentBoardView.groupOrder.<machine id>`; the host and the herdr machines are
+  listed in one `ForEach` in that order; both kinds of header use the drag; a
+  header click saves the folding only when no drag is going on; rows still use
+  `herdrItemDrag` (the row drag of SHPHRD-94), and nothing of the header drag
+  uses a pasteboard; Escape is consumed by the drag's event monitor; the iOS
+  app's board is unchanged.
+
+Not covered: a real mouse or trackpad drag (SwiftUI takes no clicks or gestures
+in a never-shown window), that Escape pressed during a drag doesn't reach the
+terminal that has the keyboard (the test's windows never become the key
+window), and the installed app.
+
 ## Drawing while hidden
 
 ```sh

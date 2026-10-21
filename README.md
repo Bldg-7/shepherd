@@ -112,6 +112,15 @@ fails to connect, and remove one. This needs herdr 0.9.0 or later on the host.
   host's herdr. The herdr sessions running on workbox keep running, and workbox's
   host key stays in the host's `known_hosts`.
 
+With herdr machines saved, drag a group's header in the sidebar, the host's own or a
+herdr machine's, to put the groups in another order. While you drag, every group
+shows only its header, and a line shows where the group will go. Let go to move it
+there; each group is then folded or unfolded as it was before. Press Escape, or let
+go outside the sidebar, to leave the order as it was. A header let go over a
+terminal types nothing there. The order is kept separately for each host, and a
+herdr machine added later goes at the end. herdr's own order (`herdr machine list`)
+doesn't change, and the iPhone and iPad app is unchanged.
+
 ## Build from source
 
 Use Xcode 27 and its command-line tools. The repository pins Swift dependencies in `Package.resolved`, Chromium/CEF in `scripts/cef.sh`, and browser Node packages in `package-lock.json`.
