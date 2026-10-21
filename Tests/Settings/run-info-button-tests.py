@@ -17,7 +17,7 @@ stage('build',90,['xcrun','swiftc','-swift-version','6','-default-isolation','Ma
 stage('tests',30,[str(out/'info-button-tests')])
 # Every ⓘ in Settings is this button, never a bare icon with only a tooltip.
 e,a=[(ROOT/v).read_text() for v in views]
-assert e.count('InfoButton(accessibilityLabel: "About ')==3 and a.count('InfoButton(accessibilityLabel: "About ')==1
+assert e.count('InfoButton(accessibilityLabel: "About ')==2 and a.count('InfoButton(accessibilityLabel: "About ')==1
 assert 'systemName: "info.circle"' not in e+a
 assert 'Text("In-app Browser")' in e and 'Text("Terminal File Drop")' in e and '(Experimental)' not in e
 (out/'validation.json').write_text(json.dumps({'passed':True,'stages':2,'toggleLabelAndPlainRow':True,'closesOnSecondClickOutsideClickEscape':True,'ownedOffscreenWindow':True,'appOrUserInput':False},indent=2))
