@@ -525,6 +525,15 @@ struct FindRoot: View {
         check(fModel.find.current == nil && settle(host.view) { count() == "No Results" }, "nothing found: No Results")
         type("deploy")
         check(fModel.find.current == 0 && settle(host.view) { count() == "1 / 4" }, "found again from where the view is")
+        // A new search goes from the first block shown: on from Deploy's block
+        // at the top to the last paragraph, not back up to those above it,
+        // though the lazy stack has laid out blocks there it never showed.
+        check(settle(host.view) { fModel.visibleBlocks.first == 30 }, "Deploy's block at the top")
+        type("paragraph 2")
+        check(fModel.find.current == 11 && settle(host.view) { count() == "12 / 12" && fModel.visibleBlocks.contains(200) && !fModel.visibleBlocks.contains(20) },
+              "a new search from Deploy's block: the last paragraph's, block 200, not block 20 above it")
+        type("deploy")
+        check(fModel.find.query == "deploy" && fModel.find.current != nil, "deploy again")
 
         // The source: what is looked for is kept, in the source's lines.
         check(press(accessibility(host.view)["preview.source"]), "Source can be chosen")
@@ -534,6 +543,23 @@ struct FindRoot: View {
         check(commandG() && settle(host.view) { fModel.find.current == 0 && fModel.visibleLines.first == deployLines[0] }, "⌘G: the first, its line at the top")
         check(commandG() && settle(host.view) { fModel.find.current == 1 && fModel.visibleLines.first == deployLines[0] }, "the same line's second")
         check(commandG() && settle(host.view) { fModel.find.current == 2 && fModel.visibleLines.first == deployLines[1] }, "the next line")
+        // A new search there goes from the first line shown too: on from it to
+        // a line already in view, which stays where it is, not up to line 19.
+        type("paragraph 9")
+        check(fModel.find.current == 1 && settle(host.view) { count() == "2 / 10" } && settle(host.view) { fModel.visibleLines.first == deployLines[1] && fModel.visibleLines.contains(183) },
+              "a new search from the line at the top: paragraph 91's line below it, in view already, not paragraph 9's above")
+        // None after it: round to the first, up among lines shown before,
+        // which come back where they were. A new search from there goes on
+        // from its first line, not from the top.
+        type("paragraph 4")
+        check(fModel.find.current == 0 && settle(host.view) { count() == "1 / 11" && fModel.visibleLines.first == 9 },
+              "with no paragraph 4 after the view, round to the first: its line 9 at the top, the lines shown counted")
+        type("paragraph 1")
+        check(fModel.find.current == 1 && settle(host.view) { fModel.visibleLines.first == 9 && fModel.visibleLines.contains(21) },
+              "a new search from line 9: paragraph 10's line below it, in view already, not paragraph 1's above")
+        type("deploy")
+        check(fModel.find.current == 0 && settle(host.view) { count() == "1 / 6" && fModel.visibleLines.first == deployLines[0] }, "deploy again, from line 9: its first line")
+        check(commandG() && commandG() && settle(host.view) { fModel.find.current == 2 && fModel.visibleLines.first == deployLines[1] }, "and on to the next line, as before")
 
         // Esc in the field closes the bar only.
         editor()?.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
