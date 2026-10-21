@@ -282,6 +282,16 @@ nonisolated final class ResultBox<Value: Sendable>: @unchecked Sendable {
         check(drainUntil { accessibility(host)["settings.pair.qr"] != nil && label(accessibility(host)["settings.pair.last-decision"]).contains("You turned down") },
               "a new code, saying what happened to the last request")
 
+        // A device that goes before the answer.
+        guard let gone = coordinator.code, var leaving = try? TestDevice(scanning: gone.text), let m1g = try? leaving.request(),
+              let fdg = run({ await Wire.connect(port: gone.port) }) ?? nil else { check(false, "a device that leaves"); return }
+        _ = run { await Wire.send(fdg, m1g) }
+        check(drainUntil { accessibility(host)["settings.pair.request.title"] != nil }, "its request is shown")
+        close(fdg)
+        check(drainUntil { label(accessibility(host)["settings.pair.last-decision"]).contains("cancelled its request or lost its connection") },
+              "it closes its connection: the request goes, said so over a new code")
+        check(accessibility(host)["settings.pair.approve"] == nil && accessibility(host)["settings.pair.qr"] != nil, "…with no Approve… left to press")
+
         // Another, approved.
         guard let next = coordinator.code, var second = try? TestDevice(scanning: next.text, name: "Minsu’s iPad", model: "iPad"),
               let m1b = try? second.request(), let fd2 = run({ await Wire.connect(port: next.port) }) ?? nil else { check(false, "a second device"); return }

@@ -25,6 +25,7 @@ import Foundation
         await coordinatorCodes(root.appending(path: "codes"))
         await roundTrip(root.appending(path: "trip"))
         await answers(root.appending(path: "answers"))
+        await cancelled(root.appending(path: "cancelled"))
         await listenerLimits(root.appending(path: "limits"))
         Checks.finish("Mac pairing checks: address selector, Tailscale names, filter, authorized_keys, device list and history, installation ID, QR code, coordinator on loopback")
     }
@@ -856,6 +857,59 @@ import Foundation
         check(((try? refusedWorld.store.history()) ?? []).map(\.event).contains(.keyNotWritten), "written down as not written")
         close(fd7)
         refusedCoordinator.stop()
+    }
+
+    // MARK: - Coordinator: a device that goes before the answer
+
+    static func cancelled(_ root: URL) async {
+        let world = PairingWorld(home: root)
+        let coordinator = await started(world)
+        coordinator.showCode()
+        func written() -> Bool { FileManager.default.fileExists(atPath: world.authorizedKeys.path) }
+        func events() -> [PairingAuditEntry.Event] { ((try? world.store.history()) ?? []).map(\.event) }
+
+        // The device closes its connection while the request is on screen.
+        guard let code = coordinator.code, var device = try? TestDevice(scanning: code.text),
+              let fd = await Wire.connect(port: code.port) else { check(false, "a device connects"); return }
+        _ = await Wire.send(fd, try! device.request())
+        _ = await waitUntil { coordinator.phase == .request }
+        close(fd)
+        check(await waitUntil { coordinator.phase != .request }, "the device's connection ended: the request goes")
+        check(coordinator.lastDecision == .cancelled("Minsu’s iPhone") && coordinator.phase == .showingCode
+              && coordinator.code.map { $0.sessionID != code.sessionID } == true && coordinator.request == nil,
+              "…said so over a new code")
+        await coordinator.approve()
+        check(!written() && coordinator.finished == nil && world.approval.reasons.isEmpty,
+              "it can't be approved afterwards, the owner isn't asked, and authorized_keys is left as it was")
+        check(events() == [.requested, .cancelled], "the history: requested, cancelled")
+
+        // …while Touch ID or the password is being asked for.
+        guard let code2 = coordinator.code, var second = try? TestDevice(scanning: code2.text),
+              let fd2 = await Wire.connect(port: code2.port) else { check(false, "a second device connects"); return }
+        _ = await Wire.send(fd2, try! second.request())
+        _ = await waitUntil { coordinator.phase == .request }
+        world.approval.holds = true
+        let approving = Task { await coordinator.approve() }
+        _ = await waitUntil { coordinator.request?.isAuthenticating == true }
+        close(fd2)
+        check(await waitUntil { coordinator.phase != .request }, "the device goes while the owner is asked: the request goes")
+        await approving.value
+        check(world.approval.cancels == 1 && coordinator.lastDecision == .cancelled("Minsu’s iPhone") && !written()
+              && coordinator.finished == nil, "…the prompt is cancelled and nothing is written")
+
+        // …and when the approval comes before the main actor hears of it.
+        guard let code3 = coordinator.code, var third = try? TestDevice(scanning: code3.text),
+              let fd3 = await Wire.connect(port: code3.port) else { check(false, "a third device connects"); return }
+        _ = await Wire.send(fd3, try! third.request())
+        _ = await waitUntil { coordinator.phase == .request }
+        close(fd3)
+        // The connection hears of the end on its own queue; the main actor waits here.
+        usleep(300_000)
+        await coordinator.approve()
+        check(coordinator.phase == .showingCode && coordinator.lastDecision == .cancelled("Minsu’s iPhone") && !written()
+              && coordinator.finished == nil && !events().contains(.approved) && ((try? world.store.devices()) ?? []).isEmpty,
+              "an approval that finds the device gone writes nothing and lists nothing")
+        coordinator.stop()
     }
 
     // MARK: - Listener limits

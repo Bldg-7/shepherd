@@ -386,6 +386,15 @@ import Foundation
         flow3.cancel()
         await flow3.settle()
         check(device3.dialer.links.allSatisfy(\.isClosed) && device3.isClean, "Cancel: the connection closed, nothing kept")
+        check(await waitUntil { coordinator3.phase != .request }, "…and the Mac closes the request on its screen")
+        if case .cancelled? = coordinator3.lastDecision {
+            check(coordinator3.phase == .showingCode, "…saying the device cancelled, over a new code")
+        } else {
+            check(false, "…saying the device cancelled (\(String(describing: coordinator3.lastDecision)))")
+        }
+        await coordinator3.approve()
+        check(!FileManager.default.fileExists(atPath: world3.authorizedKeys.path) && coordinator3.finished == nil,
+              "…so it can't be approved, and authorized_keys is left as it was")
         coordinator3.reject()
     }
 
