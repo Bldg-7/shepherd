@@ -5,19 +5,22 @@ import Foundation
 #if canImport(Citadel)
 import Citadel
 
-/// The secret used to authenticate to a Machine over SSH — either a private
-/// key (parsed by `OpenSSHPrivateKey`) or a plain password. `MachineStore`
-/// stores both as opaque bytes under one Keychain tag; `Machine.authMethod`
-/// says which this is.
+/// The secret used to authenticate to a Machine over SSH — a private key
+/// (parsed by `OpenSSHPrivateKey`), a plain password, or the stored form of
+/// a key the iOS app made for a paired Mac (`SecureEnclaveSSHKey`).
+/// `MachineStore` stores each as opaque bytes under one Keychain tag;
+/// `Machine.authMethod` says which this is.
 public enum HostCredential: Sendable {
     case privateKey(String)
     case password(String)
+    /// `SecureEnclaveSSHKey.storedRepresentation`.
+    case secureEnclaveKey(Data)
 
     public init(authMethod: Machine.AuthMethod, secretData: Data) {
-        let text = String(decoding: secretData, as: UTF8.self)
         switch authMethod {
-        case .key: self = .privateKey(text)
-        case .password: self = .password(text)
+        case .key: self = .privateKey(String(decoding: secretData, as: UTF8.self))
+        case .password: self = .password(String(decoding: secretData, as: UTF8.self))
+        case .secureEnclaveKey: self = .secureEnclaveKey(secretData)
         }
     }
 
@@ -27,6 +30,8 @@ public enum HostCredential: Sendable {
             return try OpenSSHPrivateKey.authenticationMethod(username: username, pem: pem)
         case .password(let password):
             return .passwordBased(username: username, password: password)
+        case .secureEnclaveKey(let stored):
+            return try SecureEnclaveSSHKey(storedRepresentation: stored).authenticationMethod(username: username)
         }
     }
 }

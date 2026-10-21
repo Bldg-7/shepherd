@@ -69,34 +69,60 @@ public actor SSHHerdrTransport: HerdrTransport {
     /// Empty means herdr's own "default" session.
     private let sessionName: String
     private let pinnedFingerprint: String?
+    /// For a Mac paired by QR code: `host` is an address of this kind, and
+    /// is connected to only through `addressResolver` (see `connect`).
+    private let addressKind: Machine.AddressKind?
+    private let addressResolver: PairingAddressResolver
 
     private var client: SSHClient?
     private var socketPath: String?
     private var newlyPinnedFingerprint: String?
     private var nextRequestID = 0
 
-    public init(host: String, port: Int, username: String, credential: HostCredential, sessionName: String = "", pinnedFingerprint: String? = nil) {
+    public init(host: String, port: Int, username: String, credential: HostCredential, sessionName: String = "", pinnedFingerprint: String? = nil,
+                addressKind: Machine.AddressKind? = nil, addressResolver: PairingAddressResolver = PairingAddressResolver()) {
         self.host = host
         self.port = port
         self.username = username
         self.credential = credential
         self.sessionName = sessionName
         self.pinnedFingerprint = pinnedFingerprint
+        self.addressKind = addressKind
+        self.addressResolver = addressResolver
     }
 
     public func connect() async throws {
+        // A paired Mac's address is held to its kind's range before anything
+        // is sent anywhere: a name is looked up once, and the connection goes
+        // to the IPv4 address that passed, not to the name (SHPHRD-77, "기기
+        // 쪽 검증"). Any other machine is connected to as it is.
+        let connectionHost: String
+        if let addressKind {
+            connectionHost = try await addressResolver.resolve(hostname: host, kind: addressKind).description
+        } else {
+            connectionHost = host
+        }
+
         let authMethod = try credential.authenticationMethod(username: username)
 
         let observedFingerprint = NIOLockedValueBox<String?>(nil)
         let validator = TOFUHostKeyValidator(pinnedFingerprint: pinnedFingerprint, observedFingerprint: observedFingerprint)
 
         let settings = SSHClientSettings(
-            host: host,
+            host: connectionHost,
             port: port,
             authenticationMethod: { authMethod },
             hostKeyValidator: .custom(validator)
         )
-        let client = try await SSHClient.connect(to: settings)
+        let client: SSHClient
+        do {
+            client = try await SSHClient.connect(to: settings)
+        } catch is HostKeyValidationError where addressKind?.isLAN == true {
+            // The host key is checked before the device's key is offered, so
+            // nothing was given away. On a local network the likeliest reason
+            // is another device that has the Mac's old address.
+            throw PairedConnectionError.anotherDeviceAnswered(address: host)
+        }
         self.client = client
 
         if pinnedFingerprint == nil {

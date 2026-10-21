@@ -191,6 +191,30 @@ public final class MachineStore {
         save()
     }
 
+    /// Points a Mac paired by QR code at the address a later scan of the
+    /// same Mac's code gave, once a connection there has been made with the
+    /// key and pin the machine already has. Only `hostname` and
+    /// `addressKind` change: the pin stays, because it was that pin the new
+    /// address answered to, and so does the credential. `hostname` is taken
+    /// as a valid value of `addressKind` — the scanned `PairingPayload`'s
+    /// address — and every connection checks it again in any case.
+    ///
+    /// Throws `settingsChanged` when `machine` is no longer the saved one,
+    /// and `notEditable` for a machine that wasn't paired by QR code.
+    public func updatePairedAddress(of machine: Machine, hostname: String, addressKind: Machine.AddressKind) throws {
+        guard let index = machines.firstIndex(where: { $0.id == machine.id }) else { throw EditError.notEditable }
+        guard machines[index].connectionIdentity == machine.connectionIdentity else { throw EditError.settingsChanged }
+        guard machines[index].addressKind != nil, machines[index].pinnedHostKeyFingerprint != nil else { throw EditError.notEditable }
+        let host = hostname.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !host.isEmpty else { throw EditError.invalidFields }
+        var next = machines
+        next[index].hostname = host
+        next[index].addressKind = addressKind
+        let encoded = try JSONEncoder().encode(next)
+        defaults.set(encoded, forKey: defaultsKey)
+        machines = next
+    }
+
     /// Appends a Machine whose credential is already in the Keychain.
     ///
     /// It also becomes the active machine when nothing valid is active —

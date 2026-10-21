@@ -704,6 +704,126 @@
         "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%1$@」を %2$@ の herdr に保存しました。" } },
         "ko" : { "stringUnit" : { "state" : "translated", "value" : "‘%1$@’을(를) %2$@의 herdr에 저장했습니다." } }
       }
+    },
+    ".local Name" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : ".local 名" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : ".local 이름" } }
+      }
+    },
+    "Private IPv4" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "プライベート IPv4" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "사설 IPv4" } }
+      }
+    },
+    "“%@” isn't a .local name." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%@」は .local 名ではありません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "‘%@’은(는) .local 이름이 아닙니다." } }
+      }
+    },
+    "“%@” isn't a private IPv4 address." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%@」はプライベート IPv4 アドレスではありません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "‘%@’은(는) 사설 IPv4 주소가 아닙니다." } }
+      }
+    },
+    "“%@” isn't a Tailscale IPv4 address." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%@」は Tailscale IPv4 アドレスではありません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "‘%@’은(는) Tailscale IPv4 주소가 아닙니다." } }
+      }
+    },
+    "“%@” isn't a Tailscale MagicDNS name." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%@」は Tailscale MagicDNS 名ではありません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "‘%@’은(는) Tailscale MagicDNS 이름이 아닙니다." } }
+      }
+    },
+    "Looking up %@ took too long." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "%@ の名前解決に時間がかかりすぎました。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "%@ 이름을 조회하는 데 너무 오래 걸렸습니다." } }
+      }
+    },
+    "%@ didn't resolve to a Tailscale address, so Shepherd didn't connect. Check that Tailscale is connected on this device and that Use Tailscale DNS is turned on." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "%@ が Tailscale のアドレスに解決されなかったため、接続しませんでした。このデバイスで Tailscale が接続されていて、「Tailscale DNS を使用」がオンになっているか確認してください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "%@ 이름이 Tailscale 주소로 조회되지 않아 연결하지 않았습니다. 이 기기에서 Tailscale이 연결되어 있고 ‘Tailscale DNS 사용’이 켜져 있는지 확인하세요." } }
+      }
+    },
+    "%@ didn't resolve to an address on the local network, so Shepherd didn't connect." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "%@ がローカルネットワーク上のアドレスに解決されなかったため、接続しませんでした。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "%@ 이름이 같은 네트워크 안의 주소로 조회되지 않아 연결하지 않았습니다." } }
+      }
+    },
+    "A different device answered at %@. If the Mac's address has changed, scan its QR code again." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "このアドレス(%@)で別のデバイスが応答しました。Mac のアドレスが変わった場合は、Mac の QR コードをもう一度スキャンしてください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "이 주소(%@)에서 다른 기기가 응답했습니다. Mac의 주소가 바뀌었다면 Mac의 QR 코드를 다시 스캔하세요." } }
+      }
+    },
+    "The device sent a key that isn't a P-256 SSH public key." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "デバイスから送られた鍵は P-256 の SSH 公開鍵ではありません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "기기가 보낸 키가 P-256 SSH 공개 키가 아닙니다." } }
+      }
+    },
+    "This device has no Secure Enclave to keep its key in." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "このデバイスには鍵を保管する Secure Enclave がありません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "이 기기에는 키를 보관할 Secure Enclave가 없습니다." } }
+      }
+    },
+    "This device's key for the Mac can't be used. Remove the Mac and pair it again." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "この Mac に接続するためのこのデバイスの鍵を使用できません。Mac を削除して、もう一度ペアリングしてください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "이 Mac에 접속할 이 기기의 키를 쓸 수 없습니다. Mac을 지우고 다시 페어링하세요." } }
+      }
+    },
+    "This isn't a Shepherd pairing code." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "Shepherd のペアリングコードではありません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "Shepherd 페어링 코드가 아닙니다." } }
+      }
+    },
+    "This pairing code needs a newer version of Shepherd. Update the app, then scan the code again." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "このペアリングコードを読み取るには新しいバージョンの Shepherd が必要です。App をアップデートしてから、もう一度スキャンしてください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "이 페어링 코드를 읽으려면 새 버전의 Shepherd가 필요합니다. 앱을 업데이트한 뒤 다시 스캔하세요." } }
+      }
+    },
+    "This pairing code is damaged or incomplete." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ペアリングコードが破損しているか、不完全です。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "페어링 코드가 손상되었거나 일부가 빠졌습니다." } }
+      }
+    },
+    "This pairing code has expired. Show a new one on the Mac." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ペアリングコードの有効期限が切れました。Mac で新しいコードを表示してください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "페어링 코드가 만료되었습니다. Mac에서 새 코드를 표시하세요." } }
+      }
+    },
+    "The pairing message couldn't be read." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ペアリングメッセージを読み取れませんでした。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "페어링 메시지를 읽을 수 없습니다." } }
+      }
+    },
+    "This QR code was already used. Show a new one on the Mac and scan it." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "この QR コードはすでに使用されています。Mac で新しいコードを表示してスキャンしてください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "이미 사용된 QR 코드입니다. Mac에서 새 코드를 표시해 스캔하세요." } }
+      }
+    },
+    "The Mac isn't showing this QR code anymore. Show a new one on the Mac and scan it." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "Mac にはこの QR コードがもう表示されていません。Mac で新しいコードを表示してスキャンしてください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "Mac에 더 이상 이 QR 코드가 표시되어 있지 않습니다. Mac에서 새 코드를 표시해 스캔하세요." } }
+      }
     }
   },
   "version" : "1.1"

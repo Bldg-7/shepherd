@@ -26,7 +26,8 @@ extension MachineStore {
                 username: current.username,
                 credential: credential,
                 sessionName: current.sessionName,
-                pinnedFingerprint: current.pinnedHostKeyFingerprint
+                pinnedFingerprint: current.pinnedHostKeyFingerprint,
+                addressKind: current.addressKind
             )
         }
         throw EditError.missingCredential

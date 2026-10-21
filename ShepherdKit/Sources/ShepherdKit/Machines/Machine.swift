@@ -9,6 +9,31 @@ public struct Machine: Identifiable, Codable, Hashable, Sendable {
     public enum AuthMethod: String, Codable, Sendable {
         case key
         case password
+        /// A P-256 key the iOS app made for a Mac it paired with by QR code
+        /// (see `SecureEnclaveSSHKey`): in the device's Secure Enclave, or in
+        /// software on the Simulator. The secret stored under `keychainTag`
+        /// is `SecureEnclaveSSHKey.storedRepresentation`, never a private key
+        /// that would work anywhere else.
+        case secureEnclaveKey
+    }
+
+    /// Which kind of address `hostname` is, for a Mac added by scanning its
+    /// pairing QR code (see `PairingAddress`). Every connection to such a
+    /// machine looks the name up once and connects only to an IPv4 address
+    /// within the kind's range. Nil — machines added by hand, and those saved
+    /// before this existed — connects to `hostname` as it is, as before.
+    ///
+    /// Declared here rather than beside `PairingAddress` because the test
+    /// runners compile this file without the pairing code.
+    public nonisolated enum AddressKind: String, Codable, CaseIterable, Sendable {
+        /// The Mac's Bonjour name, `<name>.local`.
+        case localName
+        /// An IPv4 address in 10/8, 172.16/12 or 192.168/16.
+        case privateIPv4
+        /// The Mac's Tailscale IPv4 address, in 100.64/10.
+        case tailscaleIPv4
+        /// The Mac's Tailscale MagicDNS name, `<name>.<tailnet>.ts.net`.
+        case tailscaleMagicDNS
     }
 
     public var id: UUID
@@ -30,8 +55,11 @@ public struct Machine: Identifiable, Codable, Hashable, Sendable {
     /// round-trip through `Codable` since `Machine` itself does.
     public var isLocal: Bool
     /// SHA256 SSH host key fingerprint pinned on first connect (trust-on-first-use).
-    /// Nil until the first successful connection.
+    /// Nil until the first successful connection. A Mac paired by QR code
+    /// has it from the code, before the first connection.
     public var pinnedHostKeyFingerprint: String?
+    /// See `AddressKind`.
+    public var addressKind: AddressKind?
 
     /// `id` is a parameter (rather than always a fresh `UUID()`) for the one
     /// Machine that isn't loaded from storage yet still has to be recognised
@@ -44,7 +72,8 @@ public struct Machine: Identifiable, Codable, Hashable, Sendable {
         username: String,
         authMethod: AuthMethod = .key,
         sessionName: String = "",
-        isLocal: Bool = false
+        isLocal: Bool = false,
+        addressKind: AddressKind? = nil
     ) {
         self.id = id
         self.displayName = displayName
@@ -56,12 +85,14 @@ public struct Machine: Identifiable, Codable, Hashable, Sendable {
         self.sessionName = sessionName
         self.isLocal = isLocal
         self.pinnedHostKeyFingerprint = nil
+        self.addressKind = addressKind
     }
 
     /// A connection's scope, not the row's display identity. A saved credential
     /// replacement gets a fresh Keychain tag, so even replacing a password with
     /// another password retires the old connection. TOFU pinning and renaming do
-    /// not restart an otherwise unchanged connection.
+    /// not restart an otherwise unchanged connection. A new address kind does,
+    /// as it changes which addresses the connection may go to.
     public nonisolated struct ConnectionIdentity: Hashable, Sendable {
         public let machineID: UUID
         public let hostname: String
@@ -71,17 +102,19 @@ public struct Machine: Identifiable, Codable, Hashable, Sendable {
         public let authMethod: AuthMethod
         public let keychainTag: String
         public let isLocal: Bool
+        public let addressKind: AddressKind?
     }
 
     public var connectionIdentity: ConnectionIdentity {
         ConnectionIdentity(machineID: id, hostname: hostname, port: port,
                            username: username, sessionName: sessionName,
-                           authMethod: authMethod, keychainTag: keychainTag, isLocal: isLocal)
+                           authMethod: authMethod, keychainTag: keychainTag, isLocal: isLocal,
+                           addressKind: addressKind)
     }
 
-    /// `authMethod`/`sessionName`/`isLocal` default when decoding Machines
-    /// saved before they existed, so older stored data keeps working
-    /// instead of failing to load.
+    /// `authMethod`/`sessionName`/`isLocal`/`addressKind` default when
+    /// decoding Machines saved before they existed, so older stored data
+    /// keeps working instead of failing to load.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
@@ -102,6 +135,7 @@ public struct Machine: Identifiable, Codable, Hashable, Sendable {
         sessionName = Self.normalizedSessionName(storedSessionName) ?? storedSessionName
         isLocal = try container.decodeIfPresent(Bool.self, forKey: .isLocal) ?? false
         pinnedHostKeyFingerprint = try container.decodeIfPresent(String.self, forKey: .pinnedHostKeyFingerprint)
+        addressKind = try container.decodeIfPresent(AddressKind.self, forKey: .addressKind)
     }
 
     /// Turns what a person typed into the value `sessionName` stores, or nil

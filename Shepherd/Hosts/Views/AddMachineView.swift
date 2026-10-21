@@ -181,6 +181,9 @@ struct AddMachineView: View {
                         keyAuthSection
                     case .password:
                         SecureField("Password", text: $password, prompt: requiredPrompt)
+                    case .secureEnclaveKey:
+                        // Only the iOS app makes these, when it pairs with a Mac.
+                        EmptyView()
                     }
                 } else {
                     Label(keptCredentialTitle, systemImage: "lock.shield")
@@ -215,6 +218,8 @@ struct AddMachineView: View {
             if keySource == .generate { return nil }
             #endif
             return "Paste an OpenSSH private key (PEM). It's stored in the Keychain, never in plain app storage."
+        case .secureEnclaveKey:
+            return nil
         }
     }
 
@@ -406,6 +411,8 @@ struct AddMachineView: View {
             if keySource == .generate { return true }
             #endif
             return !privateKeyText.isEmpty
+        case .secureEnclaveKey:
+            return false
         }
     }
 
