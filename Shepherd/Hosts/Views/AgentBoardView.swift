@@ -854,9 +854,7 @@ struct AgentBoardView: View {
                     }
                     #endif
                 }
-                Text(subtitle(for: agent))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                AgentPaneCaption(subtitle(for: agent), agentName: agent.agentName)
             }
             Spacer()
             if agent.hasAgent {
@@ -949,7 +947,8 @@ struct AgentBoardView: View {
 
     /// Which agent runs in the pane, or — for a pane with none — the folder
     /// it is in, which tells two shells apart where their titles often
-    /// don't.
+    /// don't. The row shows Claude's and Pi's marks in place of their names
+    /// (`AgentPaneCaption`); a search goes by the words all the same.
     private func subtitle(for agent: AgentSummary) -> String {
         if agent.hasAgent {
             return agent.agentName ?? agent.source ?? agent.paneID

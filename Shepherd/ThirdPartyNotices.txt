@@ -3273,3 +3273,11 @@ Vendor/CEF/cef_binary_154.0.33+ga03e714+chromium-154.0.8037.94_macosarm64_minima
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+
+========================================================================
+Trademarks
+========================================================================
+The sidebar shows the Claude and Pi logos on the rows of the panes they run in.
+Claude is a trademark of Anthropic, PBC. The Pi logo belongs to Earendil Inc.
+hrdrhrdrhrdr is not affiliated with or endorsed by them.
+
