@@ -1,6 +1,7 @@
 import AppKit
 import CoreImage
 import CryptoKit
+import Observation
 import SwiftUI
 
 // Settings' iPhone and iPad page and its Add iPhone or iPad page (SHPHRD-77),
@@ -12,8 +13,11 @@ import SwiftUI
 // code turned down and another approved through to its result, and what the
 // page says when Remote Login is off, the firewall blocks everything, herdr
 // isn't running, the key can't be written, or there is no address. A device
-// on 127.0.0.1 sends the requests. Nothing here opens System Settings,
-// writes to the pasteboard, presents a dialog, or orders a window in.
+// on 127.0.0.1 sends the requests. And, while the window shows a machine
+// other than This Mac (SHPHRD-110), Add Device… greyed out with why, and an
+// Add page already open showing no code but seeing a request through.
+// Nothing here opens System Settings, writes to the pasteboard, presents a
+// dialog, or orders a window in.
 
 nonisolated final class ResultBox<Value: Sendable>: @unchecked Sendable {
     private let lock = NSLock()
@@ -37,6 +41,7 @@ nonisolated final class ResultBox<Value: Sendable>: @unchecked Sendable {
         pairPage(root.appending(path: "pair"))
         problems(root.appending(path: "problems"))
         noAddress(root.appending(path: "no-address"))
+        localOnly(root.appending(path: "local-only"))
         check(windows.allSatisfy { !$0.isVisible }, "no window was ever shown")
         for window in windows { window.contentView = nil; window.close() }
         Checks.finish("Settings pairing view checks in never-shown windows, read and pressed through accessibility")
@@ -347,6 +352,113 @@ nonisolated final class ResultBox<Value: Sendable>: @unchecked Sendable {
         check(drainUntil { accessibility(host)["settings.pair.no-address"] != nil }, "no address: said so")
         check(label(accessibility(host)["settings.pair.no-address"]).contains("Wi-Fi or a wired network, or turn on Tailscale"), "…with what to do")
         check(!isEnabled(accessibility(host)["settings.pair.show-code"]), "…and no code can be shown")
+    }
+}
+
+/// The machine the window shows, as Settings hands it down: why no device
+/// can be added, or nil on This Mac.
+@MainActor @Observable final class ShownMachine {
+    var addUnavailableReason: String?
+    init(_ reason: String?) { addUnavailableReason = reason }
+}
+
+/// The iPhone and iPad page as Settings shows it, following `shown`.
+struct FollowingDevicesPage: View {
+    let shown: ShownMachine
+    let model: PairedDevicesModel
+    let makeCoordinator: () -> PairingCoordinator
+
+    var body: some View {
+        PairedDevicesSettingsView(model: model, makeCoordinator: makeCoordinator, addUnavailableReason: shown.addUnavailableReason, onBack: {})
+    }
+}
+
+extension PairingSettingsViewTests {
+    // MARK: - While the window shows another machine
+
+    static func localOnly(_ root: URL) {
+        let reason = "Connect to This Mac to add a device."
+        let world = PairingWorld(home: root)
+        let line = PairingMacTestsSupport.line("Phone A")
+        _ = try? world.authorizedKeys.add(line)
+        let phone = PairedDevice(deviceID: UUID(), name: "Phone A", model: "iPhone", appVersion: "1.0", keyFingerprint: line.fingerprint,
+                                 line: line.text, addedAt: Date(timeIntervalSince1970: 1_000), addressKind: .localName)
+        try? world.store.add(phone)
+        let shown = ShownMachine(reason)
+        var made: [PairingCoordinator] = []
+        let host = show(FollowingDevicesPage(shown: shown, model: PairedDevicesModel(store: world.store, authorizedKeys: world.authorizedKeys)) {
+            let coordinator = PairingCoordinator(environment: world.environment())
+            made.append(coordinator)
+            return coordinator
+        }, height: 1700)
+
+        // The list, on another machine.
+        var ax = accessibility(host)
+        check(ax["settings.devices.row.\(phone.id)"] != nil && isEnabled(ax["settings.devices.remove.\(phone.id)"]),
+              "another machine: the devices are listed, and can be removed")
+        check(ax["settings.devices.add"] != nil && !isEnabled(ax["settings.devices.add"]), "Add Device… is greyed out")
+        check(label(ax["settings.devices.add-unavailable"]).contains(reason), "…with why under the list")
+        press(ax["settings.devices.add"])
+        drain(0.3)
+        check(made.isEmpty && accessibility(host)["settings.pair.page"] == nil, "…and does nothing")
+
+        // This Mac.
+        shown.addUnavailableReason = nil
+        check(drainUntil { isEnabled(accessibility(host)["settings.devices.add"]) && accessibility(host)["settings.devices.add-unavailable"] == nil },
+              "This Mac: Add Device… can be pressed, with no reason shown")
+        press(accessibility(host)["settings.devices.add"])
+        check(drainUntil { accessibility(host)["settings.pair.page"] != nil }, "…and opens the Add page")
+        guard let coordinator = made.first else { check(false, "a coordinator"); return }
+        check(drainUntil { coordinator.canShowCode && isEnabled(accessibility(host)["settings.pair.show-code"]) }, "a code can be shown")
+        press(accessibility(host)["settings.pair.show-code"])
+        check(drainUntil { accessibility(host)["settings.pair.qr"] != nil } && WindowSharingProtection.protects(host.window!), "the code is shown")
+
+        // Another machine, with the code on screen.
+        shown.addUnavailableReason = reason
+        check(drainUntil { accessibility(host)["settings.pair.qr"] == nil && accessibility(host)["settings.pair.unavailable"] != nil },
+              "another machine: the code goes, the page stays")
+        ax = accessibility(host)
+        check(label(ax["settings.pair.unavailable"]).contains(reason) && !isEnabled(ax["settings.pair.show-code"]),
+              "…saying why in its place, Show QR Code greyed out")
+        check(coordinator.code == nil && coordinator.phase == .preparing && !WindowSharingProtection.protects(host.window!),
+              "…the code no longer works, and the window shares as usual")
+        check(ax["settings.pair.remote-login"] != nil && ax["settings.pair.address.localName"] != nil, "the checks and the addresses stay")
+
+        // This Mac again, then a request that the window going elsewhere
+        // doesn't stop.
+        shown.addUnavailableReason = nil
+        check(drainUntil { accessibility(host)["settings.pair.unavailable"] == nil && isEnabled(accessibility(host)["settings.pair.show-code"]) },
+              "This Mac again: the reason goes, and a code can be shown")
+        press(accessibility(host)["settings.pair.show-code"])
+        check(drainUntil { coordinator.code != nil }, "shown")
+        guard let code = coordinator.code, var device = try? TestDevice(scanning: code.text), let m1 = try? device.request(),
+              let fd = run({ await Wire.connect(port: code.port) }) ?? nil else { check(false, "a device connects"); return }
+        _ = run { await Wire.send(fd, m1) }
+        check(drainUntil { accessibility(host)["settings.pair.approve"] != nil }, "the request is shown")
+        shown.addUnavailableReason = reason
+        drain(0.3)
+        ax = accessibility(host)
+        check(ax["settings.pair.request.title"] != nil && isEnabled(ax["settings.pair.approve"]) && isEnabled(ax["settings.pair.reject"]),
+              "another machine: the request stays, and can still be answered")
+        press(ax["settings.pair.approve"])
+        check(drainUntil { accessibility(host)["settings.pair.result.waiting"] != nil }, "approved: waiting for the device")
+        let m2 = run { await Wire.readFrame(fd) } ?? nil
+        check(m2.flatMap { try? device.channel.openResponse(PairingEnvelope(body: $0)) }?.decision == .approved, "the device is told it was approved")
+        if let report = try? device.channel.report(PairingReport(sshConnected: true, herdrReached: true)) {
+            _ = run { await Wire.send(fd, report) }
+        }
+        check(drainUntil { label(accessibility(host)["settings.pair.result.title"]).contains("can now connect to this Mac") }, "the result")
+        ax = accessibility(host)
+        check(ax["settings.pair.another"] != nil && !isEnabled(ax["settings.pair.another"]) && label(ax["settings.pair.unavailable"]).contains(reason),
+              "Add Another Device greyed out, with why")
+        check(isEnabled(ax["settings.pair.result.back"]), "Back to iPhone and iPad can be pressed")
+        close(fd)
+        press(ax["settings.pair.result.back"])
+        check(drainUntil { accessibility(host)["settings.devices.page"] != nil }, "back on the list")
+        check(drainUntil { !coordinator.isActive }, "the page left: its coordinator stopped")
+        let listed = (try? world.store.devices())?.first { $0.deviceID == device.id }
+        check(listed != nil && drainUntil { accessibility(host)["settings.devices.row.\(listed?.id ?? "")"] != nil }
+              && !isEnabled(accessibility(host)["settings.devices.add"]), "the device approved is listed, and Add Device… stays greyed out")
     }
 }
 

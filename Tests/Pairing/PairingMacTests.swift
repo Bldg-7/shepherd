@@ -26,6 +26,7 @@ import Foundation
         await roundTrip(root.appending(path: "trip"))
         await answers(root.appending(path: "answers"))
         await cancelled(root.appending(path: "cancelled"))
+        await unavailable(root.appending(path: "unavailable"))
         await listenerLimits(root.appending(path: "limits"))
         Checks.finish("Mac pairing checks: address selector, Tailscale names, filter, authorized_keys, device list and history, installation ID, QR code, coordinator on loopback")
     }
@@ -910,6 +911,82 @@ import Foundation
               && coordinator.finished == nil && !events().contains(.approved) && ((try? world.store.devices()) ?? []).isEmpty,
               "an approval that finds the device gone writes nothing and lists nothing")
         coordinator.stop()
+    }
+
+    // MARK: - Coordinator: while no device can be added
+
+    /// The window goes to a machine other than This Mac (SHPHRD-110): no
+    /// code is shown, but what is under way goes on to its end.
+    static func unavailable(_ root: URL) async {
+        let world = PairingWorld(home: root)
+        let coordinator = await started(world)
+        let reason = "Connect to This Mac to add a device."
+        func written() -> Bool { FileManager.default.fileExists(atPath: world.authorizedKeys.path) }
+
+        // A code on screen.
+        coordinator.showCode()
+        guard let code = coordinator.code else { check(false, "a code is shown"); return }
+        coordinator.setUnavailable(reason)
+        check(coordinator.unavailableReason == reason && coordinator.phase == .preparing && coordinator.code == nil && !coordinator.canShowCode,
+              "the code on screen goes, and none can be shown")
+        check(await Wire.connect(port: code.port) == nil, "…nothing listens for devices any more")
+        var late = try! TestDevice(scanning: code.text)
+        check(await exchange(code.port, try! late.request()) == nil, "…so a device that scanned it gets nowhere")
+        coordinator.showCode()
+        check(coordinator.phase == .preparing && coordinator.code == nil, "Show QR Code does nothing meanwhile")
+        coordinator.setUnavailable(nil)
+        check(coordinator.unavailableReason == nil && coordinator.canShowCode, "This Mac again: a code can be shown")
+
+        // A request waiting for its answer, turned down.
+        coordinator.showCode()
+        guard let code2 = coordinator.code, var device = try? TestDevice(scanning: code2.text),
+              let fd = await Wire.connect(port: code2.port) else { check(false, "a device connects"); return }
+        _ = await Wire.send(fd, try! device.request())
+        _ = await waitUntil { coordinator.phase == .request }
+        coordinator.setUnavailable(reason)
+        check(coordinator.phase == .request && coordinator.request?.request.deviceID == device.id, "a request on screen stays, to be answered")
+        coordinator.reject()
+        let rejected = await Wire.readFrame(fd).flatMap { try? device.channel.openResponse(PairingEnvelope(body: $0)) }
+        check(rejected?.decision == .rejected, "turned down: the device is told so")
+        close(fd)
+        check(coordinator.phase == .preparing && coordinator.code == nil && coordinator.lastDecision == .rejected("Minsu’s iPhone"),
+              "…and no new code follows it")
+        check(await Wire.connect(port: code2.port) == nil, "…the listener closed")
+        check(!written(), "nothing written")
+
+        // Touch ID or the password being asked for: approved all the same.
+        coordinator.setUnavailable(nil)
+        coordinator.showCode()
+        guard let code3 = coordinator.code, var third = try? TestDevice(scanning: code3.text),
+              let fd3 = await Wire.connect(port: code3.port) else { check(false, "a third device connects"); return }
+        defer { close(fd3) }
+        _ = await Wire.send(fd3, try! third.request())
+        _ = await waitUntil { coordinator.phase == .request }
+        world.approval.holds = true
+        let approving = Task { await coordinator.approve() }
+        _ = await waitUntil { coordinator.request?.isAuthenticating == true }
+        coordinator.setUnavailable(reason)
+        world.clock.advance(30)
+        coordinator.tick()
+        check(coordinator.request?.isAuthenticating == true && world.approval.cancels == 0, "the prompt stays up")
+        world.approval.holds = false
+        await approving.value
+        let line = try! AuthorizedKeyLine(devicePublicKey: third.publicKeyBlob, deviceID: third.id, deviceName: third.name)
+        check(coordinator.phase == .finishing && coordinator.finished?.key == .added && contents(world.authorizedKeys.path) == line.text + "\n"
+              && (try? world.store.devices())?.count == 1, "answered: the line is written and the device listed")
+        let approved = await Wire.readFrame(fd3).flatMap { try? third.channel.openResponse(PairingEnvelope(body: $0)) }
+        check(approved?.decision == .approved, "…and the device is told it was approved")
+        _ = await Wire.send(fd3, try! third.channel.report(PairingReport(sshConnected: true, herdrReached: true)))
+        check(await waitUntil { coordinator.phase == .finished } && coordinator.finished?.report?.herdrReached == true,
+              "its report comes in: the result")
+        check(!coordinator.canShowCode, "…and no other device can be added from it")
+        coordinator.reset()
+        coordinator.showCode()
+        check(coordinator.phase == .preparing && coordinator.code == nil, "Add Another Device shows no code")
+        check(((try? world.store.history()) ?? []).map(\.event) == [.requested, .rejected, .requested, .approved, .keyAdded, .connectionChecked],
+              "the history as ever")
+        coordinator.stop()
+        check(coordinator.unavailableReason == reason, "the reason is the page's to clear")
     }
 
     // MARK: - Listener limits

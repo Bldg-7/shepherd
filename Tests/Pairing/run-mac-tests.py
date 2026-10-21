@@ -7,7 +7,8 @@ history in a temporary folder, the installation ID in memory, the QR code
 read back with Core Image, the coordinator end to end with a device on
 127.0.0.1, the SSH server probe's key exchange half against the Citadel and
 swift-nio-ssh an app build made (--products), and Settings' iPhone and iPad
-pages in never-shown windows, read and pressed through accessibility.
+pages in never-shown windows, read and pressed through accessibility — with
+Add Device… on This Mac only (SHPHRD-110).
 
 No app, no SSH server (127.0.0.1:22 included), no Keychain, no Secure
 Enclave, no LocalAuthentication, no DNS, no System Settings, no pasteboard,
@@ -129,6 +130,13 @@ section = settings[settings.index('                Section {\n                  
 assert section.index('pageRow("iPhone and iPad", systemImage: "iphone")') < section.index('pageRow("Notifications"'), \
     'iPhone and iPad is the first row of the pages on Settings\' first page'
 assert 'PairedDevicesSettingsView(model: .system(),' in settings and 'PairingCoordinator(environment: .system())' in settings
+assert 'addUnavailableReason: LocalOnlyAddition.device.unavailableReason(on: machineStore.activeMachine)) {' in settings, \
+    'Add Device… while the window shows This Mac only'
+devices_page = read('Shepherd/Hosts/Views/PairedDevicesSettingsView.swift')
+assert 'PairDeviceView(coordinator: coordinator, unavailableReason: addUnavailableReason) {' in devices_page
+assert '.disabled(addUnavailableReason != nil)\n                        .accessibilityIdentifier("settings.devices.add")' in devices_page
+assert '.onChange(of: unavailableReason, initial: true) { _, reason in\n            coordinator.setUnavailable(reason)' in \
+    read('Shepherd/Hosts/Views/PairDeviceView.swift'), 'the Add page follows the window'
 coordinator = read(f'{APP}/PairingCoordinator.swift')
 assert 'var listenAddress: PairingListener.Address = .any' in coordinator and 'var ticks = true' in coordinator
 assert 'static let codeLifetime: TimeInterval = 120' in coordinator and 'static let listenerLifetime: TimeInterval = 600' in coordinator
@@ -163,7 +171,8 @@ pressed = re.findall(r'press\(([^\n]*)\)', read('Tests/Pairing/PairingSettingsVi
 assert pressed and not [p for p in pressed if re.search(r'remove|open-sharing|copy|Copy', p)], pressed
 stages.append('static-checks')
 
-hashed = core + probe + views + ['Tests/Pairing/run-mac-tests.py', 'Shepherd/Hosts/Views/MachinesSettingsView.swift'] + system_only
+hashed = core + probe + views + ['Tests/Pairing/run-mac-tests.py', 'Shepherd/Hosts/Views/MachinesSettingsView.swift',
+                                 'Shepherd/Hosts/Views/LocalOnlyAddition.swift'] + system_only
 (out / 'source-hashes.json').write_text(json.dumps({n: hashlib.sha256((ROOT / n).read_bytes()).hexdigest() for n in sorted(set(hashed))}, indent=2))
 summary = {'core': core_result.strip().splitlines()[-1], 'probe': probe_result.strip().splitlines()[-1], 'views': views_result.strip().splitlines()[-1]}
 (out / 'validation.json').write_text(json.dumps({'passed': True, 'stages': stages, 'summary': summary, 'sandboxed': True,

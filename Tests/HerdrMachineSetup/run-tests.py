@@ -7,6 +7,11 @@ keys are made here with ssh-keygen, and their fingerprints read with
 `ssh-keygen -lf`, to check the app's against. No network, no SSH server, no
 real ~/.ssh, herdr state, Keychain or app.
 
+And adding one only while the window shows This Mac (SHPHRD-110): the rule,
+the launcher's row it makes and the menus' item as AppKit gets it from
+SwiftUI, in a menu that is never opened; and in the sources, where the File
+menu, the host group header's menu, the launcher and the panel take it.
+
 Each stage runs in a process group of its own, which is ended if it outlasts
 its time; nothing here lists or inspects other processes."""
 from pathlib import Path
@@ -97,10 +102,51 @@ result = stage('tests', 600, [str(out / 'herdr-machine-setup-tests'), str(fake),
                {'PATH': f'{bin_dir}:/usr/bin:/bin:/usr/sbin:/sbin', 'SHEPHERD_FAKE_DIR': str(fake)})
 print(result.strip().splitlines()[-1])
 
-hashed = sources + tests + ['Shepherd/Hosts/Views/NewTabLauncher.swift', 'Tests/HerdrMachineSetup/fake-ssh', 'Tests/HerdrMachineSetup/fake-herdr',
-                            'Tests/HerdrMachineSetup/run-tests.py']
+# This Mac only (SHPHRD-110): the rule, the launcher's row and the menus' item.
+local_only = [f'{kit}/Machines/Machine.swift', 'Shepherd/Hosts/Views/LocalOnlyAddition.swift']
+local_tests = ['Tests/HerdrMachineSetup/LocalOnlyAdditionTests.swift']
+stage('local-only-build', 300, swiftc + sources + local_only + [str(out / 'LaunchTargets.swift')] + local_tests
+      + ['-o', str(out / 'local-only-tests')])
+local_result = stage('local-only-tests', 60, [str(out / 'local-only-tests')])
+print(local_result.strip().splitlines()[-1])
+
+# Where it is taken: the File menu, the host group header's menu, the
+# launcher, the panel; Reconnect… and Remove… as they were.
+read = lambda n: (ROOT / n).read_text()
+content, app, board = read('Shepherd/ContentView.swift'), read('Shepherd/Shepherd.swift'), read('Shepherd/Hosts/Views/AgentBoardView.swift')
+assert 'AddHerdrMachineMenuItem(unavailableReason: herdrMachineCommand?.addUnavailableReason,\n' \
+       '                                    isEnabled: herdrMachineCommand?.canAdd == true) {\n' \
+       '                herdrMachineCommand?.add()' in app, 'the File menu\'s item'
+assert 'let localOnly = LocalOnlyAddition.herdrMachine.unavailableReason(on: machine)' in content
+assert 'canAdd: isFree && monitor.canManageHerdrMachines && localOnly == nil,\n            addUnavailableReason: localOnly,' in content
+assert 'canRemove: isFree && monitor.canManageHerdrMachines && !previewCoversTerminal(on: machine),' in content, 'Remove… as it was'
+assert 'AddHerdrMachineOffer(on: machine, herdrBlocker: monitor(for: machine).herdrMachineManagementBlocker)' in content, 'the launcher\'s row'
+assert 'addHerdrMachine: addHerdrMachineOffer(on: machine),' in content
+show = content[content.index('    private func showHerdrMachineSetup('):content.index('        launcherStart = nil\n        isShowingPaneSwitcher = false')]
+assert 'mode != .add || LocalOnlyAddition.herdrMachine.unavailableReason(on: machine) == nil,' in show, 'the panel opens to add on This Mac only'
+change = content[content.index('        .onChange(of: machine?.connectionIdentity) {'):content.index('        .onChange(of: stalePreview(on: machine))')]
+assert 'herdrMachineSetup?.close()' in change, 'a panel open as the window goes to another machine closes'
+assert 'AddHerdrMachineMenuItem(unavailableReason: LocalOnlyAddition.herdrMachine.unavailableReason(on: machine),\n' \
+       '                                            isEnabled: monitor.canManageHerdrMachines) { onHerdrMachineSetup(.add) }' in board, 'the host group header\'s item'
+assert board.count('.disabled(!monitor.canManageHerdrMachines)') == 2 and 'Button("Reconnect…") { onHerdrMachineSetup(.reconnect(group.machine)) }' in board, \
+    'Reconnect… and Remove… as they were'
+swift = {str(x.relative_to(ROOT)): x.read_text() for x in (ROOT / 'Shepherd').rglob('*.swift')}
+assert not [n for n, s in swift.items() if 'Button("Add herdr Machine…")' in s], 'every menu goes through AddHerdrMachineMenuItem'
+assert sorted(n for n, s in swift.items() if 'LocalOnlyAddition.' in s) == ['Shepherd/ContentView.swift', 'Shepherd/Hosts/Views/AgentBoardView.swift',
+                                                                          'Shepherd/Hosts/Views/LocalOnlyAddition.swift', 'Shepherd/Hosts/Views/MachinesSettingsView.swift']
+assert not [x for x in (ROOT / 'ShepherdMobile').rglob('*.swift') if 'LocalOnlyAddition' in x.read_text() or 'Connect to This Mac' in x.read_text()], \
+    'the iOS app left as it is'
+strings = json.loads(read('Shepherd/Localizable.xcstrings'))['strings']
+for key in ['Connect to This Mac to add a herdr machine.', 'Connect to This Mac to add a device.']:
+    assert all(strings[key]['localizations'][l]['stringUnit']['state'] == 'translated' for l in ['ko', 'ja']), key
+stages.append('local-only-static-checks')
+
+hashed = sources + tests + local_only + local_tests + ['Shepherd/Hosts/Views/NewTabLauncher.swift', 'Tests/HerdrMachineSetup/fake-ssh',
+                                                       'Tests/HerdrMachineSetup/fake-herdr', 'Tests/HerdrMachineSetup/run-tests.py',
+                                                       'Shepherd/ContentView.swift', 'Shepherd/Shepherd.swift', 'Shepherd/Hosts/Views/AgentBoardView.swift']
 (out / 'source-hashes.json').write_text(json.dumps({n: hashlib.sha256((ROOT / n).read_bytes()).hexdigest() for n in sorted(hashed)}, indent=2))
 (out / 'validation.json').write_text(json.dumps({'passed': True, 'stages': stages, 'summary': result.strip().splitlines()[-1],
+                                                 'localOnlySummary': local_result.strip().splitlines()[-1], 'windowsShown': False,
                                                  'networkAccess': False, 'realSSH': False, 'realHerdrState': False,
                                                  'userSSHFilesRead': False, 'app': False}, indent=2))
 print('passed:', ', '.join(stages))
