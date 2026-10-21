@@ -10,6 +10,10 @@ import SwiftUI
 /// closes the listener and turns down a request still waiting.
 struct PairDeviceView: View {
     let coordinator: PairingCoordinator
+    /// Why no device can be added now, or nil when one can: the page stays,
+    /// but shows no new code, with why in the code's place (see
+    /// `PairingCoordinator.setUnavailable`).
+    var unavailableReason: String? = nil
     let onBack: () -> Void
 
     @State private var copiedCommand = false
@@ -40,6 +44,9 @@ struct PairDeviceView: View {
         .background(WindowSharingGuard(isProtected: coordinator.phase == .showingCode))
         .onAppear { coordinator.start() }
         .onDisappear { coordinator.stop() }
+        .onChange(of: unavailableReason, initial: true) { _, reason in
+            coordinator.setUnavailable(reason)
+        }
     }
 
     // MARK: - Checks
@@ -130,11 +137,15 @@ struct PairDeviceView: View {
     }
 
     private func status(_ severity: Severity, _ text: LocalizedStringKey, id: String) -> some View {
+        status(severity, Text(text), id: id)
+    }
+
+    private func status(_ severity: Severity, _ text: Text, id: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: severity.symbol)
                 .foregroundStyle(severity.color)
                 .accessibilityHidden(true)
-            Text(text)
+            text
                 .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .combine)
@@ -238,16 +249,28 @@ struct PairDeviceView: View {
                 }
             case .stopped(let reason):
                 status(.warning, Self.text(for: reason), id: "settings.pair.stopped")
+                unavailableRow
                 showButton("Show QR Code Again")
             default:
-                if let decision = coordinator.lastDecision {
+                // It says a new code is shown, which it isn't while one
+                // can't be.
+                if let decision = coordinator.lastDecision, coordinator.unavailableReason == nil {
                     lastDecisionRow(decision)
                 }
+                unavailableRow
                 showButton("Show QR Code")
                 Text("The code appears only when you ask for it. Anyone who sees it can ask to connect, but no device gets in until you approve it here.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+        }
+    }
+
+    /// Why no code can be shown now, if that is why.
+    @ViewBuilder
+    private var unavailableRow: some View {
+        if let reason = coordinator.unavailableReason {
+            status(.info, Text(verbatim: reason), id: "settings.pair.unavailable")
         }
     }
 
@@ -422,11 +445,13 @@ struct PairDeviceView: View {
                         status(.warning, "It couldn't be added to the list of devices: \(error)", id: "settings.pair.result.record-error")
                     }
                     if coordinator.phase == .finished {
+                        unavailableRow
                         HStack {
                             Button("Add Another Device") {
                                 coordinator.reset()
                                 coordinator.showCode()
                             }
+                            .disabled(coordinator.unavailableReason != nil)
                             .accessibilityIdentifier("settings.pair.another")
                             Spacer()
                             Button("Back to iPhone and iPad", action: onBack)

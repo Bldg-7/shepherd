@@ -6710,6 +6710,12 @@
         "ko" : { "stringUnit" : { "state" : "translated", "value" : "herdr machine 추가…" } }
       }
     },
+    "Connect to This Mac to add a herdr machine." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "herdr machine を追加するには、このMac に接続してください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "herdr machine을 추가하려면 이 Mac에 연결하세요." } }
+      }
+    },
     "%lld s" : {
       "localizations" : {
         "ja" : { "stringUnit" : { "state" : "translated", "value" : "%lld 秒" } },
@@ -6912,6 +6918,12 @@
       "localizations" : {
         "ja" : { "stringUnit" : { "state" : "translated", "value" : "デバイスを追加…" } },
         "ko" : { "stringUnit" : { "state" : "translated", "value" : "기기 추가…" } }
+      }
+    },
+    "Connect to This Mac to add a device." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "デバイスを追加するには、このMac に接続してください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "기기를 추가하려면 이 Mac에 연결하세요." } }
       }
     },
     "Nothing yet." : {

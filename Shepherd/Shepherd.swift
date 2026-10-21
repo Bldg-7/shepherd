@@ -183,8 +183,12 @@ extension FocusedValues {
 /// `NewTabCommands`).
 struct HerdrMachineCommand {
     /// Whether a herdr machine can be added to the active machine's herdr
-    /// now: it can have them, and nothing else is up over the window.
+    /// now: it is This Mac's, it can have them, and nothing else is up over
+    /// the window.
     let canAdd: Bool
+    /// Why not, shown under the item, while the active machine isn't This
+    /// Mac (see `LocalOnlyAddition`).
+    let addUnavailableReason: String?
     /// The herdr machine the selection is on, which Remove herdr Machine…
     /// is for; nil, and the item not there, for a selection on the host's
     /// own herdr or none.
@@ -231,9 +235,10 @@ private struct CloseCommands: Commands {
 /// Window, and its ⌘N: the app has the one window.
 ///
 /// After them, Add herdr Machine…, which brings up the panel that adds one
-/// to the active machine's herdr, and — while a pane or tab on a herdr
-/// machine is selected — Remove herdr Machine “…”…, which asks about
-/// removing that one. No shortcuts: they are rarely wanted.
+/// to the active machine's herdr — greyed out, with why, unless that is This
+/// Mac's — and — while a pane or tab on a herdr machine is selected — Remove
+/// herdr Machine “…”…, which asks about removing that one. No shortcuts:
+/// they are rarely wanted.
 private struct NewTabCommands: Commands {
     @FocusedValue(\.launcherStart) private var launcherStart
     @FocusedValue(\.herdrMachineCommand) private var herdrMachineCommand
@@ -251,10 +256,10 @@ private struct NewTabCommands: Commands {
             .keyboardShortcut("t")
             .disabled(launcherStart == nil)
             Divider()
-            Button("Add herdr Machine…") {
+            AddHerdrMachineMenuItem(unavailableReason: herdrMachineCommand?.addUnavailableReason,
+                                    isEnabled: herdrMachineCommand?.canAdd == true) {
                 herdrMachineCommand?.add()
             }
-            .disabled(herdrMachineCommand?.canAdd != true)
             if let machine = herdrMachineCommand?.selectedMachine {
                 Button("Remove herdr Machine \u{201C}\(machine.label)\u{201D}…") {
                     herdrMachineCommand?.remove()

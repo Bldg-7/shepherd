@@ -459,8 +459,9 @@ struct AgentBoardView: View {
         } header: {
             groupHeader(machine.displayName, panes: agents, rowCount: hostRows.count, groupID: Self.hostGroupID, among: shownGroupIDs)
                 .contextMenu {
-                    Button("Add herdr Machine…") { onHerdrMachineSetup(.add) }
-                        .disabled(!monitor.canManageHerdrMachines)
+                    // On This Mac's board only (see `LocalOnlyAddition`).
+                    AddHerdrMachineMenuItem(unavailableReason: LocalOnlyAddition.herdrMachine.unavailableReason(on: machine),
+                                            isEnabled: monitor.canManageHerdrMachines) { onHerdrMachineSetup(.add) }
                 }
         }
     }

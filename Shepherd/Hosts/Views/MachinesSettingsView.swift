@@ -48,7 +48,8 @@ struct MachinesSettingsView: View {
                 .transition(.move(edge: .trailing))
             } else if showsPairedDevices {
                 PairedDevicesSettingsView(model: .system(),
-                                          makeCoordinator: { PairingCoordinator(environment: .system()) }) {
+                                          makeCoordinator: { PairingCoordinator(environment: .system()) },
+                                          addUnavailableReason: LocalOnlyAddition.device.unavailableReason(on: machineStore.activeMachine)) {
                     withAnimation(Self.pageAnimation) { showsPairedDevices = false }
                 }
                 .transition(.move(edge: .trailing))

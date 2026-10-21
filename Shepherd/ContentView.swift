@@ -261,7 +261,8 @@ struct ContentView: View {
             justCreatedID = nil
             launcherStart = nil
             // Its herdr machines are the other machine's: a save still
-            // running is stopped.
+            // running is stopped. Going from This Mac to another machine,
+            // where none can be added, closes it the same way.
             herdrMachineSetup?.close()
             // The file previews stay with their panes, and come back when a
             // pane is selected again on this machine. Those of a connection
@@ -829,9 +830,10 @@ struct ContentView: View {
     }
 
     /// The launcher's row that adds a herdr machine: greyed out, with why,
-    /// while the host's herdr can't have one added.
+    /// on a machine other than This Mac, or while the host's herdr can't have
+    /// one added.
     private func addHerdrMachineOffer(on machine: Machine) -> AddHerdrMachineOffer {
-        AddHerdrMachineOffer(unavailableReason: monitor(for: machine).herdrMachineManagementBlocker)
+        AddHerdrMachineOffer(on: machine, herdrBlocker: monitor(for: machine).herdrMachineManagementBlocker)
     }
 
     #if os(macOS)
@@ -842,8 +844,10 @@ struct ContentView: View {
         let monitor = monitor(for: machine)
         let selected = selection(on: machine).wrappedValue?.herdrMachine
         let isFree = herdrMachineSetup == nil && launcherStart == nil && !isShowingSettings && !isShowingPaneSwitcher
+        let localOnly = LocalOnlyAddition.herdrMachine.unavailableReason(on: machine)
         return HerdrMachineCommand(
-            canAdd: isFree && monitor.canManageHerdrMachines,
+            canAdd: isFree && monitor.canManageHerdrMachines && localOnly == nil,
+            addUnavailableReason: localOnly,
             selectedMachine: selected.flatMap { herdrMachine in monitor.herdrMachineGroups.first { $0.id == herdrMachine.id }?.machine ?? herdrMachine },
             canRemove: isFree && monitor.canManageHerdrMachines && !previewCoversTerminal(on: machine),
             add: { showHerdrMachineSetup(.add, on: machine) },
@@ -852,12 +856,14 @@ struct ContentView: View {
     }
     #endif
 
-    /// Brings up the panel that adds a herdr machine to `machine`'s herdr,
-    /// or checks one of them again. Its steps run over a connection of
-    /// their own, closed once nothing of it runs on the host any more.
+    /// Brings up the panel that adds a herdr machine to `machine`'s herdr —
+    /// This Mac's only — or checks one of them again. Its steps run over a
+    /// connection of their own, closed once nothing of it runs on the host
+    /// any more.
     private func showHerdrMachineSetup(_ mode: HerdrMachineSetup.Mode, on machine: Machine) {
         guard herdrMachineSetup == nil, machineStore.isCurrentConnection(machine),
               machineStore.activeMachine?.connectionIdentity == machine.connectionIdentity,
+              mode != .add || LocalOnlyAddition.herdrMachine.unavailableReason(on: machine) == nil,
               let transport = try? machineStore.makeHerdrTransport(for: machine) else { return }
         launcherStart = nil
         isShowingPaneSwitcher = false

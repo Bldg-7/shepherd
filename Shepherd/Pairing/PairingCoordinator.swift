@@ -158,6 +158,8 @@ import Observation
     private(set) var failureCount = 0
     /// Between `start()` and `stop()`: while the page is open.
     private(set) var isActive = false
+    /// Why no device can be added now, or nil: see `setUnavailable`.
+    private(set) var unavailableReason: String?
     /// This Mac's installation ID: the `mac_id` every code carries.
     let installationID: UUID
 
@@ -206,7 +208,7 @@ import Observation
     }
 
     var canShowCode: Bool {
-        guard isActive, case .on = remoteLogin, selectedOption != nil else { return false }
+        guard isActive, unavailableReason == nil, case .on = remoteLogin, selectedOption != nil else { return false }
         switch phase {
         case .preparing, .stopped, .finished: return true
         case .showingCode, .request, .finishing: return false
@@ -255,6 +257,20 @@ import Observation
         code = nil
         retired.removeAll()
         if phase != .finishing { phase = .preparing }
+    }
+
+    /// Why no device can be added now — the window shows a machine other
+    /// than This Mac (SHPHRD-110) — or nil when one can. While there is a
+    /// reason no code is shown: one on screen stops working and the listener
+    /// closes, as with Hide QR Code, and none follows a request answered. A
+    /// request already on screen can still be answered, and an approval
+    /// under way — Touch ID or the password, the `authorized_keys` line, the
+    /// device's report — goes on to its result.
+    func setUnavailable(_ reason: String?) {
+        unavailableReason = reason
+        if reason != nil, phase == .showingCode {
+            hideCode()
+        }
     }
 
     /// The checks again: Remote Login and its host key, herdr, the
@@ -668,16 +684,17 @@ import Observation
     }
 
     /// After a request was turned down: a new code, while the listener may
-    /// still take requests.
+    /// still take requests and a device can be added.
     private func continueAfterAnswer() {
         guard isActive else { return }
         if listenerClosedForFailures {
             phase = .stopped(.tooManyFailures)
         } else if let opened = listenerOpenedAt, now.timeIntervalSince(opened) >= Self.listenerLifetime {
             stopListening(.timeLimit)
-        } else if listener != nil {
+        } else if listener != nil, unavailableReason == nil {
             makeCode(retiring: nil)
         } else {
+            closeListener()
             phase = .preparing
         }
     }

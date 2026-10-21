@@ -10,6 +10,11 @@ struct PairedDevicesSettingsView: View {
     let model: PairedDevicesModel
     /// A new coordinator for each visit to the Add page.
     let makeCoordinator: () -> PairingCoordinator
+    /// Why no device can be added now, or nil when one can: Add Device… is
+    /// greyed out with it shown under the list, and an Add page already open
+    /// shows no new code (see `PairingCoordinator.setUnavailable`). The
+    /// devices can still be removed.
+    var addUnavailableReason: String? = nil
     let onBack: () -> Void
 
     @State private var coordinator: PairingCoordinator?
@@ -22,7 +27,7 @@ struct PairedDevicesSettingsView: View {
     var body: some View {
         ZStack {
             if let coordinator {
-                PairDeviceView(coordinator: coordinator) {
+                PairDeviceView(coordinator: coordinator, unavailableReason: addUnavailableReason) {
                     withAnimation(Self.pageAnimation) { self.coordinator = nil }
                     model.reload()
                 }
@@ -55,12 +60,19 @@ struct PairedDevicesSettingsView: View {
                     Text("Devices")
                 } footer: {
                     HStack(alignment: .firstTextBaseline) {
-                        Text("A device added here logs in to this Mac over Remote Login (SSH) with a key that never leaves the device.")
-                            .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("A device added here logs in to this Mac over Remote Login (SSH) with a key that never leaves the device.")
+                            if let addUnavailableReason {
+                                Label(addUnavailableReason, systemImage: "info.circle")
+                                    .accessibilityIdentifier("settings.devices.add-unavailable")
+                            }
+                        }
+                        .foregroundStyle(.secondary)
                         Spacer()
                         Button("Add Device…") {
                             withAnimation(Self.pageAnimation) { coordinator = makeCoordinator() }
                         }
+                        .disabled(addUnavailableReason != nil)
                         .accessibilityIdentifier("settings.devices.add")
                     }
                 }
