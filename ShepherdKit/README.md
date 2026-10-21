@@ -20,6 +20,15 @@ both depend on it (docs/mobile-design.md, section 8).
   store for its credential, `MachineStore`, and `MachineMonitor`, which keeps
   one machine's panes up to date for the board, the list of panes the apps
   show.
+- `Pairing/`: what the macOS and iOS apps both need to pair a Mac with the iOS
+  app by QR code: the address kinds and the ranges each is held to
+  (`PairingAddress`), looking a name up once and keeping only an address in
+  the kind's range (`PairingAddressResolver`), the QR
+  code's text (`PairingPayload`), the encrypted pairing messages and their
+  confirmation code (`PairingProtocol`), and the line the Mac adds to
+  `~/.ssh/authorized_keys` (`AuthorizedKeyLine`). The code for the device's
+  key, kept in its Secure Enclave, is in
+  `HerdrKit/Transport/SecureEnclaveSSHKey.swift`.
 - `Notifications/`: `NotificationPolicy` decides whether an agent event is
   shown, and `NotificationText` decides what the notification says. Showing
   the notification stays in the app.
@@ -43,8 +52,7 @@ synthesises is internal to the package.
 The macOS app imports the package once, in `Shepherd/ShepherdKitImport.swift`,
 with `@_exported import ShepherdKit`. An exported import makes the package's
 types visible to every file of the importing module, so the app's other
-files need no import line of their own. The iOS app's files import it
-directly.
+files need no import line of their own. The iOS app imports it the same way, in `ShepherdMobile/ShepherdKitImport.swift`.
 
 The package's compiler settings mirror the app targets'. They are Swift 5
 language mode, MainActor as the default isolation, and the upcoming-feature
@@ -76,3 +84,8 @@ A fake that stands in for a package type is sometimes named by a public
 signature in a compiled file (the `HerdrTransport` protocol, `AgentKind`).
 Such a fake is declared `public` in the test file; otherwise the compiler
 rejects the public signature for naming an internal type.
+
+`Tests/Pairing/` compiles the package's sources the same way. Its SSH stages
+also link the Citadel, swift-nio-ssh, swift-nio and swift-crypto that an app
+build made (`--products`), because what they check can't be done with
+stand-ins.

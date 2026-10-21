@@ -10,10 +10,13 @@ transport/module doubles. It does not access real Keychain items, SSH servers or
 vendor accounts. Production model/store/transport-selection/session-protocol and
 terminal-view-model sources are compiled unchanged.
 
-- 55 store checks: identity/active row/order preservation, no credential access
+- 64 store checks: identity/active row/order preservation, no credential access
   for metadata edits, field/session validation, host/port pin reset, stale pins
   and stale editor/transport rejection, fresh pin lookup, credential rotation,
-  failed save preservation, reload, removal, and local-entry protection.
+  failed save preservation, reload, removal, and local-entry protection; and,
+  for a Mac paired by QR code, its address kind reaching the transport, a new
+  address saved without touching the key, the pin or the Keychain, an edit
+  keeping the kind, and the kind saved.
 - Terminal factory checks: errors remain visible without preview output,
   fresh retry, acknowledged old-session retirement, and pre-cancel safety.
 - Attach command checks (`AttachCommandTests.swift`): `HerdrExecutable` takes a
