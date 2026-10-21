@@ -11,8 +11,8 @@ import SwiftUI
 /// of color, proportion or shape — with room around it (`clearSpace`) and
 /// no trademark symbol beside it.
 nonisolated enum AgentLogo: CaseIterable, Sendable {
-    /// Claude's spark: "Claude Spark - Clay.svg" from Anthropic's press kit
-    /// (in its archive under "Anthropic media resources/Anthropic logos/
+    /// Claude's spark: "Claude Spark - Clay.svg" from Anthropic's press kit,
+    /// https://www.anthropic.com/press-kit (in its archive under "Anthropic media resources/Anthropic logos/
     /// Claude logos/3 Claude Spark/SVG/"), downloaded on 2026-10-21; the SVG
     /// file's sha256 is
     /// 6d53db4be375e899c937c26cf16684a80d6e869b1928d72b37748bef2560e219, the

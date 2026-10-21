@@ -405,6 +405,41 @@ tests, the Pi tests) and then source checks:
 each launch's `status` replies carry only that launch's latest name, and invalid
 names are refused.
 
+## Agent logos in the sidebar
+
+```sh
+python3 Tests/Agents/run-agent-logo-tests.py --output /tmp/shepherd-agent-logo-FRESH
+```
+
+(`FRESH` stands for a new folder name of your choice, as in the other runners.)
+Needs no app, herdr, window or network. The runner builds one test program
+(`Tests/Agents/AgentLogoTests.swift`) with `AgentLogo.swift` and ShepherdKit's
+agent models, runs it, and then checks the source files:
+
+- Which agents have a logo: herdr's `claude` and `claude-code` get Claude's,
+  and `pi` gets Pi's. `codex`, every other agent name herdr knows and the empty
+  name get none. `AgentKind.allCases` stays `claude`, `codex`, `pi`.
+- The path data: the sha256 of each path's `d` string equals the sha256 of the
+  `d` string in the official SVG it was copied from. The parser reads Claude's
+  spark as 159 drawing commands and Pi's badge as 24, with the same bounds as
+  the SVGs, and rejects a relative or unknown command, an exponent or a missing
+  number.
+- The drawing: `ImageRenderer` draws each logo at 1x, 2x and 3x, in light and
+  dark mode, and on a selected row. Every drawn pixel has the logo's own color
+  (#D97757 for Claude; #111111 for Pi, or #F6F6F6 in dark mode). Nothing is
+  drawn in the 1 pt margin inside the logo's 12 pt square, the logo keeps its
+  proportions, the area it covers is within 5% of its outline's area, and only
+  Pi's color differs between light and dark.
+- The row: measured in an `NSHostingView` that is in no window, a pane row
+  with a logo is as tall as one that shows the name in words.
+- Source checks: the pane row's second line is `AgentPaneCaption`; a search
+  still goes by the agent's name; the logo is one accessibility element read
+  as "Claude Code" or "Pi", shows that name as its tooltip, and is never
+  tinted; the iOS app and ShepherdKit don't use the logos; the macOS
+  third-party notices have the trademark section.
+
+Not covered: the real sidebar, VoiceOver and the tooltip on screen.
+
 ## Focus frame
 
 ```sh
