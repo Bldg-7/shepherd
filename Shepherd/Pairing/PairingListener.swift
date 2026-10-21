@@ -257,6 +257,7 @@ nonisolated final class PairingConnection: @unchecked Sendable {
     private var waiter: CheckedContinuation<Data, any Error>?
     private var waiterGeneration = 0
     private var isClosed = false
+    private var endHandlers: [@Sendable (PairingConnectionError) -> Void] = []
 
     fileprivate init(fd: Int32, endpoints: PairingEndpoints) {
         self.fd = fd
@@ -323,6 +324,24 @@ nonisolated final class PairingConnection: @unchecked Sendable {
         queue.async { self.end(.closed) }
     }
 
+    /// Calls `handler`, on the connection's queue, once the connection has
+    /// ended: the other end closed it, it failed, or it was closed here. At
+    /// once if it has ended already.
+    func whenEnded(_ handler: @escaping @Sendable (PairingConnectionError) -> Void) {
+        queue.async {
+            if self.isClosed {
+                handler(self.failure ?? .closed)
+            } else {
+                self.endHandlers.append(handler)
+            }
+        }
+    }
+
+    /// Whether the connection has ended, as far as it has heard so far.
+    var hasEnded: Bool {
+        queue.sync { isClosed }
+    }
+
     // MARK: - On the queue
 
     private func readAvailable() {
@@ -365,6 +384,9 @@ nonisolated final class PairingConnection: @unchecked Sendable {
             self.waiter = nil
             waiter.resume(throwing: reason)
         }
+        let handlers = endHandlers
+        endHandlers = []
+        for handler in handlers { handler(reason) }
     }
 
     private func writeAll(_ data: Data) throws {

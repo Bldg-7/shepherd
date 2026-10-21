@@ -264,6 +264,9 @@ struct PairDeviceView: View {
                 status(.info, "You turned down “\(name)”. Here is a new QR code.", id: "settings.pair.last-decision")
             case .timedOut(let name):
                 status(.info, "“\(name)” was turned down: no answer within a minute. Here is a new QR code.", id: "settings.pair.last-decision")
+            case .cancelled(let name):
+                status(.info, "“\(name)” cancelled its request or lost its connection, so nothing was added. Here is a new QR code.",
+                       id: "settings.pair.last-decision")
             }
         }
     }

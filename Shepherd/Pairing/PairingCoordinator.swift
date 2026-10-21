@@ -117,6 +117,9 @@ import Observation
     enum LastDecision: Equatable {
         case rejected(String)
         case timedOut(String)
+        /// The device closed its connection before an answer: it cancelled,
+        /// or lost the connection.
+        case cancelled(String)
     }
 
     enum KeyOutcome: Equatable {
@@ -575,6 +578,11 @@ import Observation
             retireSession(.used)
             pendingConnection = connection
             pendingChannel = opened.channel
+            // A device that goes before the answer takes its request with it.
+            connection.whenEnded { [weak self] _ in
+                let coordinator = self
+                Task { @MainActor in coordinator?.connectionEnded(connection) }
+            }
             let kind = session.payload.address.kind
             request = Request(request: opened.request, confirmationCode: opened.channel.confirmationCode, receivedAt: now,
                               remote: connection.endpoints.remote, addressKind: kind)
@@ -611,23 +619,52 @@ import Observation
     private enum Answer {
         case rejected
         case timedOut
+        /// The device's connection ended first: there is no one to answer.
+        case cancelled
     }
 
-    /// Turns the waiting request down, and says so to the device.
+    /// Turns the waiting request down, and says so to the device while it
+    /// is still there.
     private func answerPendingRequest(_ answer: Answer) {
         guard let current = request else { return }
-        if let connection = pendingConnection, let channel = pendingChannel {
-            let message = try? channel.response(PairingResponse(decision: .rejected, macID: installationID))
-            Task {
-                if let message { try? await connection.send(message) }
+        if let connection = pendingConnection {
+            if answer != .cancelled, let channel = pendingChannel {
+                let message = try? channel.response(PairingResponse(decision: .rejected, macID: installationID))
+                Task {
+                    if let message { try? await connection.send(message) }
+                    connection.close()
+                }
+            } else {
                 connection.close()
             }
         }
         pendingConnection = nil
         pendingChannel = nil
         request = nil
-        record(entry(answer == .rejected ? .rejected : .timedOut, for: current.request, remote: current.remote, kind: current.addressKind))
-        lastDecision = answer == .rejected ? .rejected(current.request.deviceName) : .timedOut(current.request.deviceName)
+        let name = current.request.deviceName
+        switch answer {
+        case .rejected:
+            record(entry(.rejected, for: current.request, remote: current.remote, kind: current.addressKind))
+            lastDecision = .rejected(name)
+        case .timedOut:
+            record(entry(.timedOut, for: current.request, remote: current.remote, kind: current.addressKind))
+            lastDecision = .timedOut(name)
+        case .cancelled:
+            record(entry(.cancelled, for: current.request, remote: current.remote, kind: current.addressKind))
+            lastDecision = .cancelled(name)
+        }
+    }
+
+    /// The connection of the request on screen ended before it was
+    /// answered: the request goes, with the owner's prompt if it is up, and
+    /// nothing is written. Once the approval has begun writing the key —
+    /// `finishApproval` runs to the end in one go — this comes too late and
+    /// changes nothing.
+    private func connectionEnded(_ connection: PairingConnection) {
+        guard phase == .request, pendingConnection === connection else { return }
+        if request?.isAuthenticating == true { environment.approval.cancel() }
+        answerPendingRequest(.cancelled)
+        continueAfterAnswer()
     }
 
     /// After a request was turned down: a new code, while the listener may
@@ -647,6 +684,13 @@ import Observation
 
     private func finishApproval() {
         guard let current = request, let connection = pendingConnection, let channel = pendingChannel else { return }
+        // A device that has gone is told nothing and given nothing, even if
+        // the news of it hasn't reached the main actor yet.
+        guard !connection.hasEnded else {
+            answerPendingRequest(.cancelled)
+            continueAfterAnswer()
+            return
+        }
         let device = current.request
         record(entry(.approved, for: device, remote: current.remote, kind: current.addressKind))
         let line: AuthorizedKeyLine

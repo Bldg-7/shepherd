@@ -7549,6 +7549,18 @@
         "ja" : { "stringUnit" : { "state" : "translated", "value" : "リモートログインは、この Mac に到達できる誰からでもアカウントのパスワードも受け付けます。ここでデバイスが得るような鍵だけを受け付けるには、/etc/ssh/sshd_config.d/ 内のファイルに「PasswordAuthentication no」と「KbdInteractiveAuthentication no」を書いてください。" } },
         "ko" : { "stringUnit" : { "state" : "translated", "value" : "원격 로그인은 이 Mac에 닿을 수 있는 누구에게서든 계정 암호도 받습니다. 여기서 기기가 받는 것과 같은 키만 받으려면 /etc/ssh/sshd_config.d/ 안의 파일에 “PasswordAuthentication no”와 “KbdInteractiveAuthentication no”를 넣으세요." } }
       }
+    },
+    "“%@” cancelled its request or lost its connection, so nothing was added. Here is a new QR code." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%@」が要求を取り消したか接続が切れたため、何も追加しませんでした。新しい QR コードです。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "‘%@’이(가) 요청을 취소했거나 연결이 끊겨 아무것도 추가하지 않았습니다. 새 QR 코드입니다." } }
+      }
+    },
+    "“%@” cancelled its request or lost its connection before an answer." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%@」が応答の前に要求を取り消したか、接続が切れました。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "‘%@’이(가) 응답 전에 요청을 취소했거나 연결이 끊겼습니다." } }
+      }
     }
   },
   "version" : "1.1"

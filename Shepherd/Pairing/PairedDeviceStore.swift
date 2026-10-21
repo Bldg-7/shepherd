@@ -41,6 +41,8 @@ nonisolated struct PairingAuditEntry: Codable, Hashable, Sendable, Identifiable 
         case rejected
         /// No answer within the time allowed.
         case timedOut = "timed_out"
+        /// The device closed its connection before it was answered.
+        case cancelled
         case keyAdded = "key_added"
         case keyAlreadyPresent = "key_already_present"
         case keyNotWritten = "key_not_written"

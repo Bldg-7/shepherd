@@ -193,6 +193,8 @@ struct PairedDevicesSettingsView: View {
             return String(localized: "You turned down “\(name)”.")
         case .timedOut:
             return String(localized: "“\(name)” was turned down: no answer within a minute.")
+        case .cancelled:
+            return String(localized: "“\(name)” cancelled its request or lost its connection before an answer.")
         case .keyAdded:
             return String(localized: "Added the key of “\(name)” to ~/.ssh/authorized_keys.")
         case .keyAlreadyPresent:
