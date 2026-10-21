@@ -172,9 +172,11 @@ struct FilePreviewPanel: View {
                     Group {
                         if let markdown = shown.markdown, !model.showsSource {
                             ScrollView {
-                                MarkdownPreview(document: markdown, marks: marks) { block, frame in
+                                MarkdownPreview(document: markdown, marks: marks, onBlockFrame: { block, frame in
                                     keepVisibleBlocks(shownBlocks.place(block, at: frame))
-                                }
+                                }, onBlockAppear: { block, appeared in
+                                    keepVisibleBlocks(shownBlocks.appear(block, appeared))
+                                })
                             }
                             .modifier(PreviewScrollPlace(restoring: model.scrollOffset, onScroll: keepScrollOffset))
                             .onScrollGeometryChange(for: CGRect.self) { $0.visibleRect } action: { _, visible in

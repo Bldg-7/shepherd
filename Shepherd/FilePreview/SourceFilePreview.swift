@@ -52,7 +52,8 @@ struct SourceFilePreview: View {
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: { frame in
                             report(shownLines.place(line.number, at: frame))
                         }
-                        .onDisappear { report(shownLines.place(line.number, at: nil)) }
+                        .onAppear { report(shownLines.appear(line.number, true)) }
+                        .onDisappear { report(shownLines.appear(line.number, false)) }
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -88,10 +89,16 @@ extension PreviewSyntaxLine {
 }
 
 /// Works out which rows of a lazy stack in a scroll view are shown: from
-/// where each row the stack has made is laid out in the scroll view's
-/// content, and the part of the content the scroll view shows. A row is
-/// shown when any of it is. Rows are made, and let go of, as they come near
-/// the part shown, so this follows a few dozen rows, not a whole document.
+/// where each row on screen is laid out in the scroll view's content, and
+/// the part of the content the scroll view shows. A row is shown when any
+/// of it is. Rows come on screen, and go, as they come near the part shown,
+/// so this looks at a few dozen rows, not a whole document.
+///
+/// A row is on screen from its `onAppear` to its `onDisappear`. The stack
+/// also lays out rows it makes ahead, and may keep them aside, away from
+/// their place, without showing them: those never appear, so where they
+/// were laid out doesn't count. Where a row was laid out is kept while it is
+/// off screen: one that comes back where it was isn't told its place again.
 ///
 /// Not scroll targets (`scrollTargetLayout`), whose stack would change how a
 /// place put back with `PreviewScrollPlace` comes out: lower by the stack's
@@ -99,13 +106,21 @@ extension PreviewSyntaxLine {
 /// to whenever the content is laid out again.
 final class PreviewVisibleRows {
     private var frames: [Int: Range<CGFloat>] = [:]
+    private var onScreen: Set<Int> = []
     private var visible: Range<CGFloat>?
     private var shown: [Int] = []
 
-    /// Where `row` is laid out in the content, or nil once it is let go of.
-    /// Returns the rows shown when that changes them.
-    func place(_ row: Int, at frame: CGRect?) -> [Int]? {
-        frames[row] = frame.map { $0.minY..<$0.maxY }
+    /// Where `row` is laid out in the content. Returns the rows shown when
+    /// that changes them.
+    func place(_ row: Int, at frame: CGRect) -> [Int]? {
+        frames[row] = frame.minY..<frame.maxY
+        return update()
+    }
+
+    /// Whether `row` is on screen: true as it appears, false as it
+    /// disappears. Returns the rows shown when that changes them.
+    func appear(_ row: Int, _ appeared: Bool) -> [Int]? {
+        if appeared { onScreen.insert(row) } else { onScreen.remove(row) }
         return update()
     }
 
@@ -118,7 +133,7 @@ final class PreviewVisibleRows {
 
     private func update() -> [Int]? {
         guard let visible else { return nil }
-        let rows = frames.compactMap { $0.value.overlaps(visible) ? $0.key : nil }.sorted()
+        let rows = onScreen.filter { frames[$0]?.overlaps(visible) == true }.sorted()
         guard rows != shown else { return nil }
         shown = rows
         return rows

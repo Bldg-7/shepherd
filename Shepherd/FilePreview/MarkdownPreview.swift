@@ -245,17 +245,21 @@ final class PreviewMarkdownDocument {
 
 /// The rendering of a Markdown document, for a scroll view. Each block is
 /// known by its `anchor`, which the scroll view can scroll to, and tells
-/// `onBlockFrame` where it is laid out in the rendering, for the scroll view
-/// to work out the blocks it shows (see `PreviewVisibleRows`). The find
-/// bar's matches are marked where they are shown.
+/// `onBlockFrame` where it is laid out in the rendering and `onBlockAppear`
+/// whether it is on screen, for the scroll view to work out the blocks it
+/// shows (see `PreviewVisibleRows`). The find bar's matches are marked where
+/// they are shown.
 struct MarkdownPreview: View {
     let document: PreviewMarkdownDocument
     /// The find bar's matches, by block `id` and text of the block (see
     /// `PreviewFindText.part`).
     var marks: PreviewFindMarks = .none
-    /// Told a block's frame in the rendering as the lazy stack lays it out,
-    /// and nil when the stack lets go of it.
-    var onBlockFrame: ((Int, CGRect?) -> Void)? = nil
+    /// Told a block's frame in the rendering as the lazy stack lays it out.
+    var onBlockFrame: ((Int, CGRect) -> Void)? = nil
+    /// Told that a block is on screen as it appears, true, and no longer as
+    /// it disappears, false. A block the stack lays out without showing it
+    /// never appears.
+    var onBlockAppear: ((Int, Bool) -> Void)? = nil
     nonisolated private static let space = "preview.markdown"
     /// Inline Markdown of `block` as it is shown, with the find bar's
     /// matches in it: `part` of the block's texts.
@@ -272,7 +276,8 @@ struct MarkdownPreview: View {
                 blockView(block)
                     .id(block.anchor)
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: { onBlockFrame?(block.id, $0) }
-                    .onDisappear { onBlockFrame?(block.id, nil) }
+                    .onAppear { onBlockAppear?(block.id, true) }
+                    .onDisappear { onBlockAppear?(block.id, false) }
             }
         }
         .textSelection(.enabled)
