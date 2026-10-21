@@ -845,14 +845,15 @@ public final class MachineMonitor {
     /// - the server turned the credential down, or doesn't offer the kind of
     ///   authentication this machine is set up for (Citadel's
     ///   `SSHClientError`, except for its one case that isn't about
-    ///   authentication).
+    ///   authentication), or — for a Mac paired by QR code — turned the
+    ///   device's key down (`PairedConnectionError.accessRemoved`).
     ///
     /// All of these come from the SSH transport, so a build without Citadel
     /// has no such failure.
     public nonisolated static func isPermanentFailure(_ error: any Error) -> Bool {
         #if canImport(Citadel)
         switch error {
-        case is OpenSSHKeyError, is HostKeyValidationError:
+        case is OpenSSHKeyError, is HostKeyValidationError, PairedConnectionError.accessRemoved:
             return true
         case SSHClientError.allAuthenticationOptionsFailed,
              SSHClientError.unsupportedPasswordAuthentication,

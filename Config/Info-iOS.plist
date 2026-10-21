@@ -12,7 +12,10 @@
   question about them at each upload.
 
   A machine on the local network asks for the local network permission the
-  first time the app connects to it.
+  first time the app connects to it, and so does a Mac whose QR code is
+  scanned at a .local name or private IPv4 address. The camera is asked for
+  the first time a Mac's QR code is scanned, by the app's own scanner. Both
+  texts are translated in ShepherdMobile/InfoPlist.xcstrings.
 -->
 <plist version="1.0">
 <dict>
@@ -25,5 +28,7 @@
 	<false/>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>hrdrhrdrhrdr connects over SSH to computers on your local network that you add.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>hrdrhrdrhrdr uses the camera to scan the QR code a Mac shows, to add that Mac.</string>
 </dict>
 </plist>

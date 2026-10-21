@@ -1,0 +1,54 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "NSCameraUsageDescription" : {
+      "comment" : "Privacy - Camera Usage Description",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "hrdrhrdrhrdr uses the camera to scan the QR code a Mac shows, to add that Mac."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "hrdrhrdrhrdr は、Mac に表示された QR コードをスキャンしてその Mac を追加するためにカメラを使用します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "hrdrhrdrhrdr는 Mac에 표시된 QR 코드를 스캔해 그 Mac을 추가할 때 카메라를 사용합니다."
+          }
+        }
+      }
+    },
+    "NSLocalNetworkUsageDescription" : {
+      "comment" : "Privacy - Local Network Usage Description",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "hrdrhrdrhrdr connects over SSH to computers on your local network that you add."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "hrdrhrdrhrdr は、追加したローカルネットワーク上のコンピュータに SSH で接続します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "hrdrhrdrhrdr는 사용자가 추가한 로컬 네트워크의 컴퓨터에 SSH로 연결합니다."
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.1"
+}

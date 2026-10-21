@@ -765,6 +765,12 @@
         "ko" : { "stringUnit" : { "state" : "translated", "value" : "이 주소(%@)에서 다른 기기가 응답했습니다. Mac의 주소가 바뀌었다면 Mac의 QR 코드를 다시 스캔하세요." } }
       }
     },
+    "This Mac removed this device's access. To connect again, remove the Mac from Machines, then scan a new QR code on the Mac." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "この Mac でこのデバイスのアクセスが解除されました。再び接続するには、マシンからこの Mac を削除してから、Mac に表示される新しい QR コードをスキャンしてください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "이 Mac에서 이 기기의 접근이 해제됐습니다. 다시 연결하려면 머신에서 이 Mac을 지운 뒤 Mac에 표시되는 새 QR 코드를 스캔하세요." } }
+      }
+    },
     "The device sent a key that isn't a P-256 SSH public key." : {
       "localizations" : {
         "ja" : { "stringUnit" : { "state" : "translated", "value" : "デバイスから送られた鍵は P-256 の SSH 公開鍵ではありません。" } },

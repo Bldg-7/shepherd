@@ -181,11 +181,17 @@ public nonisolated enum PairedConnectionError: Error, Equatable, LocalizedError 
     /// likely another device that got the Mac's old address. The connection
     /// was refused before the device's key was used.
     case anotherDeviceAnswered(address: String)
+    /// The paired Mac turned the device's key down: someone removed the
+    /// device on the Mac, or took its line out of `authorized_keys`
+    /// (SHPHRD-77, "화면 흐름"). Asking again won't change that.
+    case accessRemoved
 
     public var errorDescription: String? {
         switch self {
         case .anotherDeviceAnswered(let address):
             String(localized: "A different device answered at \(address). If the Mac's address has changed, scan its QR code again.", bundle: .shepherdKit)
+        case .accessRemoved:
+            String(localized: "This Mac removed this device's access. To connect again, remove the Mac from Machines, then scan a new QR code on the Mac.", bundle: .shepherdKit)
         }
     }
 }

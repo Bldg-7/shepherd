@@ -2,17 +2,23 @@ import SwiftUI
 import ShepherdKit
 
 /// The machines, each a herdr reached over SSH. Tapping one shows its
-/// board; the plus adds one. The About menu has the privacy policy, which
-/// opens in the browser, and the open-source licenses.
+/// board; the plus adds one, by scanning the QR code a Mac shows (the Mac
+/// approves this device, and its board opens once it is added) or by hand.
+/// The About menu has the privacy policy, which opens in the browser, and
+/// the open-source licenses.
 struct MachinesView: View {
     let machineStore: MachineStore
+    @State private var path = NavigationPath()
     @State private var isAdding = false
+    @State private var isPairing = false
+    /// A Mac just paired, whose board opens once the sheet has gone.
+    @State private var pairedMachine: Machine?
     @State private var isShowingLicenses = false
 
     private static let privacyPolicy = URL(string: "https://bldg-7.github.io/shepherd/privacy/")!
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             Group {
                 if machineStore.allMachines.isEmpty {
                     ContentUnavailableView {
@@ -20,7 +26,9 @@ struct MachinesView: View {
                     } description: {
                         Text("Add a machine running herdr to see its agents.")
                     } actions: {
-                        Button("Add Machine") { isAdding = true }
+                        Button("Scan Mac's QR Code") { isPairing = true }
+                            .buttonStyle(.borderedProminent)
+                        Button("Add Machine Manually") { isAdding = true }
                     }
                 } else {
                     List {
@@ -60,8 +68,17 @@ struct MachinesView: View {
                     }
                 }
                 ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        isAdding = true
+                    Menu {
+                        Button {
+                            isPairing = true
+                        } label: {
+                            Label("Scan Mac's QR Code", systemImage: "qrcode.viewfinder")
+                        }
+                        Button {
+                            isAdding = true
+                        } label: {
+                            Label("Add Machine Manually", systemImage: "keyboard")
+                        }
                     } label: {
                         Label("Add Machine", systemImage: "plus")
                     }
@@ -70,10 +87,23 @@ struct MachinesView: View {
             .sheet(isPresented: $isAdding) {
                 AddMachineView(machineStore: machineStore)
             }
+            .sheet(isPresented: $isPairing, onDismiss: openPairedMachine) {
+                PairingSheet(machineStore: machineStore) { machine in
+                    pairedMachine = machine
+                    isPairing = false
+                }
+            }
             .sheet(isPresented: $isShowingLicenses) {
                 OpenSourceLicensesView()
             }
         }
+    }
+
+    private func openPairedMachine() {
+        guard let machine = pairedMachine else { return }
+        pairedMachine = nil
+        path = NavigationPath()
+        path.append(machine)
     }
 }
 

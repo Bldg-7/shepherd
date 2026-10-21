@@ -122,6 +122,11 @@ public actor SSHHerdrTransport: HerdrTransport {
             // nothing was given away. On a local network the likeliest reason
             // is another device that has the Mac's old address.
             throw PairedConnectionError.anotherDeviceAnswered(address: host)
+        } catch SSHClientError.allAuthenticationOptionsFailed where usesPairedKey {
+            // A Mac paired by QR code that turns the device's own key down
+            // has had the device removed: said so, rather than as a wrong
+            // password or a key missing from authorized_keys.
+            throw PairedConnectionError.accessRemoved
         }
         self.client = client
 
@@ -133,6 +138,13 @@ public actor SSHHerdrTransport: HerdrTransport {
         socketPath = sessionName.isEmpty
             ? "\(home)/.config/herdr/herdr.sock"
             : "\(home)/.config/herdr/sessions/\(sessionName)/herdr.sock"
+    }
+
+    /// Whether the credential is the key the iOS app made when it paired
+    /// with a Mac by QR code.
+    private var usesPairedKey: Bool {
+        if case .secureEnclaveKey = credential { return true }
+        return false
     }
 
     private func resolveRemoteHome(_ client: SSHClient) async throws -> String {
