@@ -119,6 +119,12 @@ struct AgentBoardView: View {
     /// Kept per Shepherd Machine (see `init`), so the host group of one
     /// machine and of another are folded separately, and across launches.
     @AppStorage private var collapsedGroupIDs: String
+    /// The order the person has put the groups in by dragging their headers,
+    /// by group ID, one per line (see `BoardGroupOrder`). Kept per Shepherd
+    /// Machine, as the folded groups are.
+    @AppStorage private var groupOrderIDs: String
+    /// The group header being dragged to another place, while one is.
+    @State private var groupDrag = BoardGroupDrag()
     /// Whether the board lists tabs, one row each, instead of panes. One
     /// setting for every machine; see `showsTabsKey`.
     @AppStorage(Self.showsTabsKey) private var showsTabs = false
@@ -159,6 +165,7 @@ struct AgentBoardView: View {
         self._renameCommit = renameCommit
         self.onNavigationDestinations = onNavigationDestinations
         self._collapsedGroupIDs = AppStorage(wrappedValue: "", "AgentBoardView.collapsedGroups.\(machine.id.uuidString)")
+        self._groupOrderIDs = AppStorage(wrappedValue: "", "AgentBoardView.groupOrder.\(machine.id.uuidString)")
     }
 
     /// The machine's monitor, which keeps what the board lists up to date
@@ -227,6 +234,9 @@ struct AgentBoardView: View {
                       let group = herdrMachineGroups.first(where: { $0.id == id }) else { return }
                 removing = group.machine
             }
+            // A header being dragged as the board goes leaves no group
+            // folded for it.
+            .onDisappear { groupDrag.finish() }
     }
 
     private var board: some View {
@@ -411,64 +421,125 @@ struct AgentBoardView: View {
     /// filter or both — a group shows only the rows that are left, unfolded
     /// whether or not the person folded it (without changing that), and a
     /// group with none to show is left out altogether, notes included.
+    /// While a group's header is being dragged, every group shows its header
+    /// alone (see `BoardGroupFolding`).
     @ViewBuilder
     private var agentList: some View {
-        let hostRows = visibleRows(panes: agents, tabs: tabs, workspaces: workspaces, herdrMachine: nil, machineLabel: machine.displayName)
         if herdrMachineGroups.isEmpty {
             List(selection: selectionID) {
-                rows(hostRows)
+                rows(visibleRows(of: .host))
             }
         } else {
+            let listed = boardGroups
+                .map { ListedGroup(group: $0, rows: visibleRows(of: $0)) }
+                .filter { !isFiltering || $0.rows.count > 0 }
+            let shownGroupIDs = listed.map(\.id)
             List(selection: selectionID) {
-                if !isFiltering || hostRows.count > 0 {
-                    Section {
-                        if isFiltering || isExpanded(Self.hostGroupID).wrappedValue {
-                            if !isFiltering {
-                                hostGroupStatus
-                            }
-                            rows(hostRows)
-                        }
-                    } header: {
-                        groupHeader(machine.displayName, panes: agents, rowCount: hostRows.count, groupID: Self.hostGroupID)
-                            .contextMenu {
-                                Button("Add herdr Machine…") { onHerdrMachineSetup(.add) }
-                                    .disabled(!monitor.canManageHerdrMachines)
-                            }
-                    }
-                }
-                ForEach(herdrMachineGroups) { group in
-                    let groupRows = visibleRows(panes: group.agents, tabs: group.tabs, workspaces: group.workspaces, herdrMachine: group.machine, machineLabel: group.machine.label)
-                    if !isFiltering || groupRows.count > 0 {
-                        Section {
-                            if isFiltering || isExpanded(group.id).wrappedValue {
-                                if !isFiltering {
-                                    if let error = group.error {
-                                        groupNote(error, systemImage: "exclamationmark.triangle")
-                                    } else if !group.hasLoaded {
-                                        groupNote(String(localized: "Loading panes…"), systemImage: "hourglass")
-                                    } else if group.agents.isEmpty {
-                                        groupNote(String(localized: "No Panes"), systemImage: "terminal")
-                                    }
-                                }
-                                rows(groupRows)
-                            }
-                        } header: {
-                            groupHeader(group.machine.label, panes: group.agents, rowCount: groupRows.count, groupID: group.id)
-                                .contextMenu {
-                                    // Checking it again is for a machine herdr
-                                    // can't reach now.
-                                    if group.error != nil {
-                                        Button("Reconnect…") { onHerdrMachineSetup(.reconnect(group.machine)) }
-                                            .disabled(!monitor.canManageHerdrMachines)
-                                    }
-                                    Button("Remove \u{201C}\(group.machine.label)\u{201D}…") { removing = group.machine }
-                                        .disabled(!monitor.canManageHerdrMachines)
-                                }
-                        }
+                ForEach(listed) { item in
+                    switch item.group {
+                    case .host:
+                        hostSection(item.rows, among: shownGroupIDs)
+                    case .herdrMachine(let group):
+                        herdrMachineSection(group, rows: item.rows, among: shownGroupIDs)
                     }
                 }
             }
+            .boardGroupInsertionLine(groupDrag)
         }
+    }
+
+    private func hostSection(_ hostRows: HerdrRows, among shownGroupIDs: [String]) -> some View {
+        Section {
+            if listsRows(of: Self.hostGroupID) {
+                if !isFiltering {
+                    hostGroupStatus
+                }
+                rows(hostRows)
+            }
+        } header: {
+            groupHeader(machine.displayName, panes: agents, rowCount: hostRows.count, groupID: Self.hostGroupID, among: shownGroupIDs)
+                .contextMenu {
+                    Button("Add herdr Machine…") { onHerdrMachineSetup(.add) }
+                        .disabled(!monitor.canManageHerdrMachines)
+                }
+        }
+    }
+
+    private func herdrMachineSection(_ group: MachineMonitor.HerdrMachineGroup, rows groupRows: HerdrRows, among shownGroupIDs: [String]) -> some View {
+        Section {
+            if listsRows(of: group.id) {
+                if !isFiltering {
+                    if let error = group.error {
+                        groupNote(error, systemImage: "exclamationmark.triangle")
+                    } else if !group.hasLoaded {
+                        groupNote(String(localized: "Loading panes…"), systemImage: "hourglass")
+                    } else if group.agents.isEmpty {
+                        groupNote(String(localized: "No Panes"), systemImage: "terminal")
+                    }
+                }
+                rows(groupRows)
+            }
+        } header: {
+            groupHeader(group.machine.label, panes: group.agents, rowCount: groupRows.count, groupID: group.id, among: shownGroupIDs)
+                .contextMenu {
+                    // Checking it again is for a machine herdr can't reach
+                    // now.
+                    if group.error != nil {
+                        Button("Reconnect…") { onHerdrMachineSetup(.reconnect(group.machine)) }
+                            .disabled(!monitor.canManageHerdrMachines)
+                    }
+                    Button("Remove \u{201C}\(group.machine.label)\u{201D}…") { removing = group.machine }
+                        .disabled(!monitor.canManageHerdrMachines)
+                }
+        }
+    }
+
+    /// One group of the board: the host's own herdr's, or a herdr machine's.
+    private enum BoardGroup: Identifiable {
+        case host
+        case herdrMachine(MachineMonitor.HerdrMachineGroup)
+
+        var id: String {
+            switch self {
+            case .host: AgentBoardView.hostGroupID
+            case .herdrMachine(let group): group.id
+            }
+        }
+    }
+
+    /// A group as the list shows it, with the rows the search and the
+    /// workspace filter leave it.
+    private struct ListedGroup: Identifiable {
+        let group: BoardGroup
+        let rows: HerdrRows
+        var id: String { group.id }
+    }
+
+    /// The board's groups — the host's own first, then the herdr machines
+    /// as herdr lists them — in the order the person has dragged them into.
+    private var boardGroups: [BoardGroup] {
+        BoardGroupOrder.ordered(
+            [.host] + herdrMachineGroups.map(BoardGroup.herdrMachine),
+            by: \.id,
+            saved: BoardGroupOrder.ids(groupOrderIDs)
+        )
+    }
+
+    private func visibleRows(of group: BoardGroup) -> HerdrRows {
+        switch group {
+        case .host:
+            visibleRows(panes: agents, tabs: tabs, workspaces: workspaces, herdrMachine: nil, machineLabel: machine.displayName)
+        case .herdrMachine(let group):
+            visibleRows(panes: group.agents, tabs: group.tabs, workspaces: group.workspaces, herdrMachine: group.machine, machineLabel: group.machine.label)
+        }
+    }
+
+    /// Moves the group whose header was let go into `gap` among the groups
+    /// shown, and keeps the order — of the groups there are now, so that
+    /// one gone since is left out of it.
+    private func moveGroup(_ groupID: String, toGap gap: Int, among shownGroupIDs: [String]) {
+        guard let order = BoardGroupOrder.moving(groupID, toGap: gap, among: shownGroupIDs, in: boardGroups.map(\.id)) else { return }
+        groupOrderIDs = BoardGroupOrder.stored(order)
     }
 
     /// One herdr's part of the board — the host's or a herdr machine's —
@@ -915,18 +986,22 @@ struct AgentBoardView: View {
     /// `rowCount` is how many rows the group lists; `panes` are all of its
     /// panes, the ones the search leaves out included — a blocked agent is
     /// marked whatever is listed.
-    private func groupHeader(_ title: String, panes: [AgentSummary], rowCount: Int, groupID: String) -> some View {
-        let expanded = isExpanded(groupID)
+    ///
+    /// Dragged, the header takes its group to another place among the groups
+    /// `shownGroupIDs` (see `BoardGroupDrag`).
+    private func groupHeader(_ title: String, panes: [AgentSummary], rowCount: Int, groupID: String, among shownGroupIDs: [String]) -> some View {
+        let expanded = BoardGroupFolding.looksExpanded(isCollapsed: isCollapsed(groupID), isFoldedForDrag: groupDrag.foldsRows(of: groupID))
         return Button {
+            guard let collapsed = BoardGroupFolding.toggling(groupID, in: collapsedGroupIDs, isFoldingForDrag: groupDrag.isFolding) else { return }
             withAnimation(.easeInOut(duration: 0.2)) {
-                expanded.wrappedValue.toggle()
+                collapsedGroupIDs = collapsed
             }
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                    .rotationEffect(.degrees(expanded.wrappedValue ? 90 : 0))
+                    .rotationEffect(.degrees(expanded ? 90 : 0))
                 Text(title)
                 if panes.contains(where: { $0.state == .blocked }) {
                     Circle()
@@ -948,7 +1023,10 @@ struct AgentBoardView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityValue(expanded.wrappedValue ? Text("Expanded") : Text("Collapsed"))
+        .accessibilityValue(expanded ? Text("Expanded") : Text("Collapsed"))
+        .boardGroupDrag(groupID, drag: groupDrag, among: shownGroupIDs) { gap in
+            moveGroup(groupID, toGap: gap, among: shownGroupIDs)
+        }
     }
 
     /// A line in a group that isn't an agent: its loading state, an empty
@@ -976,19 +1054,14 @@ struct AgentBoardView: View {
         }
     }
 
-    private func isExpanded(_ groupID: String) -> Binding<Bool> {
-        Binding(
-            get: { !collapsedGroupIDs.split(separator: "\n").contains(Substring(groupID)) },
-            set: { expanded in
-                var collapsed = Set(collapsedGroupIDs.split(separator: "\n").map(String.init))
-                if expanded {
-                    collapsed.remove(groupID)
-                } else {
-                    collapsed.insert(groupID)
-                }
-                collapsedGroupIDs = collapsed.sorted().joined(separator: "\n")
-            }
-        )
+    /// Whether the person has folded the group away.
+    private func isCollapsed(_ groupID: String) -> Bool {
+        BoardGroupFolding.isCollapsed(groupID, in: collapsedGroupIDs)
+    }
+
+    /// Whether the group lists its rows now (see `BoardGroupFolding`).
+    private func listsRows(of groupID: String) -> Bool {
+        BoardGroupFolding.listsRows(isCollapsed: isCollapsed(groupID), isFiltering: isFiltering, isFoldedForDrag: groupDrag.foldsRows(of: groupID))
     }
 
     private var retryStatus: String {
