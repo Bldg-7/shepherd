@@ -10,6 +10,7 @@ struct MachinesSettingsView: View {
     @State private var isAddingMachine = false
     @State private var machineBeingEdited: Machine?
     #if os(macOS)
+    @State private var showsPairedDevices = false
     @State private var showsNotifications = false
     @State private var showsExperimentalFeatures = false
     @State private var hoveredMachineID: UUID?
@@ -43,6 +44,12 @@ struct MachinesSettingsView: View {
             } else if isAddingMachine {
                 AddMachineView(machineStore: machineStore) {
                     withAnimation(Self.pageAnimation) { isAddingMachine = false }
+                }
+                .transition(.move(edge: .trailing))
+            } else if showsPairedDevices {
+                PairedDevicesSettingsView(model: .system(),
+                                          makeCoordinator: { PairingCoordinator(environment: .system()) }) {
+                    withAnimation(Self.pageAnimation) { showsPairedDevices = false }
                 }
                 .transition(.move(edge: .trailing))
             } else if showsNotifications {
@@ -117,6 +124,8 @@ struct MachinesSettingsView: View {
                     }
                 }
                 Section {
+                    pageRow("iPhone and iPad", systemImage: "iphone") { showsPairedDevices = true }
+                        .accessibilityIdentifier("settings.paired-devices")
                     pageRow("Notifications", systemImage: "bell") { showsNotifications = true }
                         .accessibilityIdentifier("settings.notifications")
                     pageRow("Experimental Features", systemImage: "flask") { showsExperimentalFeatures = true }

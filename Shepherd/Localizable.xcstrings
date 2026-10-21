@@ -6877,6 +6877,678 @@
         "ja" : { "stringUnit" : { "state" : "translated", "value" : "herdr はこのマシンを忘れ、接続しなくなります。そのマシンのセッションと、その中の agent は動き続けます。" } },
         "ko" : { "stringUnit" : { "state" : "translated", "value" : "herdr가 이 머신을 잊고 더 이상 연결하지 않습니다. 그 머신의 세션과 그 안의 agent는 계속 실행됩니다." } }
       }
+    },
+    "iPhone and iPad" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "iPhone と iPad" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "iPhone 및 iPad" } }
+      }
+    },
+    "History" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "履歴" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "기록" } }
+      }
+    },
+    "No iPhone or iPad can connect to this Mac yet." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "この Mac に接続できる iPhone や iPad はまだありません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "아직 이 Mac에 접속할 수 있는 iPhone이나 iPad가 없습니다." } }
+      }
+    },
+    "Devices" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "デバイス" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "기기" } }
+      }
+    },
+    "A device added here logs in to this Mac over Remote Login (SSH) with a key that never leaves the device." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ここで追加したデバイスは、デバイスの外に出ない鍵を使い、リモートログイン(SSH)でこの Mac にログインします。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "여기에 추가한 기기는 기기 밖으로 나가지 않는 키로 원격 로그인(SSH)을 통해 이 Mac에 로그인합니다." } }
+      }
+    },
+    "Add Device…" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "デバイスを追加…" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "기기 추가…" } }
+      }
+    },
+    "Nothing yet." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "まだありません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "아직 없습니다." } }
+      }
+    },
+    "Its key is taken out of ~/.ssh/authorized_keys, so it can't log in again. A connection it has open now isn't closed: to end one, turn Remote Login off and on again." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "~/.ssh/authorized_keys からこのデバイスの鍵を削除するため、再びログインすることはできません。いま開いている接続は切断されません。切断するには、リモートログインをオフにしてから再びオンにしてください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "~/.ssh/authorized_keys에서 이 기기의 키를 지우므로 다시 로그인할 수 없습니다. 지금 열려 있는 연결은 끊기지 않습니다. 끊으려면 원격 로그인을 껐다가 다시 켜세요." } }
+      }
+    },
+    "%@ · added %@" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "%1$@ · %2$@ に追加" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "%1$@ · %2$@에 추가함" } }
+      }
+    },
+    "Not in ~/.ssh/authorized_keys: this device can't log in." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "~/.ssh/authorized_keys にありません: このデバイスはログインできません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "~/.ssh/authorized_keys에 없음: 이 기기는 로그인할 수 없습니다." } }
+      }
+    },
+    "~/.ssh/authorized_keys couldn't be read." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "~/.ssh/authorized_keys を読み取れませんでした。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "~/.ssh/authorized_keys를 읽지 못했습니다." } }
+      }
+    },
+    "Take this line out of ~/.ssh/authorized_keys yourself, then remove the device here again:" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "この行を ~/.ssh/authorized_keys から手動で削除してから、ここでもう一度デバイスを削除してください:" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "이 줄을 ~/.ssh/authorized_keys에서 직접 지운 뒤 여기서 기기를 다시 제거하세요:" } }
+      }
+    },
+    "“%@” couldn't be removed: %@" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%1$@」を削除できませんでした: %2$@" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "‘%1$@’을(를) 제거하지 못했습니다: %2$@" } }
+      }
+    },
+    "Copy Line" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "行をコピー" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "줄 복사" } }
+      }
+    },
+    "“%@” asked to connect, from %@." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%1$@」が %2$@ から接続を求めました。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "‘%1$@’이(가) %2$@에서 접속을 요청했습니다." } }
+      }
+    },
+    "Another device asked to connect with a QR code already used, from %@." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "別のデバイスが、使用済みの QR コードで %@ から接続を求めました。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "다른 기기가 이미 사용된 QR 코드로 %@에서 접속을 요청했습니다." } }
+      }
+    },
+    "You approved “%@”." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%@」を承認しました。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "‘%@’을(를) 승인했습니다." } }
+      }
+    },
+    "You turned down “%@”." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%@」を拒否しました。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "‘%@’을(를) 거부했습니다." } }
+      }
+    },
+    "“%@” was turned down: no answer within a minute." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "1 分以内に応答がなかったため、「%@」を拒否しました。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "1분 안에 응답이 없어 ‘%@’을(를) 거부했습니다." } }
+      }
+    },
+    "Added the key of “%@” to ~/.ssh/authorized_keys." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%@」の鍵を ~/.ssh/authorized_keys に追加しました。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "‘%@’의 키를 ~/.ssh/authorized_keys에 추가했습니다." } }
+      }
+    },
+    "The key of “%@” was already in ~/.ssh/authorized_keys." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%@」の鍵はすでに ~/.ssh/authorized_keys にありました。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "‘%@’의 키가 이미 ~/.ssh/authorized_keys에 있었습니다." } }
+      }
+    },
+    "The key of “%@” couldn't be written to ~/.ssh/authorized_keys." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%@」の鍵を ~/.ssh/authorized_keys に書き込めませんでした。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "‘%@’의 키를 ~/.ssh/authorized_keys에 쓰지 못했습니다." } }
+      }
+    },
+    "“%@” logged in over SSH and reached herdr." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%@」が SSH でログインし、herdr に接続しました。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "‘%@’이(가) SSH로 로그인해 herdr에 연결했습니다." } }
+      }
+    },
+    "“%@” couldn't finish its first connection." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%@」は最初の接続を完了できませんでした。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "‘%@’이(가) 첫 연결을 마치지 못했습니다." } }
+      }
+    },
+    "“%@” didn't report its first connection." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%@」から最初の接続の結果が届きませんでした。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "‘%@’이(가) 첫 연결 결과를 알리지 않았습니다." } }
+      }
+    },
+    "Stopped listening for devices after too many requests that weren't right." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "正しくない要求が多すぎたため、デバイスからの接続の受け付けを止めました。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "올바르지 않은 요청이 너무 많아 기기의 연결을 더 받지 않았습니다." } }
+      }
+    },
+    "Removed “%@” and its key." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%@」とその鍵を削除しました。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "‘%@’과(와) 그 키를 제거했습니다." } }
+      }
+    },
+    "Removed “%@”; its key was no longer in ~/.ssh/authorized_keys." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%@」を削除しました。鍵はすでに ~/.ssh/authorized_keys にありませんでした。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "‘%@’을(를) 제거했습니다. 키는 이미 ~/.ssh/authorized_keys에 없었습니다." } }
+      }
+    },
+    "A device" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "デバイス" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "기기" } }
+      }
+    },
+    "Add iPhone or iPad" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "iPhone または iPad を追加" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "iPhone 또는 iPad 추가" } }
+      }
+    },
+    "Back to iPhone and iPad" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "iPhone と iPad に戻る" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "iPhone 및 iPad로 돌아가기" } }
+      }
+    },
+    "Request" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "要求" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "요청" } }
+      }
+    },
+    "Result" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "結果" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "결과" } }
+      }
+    },
+    "Before You Start" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "始める前に" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "시작하기 전에" } }
+      }
+    },
+    "QR Code" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "QR コード" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "QR 코드" } }
+      }
+    },
+    "herdr is running on this Mac." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "この Mac で herdr が実行中です。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "이 Mac에서 herdr가 실행 중입니다." } }
+      }
+    },
+    "herdr isn't running on this Mac. Start it, or the device's first connection can't reach it." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "この Mac で herdr が実行されていません。herdr を起動しないと、デバイスの最初の接続が herdr に届きません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "이 Mac에서 herdr가 실행 중이 아닙니다. herdr를 실행하지 않으면 기기의 첫 연결이 herdr에 닿지 못합니다." } }
+      }
+    },
+    "The firewall blocks all incoming connections, so no device can reach this Mac. Turn that off in System Settings › Network › Firewall › Options." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ファイアウォールがすべての受信接続をブロックしているため、どのデバイスもこの Mac に接続できません。システム設定 › ネットワーク › ファイアウォール › オプションでオフにしてください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "방화벽이 들어오는 연결을 모두 막고 있어 어떤 기기도 이 Mac에 연결할 수 없습니다. 시스템 설정 › 네트워크 › 방화벽 › 옵션에서 끄세요." } }
+      }
+    },
+    "The firewall is on. If macOS asks whether hrdrhrdrhrdr may accept incoming network connections, click Allow." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ファイアウォールがオンです。hrdrhrdrhrdr が受信ネットワーク接続を受け入れるかどうかを macOS が尋ねたら、「許可」をクリックしてください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "방화벽이 켜져 있습니다. hrdrhrdrhrdr가 들어오는 네트워크 연결을 받아도 되는지 macOS가 물으면 [허용]을 누르세요." } }
+      }
+    },
+    "hrdrhrdrhrdr can't add the device's key itself: %@ You'll be given a command to run instead." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "hrdrhrdrhrdr はデバイスの鍵を自分で追加できません: %@ 代わりに実行するコマンドが表示されます。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "hrdrhrdrhrdr가 기기의 키를 직접 추가할 수 없습니다: %@ 대신 실행할 명령을 알려 드립니다." } }
+      }
+    },
+    "A Mac that's asleep can't be reached. To let a device see files in Desktop, Documents and Downloads, turn on full disk access for remote users in Remote Login's settings." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "スリープ中の Mac には接続できません。デバイスからデスクトップ、書類、ダウンロードのファイルを見るには、リモートログインの設定でリモートユーザのフルディスクアクセスをオンにしてください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "잠자기 중인 Mac에는 연결할 수 없습니다. 기기에서 데스크탑, 문서, 다운로드의 파일을 보려면 원격 로그인 설정에서 원격 사용자의 전체 디스크 접근을 켜세요." } }
+      }
+    },
+    "Remote Login is on. Devices you add log in to this Mac over SSH; while it is on, anyone on your network can try to log in, but only allowed keys and passwords work." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "リモートログインがオンです。追加したデバイスは SSH でこの Mac にログインします。オンの間はネットワーク上の誰でもログインを試せますが、許可された鍵とパスワードだけが通ります。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "원격 로그인이 켜져 있습니다. 추가한 기기는 SSH로 이 Mac에 로그인합니다. 원격 로그인이 켜져 있는 동안은 네트워크의 누구나 로그인을 시도할 수 있지만, 허용된 키와 암호만 통합니다." } }
+      }
+    },
+    "Checking Remote Login…" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "リモートログインを確認中…" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "원격 로그인 확인 중…" } }
+      }
+    },
+    "Remote Login is off. A device logs in to this Mac over SSH, so turn on Remote Login in System Settings › General › Sharing, and leave it on while you use the device. This page checks again every two seconds." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "リモートログインがオフです。デバイスは SSH でこの Mac にログインするため、システム設定 › 一般 › 共有でリモートログインをオンにし、デバイスを使う間はオンのままにしてください。このページは 2 秒ごとに確認し直します。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "원격 로그인이 꺼져 있습니다. 기기는 SSH로 이 Mac에 로그인하므로, 시스템 설정 › 일반 › 공유에서 원격 로그인을 켜고 기기를 쓰는 동안 켜 두세요. 이 페이지는 2초마다 다시 확인합니다." } }
+      }
+    },
+    "Open Sharing Settings…" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "共有設定を開く…" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "공유 설정 열기…" } }
+      }
+    },
+    "Couldn't check Remote Login: %@" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "リモートログインを確認できませんでした: %@" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "원격 로그인을 확인하지 못했습니다: %@" } }
+      }
+    },
+    "Check Again" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "もう一度確認" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "다시 확인" } }
+      }
+    },
+    "There's no address a device could reach this Mac at. Connect this Mac to Wi-Fi or a wired network, or turn on Tailscale." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "デバイスがこの Mac に接続できるアドレスがありません。この Mac を Wi-Fi か有線ネットワークに接続するか、Tailscale をオンにしてください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "기기가 이 Mac에 연결할 수 있는 주소가 없습니다. 이 Mac을 Wi-Fi나 유선 네트워크에 연결하거나 Tailscale을 켜세요." } }
+      }
+    },
+    "Looking for this Mac's addresses…" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "この Mac のアドレスを探しています…" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "이 Mac의 주소를 찾는 중…" } }
+      }
+    },
+    "%@ can't be used anymore, so the QR code now carries %@." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "%1$@ が使えなくなったため、QR コードには %2$@ を入れました。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "%1$@을(를) 더 이상 쓸 수 없어 QR 코드에 %2$@을(를) 넣었습니다." } }
+      }
+    },
+    "%@ can't be used anymore." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "%@ は使えなくなりました。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "%@을(를) 더 이상 쓸 수 없습니다." } }
+      }
+    },
+    "Address" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "アドレス" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "주소" } }
+      }
+    },
+    "The QR code carries only the address chosen here. The device connects to this Mac at that address, now and later." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "QR コードには、ここで選んだアドレスだけが入ります。デバイスは今もこれからも、そのアドレスでこの Mac に接続します。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "QR 코드에는 여기서 고른 주소만 들어갑니다. 기기는 지금도 이후에도 그 주소로 이 Mac에 연결합니다." } }
+      }
+    },
+    "Only on the same Wi-Fi or wired network. Keeps working when the router gives this Mac another IP address." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "同じ Wi-Fi・有線ネットワーク内でのみ接続できます。ルーターがこの Mac に別の IP アドレスを割り当てても、そのまま使えます。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "같은 Wi-Fi·유선 네트워크에서만 연결됩니다. 공유기가 이 Mac에 다른 IP 주소를 줘도 그대로 씁니다." } }
+      }
+    },
+    "Only on the same network. If this IP address changes, scan a new QR code." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "同じネットワーク内でのみ接続できます。この IP アドレスが変わったら、新しい QR コードをスキャンしてください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "같은 네트워크에서만 연결됩니다. 이 IP 주소가 바뀌면 QR 코드를 다시 스캔해야 합니다." } }
+      }
+    },
+    "From anywhere, while both the device and this Mac are connected to Tailscale." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "デバイスとこの Mac の両方が Tailscale に接続していれば、どこからでも接続できます。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "기기와 이 Mac이 모두 Tailscale에 연결되어 있으면 어디서나 연결됩니다." } }
+      }
+    },
+    "From anywhere while Tailscale is on. Needs Use Tailscale DNS turned on in Tailscale on the device." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "Tailscale がオンならどこからでも接続できます。デバイスの Tailscale で「Tailscale DNS を使用」がオンになっている必要があります。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "Tailscale이 켜져 있으면 어디서나 연결됩니다. 기기의 Tailscale에서 ‘Tailscale DNS 사용’이 켜져 있어야 합니다." } }
+      }
+    },
+    "The code appears only when you ask for it. Anyone who sees it can ask to connect, but no device gets in until you approve it here." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "QR コードは求めたときにだけ表示されます。見た人は誰でも接続を求められますが、ここで承認するまではどのデバイスも入れません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "QR 코드는 요청할 때만 나타납니다. 코드를 본 사람은 누구나 접속을 요청할 수 있지만, 여기서 승인하기 전에는 어떤 기기도 들어오지 못합니다." } }
+      }
+    },
+    "Show QR Code Again" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "QR コードをもう一度表示" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "QR 코드 다시 보기" } }
+      }
+    },
+    "Show QR Code" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "QR コードを表示" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "QR 코드 보기" } }
+      }
+    },
+    "QR codes were shown for ten minutes, so hrdrhrdrhrdr stopped listening for devices." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "QR コードを 10 分間表示したため、hrdrhrdrhrdr はデバイスからの接続の受け付けを止めました。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "QR 코드를 10분 동안 보여 줘서 hrdrhrdrhrdr가 기기의 연결을 더 받지 않습니다." } }
+      }
+    },
+    "Too many requests that weren't right came in, so hrdrhrdrhrdr stopped listening for devices. If you didn't expect that, check what else is on your network." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "正しくない要求が多すぎたため、hrdrhrdrhrdr はデバイスからの接続の受け付けを止めました。心当たりがなければ、ネットワーク上にほかに何があるか確認してください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "올바르지 않은 요청이 너무 많이 와서 hrdrhrdrhrdr가 기기의 연결을 더 받지 않습니다. 예상하지 못한 일이라면 네트워크에 무엇이 더 있는지 확인하세요." } }
+      }
+    },
+    "hrdrhrdrhrdr couldn't listen for devices: %@" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "hrdrhrdrhrdr はデバイスからの接続を受け付けられませんでした: %@" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "hrdrhrdrhrdr가 기기의 연결을 받을 수 없습니다: %@" } }
+      }
+    },
+    "hrdrhrdrhrdr couldn't make a QR code: %@" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "hrdrhrdrhrdr は QR コードを作れませんでした: %@" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "hrdrhrdrhrdr가 QR 코드를 만들지 못했습니다: %@" } }
+      }
+    },
+    "You turned down “%@”. Here is a new QR code." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%@」を拒否しました。新しい QR コードです。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "‘%@’을(를) 거부했습니다. 새 QR 코드입니다." } }
+      }
+    },
+    "“%@” was turned down: no answer within a minute. Here is a new QR code." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "1 分以内に応答がなかったため「%@」を拒否しました。新しい QR コードです。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "1분 안에 응답이 없어 ‘%@’을(를) 거부했습니다. 새 QR 코드입니다." } }
+      }
+    },
+    "QR code for %@" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "%@ の QR コード" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "%@의 QR 코드" } }
+      }
+    },
+    "In hrdrhrdrhrdr on your iPhone or iPad, tap + in Machines, then Scan Mac's QR Code." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "iPhone または iPad の hrdrhrdrhrdr で、マシンの + をタップし、「Mac の QR コードをスキャン」を選んでください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "iPhone이나 iPad의 hrdrhrdrhrdr에서 머신의 +를 누르고 ‘Mac의 QR 코드 스캔’을 고르세요." } }
+      }
+    },
+    "Anyone who can see your screen can see this code. Hide it before you share your screen or record it." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "画面を見られる人は誰でもこのコードを見られます。画面を共有したり録画したりする前に隠してください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "화면을 볼 수 있는 사람은 누구나 이 코드를 볼 수 있습니다. 화면을 공유하거나 녹화하기 전에 숨기세요." } }
+      }
+    },
+    "Hide QR Code" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "QR コードを隠す" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "QR 코드 숨기기" } }
+      }
+    },
+    "Changes to a new code in %@." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "%@ 後に新しいコードに変わります。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "%@ 후 새 코드로 바뀝니다." } }
+      }
+    },
+    "“%@” (%@) wants to connect to this Mac." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%1$@」(%2$@)がこの Mac に接続しようとしています。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "‘%1$@’(%2$@)이(가) 이 Mac에 접속하려고 합니다." } }
+      }
+    },
+    "Check that the device shows the same code. Approve only a device you have in front of you." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "デバイスに同じコードが表示されているか確認してください。手元にあるデバイスだけを承認してください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "기기에 같은 코드가 보이는지 확인하세요. 지금 가지고 있는 기기만 승인하세요." } }
+      }
+    },
+    "From %@ · %@" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "%1$@ から · %2$@" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "%1$@에서 · %2$@" } }
+      }
+    },
+    "Another device also asked to connect with this QR code. If this request isn't from your device, turn it down." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "別のデバイスもこの QR コードで接続を求めました。この要求が自分のデバイスからでなければ、拒否してください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "다른 기기도 이 QR 코드로 접속을 요청했습니다. 이 요청이 내 기기에서 온 것이 아니라면 거부하세요." } }
+      }
+    },
+    "Confirmation code" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "確認コード" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "확인 코드" } }
+      }
+    },
+    "Reject" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "拒否" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "거부" } }
+      }
+    },
+    "Approve…" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "承認…" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "승인…" } }
+      }
+    },
+    "If you don't answer, it's turned down in %@." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "応答しなければ %@ 後に拒否されます。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "응답하지 않으면 %@ 후 거부됩니다." } }
+      }
+    },
+    "The device said: %@" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "デバイスからの報告: %@" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "기기가 알린 내용: %@" } }
+      }
+    },
+    "It logged in over SSH." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "SSH でログインしました。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "SSH로 로그인했습니다." } }
+      }
+    },
+    "It couldn't log in over SSH. Check that Remote Login lets your user in: System Settings › General › Sharing › Remote Login ⓘ." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "SSH でログインできませんでした。リモートログインがこのユーザのアクセスを許可しているか確認してください: システム設定 › 一般 › 共有 › リモートログイン ⓘ。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "SSH로 로그인하지 못했습니다. 원격 로그인이 이 사용자의 접근을 허용하는지 확인하세요: 시스템 설정 › 일반 › 공유 › 원격 로그인 ⓘ." } }
+      }
+    },
+    "It reached herdr." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "herdr に接続しました。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "herdr에 연결했습니다." } }
+      }
+    },
+    "It couldn't reach herdr. Start herdr on this Mac." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "herdr に接続できませんでした。この Mac で herdr を起動してください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "herdr에 연결하지 못했습니다. 이 Mac에서 herdr를 실행하세요." } }
+      }
+    },
+    "The device didn't say how its first connection went." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "デバイスから最初の接続の結果が届きませんでした。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "기기가 첫 연결 결과를 알리지 않았습니다." } }
+      }
+    },
+    "It couldn't be added to the list of devices: %@" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "デバイスの一覧に追加できませんでした: %@" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "기기 목록에 추가하지 못했습니다: %@" } }
+      }
+    },
+    "“%@” can now connect to this Mac." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%@」がこの Mac に接続できるようになりました。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "이제 ‘%@’이(가) 이 Mac에 접속할 수 있습니다." } }
+      }
+    },
+    "“%@” was added, but its first connection didn't work." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%@」を追加しましたが、最初の接続はうまくいきませんでした。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "‘%@’을(를) 추가했지만 첫 연결은 실패했습니다." } }
+      }
+    },
+    "Its key was added to ~/.ssh/authorized_keys." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "鍵を ~/.ssh/authorized_keys に追加しました。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "키를 ~/.ssh/authorized_keys에 추가했습니다." } }
+      }
+    },
+    "Its key was already in ~/.ssh/authorized_keys." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "鍵はすでに ~/.ssh/authorized_keys にありました。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "키가 이미 ~/.ssh/authorized_keys에 있었습니다." } }
+      }
+    },
+    "Waiting for “%@” to connect…" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%@」の接続を待っています…" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "‘%@’의 연결을 기다리는 중…" } }
+      }
+    },
+    "Add Another Device" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "別のデバイスを追加" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "다른 기기 추가" } }
+      }
+    },
+    "Its key wasn't added: %@ Run this in Terminal to let it in:" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "鍵を追加できませんでした: %@ ターミナルで次を実行して許可してください:" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "키를 추가하지 못했습니다: %@ 터미널에서 다음을 실행해 허용하세요:" } }
+      }
+    },
+    "~/.ssh/authorized_keys changed while hrdrhrdrhrdr was writing it, so it was left as it is. Try again." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "hrdrhrdrhrdr が書き込んでいる間に ~/.ssh/authorized_keys が変更されたため、そのままにしました。もう一度試してください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "hrdrhrdrhrdr가 쓰는 동안 ~/.ssh/authorized_keys가 바뀌어 그대로 두었습니다. 다시 시도하세요." } }
+      }
+    },
+    "~/.ssh is a symbolic link, so hrdrhrdrhrdr doesn't write to it." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "~/.ssh がシンボリックリンクのため、hrdrhrdrhrdr は書き込みません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "~/.ssh가 심볼릭 링크여서 hrdrhrdrhrdr가 쓰지 않습니다." } }
+      }
+    },
+    "~/.ssh isn't a folder." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "~/.ssh がフォルダではありません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "~/.ssh가 폴더가 아닙니다." } }
+      }
+    },
+    "~/.ssh belongs to another user." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "~/.ssh は別のユーザのものです。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "~/.ssh의 소유자가 다른 사용자입니다." } }
+      }
+    },
+    "Other users can write to ~/.ssh, so sshd wouldn't trust keys in it." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "他のユーザが ~/.ssh に書き込めるため、sshd はその中の鍵を信頼しません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "다른 사용자가 ~/.ssh에 쓸 수 있어 sshd가 그 안의 키를 믿지 않습니다." } }
+      }
+    },
+    "~/.ssh/authorized_keys is a symbolic link, so hrdrhrdrhrdr doesn't write to it." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "~/.ssh/authorized_keys がシンボリックリンクのため、hrdrhrdrhrdr は書き込みません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "~/.ssh/authorized_keys가 심볼릭 링크여서 hrdrhrdrhrdr가 쓰지 않습니다." } }
+      }
+    },
+    "~/.ssh/authorized_keys isn't a regular file." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "~/.ssh/authorized_keys が通常のファイルではありません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "~/.ssh/authorized_keys가 일반 파일이 아닙니다." } }
+      }
+    },
+    "~/.ssh/authorized_keys belongs to another user." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "~/.ssh/authorized_keys は別のユーザのものです。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "~/.ssh/authorized_keys의 소유자가 다른 사용자입니다." } }
+      }
+    },
+    "Other users can write to ~/.ssh/authorized_keys, so sshd wouldn't trust keys in it." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "他のユーザが ~/.ssh/authorized_keys に書き込めるため、sshd はその中の鍵を信頼しません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "다른 사용자가 ~/.ssh/authorized_keys에 쓸 수 있어 sshd가 그 안의 키를 믿지 않습니다." } }
+      }
+    },
+    "~/.ssh/authorized_keys is unusually large, so hrdrhrdrhrdr doesn't write to it." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "~/.ssh/authorized_keys が異常に大きいため、hrdrhrdrhrdr は書き込みません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "~/.ssh/authorized_keys가 지나치게 커서 hrdrhrdrhrdr가 쓰지 않습니다." } }
+      }
+    },
+    "~/.ssh/authorized_keys couldn't be read or written (%@: %@)." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "~/.ssh/authorized_keys を読み書きできませんでした(%1$@: %2$@)。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "~/.ssh/authorized_keys를 읽거나 쓰지 못했습니다(%1$@: %2$@)." } }
+      }
+    },
+    "let “%@” connect to this Mac" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%@」にこの Mac への接続を許可" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "‘%@’이(가) 이 Mac에 접속하도록 허용" } }
+      }
+    },
+    "This Mac's SSH server didn't show its host key." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "この Mac の SSH サーバがホスト鍵を示しませんでした。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "이 Mac의 SSH 서버가 호스트 키를 보여 주지 않았습니다." } }
+      }
+    },
+    "This Mac's SSH server offered a host key of a type hrdrhrdrhrdr can't pin." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "この Mac の SSH サーバが、hrdrhrdrhrdr が固定できない種類のホスト鍵を示しました。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "이 Mac의 SSH 서버가 hrdrhrdrhrdr가 고정할 수 없는 종류의 호스트 키를 보여 줬습니다." } }
+      }
+    },
+    "Authentication didn't succeed." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "認証できませんでした。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "인증하지 못했습니다." } }
+      }
+    },
+    "Authentication was cancelled." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "認証がキャンセルされました。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "인증을 취소했습니다." } }
+      }
+    },
+    "This Mac can't ask for Touch ID or your password." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "この Mac では Touch ID もパスワードも要求できません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "이 Mac에서 Touch ID나 암호를 요청할 수 없습니다." } }
+      }
+    },
+    "About Password Login" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "パスワードによるログインについて" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "암호 로그인에 관하여" } }
+      }
+    },
+    "Remote Login also accepts your account's password from anyone who can reach this Mac. To accept only keys, such as the ones devices get here, put “PasswordAuthentication no” and “KbdInteractiveAuthentication no” in a file in /etc/ssh/sshd_config.d/." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "リモートログインは、この Mac に到達できる誰からでもアカウントのパスワードも受け付けます。ここでデバイスが得るような鍵だけを受け付けるには、/etc/ssh/sshd_config.d/ 内のファイルに「PasswordAuthentication no」と「KbdInteractiveAuthentication no」を書いてください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "원격 로그인은 이 Mac에 닿을 수 있는 누구에게서든 계정 암호도 받습니다. 여기서 기기가 받는 것과 같은 키만 받으려면 /etc/ssh/sshd_config.d/ 안의 파일에 “PasswordAuthentication no”와 “KbdInteractiveAuthentication no”를 넣으세요." } }
+      }
     }
   },
   "version" : "1.1"

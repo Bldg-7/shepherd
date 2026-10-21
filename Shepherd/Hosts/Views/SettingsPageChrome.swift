@@ -2,19 +2,22 @@
 import SwiftUI
 
 /// The top of a page Settings opens from its Machines list: the way back to
-/// Machines, then the page's title.
+/// Machines, then the page's title. A page opened from another page goes
+/// back to that one instead.
 struct SettingsPageHeader: View {
     let title: LocalizedStringKey
+    var backTitle: LocalizedStringKey = "Machines"
+    var backHelp: LocalizedStringKey = "Back to Machines"
     /// The back button's, which each page names after itself.
     let backAccessibilityIdentifier: String
     let onBack: () -> Void
 
     var body: some View {
         HStack(spacing: 6) {
-            Button(action: onBack) { Label("Machines", systemImage: "chevron.left") }
+            Button(action: onBack) { Label(backTitle, systemImage: "chevron.left") }
                 .buttonStyle(.borderless)
                 .keyboardShortcut(.cancelAction)
-                .help("Back to Machines")
+                .help(backHelp)
                 .accessibilityIdentifier(backAccessibilityIdentifier)
             Divider().frame(height: 14)
             Text(title).font(.headline)
