@@ -37,6 +37,7 @@ struct SSHHerdrTransport: HerdrTransport {
     let credential: HostCredential
     let sessionName: String
     let pinnedFingerprint: String?
+    let addressKind: Machine.AddressKind?
 }
 
 @main @MainActor enum MachineEditTests {
@@ -97,6 +98,7 @@ struct SSHHerdrTransport: HerdrTransport {
         let transport = try store.makeHerdrTransport(for: beforePin) as! SSHHerdrTransport
         check(transport.pinnedFingerprint == "SHA256:owned-b", "transport uses freshly stored pin")
         check(transport.host == current.hostname && transport.credential.secretData == originalSecret, "transport uses expected endpoint and saved credential")
+        check(transport.addressKind == nil, "a machine added by hand has no address kind")
 
         for field in ["username", "session", "port"] {
             let old = current; draft = current
@@ -166,6 +168,34 @@ struct SSHHerdrTransport: HerdrTransport {
         check(!store.machines.contains(where: { $0.id == current.id }) && secrets.values[tag] == nil, "stale removal confirmation deletes current credential")
         check(store.machines.map(\.id) == [second.id] && secrets.values[second.keychainTag] != nil, "other machines and credentials retained")
         rejects("removed machine cannot be resurrected by old editor") { try store.updateMachine(current, replacing: current) }
+
+        // A Mac paired by QR code (SHPHRD-77): its address kind reaches the
+        // transport, and a later scan moves its address without touching
+        // the pin or the credential.
+        var paired = Machine(id: UUID(), displayName: "Studio", hostname: "studio.local", username: "minsu",
+                             authMethod: .secureEnclaveKey, addressKind: .localName)
+        paired.pinnedHostKeyFingerprint = "SHA256:studio"
+        try store.addMachine(paired, privateKey: Data("synthetic-device-key".utf8))
+        let pairedTransport = try store.makeHerdrTransport(for: paired) as! SSHHerdrTransport
+        check(pairedTransport.addressKind == .localName && pairedTransport.host == "studio.local"
+              && pairedTransport.credential.authMethod == .secureEnclaveKey && pairedTransport.pinnedFingerprint == "SHA256:studio",
+              "a paired Mac's transport gets its address kind, key and pin")
+        secrets.events = []
+        try store.updatePairedAddress(of: paired, hostname: " 100.101.102.103 ", addressKind: .tailscaleIPv4)
+        let moved = store.machines.first { $0.id == paired.id }!
+        check(moved.hostname == "100.101.102.103" && moved.addressKind == .tailscaleIPv4 && moved.pinnedHostKeyFingerprint == "SHA256:studio"
+              && moved.keychainTag == paired.keychainTag && moved.authMethod == .secureEnclaveKey, "a new address keeps the pin and the key")
+        check(moved.connectionIdentity != paired.connectionIdentity && secrets.events.isEmpty, "the move reconnects without touching the Keychain")
+        rejects("a stale paired machine is not moved") { try store.updatePairedAddress(of: paired, hostname: "studio.local", addressKind: .localName) }
+        rejects("a machine added by hand has no paired address") {
+            try store.updatePairedAddress(of: store.machines.first { $0.id == second.id }!, hostname: "10.0.0.2", addressKind: .privateIPv4)
+        }
+        rejects("an empty address") { try store.updatePairedAddress(of: moved, hostname: " ", addressKind: .privateIPv4) }
+        var kindDraft = moved; kindDraft.displayName = "Studio Mac"; kindDraft.addressKind = nil
+        try store.updateMachine(kindDraft, replacing: moved)
+        check(store.machines.first { $0.id == paired.id }?.addressKind == .tailscaleIPv4, "an edit can't take the address kind away")
+        let reloadedPaired = MachineStore(defaults: defaults, keychain: secrets)
+        check(reloadedPaired.machines.first { $0.id == paired.id }?.addressKind == Machine.AddressKind.tailscaleIPv4, "the address kind is saved")
         print("PASS \(checks) machine edit checks; synthetic credentials only, no real Keychain/network")
     }
 }
