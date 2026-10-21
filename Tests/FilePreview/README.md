@@ -71,13 +71,22 @@ Coverage:
     has the keyboard, the preview takes neither ⌘F nor ⌘G. While the preview has
     it, ⌘F opens the find bar with the keyboard in its field. Typing, ⌘G, ⇧⌘G
     and Return move the current match, and the preview scrolls to it, in the
-    rendering and in the source. The bar reads 1 / 4 with a current match, 0 / 6
-    right after switching to Source (no current match yet), and No Results. Esc
-    in the field closes only the bar; with the keyboard in the preview, the
-    first Esc closes the bar and the next one the preview. Selecting another
-    pane and coming back keeps the search, and a new read clears it. A text file
-    is searched in its first 120,000 characters only. ⌘F does nothing for a
-    file that couldn't be read. The table of contents sits below the bar.
+    rendering and in the source. A new search starts from the first block or
+    line actually on screen; a row that the lazy stack (SwiftUI's `LazyVStack`)
+    laid out but never put on screen is not counted. In the rendering, with
+    block 30 (the first match of "deploy") at the top, typing "paragraph 2",
+    which matches blocks 2, 20 to 29 and 200, makes block 200 the current match,
+    not block 20. In the source, with line 181 at the top, typing "paragraph 9"
+    selects line 183, already in view, without scrolling. After a search finds
+    nothing further down, wraps around to the start and brings line 9 to the
+    top, typing "paragraph 1" selects line 21, also already in view. The bar
+    reads 1 / 4 with a current match, 0 / 6 right after switching to Source (no
+    current match yet), and No Results. Esc in the field closes only the bar;
+    with the keyboard in the preview, the first Esc closes the bar and the next
+    one the preview. Selecting another pane and coming back keeps the search,
+    and a new read clears it. A text file is searched in its first 120,000
+    characters only. ⌘F does nothing for a file that couldn't be read. The table
+    of contents sits below the bar.
   - Clicks: a real click can't be sent to a window that is never shown. The
     test checks instead which part of the window a click position falls in (the
     text, the terminal, the find field, the rest of the find bar) and what a
