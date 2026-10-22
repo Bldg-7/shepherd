@@ -14,6 +14,38 @@ actor LaunchTransport: HerdrTransport {
     func runScript(_ script: String) async throws -> Data { throw AgentRuntimeError.rejected("not-a-runtime-test") }
 }
 
+/// herdr while a new pane's shell runs its startup files: the same snapshot
+/// and agent.list every time, and the pane's foreground from `steps` in
+/// turn, the last one repeated. A step is the shell's PID and whether a
+/// child (a command substitution) is in the foreground with it.
+actor ShellStartTransport: HerdrTransport {
+    let pane: JSONValue
+    let steps: [(shell: UInt32, child: Bool)]
+    let agents: [JSONValue]
+    private(set) var processReads = 0
+    init(pane: JSONValue, steps: [(shell: UInt32, child: Bool)], agents: [JSONValue] = []) {
+        self.pane = pane; self.steps = steps; self.agents = agents
+    }
+    func connect() async throws {}
+    func disconnect() async {}
+    func send(method: String, params: JSONValue) async throws -> JSONValue {
+        switch method {
+        case "session.snapshot": return .object(["snapshot": .object(["panes": .array([pane])])])
+        case "agent.list": return .object(["type": .string("agent_list"), "agents": .array(agents)])
+        case "pane.process_info":
+            let step = steps[min(processReads, steps.count - 1)]
+            processReads += 1
+            var foreground: [JSONValue] = [.object(["pid": .number(Double(step.shell)), "name": .string("zsh")])]
+            if step.child { foreground.append(.object(["pid": .number(Double(step.shell + 1000)), "name": .string("brew")])) }
+            return .object(["type": .string("pane_process_info"), "process_info": .object([
+                "pane_id": params["pane_id"] ?? .null, "shell_pid": .number(Double(step.shell)), "foreground_processes": .array(foreground)])])
+        default: throw AgentRuntimeError.rejected("unexpected-" + method)
+        }
+    }
+    func runHerdr(_ arguments: [String]) async throws -> Data { throw AgentRuntimeError.rejected("not-a-cli-test") }
+    func runScript(_ script: String) async throws -> Data { throw AgentRuntimeError.rejected("not-a-runtime-test") }
+}
+
 @main struct AgentLaunchAPITests {
     static func json(_ text: String) throws -> JSONValue { try JSONDecoder().decode(JSONValue.self, from: Data(text.utf8)) }
     static func check(_ value: Bool, _ name: String) { precondition(value, name); print("PASS: " + name) }
@@ -166,7 +198,143 @@ actor LaunchTransport: HerdrTransport {
         try await typedPiShim(client: client, transport: transport)
         try launchReadiness(row: row)
         try await runtimeLockWait()
+        try await shellWait()
+        try piLaunchSource()
         print("AGENT LAUNCH API/STATE PASS")
+    }
+
+    /// Where Pi's launch takes the wait above, in AgentLaunchService.swift
+    /// (read from the repository root the stage runs in): the folder from the
+    /// settled shell, and nothing more asked of herdr about the shell before
+    /// the second wait, which the shim is typed after.
+    static func piLaunchSource() throws {
+        let text = try String(contentsOfFile: "Shepherd/Agents/AgentLaunchService.swift", encoding: .utf8)
+        func section(_ start: String, _ end: String) -> Substring {
+            guard let from = text.range(of: start), let to = text.range(of: end, range: from.upperBound..<text.endIndex) else {
+                preconditionFailure("AgentLaunchService.swift has no \(start)")
+            }
+            return text[from.lowerBound..<to.lowerBound]
+        }
+        let pi = section("    private func launchPi(", "    /// herdr's `agent.start` and Pi's typed command")
+        check(pi.contains("let cwd = try await waitForPiShell(created.pane, on: machine, client: client).cwd"), "Pi's launch takes the folder the settled shell wait read")
+        for gone in ["processInfo(", "isShellForeground", "PiBridgeFailure.identity", "PiProcessIdentity.capture"] {
+            check(!pi.contains(gone), "Pi's launch no longer has \(gone) of its own")
+        }
+        let second = pi.range(of: "_ = try await waitForShell(created.pane, on: machine, client: client)")
+        check(pi.components(separatedBy: "waitForShell(created.pane, on: machine, client: client)").count == 2, "Pi's launch keeps one plain wait for the shell")
+        if let second, let prepared = pi.range(of: "try await coordinator.prepare()"), let typed = pi.range(of: "try await client.runCommand(paneID: pane.paneID") {
+            check(prepared.upperBound <= second.lowerBound && second.upperBound <= typed.lowerBound, "the plain wait is after the bridge is prepared and before the shim is typed")
+        } else { preconditionFailure("Pi's launch has no prepare, plain wait and typed shim") }
+        let waits = section("    /// The new pane's shell, alone in its foreground (`AgentShellWait`).", "    func status(for agent:")
+        check(waits.contains("try await AgentShellWait.shell {") && waits.contains("try await AgentShellWait.settledShell(")
+              && waits.contains("PiProcessIdentity.capture(pid: $0).cwd") && waits.contains("try await AgentShellWait.look(at: expected"),
+              "the service's waits are AgentShellWait's, Pi's reading the folder by the shell's PID")
+    }
+
+    /// The wait for a new pane's shell (`AgentShellWait`) over a fake herdr
+    /// and a clock only the waits move: Claude Code's and Codex's first look
+    /// that finds the shell alone, and Pi's two in a row in the same folder,
+    /// whatever the startup files put in the foreground in between.
+    static func shellWait() async throws {
+        typealias Wait = AgentShellWait
+        check(Wait.interval == .milliseconds(200) && Wait.limit == .seconds(10) && Wait.settle == .milliseconds(400),
+              "looks every 200 ms for up to 10 s; Pi's two looks 400 ms apart")
+        let pane = try json(#"{"pane_id":"w1:p1","terminal_id":"term_new"}"#)
+        let expected = AgentSummary(json: pane)!
+        let project = "/Users/owned/project"
+        struct Outcome {
+            var result: Result<(pid: UInt32, cwd: String?), Error>
+            var looks = 0, processReads = 0, cwdReads = 0, accepted = 0
+            var slept: [Duration] = []
+            var code: String? {
+                guard case .failure(AgentRuntimeError.rejected(let code)) = result else { return nil }
+                return code
+            }
+            var shell: (pid: UInt32, cwd: String?)? { try? result.get() }
+        }
+        /// One wait over `steps`, Pi's when `cwds` gives the folder each read
+        /// of it finds (the last one repeated; nil for one it can't read).
+        func waitFor(_ steps: [(shell: UInt32, child: Bool)], cwds: [String?]? = nil, pane: JSONValue = pane,
+                  agents: [JSONValue] = [], resolvable: Bool = true) async -> Outcome {
+            let transport = ShellStartTransport(pane: pane, steps: steps, agents: agents), client = HerdrClient(transport: transport)
+            var clock = ContinuousClock().now, outcome = Outcome(result: .failure(CancellationError()))
+            let sleep: (Duration) async throws -> Void = { outcome.slept.append($0); clock = clock.advanced(by: $0) }
+            let now = { clock }
+            let look = { () async throws -> Wait.Shell<String>? in
+                outcome.looks += 1
+                return try await Wait.look(at: expected, client: client, accept: { _ in outcome.accepted += 1 },
+                                           resolve: { resolvable ? $0.paneID : nil })
+            }
+            do {
+                if let cwds {
+                    let settled = try await Wait.settledShell(sleep: sleep, now: now, look: look, cwd: { _ in
+                        defer { outcome.cwdReads += 1 }
+                        return cwds[min(outcome.cwdReads, cwds.count - 1)]
+                    })
+                    check(settled.shell.resolved == "w1:p1", "the settled shell is the created pane's")
+                    outcome.result = .success((settled.shell.pid, settled.cwd))
+                } else {
+                    let shell = try await Wait.shell(sleep: sleep, now: now, look: look)
+                    outcome.result = .success((shell.pid, nil))
+                }
+            } catch { outcome.result = .failure(error) }
+            outcome.processReads = await transport.processReads
+            return outcome
+        }
+        let alone = (shell: UInt32(100), child: false), withChild = (shell: UInt32(100), child: true)
+        let ms200 = Duration.milliseconds(200), ms400 = Duration.milliseconds(400)
+
+        // SHPHRD-109: the startup files' children come and go; Pi's launch waits them out, never failing for one.
+        let flapping = await waitFor([withChild, alone, withChild, alone, alone], cwds: [project])
+        check(flapping.shell?.pid == 100 && flapping.shell?.cwd == project, "a child between two looks at the shell alone is waited out, not an identity failure")
+        check(flapping.looks == 5 && flapping.processReads == 5 && flapping.slept == [ms200, ms400, ms200, ms400],
+              "the shell is taken at the second of two looks in a row, 400 ms apart, and herdr is asked nothing after it")
+        check(flapping.accepted == 5, "every snapshot read goes to the browser service")
+        check(flapping.cwdReads == 3, "the folder is read at each look that finds the shell alone")
+
+        // The shell alone once, then a child: not taken.
+        let once = await waitFor([alone, withChild], cwds: [project])
+        check(once.code == "pi-shell-not-ready" && once.cwdReads == 1, "the shell seen alone once and then not is never taken")
+        check(once.looks == 49 && once.slept.first == ms400 && once.slept.dropFirst().allSatisfy { $0 == ms200 } && once.slept.reduce(.zero, +) == .seconds(10),
+              "the wait looks again every 200 ms after it and gives up after 10 s")
+        let onceThenSettled = await waitFor([alone, withChild, alone, alone], cwds: [project])
+        check(onceThenSettled.shell?.cwd == project && onceThenSettled.looks == 4, "a look at the shell alone before a child does not count toward the two")
+
+        // Seen alone at every other look until the end: never two in a row.
+        let alternating = await waitFor(Array(repeating: [alone, withChild], count: 40).flatMap { $0 }, cwds: [project])
+        check(alternating.code == "pi-shell-not-ready", "a shell never seen alone twice in a row fails with pi-shell-not-ready after 10 s")
+        check(alternating.slept.reduce(.zero, +) >= .seconds(10) && alternating.looks == 33, "alternating looks wait 400 ms and 200 ms in turn")
+        let busy = await waitFor([withChild], cwds: [project])
+        check(busy.code == "pi-shell-not-ready" && busy.looks == 50 && busy.cwdReads == 0, "a child in the foreground for 10 s fails with pi-shell-not-ready")
+
+        // The startup files change folder between two looks: the folder after it.
+        let moved = await waitFor([alone, alone, alone], cwds: ["/Users/owned", project])
+        check(moved.shell?.cwd == project && moved.looks == 3 && moved.slept == [ms400, ms400], "a folder changed between two looks is waited on again")
+        let moving = await waitFor([alone], cwds: ["/a", "/b", "/c", "/d", "/e", "/f", "/g", "/h", "/i", "/j", "/k", "/l", "/m", "/n", "/o", "/p", "/q", "/r", "/s", "/t", "/u", "/v", "/w", "/x", "/y", "/z"])
+        check(moving.code == "pi-shell-not-ready", "a folder that changes at every look is never taken")
+
+        // Another shell: the two looks must find the same one.
+        let replaced = await waitFor([alone, (shell: 101, child: false), (shell: 101, child: false)], cwds: [project])
+        check(replaced.shell?.pid == 101 && replaced.looks == 3, "a shell PID that changed between two looks is waited on again")
+        // A folder the kernel didn't give: a look that didn't find the shell.
+        let unreadable = await waitFor([alone, alone, alone], cwds: [nil, project])
+        check(unreadable.shell?.cwd == project && unreadable.looks == 3 && unreadable.slept == [ms200, ms400], "an unreadable folder counts as no look at the shell")
+
+        // Nothing changes for a look: an agent, a pane not resolvable, another pane in the terminal's place.
+        let agentRow = try json(#"{"pane_id":"w1:p1","terminal_id":"term_new","agent":"pi","agent_status":"idle"}"#)
+        let withAgent = await waitFor([alone], cwds: [project], agents: [agentRow])
+        check(withAgent.code == "pi-shell-not-ready" && withAgent.processReads == 0, "an agent row in the terminal is no shell")
+        let unresolved = await waitFor([alone], cwds: [project], resolvable: false)
+        check(unresolved.code == "pi-shell-not-ready" && unresolved.cwdReads == 0, "a pane the browser service can't place is not taken")
+        let movedPane = await waitFor([alone], cwds: [project], pane: try json(#"{"pane_id":"w1:p2","terminal_id":"term_new"}"#))
+        check(movedPane.code == "created-pane-identity-changed" && movedPane.looks == 1, "another pane in the terminal's place fails at once, as before")
+
+        // Claude Code and Codex: the first look that finds the shell alone, as before.
+        let first = await waitFor([withChild, alone, withChild])
+        check(first.shell?.pid == 100 && first.looks == 2 && first.slept == [ms200], "Claude Code and Codex take the first look at the shell alone")
+        let timeout = await waitFor([withChild])
+        check(timeout.code == "shell-readiness-timeout" && timeout.looks == 50 && timeout.slept.reduce(.zero, +) == .seconds(10),
+              "Claude Code's and Codex's wait still fails with shell-readiness-timeout after 10 s")
     }
 
     /// A launch's runtime calls wait out the browser check's hold on the
