@@ -65,6 +65,8 @@ The iPhone and iPad app can add this Mac as a machine by scanning a QR code. The
 
 On the Mac, open Settings → iPhone and iPad and click Add Device…. The page first checks that Remote Login is on (System Settings → General → Sharing; Open Sharing Settings… goes there, and the page checks again every two seconds), whether herdr is running, whether the firewall would block devices from connecting, and whether `~/.ssh/authorized_keys` can be written. hrdrhrdrhrdr never turns Remote Login on itself. The page then lists the addresses a device could reach this Mac at: its `.local` name and its private IPv4 addresses on Wi-Fi and wired networks, and with Tailscale on, its Tailscale IPv4 address and MagicDNS name. Pick one; the code carries only that one. The kind picked last time is picked again; the first time, the order is MagicDNS, Tailscale IPv4, `.local`, private IPv4.
 
+Devices can be added only while the window shows This Mac. While it shows another machine, Add Device… in Settings → iPhone and iPad is greyed out, and "Connect to This Mac to add a device." appears under the device list. Paired devices are still listed, and you can still remove them. To add a device, first click Make Active next to This Mac in Settings → Machines. If the window switches to another machine while the Add Device page shows a QR code (for example, when you click a notification from a pane on that machine), the code disappears and can no longer be used. The Add Device page says why, and shows no new code until This Mac is active again. If a device's request is already on the Add Device page, you can still click Approve… or Reject. An approval you already started still goes to the end: the Touch ID or password prompt, the line added to `authorized_keys`, and the device's report after its first login. Add Another Device on the result is then greyed out.
+
 Show QR Code shows a code that can be used once and lasts two minutes; a new code replaces it every two minutes and whenever the address changes. While codes are shown, and for ten minutes at most, hrdrhrdrhrdr listens for devices on an IPv4 port of its own. It accepts a connection only when both the device's address and the address it reached this Mac at are of the kind picked, and it stops listening after 20 failed requests, such as unreadable messages or unknown codes. With the firewall on, macOS may ask whether hrdrhrdrhrdr may accept incoming connections; click Allow. Anyone who can see a code can use it to ask to connect, so don't show a code while you share your screen. hrdrhrdrhrdr also leaves the Settings window out of screen captures and screen sharing from the moment a code is shown until the window is closed.
 
 In the iPhone or iPad app, tap + in Machines, then Scan Mac's QR Code, and point the camera at the code. The app asks for the camera the first time. It scans the code with its own camera view; a code photographed with the Camera app can't be used. Before it sends anything, it shows what the code says: the Mac's name, the account and address it will connect to and the address's kind, the Mac's SSH host key, the time left on the code, and this device's name as the Mac will show it, which you can change. Tap Connect. A `.local` name or a private IPv4 address makes iOS ask for Local Network permission the first time; a MagicDNS name needs Tailscale connected on the device, with the Tailscale app's Use Tailscale DNS setting on.
@@ -83,6 +85,15 @@ this section, the host is the machine hrdrhrdrhrdr is connected to (This Mac, or
 machine added in Settings), and a herdr machine is a computer saved in the host's
 herdr. hrdrhrdrhrdr can add a herdr machine to the host's herdr, check one that
 fails to connect, and remove one. This needs herdr 0.9.0 or later on the host.
+
+Adding a herdr machine works only while the host is This Mac. While the window
+shows a machine added in Settings, the three Add herdr Machine… items listed under
+Add below (in the File menu, in the host's group header menu and in the New Tab
+launcher) are greyed out and show "Connect to This Mac to add a herdr machine." To
+add a herdr machine, first click Make Active next to This Mac in Settings →
+Machines. Reconnect… and Remove work on every host. If the window switches to
+another machine while the Add herdr Machine panel is open, the panel closes, and a
+`herdr machine add` that the panel is still running is stopped.
 
 - **Add:** use any of these:
   - File → Add herdr Machine…

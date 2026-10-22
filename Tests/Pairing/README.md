@@ -84,6 +84,10 @@ Where a test must show that nothing connected, it opens its own listener on
   the 60-second and 120-second limits, a device that goes away while the Mac
   is asking, a key that can't be written, oversized and garbage frames, and 20
   failures.
+  With the window on another machine (SHPHRD-110), the code shown is taken away
+  and its listener closed, no new code is shown after a request is answered, and
+  a request already on screen can still be approved: its Touch ID approval, its
+  `authorized_keys` line and the device's report all go ahead.
 - Probe: the parts of the Remote Login check that read the host key during the
   key exchange and offer no login are tested without connecting; the check is
   never run against 127.0.0.1:22.
@@ -92,9 +96,15 @@ Where a test must show that nothing connected, it opens its own listener on
   rejected or failing, with Remote Login off, the firewall blocking all, herdr
   not running and no address. Nothing pressed opens System Settings, a dialog
   or the pasteboard.
+  With another machine shown, Add Device… is greyed out with the reason under
+  the list, the Add Device page's code is taken away and the reason shown in its
+  place, and a request already on screen can still be approved, after which the
+  result's Add Another Device is greyed out.
 - Static checks: the row's place on Settings' first page, a listener that is
   IPv4 only and not inherited by child processes, the Remote Login check's host and
   port, and LocalAuthentication used only in `PairingApproval.swift`.
+  Also, that Settings tells the iPhone and iPad page whether the window shows
+  This Mac, and that the Add Device page uses that value.
 
 ## The device's side (`run-device-tests.py`)
 
