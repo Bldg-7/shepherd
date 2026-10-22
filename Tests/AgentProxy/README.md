@@ -104,3 +104,51 @@ checks that:
 Last, the runner looks for every secret the tests sent in every file the run
 left: the marker strings sent in the Authorization, x-api-key, Cookie and
 ChatGPT-Account-ID headers, and the route tokens. None may be there.
+
+## The app's side (`run-app-tests.py`)
+
+```sh
+python3 Tests/AgentProxy/run-app-tests.py --output /tmp/shepherd-agent-proxy-app-FRESH \
+  --app DerivedData/Build/Products/Debug/hrdrhrdrhrdr.app
+```
+
+This runner tests the macOS app's side of the proxy, using a Debug build of the
+app. The app itself never runs. Neither do launchd, herdr or an agent, nothing
+is registered with macOS, and no connection leaves the Mac. The runner has three
+parts.
+
+1. `App/AppServiceTests.swift` builds the app's `AgentProxyService`, which turns
+   the proxy on and off and gives launches their routes, together with its
+   `ap.sock` client. A stand-in takes the place of the LaunchAgent (the
+   background item macOS starts the proxy from), and a stand-in proxy listens on
+   a Unix socket under the output folder. `AgentProxyService+System.swift`,
+   which holds SMAppService, user defaults and This Mac's herdr, is left out of
+   this build. The test checks that:
+   - turning the setting on registers the LaunchAgent;
+   - a proxy from a different build of the app is asked once to restart when
+     it is idle, and no launch gets a route until it has;
+   - a proxy that doesn't answer gives no launch a route;
+   - a launch gets a route only when all of these hold: its CLI is new enough
+     (Claude Code 2.1.283, Codex 0.162, Pi 1.3.0), the Mac has no system proxy,
+     the window shows This Mac, and the proxy hasn't already refused that kind of
+     agent for signing in with something other than a subscription;
+   - the routes of panes that have closed are removed, while the route of a
+     launch still starting up, whose pane isn't there yet, is kept;
+   - with the setting turned off, the LaunchAgent is unregistered only once the
+     pane of the last agent using the proxy has closed.
+
+   This test file is in the `App/` folder because `run-forwarder-tests.py`
+   compiles every `*.swift` file directly in `Tests/AgentProxy`.
+2. `check-bundle.py` reads the built app's files without running anything. It
+   checks that the proxy executable is in `Contents/MacOS`, is signed, is built
+   for the same architectures as the app and carries no framework of its own,
+   and that `Contents/Library/LaunchAgents` holds only the LaunchAgent plist of
+   the build's configuration (Debug or Release), with the label, program and
+   restart settings it should have. The release script also runs this check on
+   the exported app, adding `--team` so that it requires the team's signature
+   and the hardened runtime as well.
+3. Last, the proxy executable inside the built app is run where it is, in a
+   sandbox that allows only 127.0.0.1 and Unix sockets, with the checks of
+   `process-tests.py`. It is run once more with its state folder and socket given
+   as paths starting with `~/`, the way the Debug build's LaunchAgent passes
+   them, to check that it reads them as paths in the home folder.

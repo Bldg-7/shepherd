@@ -79,6 +79,12 @@ Scanning the code of a Mac that is already in Machines doesn't add it twice. At 
 
 Settings → iPhone and iPad on the Mac lists the paired devices with their key fingerprints and says when a device's line is no longer in `authorized_keys`. Removing a device takes out only its own line. A connection the device already has open stays until it ends; turn Remote Login off and on to end it. Pairing the same device again with a new key adds a new line and leaves the old one listed, so remove the old one yourself. When a paired Mac turns the device's key down, the device's board says that the Mac removed its access, and stops trying. The device list and the last 1,000 pairing events are kept in `~/Library/Application Support/com.bldg-7.shepherd/`. The iPhone and iPad app is in English, Korean and Japanese.
 
+The Mac also has a setting called **Show Conversations on iPhone and iPad**, in Settings → iPhone and iPad and on the page that Add Device… opens. It is off until you turn it on. While it is on, a small proxy that comes with hrdrhrdrhrdr runs on this Mac in the background, and Claude Code, Codex and Pi that you start from New Tab on This Mac send their requests to the model through it. The proxy is the first step toward letting the iPhone and iPad app show an agent's conversation instead of its terminal screen; the app doesn't show conversations yet.
+
+The proxy is only for agents signed in with a Claude or ChatGPT subscription. These agents start without it, just as they do with the setting off: an agent you set up with an API key or with an endpoint or provider other than Claude's or ChatGPT's; an agent whose CLI is older than Claude Code 2.1.283, Codex 0.162 or Pi 1.3.0; and any agent on a Mac with a system proxy. Agents that go through the proxy can't use Claude Code's Remote Control, which continues a session from another device.
+
+The first time you turn the setting on, macOS shows a "Background Items Added" notification for the proxy. If you later turn hrdrhrdrhrdr off in System Settings → General → Login Items & Extensions, a line under the setting says that the proxy is turned off there, with a button that opens that page. Turning the setting off doesn't cut off an agent that is already using the proxy: agents you start afterwards go without it, and the proxy stops once the panes of the agents still using it have closed. Like Add Device…, the setting can be changed only while the window shows This Mac.
+
 ## herdr machines
 
 herdr can save other computers it connects to over SSH, with `herdr machine add`;
