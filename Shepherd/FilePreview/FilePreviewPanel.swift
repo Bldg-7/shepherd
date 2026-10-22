@@ -52,7 +52,7 @@ struct FilePreviewPanel: View {
                     // The other view of the file starts at its top, as it
                     // always did, not at the place the one left was at.
                     Toggle("Source", isOn: Binding(get: { model.showsSource }, set: { shows in
-                        model.scrollOffset = nil
+                        model.scrollOffset = nil; model.scrollAnchor = nil
                         model.visibleBlocks = []; model.visibleLines = []
                         model.showsSource = shows
                         // What is looked for is kept; the other view has
@@ -178,14 +178,20 @@ struct FilePreviewPanel: View {
                                     keepVisibleBlocks(shownBlocks.appear(block, appeared))
                                 })
                             }
-                            .modifier(PreviewScrollPlace(restoring: model.scrollOffset, onScroll: keepScrollOffset))
+                            .modifier(PreviewScrollPlace(restoring: model.scrollOffset, anchor: model.scrollAnchor,
+                                                         inSource: false, rowRange: 0..<markdown.blocks.count,
+                                                         id: { PreviewBlockAnchor(block: $0) }, rows: shownBlocks,
+                                                         navigationID: model.scrollRequest?.id,
+                                                         onScroll: keepScrollOffset, onAnchor: { model.scrollAnchor = $0 }))
                             .onScrollGeometryChange(for: CGRect.self) { $0.visibleRect } action: { _, visible in
                                 keepVisibleBlocks(shownBlocks.show(visible))
                             }
                         } else {
                             SourceFilePreview(text: shown.text, selectedLine: model.link?.line,
                                               language: .filename(model.link?.path),
-                                              restoredOffset: model.scrollOffset, onScroll: keepScrollOffset,
+                                              restoredOffset: model.scrollOffset, restoredAnchor: model.scrollAnchor,
+                                              onAnchor: { model.scrollAnchor = $0 }, navigationID: model.scrollRequest?.id,
+                                              onScroll: keepScrollOffset,
                                               onVisibleLines: { model.visibleLines = $0 }, marks: marks)
                         }
                     }

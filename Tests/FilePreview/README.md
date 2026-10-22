@@ -48,9 +48,8 @@ Coverage:
   anew starts with it shown. With no headings the button is disabled; a file
   that isn't Markdown has no button. Showing the table of contents doesn't
   change where a pane's scroll place comes back when the pane is selected
-  again: within 2 points in the source, and in the rendering of a file whose
-  blocks above the scroll place are paragraphs of one height; for a file that
-  mixes headings and code blocks, the same place as with it hidden. Its strings
+  again. The row-anchor checks below also cover mixed-height headings, code
+  blocks and tables rather than only paragraphs of one height. Its strings
   have Korean and Japanese, and nothing of it is written to UserDefaults.
 - Find (⌘F), in two parts.
   - `FindTests.swift`, a stage of this runner, checks the search without a
@@ -290,14 +289,30 @@ Browser while the file is read drops the read, as before. The preview never
 reads a file again on its own, and selecting its pane again doesn't read it
 again.
 
-A known limit, with or without the table of contents: in the rendering, a
-Markdown file that mixes blocks of different heights, such as headings and code
-blocks, can come back a few dozen to a few hundred points away from where it was
-left when its pane is selected again, or when a failed read is followed by one
-that works. A file of paragraphs of one height comes back where it was left. In
-Source, too, a file whose lines wrap to different heights can come back some
-tens of points away from where it was left: 30 points for a file of 250 wrapped
-paragraphs left at 1,200 points.
+Returning to a pane, or showing it after Retry succeeds, restores the first
+visible Markdown block or source line and the distance into that row. Lazy
+stacks' estimates of off-screen heights no longer determine the restored place.
+If the width changed while the pane was away, the same row is restored and a
+positive distance into it scales with its new height; spacing above a row stays
+in points. A missing row falls back to the saved point, clamped by the scroll
+view. New files and the Source toggle start at the top; images still keep both
+point coordinates. Reload in an existing scroll view keeps its current behavior.
+
+The initial correction is hidden while layout settles (normally a few frames,
+with a 40-frame bound of about 0.7 seconds). A new table-of-contents or find
+request, or the start of a user scroll gesture, stops the correction. Resizing
+while the preview remains visible is not covered by this restoration policy
+(SHPHRD-116).
+
+`ScrollRestoreTests.swift` exercises mixed-height Markdown, wrapped source,
+places inside tables and tall code blocks, pane switches, width changes while
+away, Retry including a shortened file, and explicit navigation during restore
+in an owned, never-shown window. It checks the saved row against reported visible
+rows, distance within one point, and subsequent anchor updates. It also tests
+row geometry, gap preservation, and suppression of intermediate saves. The model
+and pane-store tests cover anchor retention and reset. Real user wheel/touch
+interruption and visual flashing still need manual checks; the window tests do
+not synthesize user input.
 
 Only the clicked Machine is accessed. Localhost in a file URI denotes that source
 machine. Other URI hosts must match the configured hostname (or known local Mac

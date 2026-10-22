@@ -15,6 +15,10 @@ struct SourceFilePreview: View {
     /// Where to put the scroll view as it comes up, in place of the selected
     /// line: where it was left, for a preview that comes back with its pane.
     var restoredOffset: CGPoint? = nil
+    var restoredAnchor: PreviewScrollAnchor? = nil
+    var onAnchor: ((PreviewScrollAnchor) -> Void)? = nil
+    /// A new explicit navigation request takes precedence over restoration.
+    var navigationID: UUID? = nil
     /// Told where the scroll view is, each time it scrolls.
     var onScroll: ((CGPoint) -> Void)? = nil
     /// Told the 1-based numbers of the lines shown, in order, each time they
@@ -63,11 +67,14 @@ struct SourceFilePreview: View {
                 // which the scroll view tells what part it shows.
                 .coordinateSpace(.named(Self.space))
             }
-            .modifier(PreviewScrollPlace(restoring: restoredOffset, onScroll: onScroll))
+            .modifier(PreviewScrollPlace(restoring: restoredOffset, anchor: restoredAnchor,
+                                         inSource: true, rowRange: 1..<(lines.count + 1),
+                                         id: { $0 }, rows: shownLines, navigationID: navigationID,
+                                         onScroll: onScroll, onAnchor: onAnchor))
             .onScrollGeometryChange(for: CGRect.self) { $0.visibleRect } action: { _, visible in
                 report(shownLines.show(visible))
             }
-            .onAppear { if restoredOffset == nil { scrollToLine(proxy) } }
+            .onAppear { if restoredOffset == nil && restoredAnchor == nil { scrollToLine(proxy) } }
             .onChange(of: selectedLine) { _, _ in scrollToLine(proxy) }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -109,6 +116,37 @@ final class PreviewVisibleRows {
     private var onScreen: Set<Int> = []
     private var visible: Range<CGFloat>?
     private var shown: [Int] = []
+    var isRestoring = false
+    var inSource = false
+    var gap: CGFloat = 14
+    var onAnchor: ((PreviewScrollAnchor) -> Void)?
+
+    /// Do not save a distant first visible row while lazy layout is still
+    /// catching up. A small negative offset represents the inter-row gap.
+    func top() -> PreviewScrollAnchor? {
+        guard let visible,
+              let row = onScreen.filter({ frames[$0]?.overlaps(visible) == true }).min(),
+              let frame = frames[row] else { return nil }
+        let offset = visible.lowerBound - frame.lowerBound
+        guard offset >= -gap - 0.5 || visible.lowerBound <= 0.5 else { return nil }
+        return PreviewScrollAnchor(inSource: inSource, row: row, offset: offset,
+                                   height: frame.upperBound - frame.lowerBound)
+    }
+
+    func target(for anchor: PreviewScrollAnchor) -> CGFloat? {
+        guard onScreen.contains(anchor.row), let frame = frames[anchor.row] else { return nil }
+        let height = frame.upperBound - frame.lowerBound
+        // Keep a gap in points; scale a place inside a rewrapped row.
+        let offset = anchor.offset <= 0 || anchor.height <= 0 || abs(height - anchor.height) < 0.5
+            ? anchor.offset : anchor.offset / anchor.height * height
+        return max(0, frame.lowerBound + offset)
+    }
+
+    var viewTop: CGFloat? { visible?.lowerBound }
+
+    func saveAnchor() {
+        if !isRestoring, let anchor = top() { onAnchor?(anchor) }
+    }
 
     /// Where `row` is laid out in the content. Returns the rows shown when
     /// that changes them.
@@ -132,6 +170,7 @@ final class PreviewVisibleRows {
     }
 
     private func update() -> [Int]? {
+        defer { saveAnchor() }
         guard let visible else { return nil }
         let rows = onScreen.filter { frames[$0]?.overlaps(visible) == true }.sorted()
         guard rows != shown else { return nil }
@@ -145,18 +184,99 @@ final class PreviewVisibleRows {
 /// its pane is selected again.
 struct PreviewScrollPlace: ViewModifier {
     let onScroll: ((CGPoint) -> Void)?
+    private var rows: PreviewVisibleRows?
+    private var onAnchor: ((PreviewScrollAnchor) -> Void)?
+    private var jump: ((ScrollViewProxy, Int) -> Void)?
+    private var navigationID: UUID?
     @State private var position: ScrollPosition
+    @State private var keptAnchor: PreviewScrollAnchor?
+    @State private var restoring: Bool
 
+    /// Images retain their horizontal and vertical point-based position.
     init(restoring offset: CGPoint?, onScroll: ((CGPoint) -> Void)?) {
         self.onScroll = onScroll
         _position = State(initialValue: offset.map { ScrollPosition(point: $0) } ?? ScrollPosition())
+        _keptAnchor = State(initialValue: nil)
+        _restoring = State(initialValue: false)
+    }
+
+    init<ID: Hashable>(restoring offset: CGPoint?, anchor: PreviewScrollAnchor?,
+                       inSource: Bool, rowRange: Range<Int>, id: @escaping (Int) -> ID,
+                       rows: PreviewVisibleRows, navigationID: UUID?,
+                       onScroll: ((CGPoint) -> Void)?, onAnchor: ((PreviewScrollAnchor) -> Void)?) {
+        let kept = anchor.flatMap { $0.inSource == inSource && rowRange.contains($0.row) ? $0 : nil }
+        self.onScroll = onScroll
+        self.rows = rows
+        self.onAnchor = onAnchor
+        self.navigationID = navigationID
+        jump = { proxy, row in proxy.scrollTo(id(row), anchor: .top) }
+        rows.inSource = inSource
+        rows.gap = inSource ? 2 : 14
+        _position = State(initialValue: offset.map { ScrollPosition(point: $0) } ?? ScrollPosition())
+        _keptAnchor = State(initialValue: kept)
+        _restoring = State(initialValue: kept != nil)
     }
 
     func body(content: Content) -> some View {
-        content
-            .scrollPosition($position)
-            .onScrollGeometryChange(for: CGPoint.self) { $0.contentOffset } action: { _, offset in
-                onScroll?(offset)
-            }
+        ScrollViewReader { proxy in
+            content
+                .scrollPosition($position)
+                .opacity(restoring ? 0 : 1)
+                .onScrollGeometryChange(for: CGPoint.self) { $0.contentOffset } action: { _, offset in
+                    if !restoring { onScroll?(offset) }
+                }
+                .onScrollPhaseChange { _, phase in
+                    if phase == .tracking || phase == .interacting { finishRestoring() }
+                }
+                .onChange(of: navigationID) { _, _ in finishRestoring() }
+                .task {
+                    guard let rows else { return }
+                    rows.onAnchor = onAnchor
+                    rows.isRestoring = restoring
+                    guard let anchor = keptAnchor, restoring else {
+                        rows.saveAnchor()
+                        return
+                    }
+                    // A removed/replaced view must not publish its old
+                    // geometry after the next view has begun scrolling.
+                    defer { if !Task.isCancelled { finishRestoring() } }
+                    var stable = 0
+                    // Lazy row estimates settle over several layouts. Hide
+                    // only this initial correction; never fight user input.
+                    for _ in 0..<40 {
+                        do { try await Task.sleep(for: .milliseconds(16)) }
+                        catch { return }
+                        guard restoring else { return }
+                        if let target = rows.target(for: anchor), let top = rows.viewTop {
+                            if abs(top - target) <= 0.5 {
+                                stable += 1
+                                if stable >= 3 { return }
+                            } else {
+                                stable = 0
+                                position.scrollTo(y: target)
+                            }
+                        } else {
+                            stable = 0
+                            jump?(proxy, anchor.row)
+                        }
+                    }
+                }
+                .onDisappear {
+                    // Geometry callbacks from a departing lazy stack must
+                    // not overwrite the last place the user actually saw.
+                    rows?.onAnchor = nil
+                    rows?.isRestoring = false
+                }
+        }
+    }
+
+    private func finishRestoring() {
+        let wasRestoring = restoring
+        restoring = false
+        rows?.isRestoring = false
+        rows?.saveAnchor()
+        if wasRestoring, let top = rows?.viewTop {
+            onScroll?(CGPoint(x: 0, y: top))
+        }
     }
 }

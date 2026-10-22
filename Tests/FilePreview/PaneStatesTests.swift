@@ -35,6 +35,8 @@ public nonisolated enum AgentKind: String, Sendable {
         states.open(pRequest, for: pItem)
         let pModel = states.entry(for: pItem, panes: [p])!.model
         pModel.showsSource = true; pModel.scrollOffset = CGPoint(x: 0, y: 300)
+        let anchor = PreviewScrollAnchor(inSource: true, row: 12, offset: 7, height: 30)
+        pModel.scrollAnchor = anchor
         check(states.entry(for: qItem, panes: [q]) == nil, "Q has no preview of its own")
         let back = states.entry(for: pItem, panes: [p])
         check(back?.request.id == pRequest.id && back?.isShown == true && back?.model === pModel, "P's preview comes back: file, shown, same read")
@@ -44,12 +46,13 @@ public nonisolated enum AgentKind: String, Sendable {
         let qRequest = FilePreviewRequest(machine: host, pane: q, link: "/owned/notes.md")
         states.open(qRequest, for: qItem)
         check(states.count == 2 && states.entry(for: pItem, panes: [p])?.model === pModel, "previews are kept per pane")
+        check(states.entry(for: pItem, panes: [p])?.model.scrollAnchor == anchor && states.entry(for: qItem, panes: [q])?.model.scrollAnchor == nil, "each pane keeps only its own anchor")
 
         // Closing keeps the file for the toolbar; showing it again reads anew.
         states.hide(pItem)
         let closed = states.entry(for: pItem, panes: [p])
         check(closed?.isShown == false && closed?.request.id == pRequest.id && closed?.model !== pModel, "closed: file kept, read let go of")
-        check(closed?.model.showsSource == false && closed?.model.scrollOffset == nil, "a preview shown again starts afresh, as it always did")
+        check(closed?.model.showsSource == false && closed?.model.scrollOffset == nil && closed?.model.scrollAnchor == nil, "a preview shown again starts afresh, as it always did")
         states.show(pItem)
         check(states.entry(for: pItem, panes: [p])?.isShown == true, "shown again")
         // A new file for P replaces its preview.

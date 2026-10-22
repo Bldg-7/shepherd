@@ -80,6 +80,8 @@ nonisolated struct PreviewFindState: Equatable, Sendable {
     /// shown again. Not observed: it is written on every scroll, and nothing
     /// on screen follows it.
     @ObservationIgnored var scrollOffset: CGPoint?
+    /// First visible text row and the distance into it, not lazy-stack estimates.
+    @ObservationIgnored var scrollAnchor: PreviewScrollAnchor?
     /// Whether a Markdown file shows its table of contents. Each new read
     /// starts with it shown; turned off, it stays off for this preview only,
     /// read again or not.
@@ -140,7 +142,7 @@ nonisolated struct PreviewFindState: Equatable, Sendable {
         let epoch = UUID()
         generation = epoch
         state = .loading; link = nil; isReloading = false
-        finishedRequestID = nil; showsSource = false; scrollOffset = nil
+        finishedRequestID = nil; showsSource = false; scrollOffset = nil; scrollAnchor = nil
         showsOutline = true; scrollRequest = nil; visibleBlocks = []; visibleLines = []
         // What the find bar looks for starts over with each read.
         find = PreviewFindState()

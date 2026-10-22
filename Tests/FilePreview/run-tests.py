@@ -25,14 +25,14 @@ remote=['Shepherd/FilePreview/FilePreviewLink.swift','Shepherd/FilePreview/FileP
 stage('remote-reader-build',90,['xcrun','swiftc','ShepherdKit/Sources/ShepherdKit/Resources.swift','-target',platform.machine()+'-apple-macos26.6.2','-swift-version','6','-default-isolation','MainActor','-parse-as-library','-I',str(modules),'-L',str(modules),'-lCitadel','-lNIOCore','-lNIOConcurrencyHelpers','-Xlinker','-rpath','-Xlinker',str(modules),*remote,'-o',str(out/'remote-reader-tests')])
 stage('remote-reader-tests',20,[str(out/'remote-reader-tests')])
 (out/'remote-source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in remote+['Tests/FilePreview/OwnedSFTPModule.swift']},indent=2))
-model=['Shepherd/FilePreview/FilePreviewLink.swift','Shepherd/FilePreview/FilePreviewReader.swift','Shepherd/FilePreview/FilePreviewModel.swift','ShepherdKit/Sources/ShepherdKit/Machines/Machine.swift','ShepherdKit/Sources/ShepherdKit/Machines/MachineStore.swift','ShepherdKit/Sources/ShepherdKit/Machines/KeychainStore.swift','Tests/FilePreview/ModelTests.swift']
+model=['Shepherd/FilePreview/PreviewScrollAnchor.swift','Shepherd/FilePreview/FilePreviewLink.swift','Shepherd/FilePreview/FilePreviewReader.swift','Shepherd/FilePreview/FilePreviewModel.swift','ShepherdKit/Sources/ShepherdKit/Machines/Machine.swift','ShepherdKit/Sources/ShepherdKit/Machines/MachineStore.swift','ShepherdKit/Sources/ShepherdKit/Machines/KeychainStore.swift','Tests/FilePreview/ModelTests.swift']
 stage('preview-model-build',90,['xcrun','swiftc','ShepherdKit/Sources/ShepherdKit/Resources.swift','-target',platform.machine()+'-apple-macos26.6.2','-swift-version','6','-default-isolation','MainActor','-parse-as-library','-I',str(modules),'-L',str(modules),'-lCitadel','-lNIOCore','-lNIOConcurrencyHelpers','-Xlinker','-rpath','-Xlinker',str(modules),*model,'-o',str(out/'preview-model-tests')])
 stage('preview-model-tests',40,[str(out/'preview-model-tests'),str(out/'files')])
 (out/'model-source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in model},indent=2))
 # The file preview of each pane or tab, kept while another one is selected:
 # the actual store, request and model with the actual pane and tab models.
 paneModels=['ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/JSONValue.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/AgentModels.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/AgentLaunchModels.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/AgentTitleDisplay.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/TabModels.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/HerdrMachine.swift']
-paneStates=['Shepherd/FilePreview/FilePreviewLink.swift','Shepherd/FilePreview/FilePreviewReader.swift','Shepherd/FilePreview/FilePreviewModel.swift','Shepherd/FilePreview/FilePreviewPaneStates.swift','ShepherdKit/Sources/ShepherdKit/Machines/Machine.swift','ShepherdKit/Sources/ShepherdKit/Machines/MachineStore.swift','ShepherdKit/Sources/ShepherdKit/Machines/KeychainStore.swift']+paneModels
+paneStates=['Shepherd/FilePreview/PreviewScrollAnchor.swift','Shepherd/FilePreview/FilePreviewLink.swift','Shepherd/FilePreview/FilePreviewReader.swift','Shepherd/FilePreview/FilePreviewModel.swift','Shepherd/FilePreview/FilePreviewPaneStates.swift','ShepherdKit/Sources/ShepherdKit/Machines/Machine.swift','ShepherdKit/Sources/ShepherdKit/Machines/MachineStore.swift','ShepherdKit/Sources/ShepherdKit/Machines/KeychainStore.swift']+paneModels
 stage('pane-states-build',90,['xcrun','swiftc','ShepherdKit/Sources/ShepherdKit/Resources.swift','-target',platform.machine()+'-apple-macos26.6.2','-swift-version','6','-default-isolation','MainActor','-parse-as-library',*paneStates,'Tests/FilePreview/PaneStatesTests.swift','-o',str(out/'pane-states-tests')])
 stage('pane-states-tests',20,[str(out/'pane-states-tests')])
 # And the actual panel in an owned window that is never shown: P, Q and back
@@ -45,6 +45,13 @@ stage('panel-window-build',120,['xcrun','swiftc','ShepherdKit/Sources/ShepherdKi
 stage('panel-window-tests',60,[str(out/'panel-window-tests'),str(out/'panel-files')],mirrorsLog=True)
 assert 'Modifying state during view update' not in (out/'panel-window-tests.log').read_text()
 (out/'pane-source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in panel+['Tests/FilePreview/PaneStatesTests.swift','Tests/FilePreview/PanelWindowTests.swift']},indent=2))
+# Row anchors: mixed-height blocks, wrapped source, Retry, width changes
+# while away, missing rows and explicit navigation during restoration.
+(out/'restore-files').mkdir(mode=0o700)
+stage('scroll-restore-build',120,['xcrun','swiftc','ShepherdKit/Sources/ShepherdKit/Resources.swift','-target',platform.machine()+'-apple-macos26.6.2','-swift-version','6','-default-isolation','MainActor','-parse-as-library',*panel,'Tests/FilePreview/ScrollRestoreTests.swift','-framework','AppKit','-o',str(out/'scroll-restore-tests')])
+stage('scroll-restore-tests',90,[str(out/'scroll-restore-tests'),str(out/'restore-files')],mirrorsLog=True)
+assert 'Modifying state during view update' not in (out/'scroll-restore-tests.log').read_text()
+(out/'restore-source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in panel+['Tests/FilePreview/ScrollRestoreTests.swift']},indent=2))
 # Find: what it looks in and matches, where it goes next, its marks and the
 # preview's keys, without a window.
 find=['Shepherd/FilePreview/MarkdownPreview.swift','Shepherd/FilePreview/PreviewSyntaxHighlighter.swift','Shepherd/FilePreview/PreviewSyntaxRendering.swift','Shepherd/FilePreview/PreviewFind.swift','Shepherd/FilePreview/PreviewKeyCatcher.swift','Shepherd/FilePreview/PreviewFindBar.swift','Tests/FilePreview/FindTests.swift']
@@ -89,9 +96,11 @@ assert [l.strip() for l in model.splitlines()].count('find = PreviewFindState()'
 # Only the close button is Liquid Glass. Its strings are in Korean and
 # Japanese.
 assert 'find = PreviewFindState()' not in reload and 'await read(' in reload
+assert 'scrollAnchor = nil' in load and 'scrollAnchor = nil' not in reload
+assert 'model.scrollAnchor = nil' in fp and 'navigationID: model.scrollRequest?.id' in fp
 assert 'Button(action: reloadFile)' in fp and 'Button("Retry", action: reloadFile)' in fp and '.disabled(model.isReading)' in fp and 'guard !model.isReading else { return }' in fp
 assert fp.count('.buttonStyle(.glass)')==1 and '("r", .command, .reload)' in (ROOT/'Shepherd/FilePreview/PreviewKeyCatcher.swift').read_text()
 for key in ['Reload','Reload (⌘R)']:
  assert all(strings[key]['localizations'][l]['stringUnit']['state']=='translated' and strings[key]['localizations'][l]['stringUnit']['value'] for l in ['ko','ja']),key
 assert 'PreviewKeyCatcher(keyboard: keyboard, perform: perform' in fp and '.focusable()' in fp and 'if model.find.isShown { closeFind() }' in fp
-(out/'validation.json').write_text(json.dumps({'passed':True,'userFilesRead':False,'realKeychainAccess':False,'networkAccess':False,'actualSwiftTerm':bool(args.swiftterm_products),'stages':17 if args.swiftterm_products else 15},indent=2))
+(out/'validation.json').write_text(json.dumps({'passed':True,'userFilesRead':False,'realKeychainAccess':False,'networkAccess':False,'actualSwiftTerm':bool(args.swiftterm_products),'stages':19 if args.swiftterm_products else 17},indent=2))

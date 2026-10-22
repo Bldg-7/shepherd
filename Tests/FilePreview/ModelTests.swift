@@ -177,6 +177,8 @@ final class OwnedSecrets: MachineSecretStore {
         check(text(viewed) == "# Reload one\n\nfirst" && !viewed.isReloading && !viewed.isReading && !viewed.showsSource)
         let linked = viewed.link
         viewed.showsSource = true; viewed.scrollOffset = CGPoint(x: 0, y: 120); viewed.showsOutline = false
+        let keptAnchor = PreviewScrollAnchor(inSource: true, row: 3, offset: 8, height: 40)
+        viewed.scrollAnchor = keptAnchor
         viewed.find = PreviewFindState(isShown: true, query: "one", current: 0)
         viewed.visibleLines = [2, 3]; viewed.reveal(.line(3))
         let revealed = viewed.scrollRequest
@@ -186,6 +188,7 @@ final class OwnedSecrets: MachineSecretStore {
         check(viewed.link == linked && viewed.link?.path == reloadPath && viewed.finishedRequestID == reloadRequest.id)
         check(viewed.showsSource && viewed.scrollOffset == CGPoint(x: 0, y: 120) && !viewed.showsOutline)
         check(viewed.scrollRequest == revealed && viewed.visibleLines == [2, 3])
+        check(viewed.scrollAnchor == keptAnchor)
         // What the find bar looks for is kept; it counts its matches in the
         // new text, at none of them yet, as when Source is chosen.
         check(viewed.find == PreviewFindState(isShown: true, query: "one", current: nil))
@@ -207,12 +210,14 @@ final class OwnedSecrets: MachineSecretStore {
         check(failure(viewed) != nil && !viewed.isReloading && !viewed.isReading)
         check(viewed.link == linked && viewed.showsSource && viewed.scrollOffset == CGPoint(x: 0, y: 120) && !viewed.showsOutline)
         check(viewed.find.isShown && viewed.find.query == "one")
+        check(viewed.scrollAnchor == keptAnchor)
         await viewed.loadIfNeeded(reloadRequest, store: store)
         check(failure(viewed) != nil)
         try Data("# Reload back".utf8).write(to: URL(fileURLWithPath: reloadPath))
         await viewed.reload(reloadRequest, store: store)
         check(text(viewed) == "# Reload back" && viewed.showsSource && viewed.scrollOffset == CGPoint(x: 0, y: 120) && !viewed.showsOutline)
         check(viewed.find.isShown && viewed.find.query == "one" && viewed.link == linked)
+        check(viewed.scrollAnchor == keptAnchor)
         // Past 4 MiB: too large, as for a first read.
         try Data(repeating: 65, count: FilePreviewDocument.maximumBytes + 1).write(to: URL(fileURLWithPath: reloadPath))
         await viewed.reload(reloadRequest, store: store)
@@ -239,7 +244,7 @@ final class OwnedSecrets: MachineSecretStore {
         // A new read still starts everything over.
         viewed.showsOutline = false
         await viewed.load(reloadRequest, store: store)
-        check(!viewed.showsSource && viewed.scrollOffset == nil && viewed.showsOutline && viewed.find == PreviewFindState())
+        check(!viewed.showsSource && viewed.scrollOffset == nil && viewed.scrollAnchor == nil && viewed.showsOutline && viewed.find == PreviewFindState())
         check(secrets.loads == localLoads)
 
         // Remote: what was read stays shown while it is read again; each
