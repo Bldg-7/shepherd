@@ -136,9 +136,13 @@ public nonisolated enum HerdrExecutable {
     /// one up for an interactive stdin otherwise), running there the same
     /// find-herdr-then-run as `remoteCommand`, in that machine's session,
     /// with the attach configuration on that machine (`withoutMouseCapture`).
+    /// SSH escapes are disabled for this raw terminal stream (`-e none`),
+    /// so a newline followed by `~.` or `~?` reaches the pane instead of
+    /// disconnecting or invoking SSH's local commands. This is attach-only:
+    /// the shared non-interactive options and the user's SSH config stay as is.
     public static func sshAttachArguments(to machine: HerdrMachine, terminalID: String, withoutMouseCapture: Bool = false) -> [String] {
         let attach = (["--session", machine.session] + attachArguments(terminalID: terminalID)).map(shellQuoted)
-        return ["-tt"] + sshOptions + [machine.target, remoteCommand(arguments: attach.joined(separator: " "), withoutMouseCapture: withoutMouseCapture)]
+        return ["-tt", "-e", "none"] + sshOptions + [machine.target, remoteCommand(arguments: attach.joined(separator: " "), withoutMouseCapture: withoutMouseCapture)]
     }
 
     /// The command an SSH host's login shell runs to attach to

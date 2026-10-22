@@ -31,9 +31,17 @@ terminal-view-model sources are compiled unchanged.
   asks its machine's `MachineMonitor` about herdr's version; and the iOS app
   doesn't use `HerdrAttachInput`.
 - Attach command checks (`AttachCommandTests.swift`): `HerdrExecutable` takes a
-  new `withoutMouseCapture` argument. Without it, the commands are the same as
-  before for the iOS app, for single herdr requests (not attaches) and for herdr
-  machine setup. With it, the test runs two commands, the one an SSH host runs
+  `withoutMouseCapture` argument. Single herdr requests (not attaches) and
+  machine setup keep their commands. SSH terminal attaches add `-e none` after
+  `-tt`, with or without mouse configuration: a newline followed by `~.` or
+  `~?` belongs to the pane, not to the SSH client's escape commands. The shared
+  `sshOptions` used for non-interactive file transfer are unchanged. Checks
+  cover `LocalAttachLaunch` and the extra SSH hop from a remote host; a fake
+  `ssh` on an owned PATH records the complete argv after each shell's quoting,
+  without connecting or executing its remote argument. The host's own Citadel
+  connection has no OpenSSH escape processing, and herdr's internally launched
+  SSH processes are not changed. With mouse configuration on, the test runs
+  two commands, the one an SSH host runs
   and the one a herdr machine runs, in each of sh, bash, zsh, csh and tcsh (and
   fish when it is installed). Each run uses a HOME of the test's own, with a fake
   herdr placed first among herdr's usual install locations. The command writes

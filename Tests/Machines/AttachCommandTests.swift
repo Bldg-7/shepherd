@@ -41,14 +41,14 @@ import Darwin
         check(HerdrExecutable.configurationPathVariable == "HERDR_CONFIG_PATH", "herdr's variable")
         check(HerdrExecutable.remoteAttachConfigurationPath == ".cache/3rdr/herdr-attach.toml", "beside the drops on the far side")
 
-        // Off, every command is what it was: the iOS app's and the Mac's
-        // one-shot requests, and machine setup, don't pass the flag.
+        // Without mouse configuration, one-shot requests and host commands
+        // stay as before. SSH terminal attaches also disable escape handling.
         let sample = "'status' 'client' '--json'"
         check(HerdrExecutable.execScript(arguments: sample) == oldExecScript(arguments: sample), "execScript unchanged by default")
         check(HerdrExecutable.remoteCommand(arguments: sample) == "sh -c \(shellQuoted(oldExecScript(arguments: sample)))", "remoteCommand unchanged by default")
         let machine = HerdrMachine(id: "m1", label: "GPU box", target: "dev@gpu.example", session: "work s'ession", enabled: true)
         let oldMachineAttach = (["--session", machine.session] + HerdrExecutable.attachArguments(terminalID: "w1:p2")).map(shellQuoted).joined(separator: " ")
-        check(HerdrExecutable.sshAttachArguments(to: machine, terminalID: "w1:p2") == ["-tt"] + HerdrExecutable.sshOptions + [machine.target, "sh -c \(shellQuoted(oldExecScript(arguments: oldMachineAttach)))"], "sshAttachArguments unchanged by default")
+        check(HerdrExecutable.sshAttachArguments(to: machine, terminalID: "w1:p2") == ["-tt", "-e", "none"] + HerdrExecutable.sshOptions + [machine.target, "sh -c \(shellQuoted(oldExecScript(arguments: oldMachineAttach)))"], "SSH attaches disable escapes without changing the remote command")
         for session in ["", "main", "a b'c"] {
             check(HerdrExecutable.remoteAttachCommand(sessionName: session, terminalID: "w1:p2", herdrMachine: nil) == oldHostCommand(sessionName: session, terminalID: "w1:p2"), "TerminalSession's command unchanged by default (session \(session))")
         }
@@ -66,7 +66,9 @@ import Darwin
         check(!remote.contains("\n") && !remote.contains("!") && !script.contains("\\\\") && !script.contains("XDG_CONFIG_HOME"), "one line, no !, no backslash pairs, no XDG_CONFIG_HOME")
         check(remote == "sh -c \(shellQuoted(script))", "remoteCommand wraps it in sh -c")
         let machineArguments = HerdrExecutable.sshAttachArguments(to: machine, terminalID: "w1:p2", withoutMouseCapture: true)
-        check(machineArguments == ["-tt"] + HerdrExecutable.sshOptions + [machine.target, HerdrExecutable.remoteCommand(arguments: oldMachineAttach, withoutMouseCapture: true)], "a herdr machine makes its own copy")
+        check(machineArguments == ["-tt", "-e", "none"] + HerdrExecutable.sshOptions + [machine.target, HerdrExecutable.remoteCommand(arguments: oldMachineAttach, withoutMouseCapture: true)], "a herdr machine makes its own copy with SSH escapes disabled")
+        check(!HerdrExecutable.sshOptions.contains("-e") && !HerdrExecutable.sshOptions.contains(where: { $0.hasPrefix("EscapeChar=") }), "shared file-transfer SSH options are unchanged")
+        check(machineArguments.filter { $0 == "-e" }.count == 1, "exactly one attach escape override")
         check(HerdrExecutable.remoteAttachCommand(sessionName: "main", terminalID: "w1:p2", herdrMachine: machine, withoutMouseCapture: true)
               == (["ssh"] + machineArguments).map(shellQuoted).joined(separator: " "), "through the host's ssh, the machine makes the copy")
 
@@ -83,6 +85,9 @@ import Darwin
             let herdr = home.appending(path: ".local/bin/herdr").path
             try fakeHerdr.write(toFile: herdr, atomically: true, encoding: .utf8)
             chmod(herdr, 0o755)
+            let ssh = home.appending(path: ".local/bin/ssh").path
+            try "#!/bin/sh\n# TEST ONLY: records argv, never connects or executes the remote command.\nfor a in \"$@\"; do printf 'ssharg=%s\\n' \"$a\"; done > \"$HOME/started\"\n".write(toFile: ssh, atomically: true, encoding: .utf8)
+            chmod(ssh, 0o755)
             return home
         }
         func run(_ shell: String, _ command: String, home: URL) throws -> [String] {
@@ -93,7 +98,7 @@ import Darwin
             let process = Process()
             process.executableURL = URL(fileURLWithPath: shell)
             process.arguments = ["-c", command]
-            process.environment = ["HOME": home.path, "PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "LANG": "C", "SHELL": shell]
+            process.environment = ["HOME": home.path, "PATH": home.appending(path: ".local/bin").path + ":/usr/bin:/bin:/usr/sbin:/sbin", "LANG": "C", "SHELL": shell]
             process.currentDirectoryURL = home
             process.standardInput = FileHandle.nullDevice
             try process.run()
@@ -104,6 +109,15 @@ import Darwin
         let attach = (["--session", shellQuoted("a b'c")] + HerdrExecutable.attachArguments(terminalID: "w1:p2").map(shellQuoted)).joined(separator: " ")
         let attachArgs = ["arg=--session", "arg=a b'c", "arg=terminal", "arg=attach", "arg=w1:p2", "arg=--takeover"]
         for shell in shells {
+            // The host's extra SSH hop preserves -e none through shell quoting.
+            for withoutMouseCapture in [false, true] {
+                let home = try freshHome()
+                let wanted = HerdrExecutable.sshAttachArguments(to: machine, terminalID: "w1:p2", withoutMouseCapture: withoutMouseCapture)
+                let command = HerdrExecutable.remoteAttachCommand(sessionName: "host session", terminalID: "w1:p2", herdrMachine: machine, withoutMouseCapture: withoutMouseCapture)
+                let received = try run(shell, command, home: home)
+                check(received == wanted.map { "ssharg=" + $0 }, "\(shell): nested SSH argv preserved")
+                check(Array(received.prefix(3)) == ["ssharg=-tt", "ssharg=-e", "ssharg=none"], "\(shell): escape suppression precedes destination")
+            }
             // Made where there was none, readable by the account only.
             var home = try freshHome()
             let file = home.appending(path: ".cache/3rdr/herdr-attach.toml").path
@@ -166,6 +180,7 @@ import Darwin
         let overSSH = LocalAttachLaunch.make(terminalID: "w1:p2", herdrMachine: machine, herdrPath: nil, configurationPath: config, baseEnvironment: base, inherited: inherited)
         check(overSSH == LocalAttachLaunch(executable: "/usr/bin/env", arguments: ["ssh"] + machineArguments,
               environment: base + ["PATH=/opt/homebrew/bin:/usr/bin:/bin", "SSH_AUTH_SOCK=/private/tmp/agent.sock"]), "a herdr machine: this Mac's ssh, the machine's own copy, no HERDR_CONFIG_PATH of this Mac's")
+        check(Array(overSSH.arguments.prefix(4)) == ["ssh", "-tt", "-e", "none"], "this Mac's SSH attach also disables escapes")
         let direct = LocalAttachLaunch.make(terminalID: "w1:p2", herdrMachine: nil, herdrPath: "/opt/homebrew/bin/herdr", configurationPath: config, baseEnvironment: base, inherited: inherited)
         check(direct == LocalAttachLaunch(executable: "/opt/homebrew/bin/herdr", arguments: ["terminal", "attach", "w1:p2", "--takeover"],
               environment: base + ["HERDR_CONFIG_PATH=\(config)"]), "herdr started directly, with this Mac's copy")
@@ -176,6 +191,6 @@ import Darwin
             check(LocalAttachLaunch.make(terminalID: "w1:p2", herdrMachine: nil, herdrPath: herdrPath, configurationPath: nil, baseEnvironment: base, inherited: inherited).environment == base,
                   "without a copy, the environment it always had")
         }
-        print("PASS \(checks) attach command checks: unchanged commands without the flag; the configuration file made, kept, replaced and done without by \(shells.joined(separator: ", ")) with a fake herdr; this Mac's copy; the three local launches; no SSH, no real herdr")
+        print("PASS \(checks) attach command checks: SSH escapes disabled for local and nested attaches; shared request options unchanged; the configuration file made, kept, replaced and done without by \(shells.joined(separator: ", ")) with a fake herdr; this Mac's copy; the three local launches; no SSH, no real herdr")
     }
 }
