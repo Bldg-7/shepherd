@@ -131,6 +131,11 @@ public final class MachineMonitor {
     /// Why the host's herdr machines couldn't be listed the last time they
     /// were asked for, or nil once they were.
     public private(set) var herdrMachineListError: String?
+    /// Whether the host's herdr is known to be older than 0.9.0: it turned
+    /// listing herdr machines down as a command it doesn't know (see
+    /// `herdrMachineListFailure`). False while that isn't known, and once
+    /// the list comes back.
+    public private(set) var herdrPredatesSavedMachines = false
     /// How many snapshots of the host's herdr have come since it started,
     /// and how many rounds over its herdr machines: what the board goes by
     /// to bring its selection up to date with each. Nought for none yet.
@@ -281,6 +286,7 @@ public final class MachineMonitor {
         herdrMachineGroups = []
         savedHerdrMachines = nil
         herdrMachineListError = nil
+        herdrPredatesSavedMachines = false
         snapshotCount = 0
         herdrMachineRoundCount = 0
     }
@@ -725,6 +731,10 @@ public final class MachineMonitor {
                 if herdrMachineListError != reason {
                     herdrMachineListError = reason
                 }
+                // Kept through other failures: they don't make herdr newer.
+                if Self.isUnknownMachineCommand(error), !herdrPredatesSavedMachines {
+                    herdrPredatesSavedMachines = true
+                }
                 listed = nil
             }
             if let listed {
@@ -734,6 +744,9 @@ public final class MachineMonitor {
                 }
                 if herdrMachineListError != nil {
                     herdrMachineListError = nil
+                }
+                if herdrPredatesSavedMachines {
+                    herdrPredatesSavedMachines = false
                 }
                 let machines = listed.filter(\.enabled)
                 let groups = await Self.fetchSnapshots(on: machines, previous: herdrMachineGroups, client: session.client)
@@ -874,10 +887,16 @@ public final class MachineMonitor {
     /// "unknown command: machine" — herdr 0.9.1's own check for commands it
     /// doesn't have, src/main.rs), and that is said in so many words.
     public nonisolated static func herdrMachineListFailure(_ error: any Error) -> String {
-        if let error = error as? HerdrCommandError, error.message.contains("unknown command: machine") {
+        if isUnknownMachineCommand(error) {
             return String(localized: "This machine's herdr is older than 0.9.0, the first to save machines. Update herdr to add machines to it.", bundle: .shepherdKit)
         }
         return connectionFailureDescription(error)
+    }
+
+    /// Whether `error` is herdr turning `machine` down as a command it
+    /// doesn't know, which a herdr older than 0.9.0 does.
+    nonisolated static func isUnknownMachineCommand(_ error: any Error) -> Bool {
+        (error as? HerdrCommandError)?.message.contains("unknown command: machine") == true
     }
 
     /// A snapshot that didn't come back within `snapshotTimeout`.

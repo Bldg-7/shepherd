@@ -114,6 +114,16 @@ struct PaneTerminalView: View {
             // The stub is only for builds without the SSH implementation.
             return StubTerminalSession()
             #endif
+        }, takesEncodedPrefix: {
+            // Only herdr 0.9.0 and later take a kitty or modifyOtherKeys
+            // Ctrl+B as the prefix, so only they get one twice. The attach
+            // to a pane of the host is the host's herdr. The attach to a
+            // pane of a herdr machine runs on that machine, whose version
+            // isn't known here, and only a host of 0.9.0 or later has herdr
+            // machines. Until the host's herdr is known to be older, it is
+            // taken to be 0.9.0 or later: that is the current herdr, and
+            // herdr machines need it.
+            !MachineMonitors.shared.monitor(for: machine, in: machineStore).herdrPredatesSavedMachines
         }))
 
         // Resolved at each drop, like the session at each attach: against

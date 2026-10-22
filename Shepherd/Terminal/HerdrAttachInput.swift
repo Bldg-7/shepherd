@@ -9,27 +9,30 @@ import Foundation
 /// to the pane. So every Ctrl+B the attach would take is written twice:
 ///
 /// - A write that is one whole Ctrl+B press, in a form herdr 0.9.0 and later
-///   read as one key, is written twice: the kitty keyboard protocol's
-///   `CSI 98 ; M u`, also with event type 1, a shifted key of 98 or a base
-///   layout key, and modifyOtherKeys' `CSI 27 ; M ; 98 ~`, where M is Ctrl
-///   alone, with or without Caps Lock and Num Lock. The program asked for
-///   that form, so it gets it, once.
+///   read as one key, is written twice to those herdr versions
+///   (`takesEncodedPrefix`): the kitty keyboard protocol's `CSI 98 ; M u`,
+///   also with event type 1, a shifted key of 98 or a base layout key, and
+///   modifyOtherKeys' `CSI 27 ; M ; 98 ~`, where M is Ctrl alone, with or
+///   without Caps Lock and Num Lock. The program asked for that form, so it
+///   gets it, once. herdr 0.8.2 and older don't take these forms, and pass
+///   them on as they are.
 /// - Anything else has each 0x02 byte doubled, which every herdr version
 ///   reads as Ctrl+B, except inside a bracketed paste: herdr 0.9.0 and later
-///   pass a paste on without looking inside it.
+///   pass a paste on without looking inside it. (herdr 0.8.2 and older look
+///   inside, so a 0x02 in a paste still starts the prefix there.)
 ///
 /// A repeat or release, and Ctrl+B with Shift, Alt or Super, are left as they
 /// are: herdr doesn't take them. So are two forms SwiftTerm doesn't send for
 /// a Latin layout's Ctrl+B, which herdr does take: one with associated text,
 /// and, from herdr 0.9.4, a non-Latin layout's key with b as its base layout
-/// key (`CSI 1080::98;5u`). herdr 0.8.2 and older take only the 0x02 byte,
-/// in a paste too: with them a kitty or modifyOtherKeys Ctrl+B reaches the
-/// pane twice, and a 0x02 in a paste still starts the prefix.
+/// key (`CSI 1080::98;5u`).
 nonisolated enum HerdrAttachInput {
     /// One write's bytes as herdr should get them (see the type).
-    static func escaped(_ bytes: some Collection<UInt8>) -> [UInt8] {
+    /// `takesEncodedPrefix`: whether the attach is herdr 0.9.0 or later,
+    /// which takes kitty and modifyOtherKeys Ctrl+B as the prefix.
+    static func escaped(_ bytes: some Collection<UInt8>, takesEncodedPrefix: Bool = true) -> [UInt8] {
         var pasteOpen = false
-        return escaped(bytes, pasteOpen: &pasteOpen)
+        return escaped(bytes, pasteOpen: &pasteOpen, takesEncodedPrefix: takesEncodedPrefix)
     }
 
     /// The same for one of a stream of writes: `pasteOpen` says whether an
@@ -37,9 +40,9 @@ nonisolated enum HerdrAttachInput {
     /// whether one is still open after this write. SwiftTerm sends a ⌘V paste
     /// as three writes (the start, the text and the end), which herdr puts
     /// back together before it reads them.
-    static func escaped(_ bytes: some Collection<UInt8>, pasteOpen: inout Bool) -> [UInt8] {
+    static func escaped(_ bytes: some Collection<UInt8>, pasteOpen: inout Bool, takesEncodedPrefix: Bool = true) -> [UInt8] {
         let bytes = Array(bytes)
-        if !pasteOpen, isPrefixPress(bytes) {
+        if !pasteOpen, takesEncodedPrefix, isPrefixPress(bytes) {
             return bytes + bytes
         }
         var output: [UInt8] = []

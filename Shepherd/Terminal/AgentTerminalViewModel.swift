@@ -56,9 +56,14 @@ final class AgentTerminalViewModel {
     /// Whether the terminal view has sent the start of a bracketed paste
     /// whose end it hasn't sent yet (see `send(_:)`).
     @ObservationIgnored private var pasteOpen = false
+    /// Whether the attach takes kitty and modifyOtherKeys Ctrl+B as its
+    /// prefix, as herdr 0.9.0 and later do; asked at each `send(_:)`.
+    private let takesEncodedPrefix: () -> Bool
 
-    init(makeSession: @escaping () throws -> any TerminalSessionProviding) {
+    init(makeSession: @escaping () throws -> any TerminalSessionProviding,
+         takesEncodedPrefix: @escaping () -> Bool = { true }) {
         self.makeSession = makeSession
+        self.takesEncodedPrefix = takesEncodedPrefix
     }
 
     /// Stops a session that is still live when the view model goes away
@@ -179,7 +184,7 @@ final class AgentTerminalViewModel {
     /// written twice, which herdr passes on as one (see `HerdrAttachInput`).
     func send(_ data: ArraySlice<UInt8>) {
         guard let session else { return }
-        let bytes = HerdrAttachInput.escaped(data, pasteOpen: &pasteOpen)
+        let bytes = HerdrAttachInput.escaped(data, pasteOpen: &pasteOpen, takesEncodedPrefix: takesEncodedPrefix())
         Task { try? await session.write(Data(bytes)) }
     }
 
