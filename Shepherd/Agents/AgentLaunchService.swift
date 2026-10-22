@@ -328,10 +328,11 @@ final class AgentLaunchService {
         preparingPanes.insert(pane)
         defer { preparingPanes.remove(pane); launchingPanes.remove(pane) }
         do {
-            _ = try await waitForShell(created.pane, on: machine, client: client)
-            let process = try await client.processInfo(paneID: pane.paneID)
-            guard let pid = process.shellPID, pid <= UInt32(Int32.max), process.isShellForeground else { throw PiBridgeFailure.identity }
-            let cwd = try PiProcessIdentity.capture(pid: Int32(pid)).cwd
+            // Pi starts in the shell's folder, read from the shell the wait
+            // took (`AgentShellWait.settledShell`): not asked again whether
+            // the shell is alone, which its startup files can make untrue
+            // for a moment at any time.
+            let cwd = try await waitForPiShell(created.pane, on: machine, client: client).cwd
             let coordinator = try PiLaunchCoordinator(stage: stage, owner: pane, machine: machine,
                 client: makeLocalClient(machine), cwd: cwd, preferences: preferences)
             piLaunches[pane] = coordinator
@@ -379,22 +380,23 @@ final class AgentLaunchService {
         throw AgentRuntimeError.rejected("agent-readiness-timeout-check-cli-login-and-terminal")
     }
 
+    /// The new pane's shell, alone in its foreground (`AgentShellWait`).
     private func waitForShell(_ expected: AgentSummary, on machine: Machine, client: HerdrClient) async throws -> MachineBrowserService.ResolvedPane {
-        let deadline = ContinuousClock().now.advanced(by: .seconds(10))
-        while ContinuousClock().now < deadline {
-            let snapshot = try await client.launchSnapshot()
-            MachineBrowserService.shared.accept(snapshot.panes, on: machine)
-            guard let current = snapshot.panes.first(where: { $0.terminalID == expected.terminalID }), current.paneID == expected.paneID else {
-                throw AgentRuntimeError.rejected("created-pane-identity-changed")
-            }
-            let agentRows = try await client.agentList()
-            if !current.hasAgent, current.launchPending != true,
-               !agentRows.contains(where: { $0.terminalID == expected.terminalID }),
-               try await client.processInfo(paneID: current.paneID).isShellForeground,
-               let resolved = resolved(current, on: machine) { return resolved }
-            try await Task.sleep(for: .milliseconds(200))
-        }
-        throw AgentRuntimeError.rejected("shell-readiness-timeout")
+        try await AgentShellWait.shell { try await lookForShell(expected, on: machine, client: client) }.resolved
+    }
+
+    /// Pi's: the same shell seen alone twice in a row, and the folder it is
+    /// in (`AgentShellWait.settledShell`), read from the kernel by its PID.
+    private func waitForPiShell(_ expected: AgentSummary, on machine: Machine,
+                                client: HerdrClient) async throws -> (shell: AgentShellWait.Shell<MachineBrowserService.ResolvedPane>, cwd: String) {
+        try await AgentShellWait.settledShell(look: { try await lookForShell(expected, on: machine, client: client) },
+                                              cwd: { pid in Int32(exactly: pid).flatMap { try? PiProcessIdentity.capture(pid: $0).cwd } })
+    }
+
+    private func lookForShell(_ expected: AgentSummary, on machine: Machine,
+                              client: HerdrClient) async throws -> AgentShellWait.Shell<MachineBrowserService.ResolvedPane>? {
+        try await AgentShellWait.look(at: expected, client: client, accept: { MachineBrowserService.shared.accept($0, on: machine) },
+                                      resolve: { resolved($0, on: machine) })
     }
 
     func status(for agent: AgentSummary, on machine: Machine) -> AgentBrowserStatus {

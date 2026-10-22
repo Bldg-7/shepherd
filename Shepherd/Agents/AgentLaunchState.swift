@@ -169,3 +169,87 @@ nonisolated enum AgentInspectionReuse {
         return pane == previousPane && row == previousRow && processAge < maximumAge
     }
 }
+
+/// A launch waits for the new pane's shell before it types into it
+/// (`AgentLaunchService.waitForShell`): herdr shows the pane with no agent,
+/// and the shell alone in its foreground. It looks every `interval`, for up
+/// to `limit`.
+///
+/// Pi's launch also reads, from the shell itself, the folder Pi will start
+/// in (`settledShell`). A new shell runs its startup files first, and every
+/// command substitution in them — `eval "$(brew shellenv)"`, a prompt
+/// theme's setup — puts a child in the foreground for a moment: one look
+/// can find the shell alone between two of them and the next one not, so
+/// a single look is no proof the shell is done. Pi's launch therefore takes
+/// the shell only once two looks in a row, `settle` apart, find the same
+/// shell alone in the same folder, and keeps the folder the second one read.
+/// It is never asked again whether the shell is alone after that: a child
+/// in the foreground a moment later is no reason to fail, and the shim is
+/// typed only after the shell is seen alone again (`waitForShell`).
+nonisolated enum AgentShellWait {
+    static let interval: Duration = .milliseconds(200)
+    static let limit: Duration = .seconds(10)
+    /// Two of the looks above: long enough for a shell still in its startup
+    /// files to start its next command or change folder, short enough that
+    /// a Pi launch waits under half a second more for its shell.
+    static let settle: Duration = .milliseconds(400)
+
+    /// The shell a look found alone in the pane's foreground.
+    struct Shell<Resolved> {
+        let resolved: Resolved
+        let pid: UInt32
+    }
+
+    /// One look at the pane `expected` was created as. nil while herdr shows
+    /// an agent there or anything but the shell in its foreground, or
+    /// `resolve` can't place the pane yet. Throws if another pane has taken
+    /// its terminal's place.
+    static func look<Resolved>(isolation: isolated (any Actor)? = #isolation, at expected: AgentSummary, client: HerdrClient,
+                               accept: ([AgentSummary]) -> Void, resolve: (AgentSummary) -> Resolved?) async throws -> Shell<Resolved>? {
+        let snapshot = try await client.launchSnapshot()
+        accept(snapshot.panes)
+        guard let current = snapshot.panes.first(where: { $0.terminalID == expected.terminalID }), current.paneID == expected.paneID else {
+            throw AgentRuntimeError.rejected("created-pane-identity-changed")
+        }
+        let agentRows = try await client.agentList()
+        guard !current.hasAgent, current.launchPending != true, !agentRows.contains(where: { $0.terminalID == expected.terminalID }) else { return nil }
+        let process = try await client.processInfo(paneID: current.paneID)
+        guard process.isShellForeground, let pid = process.shellPID, let resolved = resolve(current) else { return nil }
+        return Shell(resolved: resolved, pid: pid)
+    }
+
+    /// The first look that finds the shell alone.
+    static func shell<Resolved>(isolation: isolated (any Actor)? = #isolation,
+                                sleep: (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
+                                now: () -> ContinuousClock.Instant = { ContinuousClock().now },
+                                look: () async throws -> Shell<Resolved>?) async throws -> Shell<Resolved> {
+        let deadline = now().advanced(by: limit)
+        while now() < deadline {
+            if let shell = try await look() { return shell }
+            try await sleep(interval)
+        }
+        throw AgentRuntimeError.rejected("shell-readiness-timeout")
+    }
+
+    /// The second of two looks in a row, `settle` apart, that find the same
+    /// shell alone in the same folder, with that folder. `cwd` reads the
+    /// shell's folder, nil when it can't, and a look it can't read counts as
+    /// one that didn't find the shell alone. Within the same `limit` as
+    /// `shell`, since this wait takes its place in a Pi launch.
+    static func settledShell<Resolved>(isolation: isolated (any Actor)? = #isolation,
+                                       sleep: (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
+                                       now: () -> ContinuousClock.Instant = { ContinuousClock().now },
+                                       look: () async throws -> Shell<Resolved>?,
+                                       cwd: (UInt32) -> String?) async throws -> (shell: Shell<Resolved>, cwd: String) {
+        let deadline = now().advanced(by: limit)
+        var previous: (pid: UInt32, cwd: String)?
+        while now() < deadline {
+            var seen: (shell: Shell<Resolved>, cwd: String)?
+            if let shell = try await look(), let folder = cwd(shell.pid) { seen = (shell, folder) }
+            if let seen, let previous, previous.pid == seen.shell.pid, previous.cwd == seen.cwd { return seen }
+            previous = seen.map { ($0.shell.pid, $0.cwd) }
+            try await sleep(seen == nil ? interval : settle)
+        }
+        throw AgentRuntimeError.rejected("pi-shell-not-ready")
+    }
+}
