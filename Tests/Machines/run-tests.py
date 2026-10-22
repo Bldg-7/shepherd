@@ -7,7 +7,7 @@ p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);o
 for name in ['home','tmp','cache','modules']:(out/name).mkdir(mode=0o700)
 env=dict(os.environ,DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer',HOME=str(out/'home'),CFFIXED_USER_HOME=str(out/'home'),TMPDIR=str(out/'tmp'),CLANG_MODULE_CACHE_PATH=str(out/'cache'))
 sources=['ShepherdKit/Sources/ShepherdKit/Machines/Machine.swift','ShepherdKit/Sources/ShepherdKit/Machines/MachineStore.swift','ShepherdKit/Sources/ShepherdKit/Machines/MachineStore+Transport.swift','ShepherdKit/Sources/ShepherdKit/Machines/KeychainStore.swift','Tests/Machines/MachineEditTests.swift']
-terminal_sources=['Shepherd/Terminal/AgentTerminalViewModel.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/TerminalSessionProviding.swift','Tests/Machines/TerminalFactoryTests.swift']
+terminal_sources=['Shepherd/Terminal/AgentTerminalViewModel.swift','Shepherd/Terminal/HerdrAttachInput.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/TerminalSessionProviding.swift','Tests/Machines/TerminalFactoryTests.swift']
 kit='ShepherdKit/Sources/ShepherdKit'
 attach_sources=[f'{kit}/Resources.swift',f'{kit}/HerdrKit/Terminal/HerdrExecutable.swift',f'{kit}/HerdrKit/Terminal/ShellQuoting.swift',f'{kit}/HerdrKit/Terminal/LocalCommand.swift',f'{kit}/HerdrKit/Models/HerdrMachine.swift','Shepherd/Terminal/LocalAttachLaunch.swift','Tests/Machines/AttachCommandTests.swift']
 callers=['Shepherd/Terminal/LocalTerminalSession.swift','Shepherd/Terminal/AgentTerminalView.swift',f'{kit}/HerdrKit/Terminal/TerminalSession.swift',f'{kit}/HerdrKit/Transport/SSHHerdrTransport.swift',f'{kit}/HerdrKit/HerdrMachineSetup/HerdrMachineSteps.swift']
@@ -23,6 +23,14 @@ for n in [f'{kit}/HerdrKit/Transport/SSHHerdrTransport.swift',f'{kit}/HerdrKit/H
  assert 'withoutMouseCapture' not in read(n) and 'HERDR_CONFIG_PATH' not in read(n),n
 for n in [f'{kit}/HerdrKit/Terminal/HerdrExecutable.swift','Shepherd/Terminal/LocalAttachLaunch.swift','Shepherd/Terminal/LocalTerminalSession.swift']:
  assert 'XDG_CONFIG_HOME=' not in read(n) and '"XDG_CONFIG_HOME"' not in read(n),n
+# Every byte the Mac app writes to an attach goes through the view model's
+# send, which writes Ctrl+B to herdr twice (HerdrAttachInput); the iOS app
+# doesn't attach, and doesn't.
+writers=[str(x.relative_to(ROOT)) for d in ['Shepherd','ShepherdKit','ShepherdMobile'] for x in sorted((ROOT/d).rglob('*.swift')) if 'session.write(' in x.read_text()]
+assert writers==['Shepherd/Terminal/AgentTerminalViewModel.swift'],writers
+vm=read('Shepherd/Terminal/AgentTerminalViewModel.swift');send=vm[vm.index('    func send(_ data: ArraySlice<UInt8>) {'):vm.index('    func resize(')]
+assert vm.count('session.write(')==1 and 'let bytes = HerdrAttachInput.escaped(data, pasteOpen: &pasteOpen)' in send and 'session.write(Data(bytes))' in send
+assert not [x for x in (ROOT/'ShepherdMobile').rglob('*.swift') if 'HerdrAttachInput' in x.read_text()]
 # Enables the production conditional routing branch while keeping every actual
 # transport and credential operation in explicit in-memory test doubles.
 marker=out/'TestCitadel.swift';marker.write_text('public enum TestOnlyCitadelMarker {}\n')
@@ -55,4 +63,4 @@ stage('terminal-factory-tests',20,[str(out/'terminal-tests')])
 attach_work=out/'attach-work';attach_work.mkdir(mode=0o700)
 stage('attach-command-build',120,['xcrun','swiftc','-target',platform.machine()+'-apple-macos26.6.2','-swift-version','6','-default-isolation','MainActor','-parse-as-library',*attach_sources,'-o',str(out/'attach-command-tests')])
 stage('attach-command-tests',120,[str(out/'attach-command-tests'),str(attach_work)])
-(out/'validation.json').write_text(json.dumps({'passed':True,'realKeychainAccess':False,'networkAccess':False,'realHerdr':False,'ssh':False,'stages':9},indent=2))
+(out/'validation.json').write_text(json.dumps({'passed':True,'realKeychainAccess':False,'networkAccess':False,'realHerdr':False,'ssh':False,'ctrlBWrittenTwiceToAttach':True,'stages':9},indent=2))
