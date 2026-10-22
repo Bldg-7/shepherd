@@ -19,6 +19,17 @@ terminal-view-model sources are compiled unchanged.
   keeping the kind, and the kind saved.
 - Terminal factory checks: errors remain visible without preview output,
   fresh retry, acknowledged old-session retirement, and pre-cancel safety.
+  The terminal factory checks also cover what `AgentTerminalViewModel.send`
+  writes to the attach: each Ctrl+B press twice, and other bytes and pastes as
+  they are, whether a paste comes in ⌘V's three writes or in the single write of
+  a dropped file or row. For a herdr older than 0.9.0 it writes a kitty Ctrl+B
+  once and `0x02` twice, and it checks herdr's version at every write. If an
+  attach ends in the middle of a paste (its start was written but not its end),
+  the next attach doesn't treat its input as part of that paste. Source checks,
+  which read the app's source files: the view model is the only place that calls
+  `session.write(`, and it goes through `HerdrAttachInput`; the pane's terminal
+  asks its machine's `MachineMonitor` about herdr's version; and the iOS app
+  doesn't use `HerdrAttachInput`.
 - Attach command checks (`AttachCommandTests.swift`): `HerdrExecutable` takes a
   new `withoutMouseCapture` argument. Without it, the commands are the same as
   before for the iOS app, for single herdr requests (not attaches) and for herdr

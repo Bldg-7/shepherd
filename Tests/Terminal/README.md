@@ -144,9 +144,91 @@ strings below are written with CSI for `ESC [`.
   into Home; when neither has focus, neither does. The same is checked with the
   app's `TerminalHostView` placed inside an `NSHostingView`, as the app's window
   holds it.
+- Ctrl+B with the protocol off and under `> 1 u`, `> 5 u` and `> 7 u`: plain,
+  with Caps Lock, held down, let go, ⌃⌥B and ⌃⇧B. The view sends what SwiftTerm
+  sends for each:
+  - Ctrl+B: `0x02` with the protocol off, `CSI 98;5u` under it, and
+    `CSI 98;69u` with Caps Lock on.
+  - Held down and let go: under `> 7 u`, a repeat is `CSI 98;5:2u` and a
+    release is `CSI 98;5:3u`. Under the other settings, a repeat is another
+    press and a release sends nothing.
+  - ⌃⌥B: `ESC b` with the protocol off, `CSI 98;7u` under it.
+  - ⌃⇧B: `0x02` with the protocol off, `CSI 98;6u` under `> 1 u`, and
+    `CSI 98:2;6u` under `> 5 u` and `> 7 u`.
+
+  Each Ctrl+B press, and ⌃⇧B's `0x02`, is then written to herdr twice; see
+  "Ctrl+B and herdr's attach" below.
 
 The test runs with a private HOME, so the user's own key bindings can't change
 the result.
+
+## Ctrl+B and herdr's attach
+
+```sh
+python3 Tests/Terminal/run-attach-input-tests.py --output /tmp/shepherd-attach-input-FRESH
+```
+
+Each pane's terminal is a `herdr terminal attach`, and herdr's attach client
+takes Ctrl+B as its prefix: it holds the key back and waits for the next one, and
+q after it ends the attach. So the bytes the terminal view sends go through
+`AgentTerminalViewModel.send`, which hands them to `HerdrAttachInput` before
+writing them to the attach. `HerdrAttachInput` writes each Ctrl+B press that
+herdr would take as its prefix twice, and herdr then passes one Ctrl+B on to the
+pane.
+
+Which forms herdr takes as its prefix depends on its version. herdr 0.9.0 and
+later take `0x02` and the kitty keyboard protocol's and modifyOtherKeys' forms of
+Ctrl+B; older herdr takes only `0x02`. The attach runs on the machine the pane
+belongs to, This Mac or an SSH machine, and that machine's `MachineMonitor` runs
+herdr commands there. `herdr machine list` exists only from 0.9.0 on, so when
+herdr answers it with "unknown command", the monitor notes that this herdr is
+older than 0.9.0. The terminal asks the monitor at every write. Until the monitor
+knows, and for a pane on a herdr machine, whose version the app can't learn,
+herdr is taken to be 0.9.0 or later.
+
+The test uses Foundation only: no herdr, no process, no terminal and no key
+presses.
+
+- A table of single writes, for herdr 0.9.0 and later:
+  - Written twice: `0x02` (as `0x02 0x02`), and `ESC 0x02`, which some
+    terminals send for Alt+Ctrl+B (as `ESC 0x02 0x02`); a kitty press whose key
+    code is 98 (b) with Ctrl alone, that is `CSI 98;5u`, also with Caps Lock
+    (`CSI 98;69u`) or Num Lock on, with the press event type written out
+    (`CSI 98;5:1u`), or with the alternate-key fields that `> 5 u` adds; and
+    modifyOtherKeys' `CSI 27;5;98~`.
+  - Written as they are: a repeat or a release; Ctrl+B with Shift, Alt or Super
+    added (`CSI 98;6u`, `CSI 98;7u` and so on); a press that carries its text; a
+    press from a non-Latin layout, whose key code isn't 98 even when its base
+    layout key is b (`CSI 1080::98;5u`); and q and other letters.
+  - A bracketed paste with `0x02 q` inside it is written as it is.
+  - Each row is also run through the model below, to check that what is written
+    twice is exactly what herdr 0.9 takes as its prefix.
+  - For an older herdr, the same table is checked with only the `0x02` bytes
+    written twice.
+- A ⌘V paste, which SwiftTerm sends in three writes (the paste's start marker,
+  its text and its end marker): the text is written as it is even when it holds
+  `0x02`, and a Ctrl+B after the end marker is written twice again.
+- A model of herdr's attach client, ported from herdr's source. For 0.9.0, 0.9.1
+  and master: the stdin framer (`src/raw_input.rs`), `filter_input`
+  (`src/client/attach.rs`, lines 57–146) and the key parser
+  (`src/input/parse.rs`). For 0.5.12 to 0.8.2: the byte loop in
+  `src/client/mod.rs`. The test types key sequences such as Ctrl+B then q into
+  the model:
+  - Without `HerdrAttachInput`, Ctrl+B then q ends the attach, as it did in the
+    app. On 0.9 the same happens when that Ctrl+B comes in its kitty, Caps Lock,
+    modifyOtherKeys or `ESC 0x02` form.
+  - With `HerdrAttachInput`, no key sequence ends the attach on either version,
+    and the pane gets exactly the bytes the view sent, whether herdr reads them
+    all at once or one byte at a time.
+  - One limit of herdr 0.8.2 remains, and the test checks it: `0x02 q` inside a
+    paste still ends the attach.
+  - The test also shows why the version matters. If the writes meant for 0.8.2
+    went to herdr 0.9, a kitty Ctrl+B followed by q would still end the attach.
+    If the writes meant for 0.9 went to herdr 0.8.2, a kitty Ctrl+B would reach
+    the pane twice.
+
+The model is a port, not herdr itself. When herdr is updated, compare its
+`attach.rs` and `parse.rs` with the model.
 
 ## Pasting a pane's or tab's ID
 
