@@ -1,0 +1,131 @@
+#if os(macOS)
+import Darwin
+import Foundation
+
+/// What the app asks the agent proxy over its control socket, `ap.sock`
+/// (`AgentProxyControl`). A stand-in takes the socket's place in view tests.
+nonisolated protocol AgentProxyControlling: Sendable {
+    func status() async throws -> AgentProxyStatus
+    func restartWhenIdle() async throws -> AgentProxyRestartWhenIdle
+    func createRoute(_ request: AgentProxyRouteCreate) async throws -> AgentProxyRouteCreated
+    func removeRoute(_ routeID: String) async throws -> Bool
+    func listRoutes() async throws -> [AgentProxyRoute]
+}
+
+nonisolated enum AgentProxyControlFailure: Error, Equatable, CustomStringConvertible {
+    /// Nothing listens on the socket: the proxy isn't running.
+    case unreachable
+    case timedOut
+    /// An answer that isn't one line of the protocol, or answers another request.
+    case malformed
+    /// The proxy turned the request down.
+    case refused(AgentProxyControlError)
+
+    var description: String {
+        switch self {
+        case .unreachable: "the agent proxy isn't running"
+        case .timedOut: "the agent proxy didn't answer in time"
+        case .malformed: "the agent proxy's answer couldn't be read"
+        case .refused(let error): "the agent proxy refused: \(error.code)"
+        }
+    }
+}
+
+/// `ap.sock` itself: a connection for each request, its line out and one line
+/// back, each way within `timeout`. Blocking reads and writes, on a queue of
+/// their own rather than the caller's.
+nonisolated struct AgentProxyControlClient: AgentProxyControlling {
+    let socketPath: String
+    var timeout: TimeInterval = 3
+    /// Larger than any answer the proxy gives (its route list included).
+    static let maximumAnswerBytes = 8 * 1024 * 1024
+
+    func status() async throws -> AgentProxyStatus {
+        try await call(.status, EmptyParams(), as: AgentProxyStatus.self)
+    }
+
+    func restartWhenIdle() async throws -> AgentProxyRestartWhenIdle {
+        try await call(.restartWhenIdle, EmptyParams(), as: AgentProxyRestartWhenIdle.self)
+    }
+
+    func createRoute(_ request: AgentProxyRouteCreate) async throws -> AgentProxyRouteCreated {
+        try await call(.routesCreate, request, as: AgentProxyRouteCreated.self)
+    }
+
+    func removeRoute(_ routeID: String) async throws -> Bool {
+        try await call(.routesRemove, AgentProxyRouteRemove(routeID: routeID), as: AgentProxyRouteRemoved.self).removed
+    }
+
+    func listRoutes() async throws -> [AgentProxyRoute] {
+        try await call(.routesList, EmptyParams(), as: AgentProxyRouteList.self).routes
+    }
+
+    private func call<Params: Encodable & Sendable, Result: Decodable & Sendable>(
+        _ method: AgentProxyControl.Method, _ params: Params, as type: Result.Type) async throws -> Result {
+        let id = "app_" + UUID().uuidString.prefix(8).lowercased()
+        let line = try AgentProxyControl.requestLine(id: id, method: method, params: params)
+        let path = socketPath, timeout = timeout
+        let answer: Data = try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async {
+                continuation.resume(with: Swift.Result { try Self.exchange(line, path: path, timeout: timeout) })
+            }
+        }
+        let response: ResponseEnvelope<Result>
+        do { response = try AgentProxyControl.decodeResponse(answer, as: Result.self) }
+        catch { throw AgentProxyControlFailure.malformed }
+        guard response.id == id else { throw AgentProxyControlFailure.malformed }
+        if let error = response.error { throw AgentProxyControlFailure.refused(error) }
+        guard let result = response.result else { throw AgentProxyControlFailure.malformed }
+        return result
+    }
+
+    /// One request line out and the answer's line back, without its newline.
+    static func exchange(_ line: Data, path: String, timeout: TimeInterval) throws -> Data {
+        guard AgentProxyPaths.socketPathFits(path) else { throw AgentProxyControlFailure.unreachable }
+        let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard descriptor >= 0 else { throw AgentProxyControlFailure.unreachable }
+        defer { close(descriptor) }
+        var on: Int32 = 1
+        setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
+        var limit = timeval(tv_sec: Int(timeout), tv_usec: Int32((timeout - Double(Int(timeout))) * 1_000_000))
+        setsockopt(descriptor, SOL_SOCKET, SO_RCVTIMEO, &limit, socklen_t(MemoryLayout<timeval>.size))
+        setsockopt(descriptor, SOL_SOCKET, SO_SNDTIMEO, &limit, socklen_t(MemoryLayout<timeval>.size))
+        var address = sockaddr_un()
+        address.sun_family = sa_family_t(AF_UNIX)
+        let bytes = Array(path.utf8)
+        withUnsafeMutableBytes(of: &address.sun_path) { raw in
+            for (index, byte) in bytes.enumerated() { raw[index] = byte }
+            raw[bytes.count] = 0
+        }
+        address.sun_len = UInt8(MemoryLayout<sockaddr_un>.size)
+        let connected = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(descriptor, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
+        }
+        guard connected == 0 else { throw AgentProxyControlFailure.unreachable }
+        var sent = 0
+        while sent < line.count {
+            let count = line.withUnsafeBytes { write(descriptor, $0.baseAddress! + sent, line.count - sent) }
+            if count > 0 { sent += count; continue }
+            if count < 0 && errno == EINTR { continue }
+            throw (errno == EAGAIN || errno == EWOULDBLOCK) ? AgentProxyControlFailure.timedOut : AgentProxyControlFailure.unreachable
+        }
+        var answer = Data()
+        var buffer = [UInt8](repeating: 0, count: 64 * 1024)
+        while true {
+            let count = read(descriptor, &buffer, buffer.count)
+            if count > 0 {
+                if let newline = buffer[0..<count].firstIndex(of: 0x0A) {
+                    answer.append(contentsOf: buffer[0..<newline])
+                    return answer
+                }
+                answer.append(contentsOf: buffer[0..<count])
+                guard answer.count <= maximumAnswerBytes else { throw AgentProxyControlFailure.malformed }
+                continue
+            }
+            if count < 0 && errno == EINTR { continue }
+            if count < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) { throw AgentProxyControlFailure.timedOut }
+            throw AgentProxyControlFailure.malformed
+        }
+    }
+}
+#endif

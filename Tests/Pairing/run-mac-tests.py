@@ -8,7 +8,9 @@ read back with Core Image, the coordinator end to end with a device on
 127.0.0.1, the SSH server probe's key exchange half against the Citadel and
 swift-nio-ssh an app build made (--products), and Settings' iPhone and iPad
 pages in never-shown windows, read and pressed through accessibility — with
-Add Device… on This Mac only (SHPHRD-110).
+Add Device… on This Mac only (SHPHRD-110), and "Show Conversations on iPhone
+and iPad" (SHPHRD-105) over the agent proxy's service with a stand-in
+LaunchAgent and proxy.
 
 No app, no SSH server (127.0.0.1:22 included), no Keychain, no Secure
 Enclave, no LocalAuthentication, no DNS, no System Settings, no pasteboard,
@@ -117,9 +119,15 @@ stage('probe-build', 600, [*swiftc, '-I', str(products), *[a for m in maps for a
                            '-o', str(out / 'pairing-probe-tests')])
 probe_result = stage('probe-tests', 120, [*sandboxed, str(out / 'pairing-probe-tests')])
 
-# 3. Settings' pages, in never-shown windows.
-views = kit + app + ['Shepherd/Hosts/Views/SettingsPageChrome.swift', 'Shepherd/Hosts/Views/InfoButton.swift', 'Shepherd/Hosts/Views/PairDeviceView.swift',
-                     'Shepherd/Hosts/Views/PairedDevicesSettingsView.swift', fixtures, 'Tests/Pairing/PairingSettingsViewTests.swift']
+# 3. Settings' pages, in never-shown windows, with the agent proxy's setting
+# over its service (not its system environment: no SMAppService, defaults or herdr).
+proxy_protocol = sorted(str(x.relative_to(ROOT)) for x in (ROOT / 'AgentProxy/Sources/AgentProxyProtocol').glob('*.swift'))
+proxy = proxy_protocol + ['Shepherd/AgentProxy/AgentProxyService.swift', 'Shepherd/AgentProxy/AgentProxyControlClient.swift',
+                          'Shepherd/AgentProxy/AgentProxyLaunchAgent.swift', 'Shepherd/AgentProxy/AgentProxyInjectionPolicy.swift',
+                          'Shepherd/Agents/AgentProxyRouting.swift', 'Shepherd/Agents/AgentRuntime.swift', f'{KIT}/Agents/AgentKind.swift',
+                          'Shepherd/Hosts/Views/AgentProxySettingSection.swift']
+views = kit + app + proxy + ['Shepherd/Hosts/Views/SettingsPageChrome.swift', 'Shepherd/Hosts/Views/InfoButton.swift', 'Shepherd/Hosts/Views/PairDeviceView.swift',
+                             'Shepherd/Hosts/Views/PairedDevicesSettingsView.swift', fixtures, 'Tests/Pairing/PairingSettingsViewTests.swift']
 stage('views-build', 600, [*swiftc, *views, '-o', str(out / 'pairing-view-tests')])
 views_result = stage('views-tests', 240, [*sandboxed, str(out / 'pairing-view-tests'), str(out / 'views-output')])
 
@@ -133,7 +141,17 @@ assert 'PairedDevicesSettingsView(model: .system(),' in settings and 'PairingCoo
 assert 'addUnavailableReason: LocalOnlyAddition.device.unavailableReason(on: machineStore.activeMachine)) {' in settings, \
     'Add Device… while the window shows This Mac only'
 devices_page = read('Shepherd/Hosts/Views/PairedDevicesSettingsView.swift')
-assert 'PairDeviceView(coordinator: coordinator, unavailableReason: addUnavailableReason) {' in devices_page
+assert 'PairDeviceView(coordinator: coordinator, agentProxy: agentProxy, agentProxyUnavailableReason: agentProxyUnavailableReason,\n' \
+       '                               unavailableReason: addUnavailableReason) {' in devices_page
+# Show Conversations on iPhone and iPad: on both pages, from This Mac only (SHPHRD-105).
+assert 'agentProxy: .shared,\n                                          agentProxyUnavailableReason: LocalOnlyAddition.agentProxy.unavailableReason(on: machineStore.activeMachine),' \
+    in settings, 'the setting while the window shows This Mac only'
+assert 'AgentProxySettingSection(service: agentProxy, unavailableReason: agentProxyUnavailableReason, identifier: "settings.devices")' in devices_page
+assert 'AgentProxySettingSection(service: agentProxy, unavailableReason: agentProxyUnavailableReason, identifier: "settings.pair")' in \
+    read('Shepherd/Hosts/Views/PairDeviceView.swift')
+section_view = read('Shepherd/Hosts/Views/AgentProxySettingSection.swift')
+assert '.disabled(unavailableReason != nil)\n            .accessibilityIdentifier(identifier + ".conversations")' in section_view
+assert 'SMAppService' not in ''.join(read(n) for n in proxy), 'the views are built without the system environment' 
 assert '.disabled(addUnavailableReason != nil)\n                        .accessibilityIdentifier("settings.devices.add")' in devices_page
 assert '.onChange(of: unavailableReason, initial: true) { _, reason in\n            coordinator.setUnavailable(reason)' in \
     read('Shepherd/Hosts/Views/PairDeviceView.swift'), 'the Add page follows the window'
@@ -172,7 +190,7 @@ assert pressed and not [p for p in pressed if re.search(r'remove|open-sharing|co
 stages.append('static-checks')
 
 hashed = core + probe + views + ['Tests/Pairing/run-mac-tests.py', 'Shepherd/Hosts/Views/MachinesSettingsView.swift',
-                                 'Shepherd/Hosts/Views/LocalOnlyAddition.swift'] + system_only
+                                 'Shepherd/Hosts/Views/LocalOnlyAddition.swift', 'Shepherd/AgentProxy/AgentProxyService+System.swift'] + system_only
 (out / 'source-hashes.json').write_text(json.dumps({n: hashlib.sha256((ROOT / n).read_bytes()).hexdigest() for n in sorted(set(hashed))}, indent=2))
 summary = {'core': core_result.strip().splitlines()[-1], 'probe': probe_result.strip().splitlines()[-1], 'views': views_result.strip().splitlines()[-1]}
 (out / 'validation.json').write_text(json.dumps({'passed': True, 'stages': stages, 'summary': summary, 'sandboxed': True,

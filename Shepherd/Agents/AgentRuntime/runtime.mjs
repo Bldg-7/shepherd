@@ -4,9 +4,9 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {VERSION,SERVER,SERVERS,PLUGIN,PLUGINS,RuntimeError,requireValue,quote,privateDirectory,atomicWrite,readJSON,readCodex,mergedInstructions,detect,validateEndpoint,paneName,childCommand,injected,resume,optionValues,instructionOverride,requireNode,inspectClaudeRegistrations} from './runtime-core.mjs';
+import {VERSION,SERVER,SERVERS,PLUGIN,PLUGINS,RuntimeError,requireValue,quote,privateDirectory,atomicWrite,readJSON,readCodex,mergedInstructions,detect,validateEndpoint,paneName,childCommand,injected,resume,optionValues,instructionOverride,requireNode,inspectClaudeRegistrations,validApiProxyBase,withoutApiProxy,apiProxyConflict,API_PROXY_SETTINGS,CLAUDE_MANAGED_SETTINGS} from './runtime-core.mjs';
 
-import {resolvePiExecutable, piInvocation, PiIntegrationError} from './pi-runtime.mjs';
+import {resolvePiExecutable, piPackageVersion, piInvocation, PiIntegrationError} from './pi-runtime.mjs';
 const source=path.dirname(fileURLToPath(import.meta.url));
 export function locations(root) {
   requireNode();
@@ -101,7 +101,7 @@ export function install(request) {
     const pkg=readJSON(path.join(source,'node_modules','@playwright','mcp','package.json'),null);
     requireValue(pkg?.version === '0.0.83','offline-dependencies-missing');
     const hash=crypto.createHash('sha256');
-    for(const name of ['runtime.mjs','runtime-core.mjs','pi-runtime.mjs','pi-lifecycle.mjs','pi-control.mjs','pi-host.mjs','pi-mcp-run.mjs','pi-mcp-registration.mjs','pi-herdr.mjs','pi-session-name.mjs','pi-entry.ts','pi-launch.mjs','pi-guidance.md','protected-read.mjs','credential.mjs','mcp-run.mjs','hook.mjs','package-lock.json','skill/SKILL.md']) hash.update(fs.readFileSync(path.join(source,name)));
+    for(const name of ['runtime.mjs','runtime-core.mjs','pi-runtime.mjs','pi-lifecycle.mjs','pi-control.mjs','pi-host.mjs','pi-mcp-run.mjs','pi-mcp-registration.mjs','pi-herdr.mjs','pi-session-name.mjs','pi-entry.ts','pi-launch.mjs','pi-api-proxy.mjs','pi-guidance.md','protected-read.mjs','credential.mjs','mcp-run.mjs','hook.mjs','package-lock.json','skill/SKILL.md']) hash.update(fs.readFileSync(path.join(source,name)));
     const version=VERSION+'-'+hash.digest('hex').slice(0,16);
     const versions=path.join(request.root,'versions');privateDirectory(versions);
     const destination=path.join(versions,version);
@@ -168,7 +168,7 @@ export function stagePi(request) {
     const search=process.env.PATH ?? '/usr/bin:/bin';
     requireValue(search.split(path.delimiter).every(p=>path.isAbsolute(p)),'invalid-execution-path');
     return {id,sessionID,folder,manifest,bootstrap,cli,node:process.execPath,entry,resources,arguments:args,
-      environment:{PATH:path.join(folder,'bin')+path.delimiter+search}};
+      environment:{PATH:path.join(folder,'bin')+path.delimiter+search},cliVersion:piPackageVersion(cli)};
   });
 }
 export function reserveLaunch(request) {
@@ -201,8 +201,11 @@ function prepareUnlocked(request) {
   const preferences=request.preferences ?? {};const mode=preferences.mode ?? 'plugin';
   requireValue(mode === 'plugin' && installation.mode === 'plugin','session-only-policy');
   checkScope(request);
-  const userArgs=request.arguments ?? [];
-  requireValue(Array.isArray(userArgs) && userArgs.every(a=>typeof a === 'string'),'invalid-arguments');
+  const givenArgs=request.arguments ?? [];
+  requireValue(Array.isArray(givenArgs) && givenArgs.every(a=>typeof a === 'string'),'invalid-arguments');
+  // An agent goes through the agent proxy only when this launch asks for it:
+  // the proxy's own arguments read back from an agent are left out.
+  const userArgs=withoutApiProxy(kind,givenArgs,request.root);
   // Treat a manually supplied registration of this integration, under either
   // name, as a conflict rather than appending a second copy. Preserve all
   // unrelated arguments and profiles.
@@ -219,6 +222,15 @@ function prepareUnlocked(request) {
   requireValue(!Object.entries(codex.plugins ?? {}).some(([name,config])=>PLUGINS.some(plugin=>name.startsWith(plugin+'@'+plugin+'-')) && config.enabled === true),'globally-enabled-shepherd-plugin');
   const pluginSettings=readJSON(request.claudePluginSettingsFile ?? path.join(path.dirname(request.claudeSettingsFile),'settings.json'),{});
   requireValue(!Object.entries(pluginSettings.enabledPlugins ?? {}).some(([name,enabled])=>ownPlugin(name) && enabled === true),'globally-enabled-shepherd-plugin');
+  // The agent proxy, unless the user's own settings point the agent elsewhere.
+  let apiProxy=null;
+  if(request.apiProxy !== undefined) {
+    requireValue(request.apiProxy && typeof request.apiProxy === 'object' && validApiProxyBase(request.apiProxy.baseURL),'invalid-api-proxy');
+    const managed=request.claudeManagedSettingsFile ?? CLAUDE_MANAGED_SETTINGS;
+    requireValue(typeof managed === 'string' && path.isAbsolute(managed),'configuration-path-required');
+    const reason=apiProxyConflict(kind,{args:userArgs,claudeSettingsFiles:[managed,request.claudeSettingsFile],codex});
+    apiProxy={injected:reason === null,reason};
+  }
   const outputMaxSize=preferences.outputMaxSize ?? 64*1024*1024;
   requireValue(Number.isSafeInteger(outputMaxSize) && outputMaxSize >= 1024*1024 && outputMaxSize <= 1024*1024*1024,'invalid-output-limit');
   for(const origin of [...(preferences.allowedOrigins ?? []),...(preferences.blockedOrigins ?? [])]) requireValue(/^https?:\/\/[^\s/]+$/.test(origin),'invalid-origin');
@@ -247,6 +259,16 @@ function prepareUnlocked(request) {
   let args=[];let injection;
   if(kind === 'claude') {args=['--plugin-dir',pluginDirectory];injection='plugin';}
   else {args=codexOverrides(server);injection='codexConfigurationFallback';}
+  if(apiProxy?.injected) {
+    if(kind === 'claude') {
+      // Claude Code's own environment variables, in a settings file only this
+      // user can read: the base URL carries the route's token.
+      const settings=path.join(sessionFolder,API_PROXY_SETTINGS);
+      atomicWrite(settings,JSON.stringify({env:{ANTHROPIC_BASE_URL:request.apiProxy.baseURL,
+        CLAUDE_CODE_GATEWAY_HINT_HEADERS:'1',CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING:'1'}}));
+      args.push('--settings',settings);
+    } else args.push('-c','openai_base_url='+JSON.stringify(request.apiProxy.baseURL+'/backend-api/codex'));
+  }
   // Codex plugins cannot reliably rewrite child commands. This appended
   // instruction is also the tested capability fallback, merged with user text.
   if(kind === 'codex') {
@@ -271,10 +293,11 @@ function prepareUnlocked(request) {
   }
   args=[...(kind === 'codex' && request.profile && !optionValues(userArgs,['-p','--profile']).length ? ['--profile',request.profile] : []),...userArgs,...args];
   if(request.resumeSession) args=resume(kind,args,request.resumeSession);
-  const result={kind,executable:request.executable,arguments:args,environment:request.reservationID ? {SHEPHERD_AGENT_SESSION:descriptor} : {},outputFolder,sessionFolder,pluginDirectory,mcpConfiguration,mcpArguments:server.args,codexPluginKey:null,injection};
+  const result={kind,executable:request.executable,arguments:args,environment:request.reservationID ? {SHEPHERD_AGENT_SESSION:descriptor} : {},outputFolder,sessionFolder,pluginDirectory,mcpConfiguration,mcpArguments:server.args,codexPluginKey:null,injection,...(apiProxy ? {apiProxy} : {})};
   const registryFile=path.join(request.root,'panes.json');const registry=readJSON(registryFile,[]).filter(p=>paneName(p.pane) !== paneName(request.pane) || p.kind !== kind);
   if(request.reservationID) fs.unlinkSync(path.join(sessionFolder,'.reserved'));
-  registry.push({...result,pane:request.pane,descriptor});atomicWrite(registryFile,JSON.stringify(registry));
+  // Codex's proxy argument carries the route's token: not kept in the registry.
+  registry.push({...result,arguments:withoutApiProxy(kind,args,request.root),pane:request.pane,descriptor});atomicWrite(registryFile,JSON.stringify(registry));
   return result;
   } catch(error) {
     fs.rmSync(sessionFolder,{recursive:true,force:true});

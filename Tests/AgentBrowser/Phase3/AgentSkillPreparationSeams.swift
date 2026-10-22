@@ -61,7 +61,7 @@ actor LocalHerdrTransport: HerdrTransport {
     let isReady = false
     let failure: String? = "native-fixture-required"
     var hasConnected = false
-    init(stage: PiStagedLaunch, owner: AgentPaneIdentity, machine: Machine, client: HerdrClient, cwd: String, preferences: AgentRuntimePreferences) throws {
+    init(stage: PiStagedLaunch, owner: AgentPaneIdentity, machine: Machine, client: HerdrClient, cwd: String, preferences: AgentRuntimePreferences, apiProxyBaseURL: String? = nil) throws {
         throw PiBridgeFailure.unavailable
     }
     func prepare() async throws { throw PiBridgeFailure.unavailable }

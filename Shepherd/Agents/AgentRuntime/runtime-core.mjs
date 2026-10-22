@@ -228,3 +228,88 @@ export function resume(kind, args, session) {
   return kind === 'claude' ? [...args,'--resume',session] : [...args,'resume',session];
 }
 export function toml(config) { return TOML.stringify(config); }
+
+// The agent proxy (SHPHRD-105): the forwarder on 127.0.0.1 and a route's
+// 128-bit token. A launch from the New Tab launcher passes its base URL to
+// `prepare`; the agent then sends its model requests there.
+const API_PROXY_BASE=/^http:\/\/127\.0\.0\.1:([1-9][0-9]{0,4})\/p\/[0-9a-f]{32}$/;
+export function validApiProxyBase(value) {
+  const match=typeof value === 'string' && API_PROXY_BASE.exec(value);
+  return !!match && +match[1] <= 65535;
+}
+// Claude Code gets the proxy from a settings file of the session (0600);
+// Codex from a -c override. Both as `prepare` writes them, so that they are
+// recognised in arguments read back from a running agent.
+export const API_PROXY_SETTINGS='api-proxy.json';
+export const CLAUDE_MANAGED_SETTINGS='/Library/Application Support/ClaudeCode/managed-settings.json';
+const CODEX_API_PROXY=/^openai_base_url="http:\/\/127\.0\.0\.1:[1-9][0-9]{0,4}\/p\/[0-9a-f]{32}\/backend-api\/codex"$/;
+function ownApiProxySettings(file, root) {
+  return typeof file === 'string' && typeof root === 'string' && path.isAbsolute(file) && path.basename(file) === API_PROXY_SETTINGS &&
+    file.startsWith(root.endsWith('/') ? root : root+'/');
+}
+// The proxy's own arguments left out of arguments read back from an agent (a
+// resume, or a child given its parent's): an agent goes through the proxy
+// only when the launch that starts it asks for that.
+export function withoutApiProxy(kind, args, root) {
+  const result=[];
+  for(let i=0;i<args.length;i++) {
+    const value=args[i];
+    if(kind === 'claude') {
+      if(value === '--settings' && ownApiProxySettings(args[i+1],root)) {i++;continue;}
+      if(value.startsWith('--settings=') && ownApiProxySettings(value.slice('--settings='.length),root)) continue;
+    } else if(kind === 'codex') {
+      if((value === '-c' || value === '--config') && CODEX_API_PROXY.test(args[i+1] ?? '')) {i++;continue;}
+      if(value.startsWith('--config=') && CODEX_API_PROXY.test(value.slice('--config='.length))) continue;
+    }
+    result.push(value);
+  }
+  return result;
+}
+function overrideValue(value) {
+  try {return TOML.parse('v='+value).v;} catch {return value;}
+}
+const CLAUDE_ENDPOINTS=['ANTHROPIC_BASE_URL','ANTHROPIC_BEDROCK_BASE_URL','ANTHROPIC_VERTEX_BASE_URL','ANTHROPIC_FOUNDRY_BASE_URL'];
+const CLAUDE_KEYS=['ANTHROPIC_API_KEY','ANTHROPIC_AUTH_TOKEN'];
+const HTTP_PROXIES=['HTTP_PROXY','HTTPS_PROXY','ALL_PROXY'];
+// Why the user's own settings keep an agent off the proxy, or null.
+// Claude Code: settings given on its command line, or in the managed or the
+// user's settings another endpoint, an API key (or a forced Console login),
+// apiKeyHelper, a CLAUDE_CODE_USE_* provider or an HTTP proxy. Codex: another
+// base URL or another provider in its config (with the profile) or its -c
+// overrides, or --oss. Only names are looked at: no value is kept or passed on.
+export function apiProxyConflict(kind, {args, claudeSettingsFiles = [], codex = {}}) {
+  if(kind === 'claude') {
+    if(optionValues(args,['--settings']).length) return 'user-settings-argument';
+    for(const file of claudeSettingsFiles) {
+      let settings;
+      try {settings=readJSON(file,{});} catch {return 'unreadable-settings';}
+      if(!settings || typeof settings !== 'object' || Array.isArray(settings)) return 'unreadable-settings';
+      if(settings.apiKeyHelper !== undefined) return 'api-key-helper';
+      if(settings.forceLoginMethod === 'console') return 'api-key';
+      const env=settings.env ?? {};
+      if(!env || typeof env !== 'object' || Array.isArray(env)) return 'unreadable-settings';
+      for(const [name,value] of Object.entries(env)) {
+        if(value === undefined || value === null || value === '') continue;
+        if(CLAUDE_ENDPOINTS.includes(name)) return 'custom-endpoint';
+        if(CLAUDE_KEYS.includes(name)) return 'api-key';
+        if(name.startsWith('CLAUDE_CODE_USE_') && !['0','false'].includes(String(value).toLowerCase())) return 'other-provider';
+        if(HTTP_PROXIES.includes(name.toUpperCase())) return 'http-proxy';
+      }
+    }
+    return null;
+  }
+  if(kind === 'codex') {
+    if(codex.openai_base_url !== undefined || codex.chatgpt_base_url !== undefined) return 'custom-endpoint';
+    if(codex.model_provider !== undefined && codex.model_provider !== 'openai') return 'other-provider';
+    if(args.includes('--oss')) return 'other-provider';
+    for(const override of optionValues(args,['-c','--config'])) {
+      const equal=override.indexOf('=');
+      const key=(equal < 0 ? override : override.slice(0,equal)).trim();
+      if(key === 'openai_base_url' || key === 'chatgpt_base_url') return 'custom-endpoint';
+      if(key === 'model_provider' && overrideValue(override.slice(equal+1)) !== 'openai') return 'other-provider';
+      if(key === 'model_providers' || key.startsWith('model_providers.')) return 'other-provider';
+    }
+    return null;
+  }
+  return null;
+}

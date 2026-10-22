@@ -75,10 +75,30 @@ nonisolated struct PiStagedLaunch: Codable, Sendable {
     let resources: String
     let arguments: [String]
     let environment: [String: String]
+    /// The version of the Pi package `stagePi` resolved (its package.json),
+    /// for the agent proxy's version floor. Read, never run.
+    var cliVersion: String? = nil
 
     /// The session shim `stagePi` wrote: run by this path, so that the pane's
     /// shell needn't find it through PATH.
     var shim: String { folder + "/bin/pi" }
+}
+
+/// The agent proxy's address for an agent the New Tab launcher starts
+/// (SHPHRD-105), given to `prepare`, which puts it in the agent's arguments
+/// unless the user's own settings point the agent elsewhere.
+nonisolated struct AgentAPIProxyRequest: Codable, Sendable, Equatable {
+    /// `http://127.0.0.1:PORT/p/<token>`: never logged or shown.
+    let baseURL: String
+}
+
+/// What `prepare` did with an `AgentAPIProxyRequest`: whether the agent goes
+/// through the proxy, and, when it doesn't, why (`user-settings-argument`,
+/// `custom-endpoint`, `api-key`, `api-key-helper`, `other-provider`,
+/// `http-proxy`, `unreadable-settings`).
+nonisolated struct AgentAPIProxyPreparation: Codable, Sendable, Equatable {
+    let injected: Bool
+    let reason: String?
 }
 
 /// Immutable launch plan. Pass arguments as argv to agent.start, not as shell
@@ -97,6 +117,8 @@ nonisolated struct PreparedAgentLaunch: Codable, Sendable {
     let mcpArguments: [String]
     let codexPluginKey: String?
     let injection: Injection
+    /// Set when the launch asked for the agent proxy (`AgentAPIProxyRequest`).
+    var apiProxy: AgentAPIProxyPreparation? = nil
 
     /// Process argv is authoritative. A global registration cannot be proven
     /// from argv; return false so UI does not incorrectly show a connection.
@@ -135,7 +157,7 @@ nonisolated struct PreparedAgentLaunch: Codable, Sendable {
             arguments: arguments + resumeArguments,
             environment: environment, outputFolder: outputFolder, sessionFolder: sessionFolder,
             pluginDirectory: pluginDirectory, mcpConfiguration: mcpConfiguration,
-            mcpArguments: mcpArguments, codexPluginKey: codexPluginKey, injection: injection)
+            mcpArguments: mcpArguments, codexPluginKey: codexPluginKey, injection: injection, apiProxy: apiProxy)
     }
 
     private static func jsonString(_ value: [String]) -> String {
@@ -258,6 +280,7 @@ nonisolated struct AgentRuntime: Sendable {
                  preferences: AgentRuntimePreferences = .init(), arguments: [String] = [],
                  codexHome: String, claudeSettingsFile: String, profile: String? = nil,
                  reservation: AgentLaunchReservation? = nil, credentialLeaseFile: String? = nil,
+                 apiProxy: AgentAPIProxyRequest? = nil,
                  on host: AgentHost) async throws -> PreparedAgentLaunch {
         try requireLocal(host)
         guard kind.supportsLegacySessionInspection else { throw AgentRuntimeError.rejected("pi-launch-unqualified") }
@@ -267,6 +290,7 @@ nonisolated struct AgentRuntime: Sendable {
         if let profile { values["profile"] = profile }
         if let reservation { values["reservationID"] = reservation.reservationID }
         if let credentialLeaseFile { values["credentialLeaseFile"] = credentialLeaseFile }
+        if let apiProxy { values["apiProxy"] = try object(apiProxy) }
         return try await run(action: "prepare", values: values)
     }
 

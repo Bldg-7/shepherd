@@ -28,6 +28,9 @@ import Foundation
     private let listener = PiBridgeListener()
     private let launch: PiBridgeLaunch
     private let socketDirectory: URL
+    /// The agent proxy's base URL for this Pi, written into its launch.json
+    /// for `pi-api-proxy.mjs`; nil when Pi goes without the proxy.
+    private let apiProxyBaseURL: String?
     private var monitor: Task<Void, Never>?
     private(set) var failure: String?
     private(set) var stopped = false
@@ -42,10 +45,11 @@ import Foundation
     var hasWork: Bool { !stopped || host.hasWork }
 
     init(stage: PiStagedLaunch, owner: AgentPaneIdentity, machine: Machine, client: HerdrClient,
-         cwd: String, preferences: AgentRuntimePreferences, proxy: CDPProxy = .shared) throws {
+         cwd: String, preferences: AgentRuntimePreferences, apiProxyBaseURL: String? = nil, proxy: CDPProxy = .shared) throws {
         guard machine.isLocal, owner.herdrMachineID == nil, owner.machineID == machine.id.uuidString,
               owner.session == BrowserKey.session(named: machine.sessionName) else { throw PiBridgeFailure.denied }
         self.stage = stage; self.owner = owner; self.machine = machine; self.client = client
+        self.apiProxyBaseURL = apiProxyBaseURL
         admission = Admission(owner: owner)
         let admissionState = admission
         let claim = try proxy.claimRoute(for: BrowserKey(machineID: machine.id, herdrMachineID: nil, session: owner.session, paneID: owner.paneID), terminalID: owner.terminalID,
@@ -72,8 +76,9 @@ import Foundation
             let socket = socketDirectory.appendingPathComponent("c.sock").path
             try await listener.start(path: socket, host: host)
             try host.provision(launch, socketPath: socket)
-            try PiBrowserLeaseProvider.write(["version":1,"cli":stage.cli,"bootstrap":stage.bootstrap,"cwd":launch.cwd,"arguments":stage.arguments],
-                                             to: URL(fileURLWithPath: stage.manifest))
+            var manifest: [String: Any] = ["version":1,"cli":stage.cli,"bootstrap":stage.bootstrap,"cwd":launch.cwd,"arguments":stage.arguments]
+            if let apiProxyBaseURL { manifest["apiProxy"] = ["baseURL": apiProxyBaseURL] }
+            try PiBrowserLeaseProvider.write(manifest, to: URL(fileURLWithPath: stage.manifest))
             try await client.connect()
             monitor = Task { await observe() }
         } catch { await stop(); throw error }

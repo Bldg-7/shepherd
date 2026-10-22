@@ -102,6 +102,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Before launching finishes, so that a click on a notification that
         // launched the app gets to it.
         NotificationCoordinator.shared.prepare()
+        // The agent proxy as its setting left it, whether or not the browser
+        // is on: agents may still be using it (SHPHRD-105).
+        AgentLaunchService.shared.agentProxy = AgentProxyService.shared
+        AgentProxyService.shared.start()
         guard ShepherdBrowserFeature.shared.isEnabled else { return }
         AgentLaunchService.shared.start()
         Task {

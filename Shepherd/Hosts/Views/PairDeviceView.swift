@@ -10,6 +10,10 @@ import SwiftUI
 /// closes the listener and turns down a request still waiting.
 struct PairDeviceView: View {
     let coordinator: PairingCoordinator
+    /// "Show Conversations on iPhone and iPad" (SHPHRD-105), under the code
+    /// when given, as on the iPhone and iPad page.
+    var agentProxy: AgentProxyService? = nil
+    var agentProxyUnavailableReason: String? = nil
     /// Why no device can be added now, or nil when one can: the page stays,
     /// but shows no new code, with why in the code's place (see
     /// `PairingCoordinator.setUnavailable`).
@@ -32,6 +36,9 @@ struct PairDeviceView: View {
                     checksSection
                     addressSection
                     codeSection
+                    if let agentProxy {
+                        AgentProxySettingSection(service: agentProxy, unavailableReason: agentProxyUnavailableReason, identifier: "settings.pair")
+                    }
                 }
             }
             .formStyle(.grouped)

@@ -10,6 +10,11 @@ struct PairedDevicesSettingsView: View {
     let model: PairedDevicesModel
     /// A new coordinator for each visit to the Add page.
     let makeCoordinator: () -> PairingCoordinator
+    /// "Show Conversations on iPhone and iPad" (SHPHRD-105), shown on this
+    /// page and the Add page when given, greyed out with
+    /// `agentProxyUnavailableReason` while it can't be changed.
+    var agentProxy: AgentProxyService? = nil
+    var agentProxyUnavailableReason: String? = nil
     /// Why no device can be added now, or nil when one can: Add Device… is
     /// greyed out with it shown under the list, and an Add page already open
     /// shows no new code (see `PairingCoordinator.setUnavailable`). The
@@ -27,7 +32,8 @@ struct PairedDevicesSettingsView: View {
     var body: some View {
         ZStack {
             if let coordinator {
-                PairDeviceView(coordinator: coordinator, unavailableReason: addUnavailableReason) {
+                PairDeviceView(coordinator: coordinator, agentProxy: agentProxy, agentProxyUnavailableReason: agentProxyUnavailableReason,
+                               unavailableReason: addUnavailableReason) {
                     withAnimation(Self.pageAnimation) { self.coordinator = nil }
                     model.reload()
                 }
@@ -78,6 +84,9 @@ struct PairedDevicesSettingsView: View {
                 }
                 if let failure = model.removalFailure {
                     removalFailureSection(failure)
+                }
+                if let agentProxy {
+                    AgentProxySettingSection(service: agentProxy, unavailableReason: agentProxyUnavailableReason, identifier: "settings.devices")
                 }
                 Section("History") {
                     if model.history.isEmpty {

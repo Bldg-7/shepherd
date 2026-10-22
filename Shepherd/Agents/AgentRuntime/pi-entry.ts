@@ -4,6 +4,7 @@ import { registerPiLifecycle } from './pi-lifecycle.mjs';
 import { createPiMcpRegistration } from './pi-mcp-registration.mjs';
 import { registerPiHerdr } from './pi-herdr.mjs';
 import { registerPiSessionNaming } from './pi-session-name.mjs';
+import { registerPiApiProxy } from './pi-api-proxy.mjs';
 
 /** Loaded only by an explicitly prepared invocation; never installed globally. */
 export default function shepherdPi(pi: ExtensionAPI) {
@@ -13,6 +14,8 @@ export default function shepherdPi(pi: ExtensionAPI) {
   let ui: { setStatus(key: string, text: string | undefined): void } | undefined;
   let controlHealthy = true;
   const onFailure = () => { controlHealthy = false; void controller?.shutdown(); };
+  // The agent proxy, when the app gave this launch one (SHPHRD-105).
+  registerPiApiProxy(pi, bootstrap);
   registerPiHerdr(pi, bootstrap, onFailure);
   // The pane's name from the app's Rename Pane, set on the session while Pi is idle.
   const naming = registerPiSessionNaming(pi);

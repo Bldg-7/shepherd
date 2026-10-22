@@ -7573,6 +7573,106 @@
         "ja" : { "stringUnit" : { "state" : "translated", "value" : "「%@」が応答の前に要求を取り消したか、接続が切れました。" } },
         "ko" : { "stringUnit" : { "state" : "translated", "value" : "‘%@’이(가) 응답 전에 요청을 취소했거나 연결이 끊겼습니다." } }
       }
+    },
+    "Show Conversations on iPhone and iPad" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "iPhone と iPad で会話を表示" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "iPhone과 iPad에서 대화 보기" } }
+      }
+    },
+    "Claude Code, Codex and Pi that you start on this Mac from New Tab, signed in with a Claude or ChatGPT subscription, send their requests through a proxy on this Mac, so that iPhone and iPad can show their conversations. Claude Code's Remote Control is turned off for them. The first time you turn this on, macOS shows a “Background Items Added” notification for the proxy." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "この Mac で新しい tab から起動し、Claude または ChatGPT のサブスクリプションでサインインした Claude Code、Codex、Pi は、この Mac のプロキシを経由してリクエストを送るため、iPhone と iPad でその会話を表示できます。これらの agent では Claude Code の Remote Control がオフになります。初めてオンにすると、macOS がプロキシについて「バックグラウンド項目が追加されました」という通知を表示します。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "이 Mac에서 새 tab으로 시작하고 Claude 또는 ChatGPT 구독으로 로그인한 Claude Code, Codex, Pi는 이 Mac의 프록시를 거쳐 요청을 보내므로, iPhone과 iPad에서 그 대화를 볼 수 있습니다. 이 agent들에서는 Claude Code의 Remote Control이 꺼집니다. 처음 켜면 macOS가 프록시에 대해 ‘백그라운드 항목이 추가됨’ 알림을 보여 줍니다." } }
+      }
+    },
+    "Starting the proxy…" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "プロキシを起動しています…" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "프록시를 시작하는 중…" } }
+      }
+    },
+    "The proxy is running. Agents you start from now on go through it." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "プロキシが動作中です。これから起動する agent はプロキシを経由します。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "프록시가 실행 중입니다. 지금부터 시작하는 agent는 이 프록시를 거칩니다." } }
+      }
+    },
+    "The proxy is turned off in System Settings › General › Login Items & Extensions. Turn hrdrhrdrhrdr on there to use it." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "プロキシがシステム設定 › 一般 › ログイン項目と機能拡張でオフになっています。使うには、そこで hrdrhrdrhrdr をオンにしてください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "프록시가 시스템 설정 › 일반 › 로그인 항목 및 확장 프로그램에서 꺼져 있습니다. 사용하려면 그곳에서 hrdrhrdrhrdr를 켜세요." } }
+      }
+    },
+    "Open Login Items Settings…" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ログイン項目の設定を開く…" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "로그인 항목 설정 열기…" } }
+      }
+    },
+    "Connect to This Mac to change this setting." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "この設定を変更するには、この Mac に接続してください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "이 설정을 바꾸려면 이 Mac에 연결하세요." } }
+      }
+    },
+    "macOS didn't let hrdrhrdrhrdr add the proxy: %@" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "macOS が hrdrhrdrhrdr によるプロキシの追加を許可しませんでした: %@" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "macOS가 hrdrhrdrhrdr의 프록시 추가를 허용하지 않았습니다: %@" } }
+      }
+    },
+    "macOS didn't let hrdrhrdrhrdr remove the proxy: %@" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "macOS が hrdrhrdrhrdr によるプロキシの削除を許可しませんでした: %@" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "macOS가 hrdrhrdrhrdr의 프록시 제거를 허용하지 않았습니다: %@" } }
+      }
+    },
+    "The proxy isn't answering. Agents start without it until it does." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "プロキシが応答しません。応答するまで agent はプロキシなしで起動します。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "프록시가 응답하지 않습니다. 응답할 때까지 agent는 프록시 없이 시작합니다." } }
+      }
+    },
+    "The proxy running is from another version of hrdrhrdrhrdr." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "動作中のプロキシは別のバージョンの hrdrhrdrhrdr のものです。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "실행 중인 프록시는 다른 버전의 hrdrhrdrhrdr에서 온 것입니다." } }
+      }
+    },
+    "Stops once the %lld agents using it have ended." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Stops once the agent using it has ended."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Stops once the %lld agents using it have ended."
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このプロキシを使う %lld 個の agent が終了すると停止します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 프록시를 쓰는 agent %lld개가 끝나면 멈춥니다."
+          }
+        }
+      }
     }
   },
   "version" : "1.1"

@@ -49,6 +49,8 @@ struct MachinesSettingsView: View {
             } else if showsPairedDevices {
                 PairedDevicesSettingsView(model: .system(),
                                           makeCoordinator: { PairingCoordinator(environment: .system()) },
+                                          agentProxy: .shared,
+                                          agentProxyUnavailableReason: LocalOnlyAddition.agentProxy.unavailableReason(on: machineStore.activeMachine),
                                           addUnavailableReason: LocalOnlyAddition.device.unavailableReason(on: machineStore.activeMachine)) {
                     withAnimation(Self.pageAnimation) { showsPairedDevices = false }
                 }

@@ -21,6 +21,7 @@ env = dict(os.environ, DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer
 sources = ['Shepherd/Agents/' + name + '.swift' for name in [
     'AgentRuntime', 'PiProcessIdentity', 'AgentHostExecutables', 'AgentSkillPreparation', 'AgentLaunchService', 'ExperimentalSettingsDiagnostics', 'AgentSavedSession',
     'AgentIdleStopPolicy', 'AgentLaunchState', 'AgentResumeConfirmation', 'AgentBrowserAdapter']]
+sources += ['Shepherd/Agents/AgentProxyRouting.swift']
 sources += ['ShepherdKit/Sources/ShepherdKit/Agents/AgentKind.swift', 'ShepherdKit/Sources/ShepherdKit/Machines/Machine.swift', 'Shepherd/Hosts/Models/AgentSkillSetup.swift',
             'Shepherd/Hosts/Views/AgentSkillRows.swift', 'Shepherd/Hosts/Views/InfoButton.swift',
             'Shepherd/Browser/BrowserKey.swift',

@@ -106,6 +106,10 @@ final class AgentLaunchService {
     private var consumerDirty = false
     private var stopping = false
     let skillPreparation = AgentSkillPreparation()
+    /// The agent proxy, set by the app as it starts (`AgentProxyService`):
+    /// the launcher's Claude Code, Codex and Pi get a route through it when it
+    /// gives one. Nil: every launch goes without it.
+    @ObservationIgnored var agentProxy: (any AgentProxyRouting)?
     private(set) var installation: AgentRuntimeInstallation?
     private(set) var diagnostics: [AgentKind: AgentCLIAvailability] = [:]
     private(set) var reconciliationError: String?
@@ -281,24 +285,39 @@ final class AgentLaunchService {
         defer { preparingPanes.remove(createdIdentity); launchingPanes.remove(createdIdentity) }
         var identity: AgentPaneIdentity?
         var preparationAttempted = false
+        // The agent proxy's route for this agent: removed again if the agent
+        // is never asked to start, the pane's for as long as it lasts if it is.
+        var proxyRoute: AgentProxyLaunchRoute?
+        var startRequested = false
         do {
             let resolved = try await waitForShell(created.pane, on: machine, client: client)
             let pane = AgentPaneIdentity(key: resolved.key, terminalID: resolved.terminalID)
             identity = pane
             guard let endpoint = CDPProxy.shared.endpoint(for: resolved.key) else { throw AgentRuntimeError.rejected("browser-listener-not-ready") }
+            proxyRoute = await agentProxy?.route(for: kind, pane: pane, cliVersion: available.version, on: machine)
             // From this point an interrupted prepare might have bound the reservation.
             // Leave it for proven disappearance cleanup, never discard on guesswork.
             preparationAttempted = true
+            let apiProxy = proxyRoute.map { AgentAPIProxyRequest(baseURL: $0.baseURL) }
             let plan = try await AgentRuntimeLockWait.run { [preferences] in
                 try await runtime.prepare(kind: kind, executable: kind.rawValue, pane: pane,
                     endpoint: AgentBrowserEndpoint(endpoint), preferences: preferences, codexHome: host.codexHome,
-                    claudeSettingsFile: host.claudeSettings, reservation: reservation, on: .thisMac)
+                    claudeSettingsFile: host.claudeSettings, reservation: reservation, apiProxy: apiProxy, on: .thisMac)
             }
             plans[pane] = plan
+            // The user's own settings send this agent elsewhere: it goes without the proxy.
+            if let route = proxyRoute, plan.apiProxy?.injected != true {
+                proxyRoute = nil
+                await agentProxy?.discard(route)
+            }
             // Preparation can suspend. Recheck the same authoritative terminal
             // and foreground shell before sending the destructive start RPC.
             _ = try await waitForShell(created.pane, on: machine, client: client)
             preparingPanes.remove(createdIdentity); launchingPanes.insert(createdIdentity)
+            // From here the agent may be running with the route, whatever
+            // herdr answers: the route stays, and goes with the pane.
+            startRequested = true
+            if let proxyRoute { agentProxy?.started(proxyRoute) }
             // herdr refuses a name a live agent already holds, so the bare kind
             // would allow only one launch of each kind per session.
             let result = try await client.agentStart(name: kind.rawValue + "-" + String(reservation.reservationID.prefix(8)), kind: kind, paneID: resolved.key.paneID, arguments: plan.arguments)
@@ -311,6 +330,7 @@ final class AgentLaunchService {
             return created
         } catch {
             failures[identity ?? createdIdentity] = connectionFailureDescription(error)
+            if let proxyRoute, !startRequested { await agentProxy?.discard(proxyRoute) }
             if !preparationAttempted { try await AgentRuntimeLockWait.run { try await runtime.discardReservation(reservation, on: .thisMac) } }
             throw error
         }
@@ -327,18 +347,24 @@ final class AgentLaunchService {
         let pane = AgentPaneIdentity(key: BrowserKey(machine: machine, pane: created.pane), terminalID: created.pane.terminalID)
         preparingPanes.insert(pane)
         defer { preparingPanes.remove(pane); launchingPanes.remove(pane) }
+        // As in `launch`: removed again unless Pi's command is typed.
+        var proxyRoute: AgentProxyLaunchRoute?
+        var startRequested = false
         do {
             // Pi starts in the shell's folder, read from the shell the wait
             // took (`AgentShellWait.settledShell`): not asked again whether
             // the shell is alone, which its startup files can make untrue
             // for a moment at any time.
             let cwd = try await waitForPiShell(created.pane, on: machine, client: client).cwd
+            proxyRoute = await agentProxy?.route(for: .pi, pane: pane, cliVersion: stage.cliVersion, on: machine)
             let coordinator = try PiLaunchCoordinator(stage: stage, owner: pane, machine: machine,
-                client: makeLocalClient(machine), cwd: cwd, preferences: preferences)
+                client: makeLocalClient(machine), cwd: cwd, preferences: preferences, apiProxyBaseURL: proxyRoute?.baseURL)
             piLaunches[pane] = coordinator
             try await coordinator.prepare()
             _ = try await waitForShell(created.pane, on: machine, client: client)
             preparingPanes.remove(pane); launchingPanes.insert(pane)
+            startRequested = true
+            if let proxyRoute { agentProxy?.started(proxyRoute) }
             // The shim by its absolute path, typed into the shell. `agent.start`
             // would type the bare `pi`, which the shell looks up through the
             // PATH its startup files leave: a `~/.zshrc` that puts `~/.bun/bin`
@@ -354,6 +380,7 @@ final class AgentLaunchService {
             return created
         } catch {
             await piLaunches[pane]?.stop()
+            if let proxyRoute, !startRequested { await agentProxy?.discard(proxyRoute) }
             failures[pane] = connectionFailureDescription(error)
             throw error
         }

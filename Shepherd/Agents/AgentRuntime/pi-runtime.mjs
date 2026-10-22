@@ -60,6 +60,12 @@ function packageManifest(executable) {
   throw new PiIntegrationError('pi-package-unsupported');
 }
 
+// The version in the package.json of a Pi that `resolvePiExecutable` returned.
+export function piPackageVersion(real) {
+  const version=packageManifest(real).version;
+  return typeof version === 'string' ? version : null;
+}
+
 export function resolvePiExecutable(executable, environment = process.env) {
   check(piNodeSupported(), 'node-version-unsupported');
   const real = executablePath(executable, environment);
