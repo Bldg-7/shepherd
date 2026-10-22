@@ -17,6 +17,9 @@ node_modules/
 # Swift Package Manager build artifacts
 .build/
 .swiftpm/
+# AgentProxy/ is built through the app's resolved packages; the file an
+# editor's indexer writes beside its manifest is not used
+AgentProxy/Package.resolved
 
 # macOS
 .DS_Store
