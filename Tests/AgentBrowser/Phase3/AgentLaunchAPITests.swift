@@ -200,7 +200,108 @@ actor ShellStartTransport: HerdrTransport {
         try await runtimeLockWait()
         try await shellWait()
         try piLaunchSource()
+        try await agentProxyLaunch()
+        try agentProxySource()
         print("AGENT LAUNCH API/STATE PASS")
+    }
+
+    /// The agent proxy (SHPHRD-105): which launches ask it for a route, and
+    /// what `prepare` is given and answers.
+    static func agentProxyLaunch() async throws {
+        typealias Policy = AgentProxyInjectionPolicy
+        check(Policy.version(in: "2.1.288 (Claude Code)") == [2, 1, 288] && Policy.version(in: "codex-cli 0.162.0") == [0, 162, 0]
+              && Policy.version(in: "1.4") == [1, 4, 0] && Policy.version(in: "Claude Code") == nil && Policy.version(in: nil) == nil,
+              "a CLI's version is the first x.y[.z] it reports")
+        for (kind, version, meets) in [(AgentKind.claude, "2.1.283 (Claude Code)", true), (.claude, "2.1.282 (Claude Code)", false), (.claude, "2.2.0", true),
+                                       (.claude, "10.0.0", true), (.codex, "codex-cli 0.162.0", true), (.codex, "codex-cli 0.161.99", false),
+                                       (.codex, "codex-cli 1.0.0", true), (.pi, "1.3.0", true), (.pi, "1.2.12", false), (.pi, "1.10.0", true)] {
+            check(Policy.meetsMinimum(kind, version: version) == meets, "\(kind) \(version): \(meets ? "new enough" : "too old") for the proxy")
+        }
+        func skip(_ kind: AgentKind = .claude, _ version: String? = "2.1.290", on: Bool = true, thisMac: Bool = true, systemProxy: Bool = false,
+                  rejected: Set<String> = []) -> Policy.Skip? {
+            Policy.skip(kind: kind, cliVersion: version, settingOn: on, isThisMac: thisMac, systemProxyConfigured: systemProxy, rejectedKinds: rejected)
+        }
+        check(skip() == nil, "setting on, This Mac, new enough, no system proxy, not turned away: a route is asked for")
+        check(skip(on: false, thisMac: false, systemProxy: true) == .settingOff, "the setting off is said first")
+        check(skip(thisMac: false, systemProxy: true) == .notThisMac, "then another machine than This Mac")
+        check(skip(.codex, "0.100.0", rejected: ["codex"]) == .oauthRejected && skip(.codex, "0.170.0", rejected: ["claude"]) == nil,
+              "then the kind turned away for its sign-in, only that kind")
+        check(skip(.pi, "1.2.0", systemProxy: true) == .cliVersion, "then a CLI too old")
+        check(skip(systemProxy: true) == .systemProxy, "then a system HTTP proxy")
+
+        // What prepare is given and answers.
+        actor Scripts { var last = ""; func set(_ value: String) { last = value } }
+        let scripts = Scripts()
+        let answer = #"{"ok":true,"result":{"kind":"claude","executable":"claude","arguments":["--plugin-dir","/owned/plugin"],"environment":{},"outputFolder":"/o","sessionFolder":"/s","pluginDirectory":"/owned/plugin","mcpConfiguration":"/m","mcpArguments":[],"codexPluginKey":null,"injection":"plugin","apiProxy":{"injected":false,"reason":"custom-endpoint"}}}"#
+        let runtime = AgentRuntime(root: "/owned/root", resourceDirectory: "/owned/resources", scriptRunner: { script in
+            await scripts.set(script); return Data(answer.utf8)
+        })
+        let pane = AgentPaneIdentity(machineID: "m", herdrMachineID: nil, session: "default", paneID: "w1:p1", terminalID: "t1")
+        let endpoint = AgentBrowserEndpoint(origin: "thisMac", url: "ws://127.0.0.1:1/v1/herdr/default/pane/w1:p1", tokenFile: "/owned/token")
+        let base = "http://127.0.0.1:24680/p/" + String(repeating: "ab", count: 16)
+        let plan = try await runtime.prepare(kind: .claude, executable: "claude", pane: pane, endpoint: endpoint, codexHome: "/owned/codex",
+                                             claudeSettingsFile: "/owned/claude/settings.json", apiProxy: AgentAPIProxyRequest(baseURL: base), on: .thisMac)
+        check(await scripts.last.contains(#""apiProxy":{"baseURL":"\#(base)"}"#), "prepare is given the base URL as apiProxy")
+        check(plan.apiProxy == AgentAPIProxyPreparation(injected: false, reason: "custom-endpoint"), "prepare's answer says whether the agent goes through it, and why not")
+        check(try plan.resuming(sessionID: "session-1").apiProxy == plan.apiProxy, "a resumed plan keeps that answer")
+        _ = try await runtime.prepare(kind: .claude, executable: "claude", pane: pane, endpoint: endpoint, codexHome: "/owned/codex",
+                                      claudeSettingsFile: "/owned/claude/settings.json", on: .thisMac)
+        check(!(await scripts.last.contains("apiProxy")), "a launch not given the proxy sends no apiProxy")
+        let plain = try JSONDecoder().decode(PreparedAgentLaunch.self, from: Data(#"{"kind":"codex","executable":"codex","arguments":[],"environment":{},"outputFolder":"/o","sessionFolder":"/s","pluginDirectory":"/p","mcpConfiguration":"/m","mcpArguments":[],"codexPluginKey":null,"injection":"codexConfigurationFallback"}"#.utf8))
+        check(plain.apiProxy == nil, "a plan from an older runtime has no apiProxy")
+        let stage = try JSONDecoder().decode(PiStagedLaunch.self, from: Data(#"{"id":"1","sessionID":"s","folder":"/owned/pi/1","manifest":"m","bootstrap":"b","cli":"c","node":"n","entry":"e","resources":"r","arguments":[],"environment":{},"cliVersion":"1.4.0"}"#.utf8))
+        check(stage.cliVersion == "1.4.0", "the staged Pi's version reaches the launch")
+    }
+
+    /// Where the launches ask the proxy, in AgentLaunchService.swift and
+    /// PiLaunchCoordinator.swift: once the pane is known, a route discarded
+    /// unless the agent is asked to start, and never on a resume.
+    static func agentProxySource() throws {
+        let text = try String(contentsOfFile: "Shepherd/Agents/AgentLaunchService.swift", encoding: .utf8)
+        func section(_ start: String, _ end: String, in text: String = text) -> Substring {
+            guard let from = text.range(of: start), let to = text.range(of: end, range: from.upperBound..<text.endIndex) else {
+                preconditionFailure("no \(start)")
+            }
+            return text[from.lowerBound..<to.lowerBound]
+        }
+        func order(_ section: Substring, _ parts: [String], _ name: String) {
+            var at = section.startIndex
+            for part in parts {
+                guard let found = section.range(of: part, range: at..<section.endIndex) else { check(false, name + " (" + part + ")"); return }
+                at = found.upperBound
+            }
+            check(true, name)
+        }
+        let launch = section("    func launch(kind: AgentKind,", "    private func launchPi(")
+        order(launch, ["let resolved = try await waitForShell(created.pane, on: machine, client: client)",
+                       "guard let endpoint = CDPProxy.shared.endpoint(for: resolved.key)",
+                       "proxyRoute = await agentProxy?.route(for: kind, pane: pane, cliVersion: available.version, on: machine)",
+                       "preparationAttempted = true",
+                       "apiProxy: apiProxy, on: .thisMac)",
+                       "if let route = proxyRoute, plan.apiProxy?.injected != true {", "await agentProxy?.discard(route)",
+                       "_ = try await waitForShell(created.pane, on: machine, client: client)",
+                       "startRequested = true", "if let proxyRoute { agentProxy?.started(proxyRoute) }",
+                       "let result = try await client.agentStart(",
+                       "} catch {", "if let proxyRoute, !startRequested { await agentProxy?.discard(proxyRoute) }"],
+              "Claude Code and Codex: a route once the pane is known, given to prepare, discarded unless the agent is asked to start")
+        let pi = section("    private func launchPi(", "    /// herdr's `agent.start` and Pi's typed command")
+        order(pi, ["let cwd = try await waitForPiShell(created.pane, on: machine, client: client).cwd",
+                   "proxyRoute = await agentProxy?.route(for: .pi, pane: pane, cliVersion: stage.cliVersion, on: machine)",
+                   "apiProxyBaseURL: proxyRoute?.baseURL)", "try await coordinator.prepare()",
+                   "startRequested = true", "if let proxyRoute { agentProxy?.started(proxyRoute) }",
+                   "try await client.runCommand(paneID: pane.paneID, argv: [stage.shim] + stage.arguments)",
+                   "} catch {", "if let proxyRoute, !startRequested { await agentProxy?.discard(proxyRoute) }"],
+              "Pi: a route once its shell is settled, written for its extension, discarded unless its command is typed")
+        let resume = section("    func resume(_ agent: AgentSummary,", "    private func resumeObservation(")
+        check(!resume.contains("agentProxy") && !resume.contains("apiProxy"), "a resume never gives the agent the proxy")
+        check(text.components(separatedBy: "agentProxy?.route(").count == 3, "only the launcher's two launches ask for a route")
+        let coordinator = try String(contentsOfFile: "Shepherd/Agents/PiLaunchCoordinator.swift", encoding: .utf8)
+        check(coordinator.contains(#"if let apiProxyBaseURL { manifest["apiProxy"] = ["baseURL": apiProxyBaseURL] }"#)
+              && coordinator.contains("try PiBrowserLeaseProvider.write(manifest, to: URL(fileURLWithPath: stage.manifest))"),
+              "Pi's launch.json has apiProxy only when the launch got a route")
+        let app = try String(contentsOfFile: "Shepherd/Shepherd.swift", encoding: .utf8)
+        check(app.contains("AgentLaunchService.shared.agentProxy = AgentProxyService.shared\n        AgentProxyService.shared.start()\n        guard ShepherdBrowserFeature.shared.isEnabled else { return }"),
+              "the app hands the launches the proxy service, and starts it whether or not the browser is on")
     }
 
     /// Where Pi's launch takes the wait above, in AgentLaunchService.swift

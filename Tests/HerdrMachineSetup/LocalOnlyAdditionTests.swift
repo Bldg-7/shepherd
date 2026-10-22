@@ -21,6 +21,7 @@ func expect(_ condition: Bool, _ message: @autoclosure () -> String, line: Int =
 
 let herdrReason = "Connect to This Mac to add a herdr machine."
 let deviceReason = "Connect to This Mac to add a device."
+let agentProxyReason = "Connect to This Mac to change this setting."
 
 let thisMac = Machine(id: UUID(uuidString: "79763D9A-997B-4E75-A3FA-6EF5D0338479")!, displayName: "This Mac", hostname: "localhost",
                       port: 0, username: "minsu", isLocal: true)
@@ -31,15 +32,18 @@ let pairedMac = Machine(displayName: "Minsu’s MacBook Pro", hostname: "minsus-
 let lookalike = Machine(displayName: "This Mac", hostname: "localhost", port: 22, username: "minsu")
 
 func ruleTests() {
-    for addition in [LocalOnlyAddition.herdrMachine, .device] {
+    for addition in [LocalOnlyAddition.herdrMachine, .device, .agentProxy] {
         expect(addition.unavailableReason(on: thisMac) == nil, "\(addition) on This Mac: allowed")
     }
     for machine in [sshHost, pairedMac, lookalike] {
         expect(LocalOnlyAddition.herdrMachine.unavailableReason(on: machine) == herdrReason, "a herdr machine on \(machine.displayName) (\(machine.hostname)): why not")
         expect(LocalOnlyAddition.device.unavailableReason(on: machine) == deviceReason, "a device on \(machine.displayName) (\(machine.hostname)): why not")
+        // Show Conversations on iPhone and iPad (SHPHRD-105): the same rule.
+        expect(LocalOnlyAddition.agentProxy.unavailableReason(on: machine) == agentProxyReason,
+               "the agent proxy's setting on \(machine.displayName) (\(machine.hostname)): why not")
     }
-    expect(LocalOnlyAddition.herdrMachine.unavailableReason(on: nil) == herdrReason && LocalOnlyAddition.device.unavailableReason(on: nil) == deviceReason,
-           "no machine shown: not allowed either")
+    expect(LocalOnlyAddition.herdrMachine.unavailableReason(on: nil) == herdrReason && LocalOnlyAddition.device.unavailableReason(on: nil) == deviceReason
+           && LocalOnlyAddition.agentProxy.unavailableReason(on: nil) == agentProxyReason, "no machine shown: not allowed either")
 }
 
 func launcherTests() {

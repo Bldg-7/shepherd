@@ -137,7 +137,7 @@ assert sorted(n for n, s in swift.items() if 'LocalOnlyAddition.' in s) == ['She
 assert not [x for x in (ROOT / 'ShepherdMobile').rglob('*.swift') if 'LocalOnlyAddition' in x.read_text() or 'Connect to This Mac' in x.read_text()], \
     'the iOS app left as it is'
 strings = json.loads(read('Shepherd/Localizable.xcstrings'))['strings']
-for key in ['Connect to This Mac to add a herdr machine.', 'Connect to This Mac to add a device.']:
+for key in ['Connect to This Mac to add a herdr machine.', 'Connect to This Mac to add a device.', 'Connect to This Mac to change this setting.']:
     assert all(strings[key]['localizations'][l]['stringUnit']['state'] == 'translated' for l in ['ko', 'ja']), key
 stages.append('local-only-static-checks')
 

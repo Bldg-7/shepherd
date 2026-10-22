@@ -9,6 +9,7 @@ import {detect, injected, resume, childCommand, SERVER} from '../../../Shepherd/
 import {prepare, stagePi} from '../../../Shepherd/Agents/AgentRuntime/runtime.mjs';
 import {registerPiSessionNaming} from '../../../Shepherd/Agents/AgentRuntime/pi-session-name.mjs';
 import {createPiHost} from '../../../Shepherd/Agents/AgentRuntime/pi-host.mjs';
+import {registerPiApiProxy, apiProxyBase, PROXIED_PROVIDERS} from '../../../Shepherd/Agents/AgentRuntime/pi-api-proxy.mjs';
 import net from 'node:net';
 import crypto from 'node:crypto';
 import {fileURLToPath} from 'node:url';
@@ -117,6 +118,7 @@ test('Blocking other browser tools neither refuses nor changes the staged Pi lau
     return stage.arguments.map(arg => arg.replaceAll(stage.sessionID, '<session>').replaceAll(stage.folder, '<folder>'));
   };
   const unblocked = plan({ disableCompetingBrowsers:false, competingBrowserServers:[] });
+  assert.equal(stagePi({ root, executable: cli }).cliVersion, '1.2.0', 'the staged Pi\'s version, read from its package, for the agent proxy\'s floor');
   assert.deepEqual(plan({ disableCompetingBrowsers:true, competingBrowserServers:['playwright','chrome-devtools'] }), unblocked);
   assert(!unblocked.some(arg => /playwright|chrome-devtools|^--no-mcp|^--(exclude-)?tools/.test(arg)));
 });
@@ -350,4 +352,57 @@ test('Session name arrives in the bridge\'s status replies, through createPiHost
   } finally {
     await new Promise(resolve => server.close(resolve)); fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+// The agent proxy (SHPHRD-105): pi-api-proxy.mjs with a stand-in Pi, reading
+// the launch.json the app writes beside the bridge's bootstrap file.
+function proxyFixture(manifest, { mode = 0o600 } = {}) {
+  const folder = fs.mkdtempSync(path.join(directory, 'proxy-')), bootstrap = path.join(folder, 'bootstrap.json');
+  if (manifest !== undefined) fs.writeFileSync(path.join(folder, 'launch.json'), typeof manifest === 'string' ? manifest : JSON.stringify(manifest), { mode });
+  const providers = [], handlers = new Map();
+  const pi = { registerProvider(name, config) { providers.push([name, config]); }, on(name, handler) { assert(!handlers.has(name)); handlers.set(name, handler); } };
+  return { bootstrap, providers, handlers, pi };
+}
+const proxyBase = 'http://127.0.0.1:24680/p/' + 'ab'.repeat(16);
+const providerContext = (provider, session = 'a1111111-1111-1111-1111-111111111111') => ({ model: provider ? { provider, id: 'model' } : undefined,
+  sessionManager: { getSessionId: () => session } });
+test('Agent proxy: Pi\'s anthropic and openai-codex providers are pointed at the base URL from launch.json, nothing else', () => {
+  const f = proxyFixture({ version: 1, cli: '/owned/cli.js', bootstrap: '/owned/bootstrap.json', cwd: '/owned', arguments: [], apiProxy: { baseURL: proxyBase } });
+  assert.equal(registerPiApiProxy(f.pi, f.bootstrap), true);
+  assert.deepEqual(f.providers, [['anthropic', { baseUrl: proxyBase }], ['openai-codex', { baseUrl: proxyBase + '/backend-api' }]]);
+  assert.deepEqual([...f.handlers.keys()], ['before_provider_headers']);
+  assert.deepEqual(PROXIED_PROVIDERS, ['anthropic', 'openai-codex']);
+});
+test('Agent proxy: requests to those providers say which Pi session they are of; others are left alone', () => {
+  const f = proxyFixture({ version: 1, apiProxy: { baseURL: proxyBase } }); registerPiApiProxy(f.pi, f.bootstrap);
+  const headers = provider => { const event = { type: 'before_provider_headers', headers: { authorization: 'Bearer fixture' } }; f.handlers.get('before_provider_headers')(event, providerContext(provider)); return event.headers; };
+  for (const provider of ['anthropic', 'openai-codex'])
+    assert.deepEqual(headers(provider), { authorization: 'Bearer fixture', 'x-3rdr-pi-session': 'a1111111-1111-1111-1111-111111111111', 'x-3rdr-pi-class': 'main' }, provider);
+  for (const provider of ['openai', 'google', 'openrouter', undefined]) assert.deepEqual(headers(provider), { authorization: 'Bearer fixture' }, String(provider));
+  const event = { headers: {} }; f.handlers.get('before_provider_headers')(event, providerContext('anthropic', 'bad id\nwith a line'));
+  assert.deepEqual(event.headers, { 'x-3rdr-pi-class': 'main' }, 'a session ID that isn\'t one is not sent');
+  assert.doesNotThrow(() => f.handlers.get('before_provider_headers')({}, providerContext('anthropic')));
+});
+test('Agent proxy: without a valid base URL in a private launch.json, Pi is left as it is', () => {
+  const cases = [
+    proxyFixture({ version: 1, cli: '/owned/cli.js', arguments: [] }),
+    proxyFixture({ version: 1, apiProxy: {} }),
+    proxyFixture({ version: 1, apiProxy: { baseURL: 'https://127.0.0.1:24680/p/' + 'ab'.repeat(16) } }),
+    proxyFixture({ version: 1, apiProxy: { baseURL: 'http://example.invalid:24680/p/' + 'ab'.repeat(16) } }),
+    proxyFixture({ version: 1, apiProxy: { baseURL: proxyBase + '/extra' } }),
+    proxyFixture({ version: 1, apiProxy: { baseURL: 'http://127.0.0.1:99999/p/' + 'ab'.repeat(16) } }),
+    proxyFixture({ version: 1, apiProxy: { baseURL: proxyBase } }, { mode: 0o644 }),
+    proxyFixture('{not json'),
+    proxyFixture(undefined),
+  ];
+  for (const f of cases) { assert.equal(registerPiApiProxy(f.pi, f.bootstrap), false); assert.deepEqual(f.providers, []); assert.equal(f.handlers.size, 0); }
+  assert.equal(apiProxyBase('relative/bootstrap.json'), null);
+  assert.equal(apiProxyBase(undefined), null);
+});
+test('Agent proxy: the extension is registered from pi-entry.ts with the bridge\'s bootstrap file, and is part of the runtime\'s version', () => {
+  const entry = fs.readFileSync(new URL('../../../Shepherd/Agents/AgentRuntime/pi-entry.ts', import.meta.url), 'utf8');
+  assert(entry.includes("import { registerPiApiProxy } from './pi-api-proxy.mjs';") && entry.includes('registerPiApiProxy(pi, bootstrap);'));
+  assert(entry.indexOf("if (!bootstrap) throw new Error('pi-host-bridge-unavailable');") < entry.indexOf('registerPiApiProxy(pi, bootstrap);'));
+  const runtime = fs.readFileSync(new URL('../../../Shepherd/Agents/AgentRuntime/runtime.mjs', import.meta.url), 'utf8');
+  assert(runtime.includes("'pi-launch.mjs','pi-api-proxy.mjs','pi-guidance.md'"));
 });

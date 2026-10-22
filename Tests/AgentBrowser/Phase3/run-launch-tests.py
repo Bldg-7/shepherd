@@ -50,7 +50,7 @@ def main():
     try:
         for selected in args.stage:
             if selected == 'api':
-                sources = ['Shepherd/Agents/AgentRuntime.swift', 'ShepherdKit/Sources/ShepherdKit/Agents/AgentKind.swift', 'Shepherd/Agents/AgentSavedSession.swift', 'Shepherd/Agents/AgentIdleStopPolicy.swift', 'Shepherd/Agents/AgentLaunchState.swift', 'ShepherdKit/Sources/ShepherdKit/HerdrKit/HerdrClient.swift', 'ShepherdKit/Sources/ShepherdKit/HerdrKit/Transport/HerdrTransport.swift', 'ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/ShellQuoting.swift'] + [str(p.relative_to(ROOT)) for p in sorted((ROOT / 'ShepherdKit/Sources/ShepherdKit/HerdrKit/Models').glob('*.swift'))]
+                sources = ['Shepherd/Agents/AgentRuntime.swift', 'Shepherd/AgentProxy/AgentProxyInjectionPolicy.swift', 'ShepherdKit/Sources/ShepherdKit/Agents/AgentKind.swift', 'Shepherd/Agents/AgentSavedSession.swift', 'Shepherd/Agents/AgentIdleStopPolicy.swift', 'Shepherd/Agents/AgentLaunchState.swift', 'ShepherdKit/Sources/ShepherdKit/HerdrKit/HerdrClient.swift', 'ShepherdKit/Sources/ShepherdKit/HerdrKit/Transport/HerdrTransport.swift', 'ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/ShellQuoting.swift'] + [str(p.relative_to(ROOT)) for p in sorted((ROOT / 'ShepherdKit/Sources/ShepherdKit/HerdrKit/Models').glob('*.swift'))]
                 stage('api-build', 60, ['xcrun', 'swiftc','ShepherdKit/Sources/ShepherdKit/Resources.swift', '-swift-version', '6', '-parse-as-library', *sources, 'Tests/AgentBrowser/Phase3/AgentLaunchAPITests.swift', '-o', str(out / 'AgentLaunchAPITests')])
                 stage('api-state', 20, [str(out / 'AgentLaunchAPITests')])
             elif selected == 'transport':

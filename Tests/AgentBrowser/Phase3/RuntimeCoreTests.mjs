@@ -5,7 +5,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {execFileSync,spawn,spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {shellTokens,childCommand,quote,sessionName,injected,mergedInstructions,readCodex,resume,validateEndpoint,atomicWrite,detect,requireNode,nodeSupported,SERVER,SERVERS,PLUGIN,PLUGINS,INSTRUCTIONS} from '../../../Shepherd/Agents/AgentRuntime/runtime-core.mjs';
+import {shellTokens,childCommand,quote,sessionName,injected,mergedInstructions,readCodex,resume,validateEndpoint,atomicWrite,detect,requireNode,nodeSupported,SERVER,SERVERS,PLUGIN,PLUGINS,INSTRUCTIONS,withoutApiProxy,apiProxyConflict,validApiProxyBase,CLAUDE_MANAGED_SETTINGS} from '../../../Shepherd/Agents/AgentRuntime/runtime-core.mjs';
 import {install,prepare,rewrite,cleanup,setMode,checkScope,registerPane,setupCodex,reserveLaunch,discardReservation,withLock} from '../../../Shepherd/Agents/AgentRuntime/runtime.mjs';
 let checks=0;const check=(name,operation)=>{operation();checks++;console.log('PASS',name);};
 const directory=fs.mkdtempSync(path.join(os.tmpdir(),'shepherd-runtime-unit-'));
@@ -289,6 +289,102 @@ fs.writeSync(1,JSON.stringify(result)+'\\n');`;
   const file=fileURLToPath(new URL('../../../Shepherd/Agents/AgentRuntime/mcp-run.mjs',import.meta.url));
   const result=spawnSync(process.execPath,[file,'--global',root],{input:'',encoding:'utf8',timeout:10000});assert.equal(result.status,1);assert.equal(result.stdout,'');assert.match(result.stderr,/unavailable or unsafe/);
  });
+ // The agent proxy (SHPHRD-105): a launch given its base URL, the user's own
+ // settings that keep an agent off it (fixtures in this run's home only), and
+ // the proxy's arguments read back from an agent left out.
+ {
+  const token='0123456789abcdef'.repeat(2),base='http://127.0.0.1:24680/p/'+token;
+  const managed=path.join(directory,'managed-settings.json');
+  const proxied={...request,apiProxy:{baseURL:base},claudeManagedSettingsFile:managed};
+  const registry=()=>fs.readFileSync(path.join(root,'panes.json'),'utf8');
+  const userClaude=fs.readFileSync(claudeSettingsFile),codexFile=path.join(codexHome,'config.toml');
+  const withFile=(file,text,body)=>{const before=fs.existsSync(file)?fs.readFileSync(file):null;fs.writeFileSync(file,text,{mode:0o600});try{body();}finally{if(before===null)fs.unlinkSync(file);else fs.writeFileSync(file,before);}};
+  check('agent proxy: the managed settings looked at are Claude Code\'s system-wide file',()=>assert.equal(CLAUDE_MANAGED_SETTINGS,'/Library/Application Support/ClaudeCode/managed-settings.json'));
+  check('agent proxy: only a 127.0.0.1 base URL with a 32-hex token is taken',()=>{
+   assert(validApiProxyBase(base));
+   for(const bad of ['https://127.0.0.1:24680/p/'+token,'http://localhost:24680/p/'+token,'http://127.0.0.1:0/p/'+token,'http://127.0.0.1:70000/p/'+token,base+'/x',base.toUpperCase(),'http://127.0.0.1:24680/p/abc',null,42]) {
+    assert(!validApiProxyBase(bad),String(bad));assert.throws(()=>prepare({...request,apiProxy:{baseURL:bad}}),/invalid-api-proxy/);
+   }
+  });
+  check('agent proxy: Claude Code gets --settings with a 0600 file of its session holding the base URL',()=>{
+   const p=prepare(proxied);
+   assert.deepEqual(p.apiProxy,{injected:true,reason:null});
+   const at=p.arguments.indexOf('--settings');assert(at>0);const file=p.arguments[at+1];
+   assert.equal(file,path.join(p.sessionFolder,'api-proxy.json'));assert.equal(fs.statSync(file).mode&0o777,0o600);
+   assert.deepEqual(JSON.parse(fs.readFileSync(file,'utf8')),{env:{ANTHROPIC_BASE_URL:base,CLAUDE_CODE_GATEWAY_HINT_HEADERS:'1',CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING:'1'}});
+   assert(p.arguments.includes(p.pluginDirectory));assert(!p.arguments.some(a=>a.includes(token)));
+  });
+  check('agent proxy: Codex gets openai_base_url for its backend, kept out of the pane registry',()=>{
+   const p=prepare({...proxied,kind:'codex'});
+   assert.deepEqual(p.apiProxy,{injected:true,reason:null});
+   const at=p.arguments.indexOf('openai_base_url='+JSON.stringify(base+'/backend-api/codex'));assert(at>0 && p.arguments[at-1]==='-c');
+   assert(p.arguments.some(a=>a.startsWith('mcp_servers.3rdr-browser.args=')));assert(!registry().includes(token));
+  });
+  check('agent proxy: a launch not given it has none of it, and no apiProxy in its plan',()=>{
+   for(const kind of ['claude','codex']){const p=prepare({...request,kind});assert.equal(p.apiProxy,undefined);assert(!p.arguments.includes('--settings'));assert(!p.arguments.some(a=>a.startsWith('openai_base_url=')));}
+  });
+  const conflicts=[
+   ['the user\'s settings: another endpoint',claudeSettingsFile,{env:{ANTHROPIC_BASE_URL:'https://gateway.invalid'}},'custom-endpoint'],
+   ['the user\'s settings: an API key',claudeSettingsFile,{env:{ANTHROPIC_API_KEY:'fixture-not-a-key'}},'api-key'],
+   ['the user\'s settings: an auth token',claudeSettingsFile,{env:{ANTHROPIC_AUTH_TOKEN:'fixture'}},'api-key'],
+   ['the user\'s settings: apiKeyHelper',claudeSettingsFile,{apiKeyHelper:'/bin/echo'},'api-key-helper'],
+   ['the user\'s settings: a forced Console login',claudeSettingsFile,{forceLoginMethod:'console'},'api-key'],
+   ['the user\'s settings: CLAUDE_CODE_USE_BEDROCK',claudeSettingsFile,{env:{CLAUDE_CODE_USE_BEDROCK:'1'}},'other-provider'],
+   ['the user\'s settings: CLAUDE_CODE_USE_VERTEX',claudeSettingsFile,{env:{CLAUDE_CODE_USE_VERTEX:'true'}},'other-provider'],
+   ['the user\'s settings: an HTTPS proxy',claudeSettingsFile,{env:{https_proxy:'http://proxy.invalid:3128'}},'http-proxy'],
+   ['managed settings: another endpoint',managed,{env:{ANTHROPIC_BASE_URL:'https://gateway.invalid'}},'custom-endpoint'],
+   ['managed settings: apiKeyHelper',managed,{apiKeyHelper:'/bin/echo'},'api-key-helper'],
+  ];
+  for(const [name,file,settings,reason] of conflicts) check('agent proxy: Claude Code goes without it for '+name,()=>withFile(file,JSON.stringify(settings),()=>{
+   const p=prepare(proxied);assert.deepEqual(p.apiProxy,{injected:false,reason});
+   assert(!p.arguments.includes('--settings'));assert(!fs.existsSync(path.join(p.sessionFolder,'api-proxy.json')));
+   assert.equal(fs.readFileSync(file,'utf8'),JSON.stringify(settings));
+  }));
+  check('agent proxy: settings that can\'t be read keep Claude Code off it',()=>withFile(managed,'{not json',()=>assert.deepEqual(prepare(proxied).apiProxy,{injected:false,reason:'unreadable-settings'})));
+  check('agent proxy: settings that change nothing it relies on keep it',()=>withFile(claudeSettingsFile,JSON.stringify({userSetting:'preserve',env:{CLAUDE_CODE_USE_BEDROCK:'0',EDITOR:'vi',ANTHROPIC_BASE_URL:''},model:'opus'}),()=>assert.deepEqual(prepare(proxied).apiProxy,{injected:true,reason:null})));
+  check('agent proxy: Claude Code given its own --settings goes without it',()=>{
+   for(const args of [['--settings',path.join(directory,'mine.json')],['--settings='+path.join(directory,'api-proxy.json')]]) {
+    const p=prepare({...proxied,arguments:args});assert.deepEqual(p.apiProxy,{injected:false,reason:'user-settings-argument'});
+    assert.equal(p.arguments.filter(a=>a==='--settings'||a.startsWith('--settings=')).length,1);
+   }
+  });
+  // Top-level keys go before the config's tables, a profile's after them.
+  const codexConflicts=[
+   ['openai_base_url in its config','openai_base_url = "https://gateway.invalid/v1"\n'+config,[],'custom-endpoint'],
+   ['chatgpt_base_url in its config','chatgpt_base_url = "https://gateway.invalid/"\n'+config,[],'custom-endpoint'],
+   ['another model_provider in its config','model_provider = "ollama"\n'+config,[],'other-provider'],
+   ['another model_provider in the profile',config+'[profiles.local]\nmodel_provider = "lmstudio"\n',['-p','local'],'other-provider'],
+   ['-c openai_base_url',config,['-c','openai_base_url="https://gateway.invalid/v1"'],'custom-endpoint'],
+   ['-c model_provider',config,['--config=model_provider="oss"'],'other-provider'],
+   ['-c model_providers.*',config,['-c','model_providers.mine.base_url="https://x.invalid"'],'other-provider'],
+   ['--oss',config,['--oss'],'other-provider'],
+  ];
+  for(const [name,text,args,reason] of codexConflicts) check('agent proxy: Codex goes without it for '+name,()=>withFile(codexFile,text,()=>{
+   const p=prepare({...proxied,kind:'codex',arguments:args});assert.deepEqual(p.apiProxy,{injected:false,reason});
+   assert.equal(p.arguments.filter(a=>a.startsWith('openai_base_url=')).length,args.filter(a=>a.startsWith('openai_base_url=')).length);
+  }));
+  check('agent proxy: Codex with model_provider "openai" keeps it',()=>withFile(codexFile,'model_provider = "openai"\n'+config,()=>{
+   assert.deepEqual(prepare({...proxied,kind:'codex'}).apiProxy,{injected:true,reason:null});
+   assert.deepEqual(prepare({...proxied,kind:'codex',arguments:['-c','model_provider="openai"']}).apiProxy,{injected:true,reason:null});
+  }));
+  check('agent proxy: its arguments read back from an agent are left out (a resume or a child goes without it)',()=>{
+   const claude=prepare(proxied),file=claude.arguments[claude.arguments.indexOf('--settings')+1];
+   const again=prepare({...request,arguments:['--settings',file,'--model','opus']});
+   assert(!again.arguments.includes('--settings') && !again.arguments.includes(file) && again.arguments.includes('opus'));
+   const codexArgs=['-c','openai_base_url='+JSON.stringify(base+'/backend-api/codex'),'-c','model="o3"'];
+   const codex=prepare({...request,kind:'codex',arguments:codexArgs});
+   assert(!codex.arguments.some(a=>a.startsWith('openai_base_url=')) && codex.arguments.includes('model="o3"'));
+   assert.deepEqual(withoutApiProxy('claude',['--settings','/elsewhere/api-proxy.json'],root),['--settings','/elsewhere/api-proxy.json']);
+   assert.deepEqual(withoutApiProxy('codex',['-c','openai_base_url="https://gateway.invalid/backend-api/codex"'],root),['-c','openai_base_url="https://gateway.invalid/backend-api/codex"']);
+   assert.deepEqual(withoutApiProxy('claude',['--settings='+file],root),[]);
+   assert.deepEqual(withoutApiProxy('codex',['--config=openai_base_url='+JSON.stringify(base+'/backend-api/codex')],root),[]);
+  });
+  check('agent proxy: the conflict check reads names, and is the same one prepare uses',()=>{
+   assert.equal(apiProxyConflict('claude',{args:[],claudeSettingsFiles:[path.join(directory,'absent.json')]}),null);
+   assert.equal(apiProxyConflict('codex',{args:[],codex:{}}),null);assert.equal(apiProxyConflict('pi',{args:['--oss']}),null);
+  });
+  check('agent proxy: the user\'s CLI files are left as they were',()=>{assert.deepEqual(fs.readFileSync(claudeSettingsFile),userClaude);assert.equal(fs.readFileSync(codexFile,'utf8'),config);assert(!fs.existsSync(managed));});
+ }
  check('owned pane cleanup does not remove sibling',()=>{const other=prepare({...request,pane:{...pane,paneID:'w1:p2',terminalID:'term-sibling'},endpoint:{...endpoint,url:endpoint.url.replace('w1:p1','w1:p2')}});cleanup({root,pane});assert(!fs.existsSync(launch.outputFolder));assert(!fs.existsSync(reservedLaunch.sessionFolder));assert(fs.existsSync(other.outputFolder));});
  console.log(JSON.stringify({checks,passed:true}));
 } finally {fs.rmSync(directory,{recursive:true,force:true});}

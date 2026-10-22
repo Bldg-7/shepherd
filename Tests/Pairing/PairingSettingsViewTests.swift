@@ -16,6 +16,10 @@ import SwiftUI
 // on 127.0.0.1 sends the requests. And, while the window shows a machine
 // other than This Mac (SHPHRD-110), Add Device… greyed out with why, and an
 // Add page already open showing no code but seeing a request through.
+// And "Show Conversations on iPhone and iPad" (SHPHRD-105) on both pages,
+// over the real AgentProxyService with a stand-in LaunchAgent and proxy:
+// turned on and off, what it says while agents still use the proxy, while
+// Login Items has it off, and greyed out while another machine is shown.
 // Nothing here opens System Settings, writes to the pasteboard, presents a
 // dialog, or orders a window in.
 
@@ -42,6 +46,7 @@ nonisolated final class ResultBox<Value: Sendable>: @unchecked Sendable {
         problems(root.appending(path: "problems"))
         noAddress(root.appending(path: "no-address"))
         localOnly(root.appending(path: "local-only"))
+        conversations(root.appending(path: "conversations"))
         check(windows.allSatisfy { !$0.isVisible }, "no window was ever shown")
         for window in windows { window.contentView = nil; window.close() }
         Checks.finish("Settings pairing view checks in never-shown windows, read and pressed through accessibility")
@@ -471,4 +476,137 @@ enum PairingMacTestsSupport {
 
 enum P256Key {
     static func make() -> P256.Signing.PublicKey { P256.Signing.PrivateKey().publicKey }
+}
+
+// MARK: - Show Conversations on iPhone and iPad
+
+/// The proxy's control socket, in memory.
+actor ProxyControlStandIn: AgentProxyControlling {
+    private(set) var routes: [AgentProxyRoute] = []
+    func setRoutes(_ routes: [AgentProxyRoute]) { self.routes = routes }
+    func status() async throws -> AgentProxyStatus {
+        AgentProxyStatus(protocolVersion: AgentProxyControl.protocolVersion, build: "build-a", port: 24680, state: .running, routeCount: routes.count,
+                         inFlight: 0, recorder: .init(state: .running, pid: nil, restarts: 0),
+                         counters: .init(exchanges: 0, rejected: 0, upstreamFailures: 0, recorderDropped: 0))
+    }
+    func restartWhenIdle() async throws -> AgentProxyRestartWhenIdle { AgentProxyRestartWhenIdle(accepted: true, inFlight: 0) }
+    func createRoute(_ request: AgentProxyRouteCreate) async throws -> AgentProxyRouteCreated {
+        throw AgentProxyControlFailure.unreachable
+    }
+    func removeRoute(_ routeID: String) async throws -> Bool {
+        let before = routes.count
+        routes.removeAll { $0.routeID == routeID }
+        return routes.count < before
+    }
+    func listRoutes() async throws -> [AgentProxyRoute] { routes }
+}
+
+/// The LaunchAgent, counted and never registered.
+@MainActor final class ProxyLaunchAgentStandIn: AgentProxyLaunchAgent {
+    var state: AgentProxyLaunchAgentState = .notRegistered
+    var registeredState: AgentProxyLaunchAgentState = .enabled
+    var registered = 0, unregistered = 0, opened = 0
+    func register() throws { registered += 1; state = registeredState }
+    func unregister() async throws { unregistered += 1; state = .notRegistered }
+    func openSystemSettings() { opened += 1 }
+}
+
+@MainActor @Observable final class ShownProxySetting {
+    var reason: String?
+    init(_ reason: String?) { self.reason = reason }
+}
+
+/// Both pages as Settings shows them, following `shown`.
+struct FollowingProxyPages: View {
+    let shown: ShownProxySetting
+    let service: AgentProxyService
+    let model: PairedDevicesModel
+    let coordinator: PairingCoordinator?
+
+    var body: some View {
+        if let coordinator {
+            PairDeviceView(coordinator: coordinator, agentProxy: service, agentProxyUnavailableReason: shown.reason, onBack: {})
+        } else {
+            PairedDevicesSettingsView(model: model, makeCoordinator: { preconditionFailure("not opened here") }, agentProxy: service,
+                                      agentProxyUnavailableReason: shown.reason, onBack: {})
+        }
+    }
+}
+
+extension PairingSettingsViewTests {
+    static func conversations(_ root: URL) {
+        let world = PairingWorld(home: root)
+        let agent = ProxyLaunchAgentStandIn(), control = ProxyControlStandIn()
+        var setting = false, live: Set<String> = []
+        let service = AgentProxyService(environment: AgentProxyService.Environment(
+            launchAgent: agent, control: control, loadSetting: { setting }, saveSetting: { setting = $0 },
+            loadRejectedKinds: { [] }, saveRejectedKinds: { _ in }, bundledBuild: { "build-a" }, systemProxyConfigured: { false },
+            liveTerminals: { _ in live }, checkInterval: nil))
+        let model = PairedDevicesModel(store: world.store, authorizedKeys: world.authorizedKeys)
+        let shown = ShownProxySetting(nil)
+        let host = show(FollowingProxyPages(shown: shown, service: service, model: model, coordinator: nil), height: 1000)
+        let id = "settings.devices.conversations"
+
+        var ax = accessibility(host)
+        check(ax[id] != nil && isEnabled(ax[id]) && texts(host).contains("Show Conversations on iPhone and iPad") && !service.isOn,
+              "iPhone and iPad page: the setting, off, can be turned on")
+        let about = label(ax[id + ".about"])
+        check(about.contains("Remote Control is turned off") && about.contains("“Background Items Added” notification")
+              && about.contains("Claude Code, Codex and Pi"), "…saying Remote Control goes off and macOS's notification comes")
+        check(ax[id + ".status"] == nil && ax[id + ".unavailable"] == nil, "…with nothing more while off")
+
+        press(ax[id])
+        check(drainUntil { service.isOn && service.phase == .running } && setting && agent.registered == 1, "turned on: saved, registered, running")
+        check(drainUntil { label(accessibility(host)[id + ".status"]).contains("The proxy is running") }, "…and said so")
+
+        // Turned off while two agents use it: it stays until they have ended.
+        let route = { (n: Int) in AgentProxyRoute(routeID: "r\(n)", kind: .claude, session: "default", paneID: "w1:p\(n)", terminalID: "t\(n)",
+                                                   cliVersion: "2.1.290", createdAt: "2026-10-22T00:00:00Z", oauthRejected: false, inFlight: 0) }
+        _ = run { await control.setRoutes([route(1), route(2)]) }
+        live = ["t1", "t2"]
+        press(accessibility(host)[id])
+        check(drainUntil { !service.isOn && service.phase == .stopping(agents: 2) } && !setting && agent.unregistered == 0,
+              "turned off with 2 agents on it: still registered")
+        check(drainUntil { label(accessibility(host)[id + ".status"]).contains("Stops once the 2 agents using it have ended.") },
+              "…and says it stops once they have ended")
+        live = []
+        _ = run { await service.check() }
+        check(drainUntil { service.phase == .off } && agent.unregistered == 1 && drainUntil { accessibility(host)[id + ".status"] == nil },
+              "their panes gone: unregistered, and nothing more said")
+
+        // Another machine shown: greyed out, with why, and pressing does nothing.
+        let reason = "Connect to This Mac to change this setting."
+        shown.reason = reason
+        check(drainUntil { !isEnabled(accessibility(host)[id]) && label(accessibility(host)[id + ".unavailable"]).contains(reason) },
+              "another machine: greyed out, with why under it")
+        press(accessibility(host)[id])
+        drain(0.3)
+        check(!service.isOn && agent.registered == 1, "…and pressing it changes nothing")
+        shown.reason = nil
+        check(drainUntil { isEnabled(accessibility(host)[id]) && accessibility(host)[id + ".unavailable"] == nil }, "This Mac again: it can be changed")
+
+        // Turned off in Login Items: said so, with the way there.
+        agent.registeredState = .requiresApproval
+        press(accessibility(host)[id])
+        check(drainUntil { service.isOn && service.phase == .needsApproval }, "Login Items has it off: shown so")
+        ax = accessibility(host)
+        check(label(ax[id + ".status"]).contains("Login Items") && ax[id + ".login-items"] != nil, "…with Open Login Items Settings…")
+        press(ax[id + ".login-items"])
+        check(drainUntil { agent.opened == 1 }, "…which asks the LaunchAgent's stand-in to open them")
+
+        // The Add page: the same setting, the same state.
+        let coordinator = PairingCoordinator(environment: world.environment())
+        let addHost = show(FollowingProxyPages(shown: shown, service: service, model: model, coordinator: coordinator), height: 1700)
+        let addID = "settings.pair.conversations"
+        check(drainUntil { accessibility(addHost)[addID] != nil && label(accessibility(addHost)[addID + ".status"]).contains("Login Items") },
+              "Add page: the same setting, as it is")
+        agent.registeredState = .enabled
+        press(accessibility(addHost)[addID])
+        check(drainUntil { !service.isOn } && !setting, "turned off from the Add page: the same setting")
+        shown.reason = reason
+        check(drainUntil { !isEnabled(accessibility(addHost)[addID]) && label(accessibility(addHost)[addID + ".unavailable"]).contains(reason) },
+              "Add page, another machine: greyed out, with why")
+        check(windows.allSatisfy { !$0.isVisible }, "the pages were never shown")
+        coordinator.stop()
+    }
 }
