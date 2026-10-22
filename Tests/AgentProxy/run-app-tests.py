@@ -90,6 +90,13 @@ identity = sources + [system, 'Tests/AgentProxy/run-app-tests.py', 'Tests/AgentP
 hashes = {n: hashlib.sha256((ROOT / n).read_bytes()).hexdigest() for n in sorted(set(identity))}
 (out / 'source-hashes.json').write_text(json.dumps(hashes, indent=2))
 
+# Failure messages introduced by fail-closed build/route verification.
+strings = json.loads((ROOT / 'Shepherd/Localizable.xcstrings').read_text())['strings']
+for key in ['The bundled proxy could not be verified. Agents start without it.',
+            'The proxy isn’t answering. It will stay registered until its active agents can be checked.']:
+    assert all(strings[key]['localizations'][lang]['stringUnit']['state'] == 'translated'
+               and strings[key]['localizations'][lang]['stringUnit']['value'] for lang in ['ko', 'ja']), key
+
 # 1. The service, in the app's language mode.
 features = []
 for feature in ['MemberImportVisibility', 'NonisolatedNonsendingByDefault', 'InferIsolatedConformances', 'DisableOutwardActorInference',

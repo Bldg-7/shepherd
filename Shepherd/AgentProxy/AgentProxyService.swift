@@ -153,9 +153,10 @@ final class AgentProxyService: AgentProxyRouting {
                 unanswered = 0
                 noteRejections()
             } catch {
-                // Not answering as it should: no agent can be using it.
-                unanswered += 1
-                if unanswered >= environment.startingChecks { await unregister() } else { phase = .stopping(agents: routes.count) }
+                // A control-plane failure says nothing about requests the
+                // forwarder may still be serving. Keep it registered until
+                // a successful route query proves it is safe to stop.
+                phase = .unavailable(String(localized: "The proxy isn’t answering. It will stay registered until its active agents can be checked."))
                 return
             }
             await sweep()
@@ -175,7 +176,11 @@ final class AgentProxyService: AgentProxyRouting {
                 : .unavailable(String(localized: "The proxy isn't answering. Agents start without it until it does."))
             return
         }
-        if let bundled = await environment.bundledBuild(), status.build != bundled {
+        guard let bundled = await environment.bundledBuild() else {
+            phase = .unavailable(String(localized: "The bundled proxy could not be verified. Agents start without it."))
+            return
+        }
+        if status.build != bundled {
             // Another build: it finishes the requests it has, exits, and
             // launchd starts this app's. New agents wait for that.
             if restartAsked != status.build, (try? await environment.control.restartWhenIdle()) != nil { restartAsked = status.build }

@@ -1,11 +1,13 @@
 # Agent proxy
 
-The agent proxy (`AgentProxy/`, SHPHRD-105) is a Swift package of its own, and
-the app doesn't use it yet. Its program, `hrdrhrdrhrdr-agent-proxy`, is meant to
-pass the model requests of the agents the app starts (Claude Code, Codex and Pi,
-signed in with a Claude or ChatGPT subscription) on to api.anthropic.com or
-chatgpt.com, and keep a copy of each request and response for the iPhone and
-iPad app. It runs as two processes:
+The agent proxy (`AgentProxy/`, SHPHRD-105) is a Swift package of its own. The
+Mac app can opt in to it with Show Conversations on iPhone and iPad, off by
+default and changeable only on This Mac. Its program,
+`hrdrhrdrhrdr-agent-proxy`, passes the model requests of eligible agents the app
+starts (Claude Code, Codex and Pi, signed in with a Claude or ChatGPT
+subscription) on to api.anthropic.com or chatgpt.com. The app-side wiring is
+implemented; reconstructing conversations and showing them in the iPhone and
+iPad app are not implemented yet. It runs as two processes:
 
 - The forwarder listens on 127.0.0.1 and passes requests on. Over its control
   socket, `ap.sock`, the app asks it for a route for each agent it starts. A
@@ -17,7 +19,7 @@ iPad app. It runs as two processes:
 - The recorder is a child process that the forwarder sends the copies to. For
   now it checks them and throws them away.
 
-The app's Pi extension will add `x-3rdr-pi-*` headers to say which Pi session a
+The app's Pi extension adds `x-3rdr-pi-*` headers to say which Pi session a
 request belongs to. The forwarder removes every `x-3rdr-*` header before it
 passes a request on.
 
@@ -127,7 +129,8 @@ parts.
    - turning the setting on registers the LaunchAgent;
    - a proxy from a different build of the app is asked once to restart when
      it is idle, and no launch gets a route until it has;
-   - a proxy that doesn't answer gives no launch a route;
+   - a proxy that doesn't answer, or whose bundled build hash cannot be read,
+     gives no launch a route;
    - a launch gets a route only when all of these hold: its CLI is new enough
      (Claude Code 2.1.283, Codex 0.162, Pi 1.3.0), the Mac has no system proxy,
      the window shows This Mac, and the proxy hasn't already refused that kind of
@@ -135,7 +138,9 @@ parts.
    - the routes of panes that have closed are removed, while the route of a
      launch still starting up, whose pane isn't there yet, is kept;
    - with the setting turned off, the LaunchAgent is unregistered only once the
-     pane of the last agent using the proxy has closed.
+     pane of the last agent using the proxy has closed. A failed control-socket
+     query cannot establish that no agents remain, so registration is retained
+     with an error shown until a successful query establishes that it can stop.
 
    This test file is in the `App/` folder because `run-forwarder-tests.py`
    compiles every `*.swift` file directly in `Tests/AgentProxy`.

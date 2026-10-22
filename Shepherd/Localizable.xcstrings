@@ -7634,6 +7634,18 @@
         "ko" : { "stringUnit" : { "state" : "translated", "value" : "프록시가 응답하지 않습니다. 응답할 때까지 agent는 프록시 없이 시작합니다." } }
       }
     },
+    "The bundled proxy could not be verified. Agents start without it." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "アプリに含まれるプロキシを検証できませんでした。agent はプロキシなしで起動します。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "앱에 포함된 프록시를 검증하지 못했습니다. agent는 프록시 없이 시작합니다." } }
+      }
+    },
+    "The proxy isn’t answering. It will stay registered until its active agents can be checked." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "プロキシが応答しません。利用中の agent を確認できるまで登録を維持します。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "프록시가 응답하지 않습니다. 사용 중인 agent를 확인할 수 있을 때까지 등록을 유지합니다." } }
+      }
+    },
     "The proxy running is from another version of hrdrhrdrhrdr." : {
       "localizations" : {
         "ja" : { "stringUnit" : { "state" : "translated", "value" : "動作中のプロキシは別のバージョンの hrdrhrdrhrdr のものです。" } },

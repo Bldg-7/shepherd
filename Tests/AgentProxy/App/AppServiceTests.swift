@@ -341,6 +341,23 @@ func pane(_ id: String, terminal: String, session: String = "default", herdrMach
     check(service.phase == .running, "answering again: running")
 }
 
+@MainActor func unverifiedBuild(_ folder: String) async {
+    let world = World(folder)
+    world.bundled = nil
+    world.setting = true
+    world.agent.state = .enabled
+    world.proxy.start()
+    let service = world.service
+    await service.check()
+    if case .unavailable = service.phase {
+        check(true, "unreadable bundled build: unavailable")
+    } else { check(false, "unreadable bundled build: unavailable") }
+    check(await service.route(for: .claude, pane: pane("w1:p1", terminal: "t1"), cliVersion: "2.1.290", on: thisMac) == nil
+          && service.lastSkip == .proxyUnavailable && world.proxy.count("routes.create") == 0,
+          "unreadable bundled build: never inject an unverified proxy")
+    world.proxy.stop()
+}
+
 @MainActor func rejections(_ folder: String) async {
     let world = World(folder)
     world.proxy.start()
@@ -412,14 +429,23 @@ func pane(_ id: String, terminal: String, session: String = "default", herdrMach
     await service.check()
     check(world.proxy.calls.count == calls, "off and unregistered: the proxy isn't asked again")
 
-    // Off, and the proxy not answering: unregistered after a few checks.
+    // A broken control socket cannot prove the forwarder has no users.
     world.agent.state = .enabled
     _ = world.proxy.addRoute(kind: "claude", session: "default", pane: "w1:p1", terminal: "t-x")
+    world.live["default"] = ["t-x"]
     world.proxy.stop()
-    await service.check(); await service.check()
-    check(world.agent.unregistered == 1, "off, not answering twice: still registered")
+    await service.check(); await service.check(); await service.check(); await service.check()
+    check(world.agent.unregistered == 1, "off, control unavailable: do not terminate possibly active agents")
+    if case .unavailable = service.phase {
+        check(true, "unknown routes while stopping are shown as unavailable")
+    } else { check(false, "unknown routes while stopping are shown as unavailable") }
+    world.proxy.start()
     await service.check()
-    check(world.agent.unregistered == 2 && service.phase == .off, "off, not answering three times: unregistered")
+    check(world.agent.unregistered == 1 && service.phase == .stopping(agents: 1), "control recovers: live route is still protected")
+    world.live["default"] = []
+    await service.check()
+    check(world.agent.unregistered == 2 && service.phase == .off, "only a confirmed empty route list allows unregistering")
+    world.proxy.stop()
 }
 
 @MainActor func approval(_ folder: String) async {
@@ -455,11 +481,12 @@ func pane(_ id: String, terminal: String, session: String = "default", herdrMach
 @main struct AppServiceTests {
     @MainActor static func main() async {
         let root = CommandLine.arguments[1]
-        for name in ["client", "registration", "rejections", "sweep", "approval", "approval/f"] {
+        for name in ["client", "registration", "unverified", "rejections", "sweep", "approval", "approval/f"] {
             try? FileManager.default.createDirectory(atPath: root + "/" + name, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         }
         await controlClient(root + "/client")
         await registration(root + "/registration")
+        await unverifiedBuild(root + "/unverified")
         await rejections(root + "/rejections")
         await sweepAndStop(root + "/sweep")
         await approval(root + "/approval")
