@@ -729,15 +729,18 @@ func monitorTests() async {
     timing.stopDelay = .milliseconds(10)
     let monitor = MachineMonitor(makeClient: { HerdrClient(transport: herdr) }, pinHostKey: { _ in }, pollInterval: .milliseconds(200), listener: nil, timing: timing)
     expect(!monitor.canManageHerdrMachines && monitor.herdrMachineManagementBlocker != nil, "nothing known yet")
+    expect(!monitor.herdrPredatesSavedMachines, "not known to be older than 0.9.0 yet")
     monitor.isWatched = true
     expect(await waitUntil { monitor.herdrMachineListError != nil }, "list failure kept")
     expect(monitor.herdrMachineListError?.contains("0.9.0") == true && !monitor.canManageHerdrMachines, "too old said: \(String(describing: monitor.herdrMachineListError))")
     expect(monitor.herdrMachineManagementBlocker == monitor.herdrMachineListError, "the menus' reason")
+    expect(monitor.herdrPredatesSavedMachines, "known to be older than 0.9.0")
     await herdr.update()
     monitor.refreshNow()
     expect(await waitUntil { monitor.canManageHerdrMachines }, "listed after the update")
     expect(monitor.savedHerdrMachines?.map(\.label) == ["on", "off"] && monitor.herdrMachineGroups.map(\.machine.label) == ["on"], "disabled kept for names, not grouped")
     expect(monitor.herdrMachineListError == nil && monitor.herdrMachineManagementBlocker == nil, "failure cleared")
+    expect(!monitor.herdrPredatesSavedMachines, "0.9.0 or later once it lists them")
     monitor.isWatched = false
 }
 

@@ -29,7 +29,9 @@ for n in [f'{kit}/HerdrKit/Terminal/HerdrExecutable.swift','Shepherd/Terminal/Lo
 writers=[str(x.relative_to(ROOT)) for d in ['Shepherd','ShepherdKit','ShepherdMobile'] for x in sorted((ROOT/d).rglob('*.swift')) if 'session.write(' in x.read_text()]
 assert writers==['Shepherd/Terminal/AgentTerminalViewModel.swift'],writers
 vm=read('Shepherd/Terminal/AgentTerminalViewModel.swift');send=vm[vm.index('    func send(_ data: ArraySlice<UInt8>) {'):vm.index('    func resize(')]
-assert vm.count('session.write(')==1 and 'let bytes = HerdrAttachInput.escaped(data, pasteOpen: &pasteOpen)' in send and 'session.write(Data(bytes))' in send
+assert vm.count('session.write(')==1 and 'let bytes = HerdrAttachInput.escaped(data, pasteOpen: &pasteOpen, takesEncodedPrefix: takesEncodedPrefix())' in send and 'session.write(Data(bytes))' in send
+# Kitty and modifyOtherKeys Ctrl+B are written twice unless the host's herdr is known to be older than 0.9.0.
+assert '!MachineMonitors.shared.monitor(for: machine, in: machineStore).herdrPredatesSavedMachines' in read('Shepherd/Terminal/AgentTerminalView.swift')
 assert not [x for x in (ROOT/'ShepherdMobile').rglob('*.swift') if 'HerdrAttachInput' in x.read_text()]
 # Enables the production conditional routing branch while keeping every actual
 # transport and credential operation in explicit in-memory test doubles.

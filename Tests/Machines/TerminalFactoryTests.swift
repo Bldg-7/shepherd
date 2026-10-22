@@ -25,6 +25,8 @@ actor OwnedTerminal: TerminalSessionProviding {
 
 @main @MainActor enum TerminalFactoryTests {
     enum Rejected: Error { case staleOrUnavailableCredential }
+    /// What the view model is told of the attach's herdr: 0.9.0 or later.
+    static var takesEncodedPrefix = true
     static func main() async {
         var calls = 0
         var fails = true
@@ -34,7 +36,7 @@ actor OwnedTerminal: TerminalSessionProviding {
             calls += 1
             if fails { throw Rejected.staleOrUnavailableCredential }
             return terminal
-        })
+        }, takesEncodedPrefix: { takesEncodedPrefix })
         model.attach(terminalView: view)
         await model.start()
         guard case .failed("owned-factory-failure") = model.connectionState else { preconditionFailure("factory error must be visible") }
@@ -60,7 +62,7 @@ actor OwnedTerminal: TerminalSessionProviding {
         await cancelled.value
         precondition(calls == previousCalls, "cancelled task must not read credentials or make a session")
         model.stop()
-        print("PASS terminal factory rejection, fresh retry, retired session and pre-cancel checks; the view model writes a Ctrl+B press twice and other bytes and pastes as they are, its paste state per attach; no real terminal/network")
+        print("PASS terminal factory rejection, fresh retry, retired session and pre-cancel checks; the view model writes a Ctrl+B press twice (only 0x02 for herdr 0.8.2, asked at each write) and other bytes and pastes as they are, its paste state per attach; no real terminal/network")
     }
 
     /// The writes `terminal` has once it has `count` of them.
@@ -94,13 +96,21 @@ actor OwnedTerminal: TerminalSessionProviding {
         for send in sends { model.send(send.sent[...]) }
         let written = await waitForWrites(terminal, count: before + sends.count)
         precondition(Array(written.dropFirst(before)) == sends.map(\.written), "the view model writes \(sends.map(\.written)), not \(written.dropFirst(before))")
+        // For a herdr older than 0.9.0, asked at each write: only 0x02 twice.
+        takesEncodedPrefix = false
+        model.send(press[...])
+        model.send([0x02])
+        takesEncodedPrefix = true
+        model.send(press[...])
+        let older = await waitForWrites(terminal, count: before + sends.count + 3)
+        precondition(Array(older.suffix(3)) == [press, [0x02, 0x02], press + press], "for herdr 0.8.2 a kitty Ctrl+B is written once and 0x02 twice, and for 0.9 again twice: \(older.suffix(3))")
         // A paste left open when the attach ends doesn't carry over to the next one.
         model.send(start[...])
         model.stop()
         await model.start()
         guard case .connected = model.connectionState else { preconditionFailure("the attach starts again") }
         model.send([0x02])
-        let again = await waitForWrites(terminal, count: before + sends.count + 2)
+        let again = await waitForWrites(terminal, count: before + sends.count + 5)
         precondition(again.last == [0x02, 0x02], "after a new attach, a Ctrl+B is written twice again, not as part of a paste")
     }
 }

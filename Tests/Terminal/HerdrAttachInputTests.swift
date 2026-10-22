@@ -16,7 +16,7 @@ import Foundation
         table()
         splitPaste()
         herdr()
-        print("PASS \(checks) herdr attach input checks: each Ctrl+B press herdr 0.9 takes as its prefix written twice (0x02, kitty CSI 98;5u with Caps/Num Lock and event type 1, modifyOtherKeys), repeats, releases, other modifiers, associated text and non-Latin layouts left alone, pastes left alone also over three writes; herdr's attach client (0.9.0, 0.9.1, master; 0.5.12-0.8.2) modeled from its source: without the escaping Ctrl+B q detaches, with it no key sequence detaches and the pane gets the bytes the view sent; herdr 0.8.2's known limits; no herdr or terminal")
+        print("PASS \(checks) herdr attach input checks: each Ctrl+B press herdr 0.9 takes as its prefix written twice (0x02, kitty CSI 98;5u with Caps/Num Lock and event type 1, modifyOtherKeys), for herdr 0.8.2 only 0x02, repeats, releases, other modifiers, associated text and non-Latin layouts left alone, pastes left alone also over three writes; herdr's attach client (0.9.0, 0.9.1, master; 0.5.12-0.8.2) modeled from its source: without the escaping Ctrl+B q detaches, with it no key sequence detaches and the pane gets the bytes the view sent, on either; herdr 0.8.2's paste limit; no herdr or terminal")
     }
 
     // MARK: - One write
@@ -60,6 +60,15 @@ import Foundation
         for (name, bytes) in unchanged {
             check(HerdrAttachInput.escaped(bytes[...]) == bytes, "\(name) is written as it is")
         }
+        // For herdr 0.8.2 and older, which take only the 0x02 byte.
+        for (name, bytes) in doubled {
+            let expected = bytes == [ctrlB] ? [ctrlB, ctrlB] : bytes
+            check(HerdrAttachInput.escaped(bytes[...], takesEncodedPrefix: false) == expected, "for herdr 0.8.2, \(name) is written \(bytes == [ctrlB] ? "twice" : "as it is")")
+        }
+        for (name, bytes) in unchanged {
+            check(HerdrAttachInput.escaped(bytes[...], takesEncodedPrefix: false) == bytes, "for herdr 0.8.2, \(name) is written as it is")
+        }
+        check(HerdrAttachInput.escaped([esc, ctrlB], takesEncodedPrefix: false) == [esc, ctrlB, ctrlB], "for herdr 0.8.2, ESC 0x02 has its 0x02 doubled")
         // Against the model of herdr 0.9 below: what is written twice is
         // what herdr takes as the prefix when it comes alone, and what is
         // left alone isn't, but for the associated text form, which herdr
@@ -369,10 +378,11 @@ import Foundation
         var name: String
         var keys: [[[UInt8]]]
         var sent: [UInt8] { keys.flatMap { $0.flatMap { $0 } } }
-        /// Each write as the app writes it to the attach, with or without the escaping.
-        func written(escaping: Bool) -> [[UInt8]] {
+        /// Each write as the app writes it to the attach, with or without the
+        /// escaping, for herdr 0.9.0 and later or for an older herdr.
+        func written(escaping: Bool, takesEncodedPrefix: Bool = true) -> [[UInt8]] {
             var open = false
-            return keys.flatMap { $0 }.map { escaping ? HerdrAttachInput.escaped($0[...], pasteOpen: &open) : $0 }
+            return keys.flatMap { $0 }.map { escaping ? HerdrAttachInput.escaped($0[...], pasteOpen: &open, takesEncodedPrefix: takesEncodedPrefix) : $0 }
         }
     }
 
@@ -413,9 +423,11 @@ import Foundation
             for write in typing.written(escaping: escaping) { herdr.read(write) }
             return herdr
         }
-        func run082(_ typing: Typing, escaping: Bool) -> Herdr082 {
+        /// herdr 0.8.2 gets what the app writes for an older herdr, unless
+        /// `takesEncodedPrefix` says the app took it for 0.9.0 or later.
+        func run082(_ typing: Typing, escaping: Bool, takesEncodedPrefix: Bool = false) -> Herdr082 {
             var herdr = Herdr082()
-            for write in typing.written(escaping: escaping) { herdr.read(write) }
+            for write in typing.written(escaping: escaping, takesEncodedPrefix: takesEncodedPrefix) { herdr.read(write) }
             return herdr
         }
 
@@ -455,21 +467,28 @@ import Foundation
         for write in Typing(name: "", keys: [[csi("200~"), pastedText, csi("201~")]]).written(escaping: true) { pasted.read(write) }
         check(pasted.pane == paste(pastedText), "herdr 0.9: a ⌘V paste's text reaches the pane unchanged, its 0x02 once")
 
-        // herdr 0.8.2 and older: the 0x02 byte is the prefix, and nothing else.
-        for typing in legacy {
+        // herdr 0.8.2 and older: the 0x02 byte is the prefix, and nothing
+        // else; the app writes only that twice to them.
+        for typing in legacy + kitty + other {
             let herdr = run082(typing, escaping: true)
             check(!herdr.detached && herdr.pane == typing.sent, "herdr 0.8.2: \(typing.name) doesn't detach and the pane gets its bytes")
         }
-        for typing in other {
-            let herdr = run082(typing, escaping: true)
-            check(!herdr.detached && herdr.pane == typing.sent, "herdr 0.8.2: \(typing.name) is unchanged")
+        for typing in kitty {
+            let before = run082(typing, escaping: false)
+            check(!before.detached && before.pane == typing.sent, "herdr 0.8.2 without the escaping: \(typing.name) reached the pane as it was, so it still does")
         }
-        // Its known limits (see HerdrAttachInput): a kitty Ctrl+B reaches
-        // the pane twice, and a 0x02 in a paste still starts the prefix,
-        // as it did before.
-        let kittyOld = run082(kitty[0], escaping: true)
-        check(!kittyOld.detached && kittyOld.pane == press + press + release + kittyQ, "herdr 0.8.2: a kitty Ctrl+B press reaches the pane twice")
-        check(run082(kitty[0], escaping: false).pane == kitty[0].sent, "herdr 0.8.2 without the escaping: a kitty Ctrl+B reached the pane once")
+        // Its known limit (see HerdrAttachInput): a 0x02 in a paste still
+        // starts the prefix, as it did before.
         check(run082(pastes[0], escaping: true).detached && run082(pastes[0], escaping: false).detached, "herdr 0.8.2: 0x02 q in a paste detaches, with or without the escaping")
+
+        // Why the version matters, either way: kitty Ctrl+B written as for
+        // 0.8.2 still detaches on 0.9 (Ctrl+B q), and written as for 0.9
+        // reaches 0.8.2's pane twice, which the app does only until it
+        // knows the host's herdr is older (see AgentTerminalView).
+        var misjudged09 = Herdr09()
+        for write in kitty[0].written(escaping: true, takesEncodedPrefix: false) { misjudged09.read(write) }
+        check(misjudged09.detached, "herdr 0.9 given what is written for 0.8.2: kitty Ctrl+B, release, q detaches")
+        let misjudged082 = run082(kitty[0], escaping: true, takesEncodedPrefix: true)
+        check(!misjudged082.detached && misjudged082.pane == press + press + release + kittyQ, "herdr 0.8.2 given what is written for 0.9: kitty Ctrl+B reaches the pane twice")
     }
 }

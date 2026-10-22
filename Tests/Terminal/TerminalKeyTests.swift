@@ -149,6 +149,10 @@ import SwiftTerm
                 check(sink.bytes == key.sent, "\(mode): \(key.name) sends what SwiftTerm makes of it")
                 let written = sink.writes.flatMap { HerdrAttachInput.escaped($0[...]) }
                 check(written == (key.twice ? key.sent + key.sent : key.sent), "\(mode): \(key.name) is written to the attach \(key.twice ? "twice" : "as it is")")
+                // herdr 0.8.2 and older take only the 0x02 byte as the prefix.
+                let twiceForOlder = key.twice && !kitty
+                let writtenForOlder = sink.writes.flatMap { HerdrAttachInput.escaped($0[...], takesEncodedPrefix: false) }
+                check(writtenForOlder == (twiceForOlder ? key.sent + key.sent : key.sent), "\(mode): \(key.name) is written to herdr 0.8.2's attach \(twiceForOlder ? "twice" : "as it is")")
             }
             sink.bytes = []
             sink.writes = []
@@ -180,7 +184,7 @@ import SwiftTerm
 
         twoTerminals()
         hostingView()
-        print("PASS \(checks) real SwiftTerm key-down checks: ⌘⌫ sends Ctrl-U in legacy and kitty keyboard modes; ⌘←/⌘→ send Home/End with the kitty keyboard on (> 1 u, > 5 u, > 7 u; repeat and Caps Lock as Home/End) and ESC b/ESC f with it off or popped; other keys unchanged; ⌃B sent as SwiftTerm sends it and its presses written twice to herdr's attach, its repeats (with event types), release, ⌃⌥B and kitty ⌃⇧B as they are; only the terminal with the keyboard takes ⌘←/⌘→, in a plain window and in NSHostingView; no user terminal/GUI")
+        print("PASS \(checks) real SwiftTerm key-down checks: ⌘⌫ sends Ctrl-U in legacy and kitty keyboard modes; ⌘←/⌘→ send Home/End with the kitty keyboard on (> 1 u, > 5 u, > 7 u; repeat and Caps Lock as Home/End) and ESC b/ESC f with it off or popped; other keys unchanged; ⌃B sent as SwiftTerm sends it and its presses written twice to herdr's attach, only as 0x02 for herdr 0.8.2, its repeats (with event types), release, ⌃⌥B and kitty ⌃⇧B as they are; only the terminal with the keyboard takes ⌘←/⌘→, in a plain window and in NSHostingView; no user terminal/GUI")
     }
 
     /// Two terminals in one window: only the one with the keyboard takes
