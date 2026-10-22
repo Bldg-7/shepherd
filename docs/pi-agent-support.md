@@ -62,6 +62,8 @@ startup 파일 뒤의 PATH 순서를 바꿀 수 없다. 절대 경로로 실행�
 (`process.title = "pi"`인 node)는 같으므로 Herdr의 감지도 같다. stage된 PATH는 Pi의 자식 프로세스를 위해
 그대로 pane env로 간다.
 
+Pi는 pane 셸의 현재 폴더에서 시작해야 하므로, `launchPi`는 shim을 타이핑하기 전에 그 셸의 현재 폴더를 읽어 Pi의 시작 폴더로 정한다(`PiProcessIdentity.capture`가 셸 PID로 폴더를 읽는다). 셸이 준비됐는지는 `AgentShellWait.settledShell`이 정한다. 200ms마다 pane의 foreground를 보다가, 셸 하나만 foreground에 있는 관찰이 400ms 떨어진 두 시점에 연속으로 나오고 두 관찰의 셸 PID와 폴더가 서로 같으면 그 폴더를 쓴다. 10초 안에 그런 두 관찰이 나오지 않으면 `pi-shell-not-ready`로 실패한다. 두 번 보는 이유는 셸의 startup 파일(`~/.zshrc` 등)이다. 새 셸은 이 파일을 먼저 실행하고, 그 안의 명령 치환(`eval "$(brew shellenv)"`, 프롬프트 테마 설정 등)은 잠깐씩 자식 프로세스를 foreground에 올린다. 0.6.0까지는 셸 하나만 있는 것을 한 번 본 직후 foreground를 한 번 더 읽었고, 두 읽기 사이에 자식이 올라와 있으면 `PiBridgeFailure.identity`(화면에는 "PiBridgeFailure error 1")로 실패했다(SHPHRD-109). 지금은 폴더를 정한 뒤 이 추가 확인을 하지 않는다. shim을 타이핑하기 직전의 대기(`waitForShell`: 셸 하나만 있는 것을 한 번 보면 진행)는 전과 같고, Claude Code와 Codex는 지금처럼 이 대기만 쓴다.
+
 `agent.start`를 쓰지 않으므로 Herdr가 agent.start한 agent에만 주는 live agent 이름(`pi-<id>`)과
 `interactive_ready`는 없다. hrdrhrdrhrdr는 agent를 pane ID로만 다루고, Pi의 준비 상태는 아래 native MCP
 소유권으로 판단하므로 둘 다 쓰지 않는다.
