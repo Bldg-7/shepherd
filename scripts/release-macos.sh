@@ -224,6 +224,12 @@ xcodebuild -exportArchive -quiet \
 # left there by a reused DerivedData, is refused too.
 python3 "$ROOT/Tests/AgentBrowser/run-cef-helper-name-tests.py" --app "$APP" \
     || fail "the exported app's browser helpers don't match the name it starts them by"
+# The agent proxy (SHPHRD-105) runs from Contents/MacOS as a LaunchAgent the
+# app registers: its executable there, linking no framework of the app's and
+# signed by the team with the hardened runtime, as notarization requires, and
+# the release LaunchAgent alone in Contents/Library/LaunchAgents.
+python3 "$ROOT/Tests/AgentProxy/check-bundle.py" --app "$APP" --configuration Release --team "$TEAM_ID" \
+    || fail "the exported app's agent proxy or its LaunchAgent isn't as it should be"
 codesign --verify --deep --strict "$APP"
 [[ "$(codesign --display --verbose=2 "$APP" 2>&1)" == *"TeamIdentifier=$TEAM_ID"* ]] \
     || fail "the exported app isn't signed by team $TEAM_ID"

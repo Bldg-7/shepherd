@@ -10,7 +10,9 @@ import AgentProxyProtocol
 //
 // --state-dir and --control-socket are for tests and development runs, so
 // they never touch the user's folder; without them the paths are the ones in
-// AgentProxyPaths under the user's home.
+// AgentProxyPaths under the user's home. A path may start with `~/` for that
+// home: the Debug build's LaunchAgent passes its own paths this way, since
+// launchd puts no home folder into a LaunchAgent's arguments.
 
 setvbuf(stderr, nil, _IOLBF, 0)
 umask(0o077)
@@ -35,7 +37,8 @@ while !arguments.isEmpty {
     guard ["--state-dir", "--control-socket"].contains(name), !arguments.isEmpty else {
         fail("usage: \(AgentProxyPaths.executableName) [--state-dir DIR] [--control-socket PATH] | recorder", code: 64)
     }
-    let value = arguments.removeFirst()
+    var value = arguments.removeFirst()
+    if value.hasPrefix("~/") { value = home + value.dropFirst() }
     guard value.hasPrefix("/") else { fail("\(name) takes an absolute path", code: 64) }
     if name == "--state-dir" { stateDirectory = value } else { controlSocket = value }
 }

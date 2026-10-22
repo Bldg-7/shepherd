@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+The Debug build's agent proxy LaunchAgent (SHPHRD-105): the release one's,
+with a label, a state folder (and with it a port) and a control socket of its
+own (AgentProxyPaths' debug names), so that a Debug build never takes over an
+installed release's proxy. launchd puts no home folder into arguments, so the
+paths start with "~/", which the executable takes for the user's home.
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.bldg-7.shepherd.agent-proxy.debug</string>
+	<key>BundleProgram</key>
+	<string>Contents/MacOS/hrdrhrdrhrdr-agent-proxy</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>hrdrhrdrhrdr-agent-proxy</string>
+		<string>--state-dir</string>
+		<string>~/Library/Application Support/com.bldg-7.shepherd/AgentProxy-Debug</string>
+		<string>--control-socket</string>
+		<string>~/Library/Application Support/com.bldg-7.shepherd/ap-debug.sock</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>ThrottleInterval</key>
+	<integer>1</integer>
+	<key>StandardErrorPath</key>
+	<string>/dev/null</string>
+</dict>
+</plist>

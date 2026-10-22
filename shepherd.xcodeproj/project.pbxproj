@@ -27,7 +27,24 @@
 		C0EF00000000000000000024 /* 3rdr Helper (Plugin).app in Embed Browser Engine */ = {isa = PBXBuildFile; fileRef = C0EF00000000000000000014 /* 3rdr Helper (Plugin).app */; platformFilters = (macos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		C0EF00000000000000000025 /* 3rdr Helper (Renderer).app in Embed Browser Engine */ = {isa = PBXBuildFile; fileRef = C0EF00000000000000000015 /* 3rdr Helper (Renderer).app */; platformFilters = (macos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		EB28238D51316AC7C2A3FB0D /* Sparkle in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = 50A33A9511F4A8743DB7A373 /* Sparkle */; };
+		A9E100000000000000000010 /* AgentProxyProtocol in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = A9E100000000000000000040 /* AgentProxyProtocol */; };
+		A9E100000000000000000011 /* hrdrhrdrhrdr-agent-proxy in Embed Agent Proxy */ = {isa = PBXBuildFile; fileRef = A9E100000000000000000061 /* hrdrhrdrhrdr-agent-proxy */; platformFilters = (macos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		A9E100000000000000000012 /* com.bldg-7.shepherd.agent-proxy.plist in Embed Agent Proxy LaunchAgent */ = {isa = PBXBuildFile; fileRef = A9E100000000000000000020 /* com.bldg-7.shepherd.agent-proxy.plist */; platformFilters = (macos, ); };
+		A9E100000000000000000013 /* com.bldg-7.shepherd.agent-proxy.debug.plist in Embed Agent Proxy LaunchAgent */ = {isa = PBXBuildFile; fileRef = A9E100000000000000000021 /* com.bldg-7.shepherd.agent-proxy.debug.plist */; platformFilters = (macos, ); };
+		A9E100000000000000000063 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9E100000000000000000064 /* main.swift */; };
+		A9E100000000000000000066 /* AgentProxyForwarder in Frameworks */ = {isa = PBXBuildFile; productRef = A9E100000000000000000042 /* AgentProxyForwarder */; };
+		A9E100000000000000000067 /* AgentProxyProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = A9E100000000000000000043 /* AgentProxyProtocol */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A9E100000000000000000081 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 000000000000000000000000 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A9E100000000000000000060;
+			remoteInfo = "hrdrhrdrhrdr-agent-proxy";
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
 		C0EF00000000000000000002 /* Embed Browser Engine */ = {
@@ -44,6 +61,25 @@
 			);
 			name = "Embed Browser Engine";
 		};
+		A9E100000000000000000002 /* Embed Agent Proxy */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = "";
+			dstSubfolder = Executables;
+			files = (
+				A9E100000000000000000011 /* hrdrhrdrhrdr-agent-proxy in Embed Agent Proxy */,
+			);
+			name = "Embed Agent Proxy";
+		};
+		A9E100000000000000000003 /* Embed Agent Proxy LaunchAgent */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = Contents/Library/LaunchAgents;
+			dstSubfolder = Wrapper;
+			files = (
+				A9E100000000000000000012 /* com.bldg-7.shepherd.agent-proxy.plist in Embed Agent Proxy LaunchAgent */,
+				A9E100000000000000000013 /* com.bldg-7.shepherd.agent-proxy.debug.plist in Embed Agent Proxy LaunchAgent */,
+			);
+			name = "Embed Agent Proxy LaunchAgent";
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
@@ -57,6 +93,10 @@
 		C0EF00000000000000000013 /* 3rdr Helper (GPU).app */ = {isa = PBXFileReference; lastKnownFileType = wrapper.application; path = "3rdr Helper (GPU).app"; sourceTree = "<group>"; };
 		C0EF00000000000000000014 /* 3rdr Helper (Plugin).app */ = {isa = PBXFileReference; lastKnownFileType = wrapper.application; path = "3rdr Helper (Plugin).app"; sourceTree = "<group>"; };
 		C0EF00000000000000000015 /* 3rdr Helper (Renderer).app */ = {isa = PBXFileReference; lastKnownFileType = wrapper.application; path = "3rdr Helper (Renderer).app"; sourceTree = "<group>"; };
+		A9E100000000000000000020 /* com.bldg-7.shepherd.agent-proxy.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "com.bldg-7.shepherd.agent-proxy.plist"; sourceTree = "<group>"; };
+		A9E100000000000000000021 /* com.bldg-7.shepherd.agent-proxy.debug.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "com.bldg-7.shepherd.agent-proxy.debug.plist"; sourceTree = "<group>"; };
+		A9E100000000000000000061 /* hrdrhrdrhrdr-agent-proxy */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "hrdrhrdrhrdr-agent-proxy"; sourceTree = BUILT_PRODUCTS_DIR; };
+		A9E100000000000000000064 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -95,6 +135,13 @@
 				5A11000000000000000000B8 /* ShepherdKit in Frameworks */,
 			);
 		};
+		A9E100000000000000000065 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				A9E100000000000000000066 /* AgentProxyForwarder in Frameworks */,
+				A9E100000000000000000067 /* AgentProxyProtocol in Frameworks */,
+			);
+		};
 		000000000000000130000000 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
@@ -108,6 +155,7 @@
 				9B506EAF306E7247005B40C9 /* Citadel in Frameworks */,
 				5A11000000000000000000A1 /* ShepherdKit in Frameworks */,
 				EB28238D51316AC7C2A3FB0D /* Sparkle in Frameworks */,
+				A9E100000000000000000010 /* AgentProxyProtocol in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -121,6 +169,8 @@
 				5A11000000000000000000B1 /* ShepherdMobile */,
 				403320BAC8DC4590AAED06E2 /* Shepherd/Agents/AgentRuntime */,
 				C0EF00000000000000000001 /* Browser Engine */,
+				A9E100000000000000000001 /* Agent Proxy LaunchAgent */,
+				A9E100000000000000000005 /* Agent Proxy */,
 				9B506EAD306E7247005B40C9 /* Frameworks */,
 				000000000000000000000020 /* Products */,
 			);
@@ -131,6 +181,7 @@
 			children = (
 				000000000000000000000120 /* Shepherd.app */,
 				5A11000000000000000000B7 /* Shepherd Mobile.app */,
+				A9E100000000000000000061 /* hrdrhrdrhrdr-agent-proxy */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -156,9 +207,46 @@
 			path = Vendor/CEF/out;
 			sourceTree = "<group>";
 		};
+		A9E100000000000000000001 /* Agent Proxy LaunchAgent */ = {
+			isa = PBXGroup;
+			children = (
+				A9E100000000000000000020 /* com.bldg-7.shepherd.agent-proxy.plist */,
+				A9E100000000000000000021 /* com.bldg-7.shepherd.agent-proxy.debug.plist */,
+			);
+			name = "Agent Proxy LaunchAgent";
+			path = Config/LaunchAgents;
+			sourceTree = "<group>";
+		};
+		A9E100000000000000000005 /* Agent Proxy */ = {
+			isa = PBXGroup;
+			children = (
+				A9E100000000000000000064 /* main.swift */,
+			);
+			name = "Agent Proxy";
+			path = AgentProxy/Sources/AgentProxyTool;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		A9E100000000000000000060 /* hrdrhrdrhrdr-agent-proxy */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A9E100000000000000000070 /* Build configuration list for PBXNativeTarget "hrdrhrdrhrdr-agent-proxy" */;
+			buildPhases = (
+				A9E100000000000000000062 /* Sources */,
+				A9E100000000000000000065 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			name = "hrdrhrdrhrdr-agent-proxy";
+			packageProductDependencies = (
+				A9E100000000000000000042 /* AgentProxyForwarder */,
+				A9E100000000000000000043 /* AgentProxyProtocol */,
+			);
+			productName = "hrdrhrdrhrdr-agent-proxy";
+			productReference = A9E100000000000000000061 /* hrdrhrdrhrdr-agent-proxy */;
+			productType = "com.apple.product-type.tool";
+		};
 		5A11000000000000000000B0 /* Shepherd Mobile */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 5A11000000000000000000B2 /* Build configuration list for PBXNativeTarget "Shepherd Mobile" */;
@@ -188,8 +276,13 @@
 				000000000000000130000000 /* Frameworks */,
 				000000000000000140000000 /* Resources */,
 				C0EF00000000000000000002 /* Embed Browser Engine */,
+				A9E100000000000000000002 /* Embed Agent Proxy */,
+				A9E100000000000000000003 /* Embed Agent Proxy LaunchAgent */,
 			);
 			buildRules = (
+			);
+			dependencies = (
+				A9E100000000000000000080 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				000000000000000000000010 /* Shepherd */,
@@ -206,6 +299,7 @@
 				5A11000000000000000000A2 /* ShepherdKit */,
 				9B506EB6306F4D21005B40C9 /* SwiftTerm */,
 				50A33A9511F4A8743DB7A373 /* Sparkle */,
+				A9E100000000000000000040 /* AgentProxyProtocol */,
 			);
 			productName = MyApp;
 			productReference = 000000000000000000000120 /* Shepherd.app */;
@@ -225,6 +319,9 @@
 						CreatedOnToolsVersion = 26.3;
 					};
 					5A11000000000000000000B0 = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					A9E100000000000000000060 = {
 						CreatedOnToolsVersion = 27.0;
 					};
 				};
@@ -248,6 +345,7 @@
 				5A11000000000000000000A3 /* XCLocalSwiftPackageReference "ShepherdKit" */,
 				9B506EB5306F4D21005B40C9 /* XCRemoteSwiftPackageReference "SwiftTerm" */,
 				CB4A131C8950B74B444757D8 /* XCRemoteSwiftPackageReference "Sparkle" */,
+				A9E100000000000000000050 /* XCLocalSwiftPackageReference "AgentProxy" */,
 			);
 			preferredProjectObjectVersion = 90;
 			productRefGroup = 000000000000000000000020 /* Products */;
@@ -256,6 +354,7 @@
 			targets = (
 				000000000000000100000000 /* Shepherd */,
 				5A11000000000000000000B0 /* Shepherd Mobile */,
+				A9E100000000000000000060 /* hrdrhrdrhrdr-agent-proxy */,
 			);
 		};
 /* End PBXProject section */
@@ -277,6 +376,12 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		A9E100000000000000000062 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+				A9E100000000000000000063 /* main.swift in Sources */,
+			);
+		};
 		5A11000000000000000000B3 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
@@ -289,7 +394,48 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		A9E100000000000000000080 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			platformFilters = (macos, );
+			target = A9E100000000000000000060 /* hrdrhrdrhrdr-agent-proxy */;
+			targetProxy = A9E100000000000000000081 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		A9E100000000000000000071 /* Debug configuration for PBXNativeTarget "hrdrhrdrhrdr-agent-proxy" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				ENABLE_HARDENED_RUNTIME = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.bldg-7.shepherd.agent-proxy";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A9E100000000000000000072 /* Release configuration for PBXNativeTarget "hrdrhrdrhrdr-agent-proxy" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "$(SHEPHERD_APP_SIGN_IDENTITY)";
+				CODE_SIGN_STYLE = Automatic;
+				"CODE_SIGN_STYLE[sdk=macosx*]" = Manual;
+				"DEVELOPMENT_TEAM[sdk=macosx*]" = SYZS4D43Z6;
+				ENABLE_HARDENED_RUNTIME = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.bldg-7.shepherd.agent-proxy";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SHEPHERD_APP_SIGN_IDENTITY = "Developer ID Application";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 		000000000000000011000000 /* Debug configuration for PBXProject "shepherd" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -437,6 +583,7 @@
 				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
 				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
 				ENABLE_RESOURCE_ACCESS_USB = NO;
+				EXCLUDED_SOURCE_FILE_NAMES = "com.bldg-7.shepherd.agent-proxy.plist";
 				GENERATE_INFOPLIST_FILE = YES;
 				"HEADER_SEARCH_PATHS[sdk=macosx*]" = "$(SRCROOT)/Vendor/CEF/out";
 				"INFOPLIST_FILE[sdk=macosx*]" = "Config/Info-macOS.plist";
@@ -489,6 +636,7 @@
 				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
 				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
 				ENABLE_RESOURCE_ACCESS_USB = NO;
+				EXCLUDED_SOURCE_FILE_NAMES = "com.bldg-7.shepherd.agent-proxy.debug.plist";
 				"GCC_PREPROCESSOR_DEFINITIONS[sdk=macosx*]" = (
 					"$(inherited)",
 					"NDEBUG=1",
@@ -593,6 +741,14 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		A9E100000000000000000070 /* Build configuration list for PBXNativeTarget "hrdrhrdrhrdr-agent-proxy" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A9E100000000000000000071 /* Debug configuration for PBXNativeTarget "hrdrhrdrhrdr-agent-proxy" */,
+				A9E100000000000000000072 /* Release configuration for PBXNativeTarget "hrdrhrdrhrdr-agent-proxy" */,
+			);
+			defaultConfigurationName = Release;
+		};
 		000000000000000010000000 /* Build configuration list for PBXProject "shepherd" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -627,6 +783,10 @@
 		5A11000000000000000000A3 /* XCLocalSwiftPackageReference "ShepherdKit" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ShepherdKit;
+		};
+		A9E100000000000000000050 /* XCLocalSwiftPackageReference "AgentProxy" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = AgentProxy;
 		};
 /* End XCLocalSwiftPackageReference section */
 
@@ -728,6 +888,21 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 5A11000000000000000000A3 /* XCLocalSwiftPackageReference "ShepherdKit" */;
 			productName = ShepherdKit;
+		};
+		A9E100000000000000000040 /* AgentProxyProtocol */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A9E100000000000000000050 /* XCLocalSwiftPackageReference "AgentProxy" */;
+			productName = AgentProxyProtocol;
+		};
+		A9E100000000000000000042 /* AgentProxyForwarder */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A9E100000000000000000050 /* XCLocalSwiftPackageReference "AgentProxy" */;
+			productName = AgentProxyForwarder;
+		};
+		A9E100000000000000000043 /* AgentProxyProtocol */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A9E100000000000000000050 /* XCLocalSwiftPackageReference "AgentProxy" */;
+			productName = AgentProxyProtocol;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

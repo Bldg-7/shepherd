@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+The agent proxy's LaunchAgent (SHPHRD-105), copied into the app's
+Contents/Library/LaunchAgents by a Release build and registered by the app
+with SMAppService only while "Show Conversations on iPhone and iPad" is on, or
+while agents still use it after the setting is turned off. Its state folder
+and control socket are AgentProxyPaths' defaults. Nothing is logged to a
+file: launchd never trims one, and the app reads how the proxy is doing over
+its control socket.
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.bldg-7.shepherd.agent-proxy</string>
+	<key>BundleProgram</key>
+	<string>Contents/MacOS/hrdrhrdrhrdr-agent-proxy</string>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>ThrottleInterval</key>
+	<integer>1</integer>
+	<key>StandardErrorPath</key>
+	<string>/dev/null</string>
+</dict>
+</plist>
