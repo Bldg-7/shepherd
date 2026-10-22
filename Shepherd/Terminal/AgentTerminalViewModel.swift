@@ -53,6 +53,9 @@ final class AgentTerminalViewModel {
     /// creating a session, which is what keeps a reappearing view from
     /// attaching while the session it had a moment ago is still attached.
     @ObservationIgnored private var teardown: Task<Void, Never>?
+    /// Whether the terminal view has sent the start of a bracketed paste
+    /// whose end it hasn't sent yet (see `send(_:)`).
+    @ObservationIgnored private var pasteOpen = false
 
     init(makeSession: @escaping () throws -> any TerminalSessionProviding) {
         self.makeSession = makeSession
@@ -170,9 +173,14 @@ final class AgentTerminalViewModel {
         }
     }
 
+    /// Every byte the terminal view sends goes to the attach through here.
+    /// herdr's attach keeps Ctrl+B for itself, holding it for the next key
+    /// and ending the attach on Ctrl+B q, so each Ctrl+B it would take is
+    /// written twice, which herdr passes on as one (see `HerdrAttachInput`).
     func send(_ data: ArraySlice<UInt8>) {
         guard let session else { return }
-        Task { try? await session.write(Data(data)) }
+        let bytes = HerdrAttachInput.escaped(data, pasteOpen: &pasteOpen)
+        Task { try? await session.write(Data(bytes)) }
     }
 
     func resize(columns: Int, rows: Int) {
@@ -200,6 +208,8 @@ final class AgentTerminalViewModel {
     private func retireSession() {
         readerTask?.cancel()
         readerTask = nil
+        // A paste begun for this attach doesn't carry over to the next one.
+        pasteOpen = false
         guard let session else { return }
         self.session = nil
         queueStop(of: session)
