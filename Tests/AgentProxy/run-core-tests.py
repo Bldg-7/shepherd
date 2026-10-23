@@ -4,7 +4,7 @@
 No app, agent, provider request, launchd registration or user settings are used.
 Each compiler/test command is bounded by the existing natural-exit test runner.
 This stage covers capture bounds, SSE framing, request-history projection and
-Anthropic response assembly, not conversation storage, compression, recorder
+Anthropic/Responses assembly, not conversation storage, compression, recorder
 integration, the read socket or iOS UI.
 """
 import argparse

@@ -132,6 +132,7 @@ struct CaptureTests {
         check(ConversationCaptureLimits.reconstructedHistoryItems == 200, "history item bound")
         try RequestProjectionTests.run(check: check)
         try AnthropicResponseTests.run(check: check)
+        try ResponsesAssemblyTests.run(check: check)
         print("Capture tests: \(passed) passed, \(failed) failed")
         if failed > 0 { exit(1) }
     }

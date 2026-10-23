@@ -140,6 +140,13 @@ They use synthetic bytes, not real conversations or credentials.
   are not retained. Hidden blocks count toward the entry bound too. Missing
   block starts/stops, malformed JSON, provider errors, EOF and aborted/dropped
   transport remain incomplete rather than appearing successfully finished.
+- Responses SSE uses output/item/content identities for live text, refusal
+  and function-argument deltas. Repeated done snapshots replace rather than
+  duplicate text. A complete final output replaces the view transactionally;
+  an invalid final snapshot preserves the prior live view as incomplete.
+  Reasoning/encrypted content is omitted, image output is a placeholder, and
+  hidden entries still count toward item/content bounds. `[DONE]` without a
+  valid Responses completion event does not establish completion.
 - Projection keeps at most the latest 200 visible messages and 4 MiB of
   accounted content; user/assistant/tool text and block counts are bounded.
   Responses continuation IDs are retained so a later store can distinguish
@@ -149,8 +156,8 @@ They use synthetic bytes, not real conversations or credentials.
 The byte counts concern payloads, not allocator overhead or process RSS. This
 stage does **not** yet enforce aggregate recorder admission/eviction, decompress
 requests, deduplicate or assemble live conversations, expose `ac.sock`, or
-render an iOS chat. Responses SSE semantic assembly remains unimplemented.
-Request projection does not by itself identify a main
+render an iOS chat. Response assembly covers one exchange, not a conversation
+across requests. Request projection does not by itself identify a main
 conversation, distinguish subagents, or turn compaction into a summary.
 The forwarder's recorder still discards its input; adding these pure primitives
 does not change live forwarding or app behavior.
