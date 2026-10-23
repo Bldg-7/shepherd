@@ -82,7 +82,16 @@ for api.anthropic.com and chatgpt.com.
 - The recorder gets a copy of each exchange (a request and its response) on a
   known route, without the credential headers, up to 64 MiB per exchange. A
   request whose token matches no route is still passed on, but not copied,
-  because the forwarder can't tell which agent sent it. A recorder that stops
+  because the forwarder can't tell which agent sent it. The open frame includes
+  only the non-secret route kind, herdr session, pane/terminal IDs and CLI
+  version—not its token, token hash or base URL. Older frames decode without
+  that identity; a recorder must not fabricate a mapping for them.
+  Header capture uses an exact reviewed list, never an entire vendor prefix:
+  signature/tunnel credential headers and raw Codex turn metadata must not reach
+  the recorder. Tests also verify that these provider headers still go upstream
+  unchanged and that synthetic secret values remain absent from artifacts.
+  Codex's native `thread-id` is distinct from its cache-affinity `session-id`.
+  A recorder that stops
   reading, or is killed, never holds a response up.
 
 ### The program itself (`process-tests.py`)

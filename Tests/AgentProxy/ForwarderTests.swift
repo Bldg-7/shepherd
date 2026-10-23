@@ -739,7 +739,9 @@ final class Suite {
         let body = bytes("{\"model\":\"claude\",\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}],\"stream\":true}")
         let headers = claudeHeaders(proxy.port) + [("x-claude-code-session-id", "sess-tee"), ("X-Claude-Code-Agent-Id", "agent-1"),
                                                    ("Cookie", "c=1"), ("ChatGPT-Account-ID", "a"), ("x-3rdr-pi-class", "main"),
-                                                   ("session_id", "s"), ("User-Agent", "claude-cli")]
+                                                   ("session_id", "s"), ("User-Agent", "claude-cli"),
+                                                   ("x-claude-code-request-class", "main"), ("thread-id", "native-thread"),
+                                                   ("session-id", "cache-affinity"), ("x-codex-parent-thread-id", "parent-thread")]
         try check(waitUntil(3) { (try? proxy.control().result("proxy.status")["recorder"] as? [String: Any])?["state"] as? String == "running" }, "recorder up")
         let response = try send(proxy.port, request("POST", "/p/\(claude.token)/v1/messages?beta=true", headers, body: body))
         try check(response.status == 200 && response.complete, "exchange")
@@ -750,8 +752,23 @@ final class Suite {
         let open = try JSONDecoder().decode(AgentProxyTeeFrame.Open.self, from: Data(frames[0].payload))
         try check(open.routeID == claude.routeID && open.upstream == "anthropic" && open.method == "POST" && open.path == "/v1/messages",
                   "open: route, upstream, method, path without token or query")
+        try check(open.routeIdentity == AgentProxyRouteCreate(kind: .claude, session: "default", paneID: "w1:p1",
+                                                             terminalID: "term-w1:p1", cliVersion: "9.9.9"),
+                  "open carries only explicit route identity needed by the recorder")
+        var encodedOpen = try JSONSerialization.jsonObject(with: Data(frames[0].payload)) as! [String: Any]
+        let identity = encodedOpen["routeIdentity"] as? [String: Any]
+        try check(Set(identity?.keys.map { $0 } ?? []) == ["kind", "session", "paneID", "terminalID", "cliVersion"],
+                  "route identity has no token, tokenHash or base URL fields")
+        encodedOpen.removeValue(forKey: "routeIdentity")
+        let legacy = try JSONDecoder().decode(AgentProxyTeeFrame.Open.self, from: JSONSerialization.data(withJSONObject: encodedOpen))
+        try check(legacy.routeIdentity == nil && legacy.routeID == open.routeID, "legacy frame does not fabricate route identity")
+        for name in ["x-claude-code-signature", "x-claude-code-tunnel-credential-epoch", "x-claude-code-future-token", "x-3rdr-pi-secret", "x-codex-turn-metadata"] {
+            try check(!AgentProxyTeeFrame.allowedRequestHeader(name), "unreviewed/sensitive header not copied: \(name)")
+        }
         try check(open.headers == [["content-type", "application/json"], ["x-claude-code-session-id", "sess-tee"],
-                                   ["x-claude-code-agent-id", "agent-1"], ["x-3rdr-pi-class", "main"], ["session_id", "s"]],
+                                   ["x-claude-code-agent-id", "agent-1"], ["x-3rdr-pi-class", "main"], ["session_id", "s"],
+                                   ["x-claude-code-request-class", "main"], ["thread-id", "native-thread"],
+                                   ["session-id", "cache-affinity"], ["x-codex-parent-thread-id", "parent-thread"]],
                   "open: only the classifying headers, got \(open.headers.map { $0.first ?? "" })")
         try check(frames[1].payload == body && frames[2].payload.isEmpty, "request body copied")
         let head = try JSONDecoder().decode(AgentProxyTeeFrame.ResponseHead.self, from: Data(frames[3].payload))
@@ -893,6 +910,7 @@ final class Suite {
             return "MARK" + name + String(UInt64.random(in: 0...UInt64.max, using: &generator), radix: 36)
         }
         let authorization = marker("auth"), apiKey = marker("key"), cookie = marker("cookie"), account = marker("acct"), jwtMark = marker("jwt")
+        let prefixSecret = marker("sensitive-prefix"), metadataSecret = marker("unfiltered-metadata")
         let tap = out + "/c/secrets.tap"
         let anthropic = try fake(anthropicIdentity) { request, connection in
             if request.requestLine.hasPrefix("GET") { connection.send(okJSON("{}")); return }
@@ -910,20 +928,27 @@ final class Suite {
         try check(waitUntil(3) { (try? control.result("proxy.status")["recorder"] as? [String: Any])?["state"] as? String == "running" }, "recorder up")
         let claude = try route(control, "claude"), codex = try route(control, "codex", pane: "w1:p2")
         let createAnswers = control.answers.count
-        needles = [authorization, apiKey, cookie, account, jwtMark, claude.token, codex.token]
+        needles = [authorization, apiKey, cookie, account, jwtMark, prefixSecret, metadataSecret, claude.token, codex.token]
         let port = proxy.port
 
-        let claudeSecret = claudeHeaders(port, auth: "sk-ant-oat01-" + authorization) + [("Cookie", "session=" + cookie), ("x-claude-code-session-id", "sess")]
+        let claudeSecret = claudeHeaders(port, auth: "sk-ant-oat01-" + authorization) + [
+            ("Cookie", "session=" + cookie), ("x-claude-code-session-id", "sess"),
+            ("x-claude-code-signature", prefixSecret), ("x-claude-code-tunnel-credential-epoch", prefixSecret),
+            ("x-claude-code-future-token", prefixSecret), ("x-3rdr-pi-secret", prefixSecret)]
         try check(try send(port, request("POST", "/p/\(claude.token)/v1/messages?beta=true", claudeSecret, body: bytes("{\"stream\":true}"))).status == 200, "claude")
         try check(try send(port, request("GET", "/p/\(claude.token)/v1/models", [("Host", "127.0.0.1:\(port)"), ("x-api-key", apiKey), ("Cookie", cookie)])).status == 200, "models")
         try check(try send(port, request("POST", "/p/\(claude.token)/v1/messages", claudeHeaders(port) + [("x-api-key", apiKey)], body: bytes("{}"))).status == 403, "API key turned away")
-        let codexSecret = codexHeaders(port, token: "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ4In0." + jwtMark) + [("ChatGPT-Account-ID", account), ("Cookie", cookie), ("session_id", "s")]
+        let codexSecret = codexHeaders(port, token: "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ4In0." + jwtMark) + [
+            ("ChatGPT-Account-ID", account), ("Cookie", cookie), ("session_id", "s"),
+            ("x-codex-turn-metadata", "{\"request_kind\":\"turn\",\"extra\":\"\(metadataSecret)\"}")]
         try check(try send(port, request("POST", "/p/\(codex.token)/backend-api/codex/responses", codexSecret, body: bytes("{}"))).status == 200, "codex")
         let wrongHost = claudeSecret.map { $0.0 == "Host" ? ($0.0, "localhost:\(port)") : $0 } + [("x-api-key", apiKey), ("ChatGPT-Account-ID", account)]
         try check(try send(port, request("POST", "/p/\(claude.token)/v1/messages", wrongHost, body: bytes("{}"))).status == 403, "wrong Host")
         try check(waitUntil(5) { ((try? frames(tap)) ?? []).filter { $0.kind == .end }.count >= 3 }, "three exchanges copied")
         // The upstreams did get them: they are forwarded, not kept.
         try check(anthropic.requests.contains { $0.header("authorization").first?.contains(authorization) == true }, "forwarded upstream")
+        try check(anthropic.requests.contains { $0.header("x-claude-code-signature") == [prefixSecret] }, "capture filtering does not strip provider headers upstream")
+        try check(chatgpt.requests.contains { $0.header("x-codex-turn-metadata").first?.contains(metadataSecret) == true }, "raw Codex metadata still reaches provider, not recorder")
         _ = try control.result("routes.list")
         _ = try control.result("proxy.status")
 

@@ -47,10 +47,15 @@ public nonisolated enum AgentProxyTeeFrame {
         public let path: String
         /// `[name, value]` pairs, names lowercased, in the order they came.
         public let headers: [[String]]
+        /// Only the app-supplied non-secret route identity. No token, token
+        /// hash, base URL or credential is included. Optional when decoding
+        /// older frames; a recorder must not invent identity if it is absent.
+        public let routeIdentity: AgentProxyRouteCreate?
 
-        public init(routeID: String, upstream: String, method: String, path: String, headers: [[String]]) {
+        public init(routeID: String, upstream: String, method: String, path: String, headers: [[String]],
+                    routeIdentity: AgentProxyRouteCreate? = nil) {
             self.routeID = routeID; self.upstream = upstream; self.method = method
-            self.path = path; self.headers = headers
+            self.path = path; self.headers = headers; self.routeIdentity = routeIdentity
         }
     }
 
@@ -80,11 +85,24 @@ public nonisolated enum AgentProxyTeeFrame {
     /// and to read the body. Matched on the lowercased name.
     public static func allowedRequestHeader(_ name: String) -> Bool {
         if credentialHeaders.contains(name) { return false }
-        return name == "content-type" || name == "content-encoding"
-            || name.hasPrefix("x-claude-code-")
-            || name == "session_id" || name == "x-openai-subagent"
-            || name.hasPrefix("x-3rdr-pi-")
+        return requestMetadataHeaders.contains(name)
     }
+
+    // Prefixes are not safe allowlists: newer Claude builds also have
+    // x-claude-code-signature and tunnel credential metadata. New fields must
+    // be reviewed individually. Codex 0.162.1 uses hyphenated thread-id for
+    // identity; session-id may instead be a cache-affinity override. Keep the
+    // historical session_id spelling for compatible clients, not as proof of
+    // native identity. Raw x-codex-turn-metadata is deliberately not copied.
+    private static let requestMetadataHeaders: Set<String> = [
+        "content-type", "content-encoding",
+        "x-claude-code-session-id", "x-claude-code-request-class",
+        "x-claude-code-agent-id", "x-claude-code-parent-agent-id",
+        "x-claude-code-agent-type", "x-claude-code-prompt-id",
+        "session_id", "session-id", "thread-id",
+        "x-openai-subagent", "x-openai-memgen-request", "x-codex-parent-thread-id",
+        "x-3rdr-pi-session", "x-3rdr-pi-class"
+    ]
 
     public static func allowedResponseHeader(_ name: String) -> Bool {
         name == "content-type" || name == "content-encoding"

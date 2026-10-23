@@ -149,7 +149,10 @@ final class Exchange {
         if let route = decision.route {
             copied = core.tee.open(id, AgentProxyTeeFrame.Open(routeID: route.routeID, upstream: decision.upstream.rawValue,
                                                                 method: head.method.rawValue, path: decision.path,
-                                                                headers: ForwardingRules.teeRequestHeaders(head.headers)))
+                                                                headers: ForwardingRules.teeRequestHeaders(head.headers),
+                                                                routeIdentity: AgentProxyRouteCreate(kind: route.kind, session: route.session,
+                                                                                                     paneID: route.paneID, terminalID: route.terminalID,
+                                                                                                     cliVersion: route.cliVersion)))
         }
     }
 
