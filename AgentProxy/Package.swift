@@ -9,7 +9,9 @@
 //   sockets are, and the frames the forwarder sends its recorder. Foundation
 //   only, so the iOS app can share it.
 // - AgentProxyCore: bounded in-memory capture and provider stream framing;
-//   Foundation and system CryptoKit. Recorder integration is developed separately.
+//   Foundation and system CryptoKit; serialized tee ingestion and admission.
+// - AgentProxyCompressionC: system zlib and vendored zstd1.5.7 decompressor,
+//   used only by the recorder host, never on the forwarding path.
 // - AgentProxyForwarder: the 127.0.0.1 listener that passes each request on
 //   to api.anthropic.com or chatgpt.com as it came, the control socket, the
 //   state folder and the recorder it starts and restarts.
@@ -42,10 +44,15 @@ let package = Package(
     targets: [
         .target(name: "AgentProxyProtocol"),
         .target(name: "AgentProxyCore", dependencies: ["AgentProxyProtocol"]),
+        .target(name: "AgentProxyCompressionC",
+                exclude: ["vendor/LICENSE", "vendor/SOURCE.json"],
+                cSettings: [.define("ZSTD_DISABLE_ASM", to: "1"), .define("ZSTD_LEGACY_SUPPORT", to: "0"),
+                            .define("XXH_NAMESPACE", to: "ZSTD_")],
+                linkerSettings: [.linkedLibrary("z")]),
         .target(
             name: "AgentProxyForwarder",
             dependencies: [
-                "AgentProxyProtocol",
+                "AgentProxyProtocol", "AgentProxyCore", "AgentProxyCompressionC",
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOPosix", package: "swift-nio"),
                 .product(name: "NIOHTTP1", package: "swift-nio"),

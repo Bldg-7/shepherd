@@ -138,6 +138,7 @@ struct CaptureTests {
         try RequestClassificationTests.run(check: check)
         try CompactionProjectionTests.run(check: check)
         try ConversationOwnerTests.run(check: check)
+        try ConversationCaptureTests.run(check: check)
         print("Capture tests: \(passed) passed, \(failed) failed")
         if failed > 0 { exit(1) }
     }

@@ -211,6 +211,12 @@ public nonisolated struct ConversationReconciler: Sendable {
         return Applied(evictedConversationIDs: update.evictedConversationIDs)
     }
 
+    public mutating func evictOldest() -> [String] {
+        let ids = store.evictOldest()
+        prune(ids)
+        return ids
+    }
+
     private mutating func prune(_ ids: [String]) {
         for id in ids { states.removeValue(forKey: id) }
     }

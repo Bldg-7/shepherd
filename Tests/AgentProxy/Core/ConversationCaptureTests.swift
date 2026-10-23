@@ -1,0 +1,133 @@
+import Foundation
+import AgentProxyCore
+import AgentProxyProtocol
+
+struct ConversationCaptureTests {
+    final class Harness {
+        let capture: ConversationCapture
+        var decoder = AgentProxyTeeFrame.Decoder()
+        init(_ capture: ConversationCapture = .init()) { self.capture = capture }
+        func send(_ kind: AgentProxyTeeFrame.Kind, _ id: UInt64, _ bytes: Data = Data(), chunk: Int = 257) throws {
+            let wire = AgentProxyTeeFrame.header(kind: kind, exchange: id, payloadCount: bytes.count) + bytes
+            for offset in stride(from: 0, to: wire.count, by: chunk) {
+                decoder.append(wire[offset..<min(wire.count, offset + chunk)])
+                while let frame = try decoder.next() { capture.consume(frame) }
+            }
+        }
+        func json<T: Encodable>(_ kind: AgentProxyTeeFrame.Kind, _ id: UInt64, _ value: T) throws {
+            try send(kind, id, JSONEncoder().encode(value))
+        }
+        func open(_ id: UInt64, kind: String = "main", encoding: String? = nil, native: String = "native", extra: [[String]] = []) throws {
+            var headers = [["x-claude-code-request-class", kind], ["x-claude-code-session-id", native],
+                           ["x-claude-code-agent-id", "root"], ["content-type", "application/json"]] + extra
+            if let encoding { headers.append(["content-encoding", encoding]) }
+            try json(.open, id, RequestClassificationTests.open(.claude, headers: headers))
+        }
+        func request(_ id: UInt64, _ text: String = "hello") throws {
+            try send(.requestBody, id, JSONSerialization.data(withJSONObject: ["messages": [["role": "user", "content": text]]]))
+            try send(.requestEnd, id)
+        }
+        func head(_ id: UInt64, status: Int = 200, type: String = "text/event-stream; charset=utf-8", encoding: String? = nil) throws {
+            var headers = [["content-type", type]]
+            if let encoding { headers.append(["content-encoding", encoding]) }
+            try json(.responseHead, id, AgentProxyTeeFrame.ResponseHead(status: status, headers: headers))
+        }
+        func event(_ id: UInt64, _ object: [String: Any]) throws {
+            let json = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+            try send(.responseBody, id, Data("data: ".utf8) + json + Data("\n\n".utf8))
+        }
+        func answer(_ id: UInt64, _ text: String, complete: Bool = true) throws {
+            try event(id, ["type": "message_start", "message": ["id": "msg", "role": "assistant", "content": []]])
+            try event(id, ["type": "content_block_start", "index": 0, "content_block": ["type": "text", "text": text]])
+            if complete {
+                try event(id, ["type": "content_block_stop", "index": 0])
+                try event(id, ["type": "message_stop"])
+            }
+        }
+        func end(_ id: UInt64, _ outcome: AgentProxyTeeFrame.End.Outcome = .complete) throws {
+            try json(.end, id, AgentProxyTeeFrame.End(outcome: outcome))
+        }
+        var snapshot: ConversationSnapshot? {
+            capture.reconciler.store.list().first.flatMap { capture.reconciler.store.read(id: $0.id) }
+        }
+    }
+    final class Expansion: CaptureDecompressor {
+        let bytes: Data
+        init(_ bytes: Data) { self.bytes = bytes }
+        func append(_ bytes: Data, emit: (Data) throws -> Void) throws { try emit(self.bytes) }
+        func finish(emit: (Data) throws -> Void) throws {}
+    }
+    static func run(check: (Bool, String) -> Void) throws {
+        let stream = Harness()
+        try stream.open(1, extra: [["Authorization", "PRIVATE_AUTH"], ["x-claude-code-secret", "PRIVATE_HEADER"]])
+        try stream.request(1); try stream.head(1); try stream.answer(1, "안녕🧪", complete: false)
+        check(stream.snapshot?.summary.status == .streaming && stream.snapshot?.items.last?.message.blocks.first?.text == "안녕🧪", "tee bytes reach live memory-only conversation")
+        try stream.event(1, ["type": "content_block_stop", "index": 0]); try stream.event(1, ["type": "message_stop"])
+        try stream.end(1)
+        check(stream.snapshot?.summary.status == .complete && stream.capture.activeExchangeCount == 0 && stream.capture.bufferedRequestBytes == 0, "tee completion retires all request/decoder state")
+        check(!String(describing: stream.snapshot).contains("PRIVATE_"), "unreviewed header values never reach snapshots")
+        let first = stream.snapshot!
+        try stream.open(2, kind: "compaction"); try stream.request(2, "private instructions"); try stream.head(2); try stream.answer(2, "summary"); try stream.end(2)
+        check(Array(stream.snapshot!.items.prefix(first.items.count)) == first.items && stream.snapshot?.items.last?.origin == .summary, "tee compaction follows verified owner and preserves original history")
+        check(!String(describing: stream.snapshot).contains("private instructions"), "compaction request instructions are not projected as user messages")
+        for outcome: AgentProxyTeeFrame.End.Outcome in [.aborted, .dropped] {
+            let h = Harness(); try h.open(1); try h.request(1); try h.head(1); try h.answer(1, "partial"); try h.end(1, outcome)
+            check(h.snapshot?.summary.status == .incomplete && h.capture.activeExchangeCount == 0, "tee \(outcome) overrides provider message_stop")
+        }
+        let eof = Harness(); try eof.open(1); try eof.request(1); try eof.head(1); try eof.answer(1, "partial", complete: false)
+        eof.capture.finishAll()
+        check(eof.snapshot?.summary.status == .incomplete && eof.capture.activeExchangeCount == 0, "parent EOF finalizes in-flight responses incomplete")
+        let partial = Harness(); try partial.open(1); try partial.send(.requestBody, 1, Data("{\"messages\":".utf8)); try partial.end(1, .dropped)
+        check(partial.capture.reconciler.store.count == 0 && partial.capture.bufferedRequestBytes == 0, "partial request is never parsed after drop")
+        let badJSON = Harness(); try badJSON.open(1); try badJSON.send(.requestBody, 1, Data("not-json".utf8)); try badJSON.send(.requestEnd, 1)
+        check(badJSON.capture.activeExchangeCount == 0 && badJSON.capture.reconciler.store.count == 0, "malformed request releases capture without throwing into forwarder")
+        let unsupported = Harness(); try unsupported.open(1, encoding: "br")
+        check(unsupported.capture.activeExchangeCount == 0 && unsupported.capture.drops[.unsupported] == 1, "unsupported encoding fails capture closed")
+        let late = Harness(); try late.open(1); try late.request(1); try late.head(1); try late.answer(1, "original"); try late.end(1)
+        let seq = late.capture.reconciler.store.sequence
+        try late.open(1); try late.request(1, "replayed"); try late.send(.responseBody, 1, Data("data: late\n\n".utf8))
+        check(late.capture.reconciler.store.sequence == seq && late.capture.activeExchangeCount == 0, "completed or discarded exchange IDs cannot be resurrected")
+        let duplicate = Harness(); try duplicate.open(1); try duplicate.request(1); try duplicate.open(1)
+        check(duplicate.capture.activeExchangeCount == 0 && duplicate.snapshot?.summary.status == .incomplete, "duplicate open retires existing exchange rather than overwriting it")
+        let order = Harness(); try order.open(1); try order.head(1)
+        check(order.capture.activeExchangeCount == 0 && order.capture.reconciler.store.count == 0, "response before complete request cannot create guessed transcript")
+        for status in [400, 401, 500] {
+            let h = Harness(); try h.open(1); try h.request(1); try h.head(1, status: status)
+            check(h.snapshot?.summary.status == .incomplete && h.capture.activeExchangeCount == 0, "HTTP \(status) not interpreted as successful assistant data")
+        }
+        let nonSSE = Harness(); try nonSSE.open(1); try nonSSE.request(1); try nonSSE.head(1, type: "application/json")
+        check(nonSSE.snapshot?.summary.status == .incomplete, "unexpected response format leaves explicit incomplete conversation")
+        let duplicateHeader = Harness(); try duplicateHeader.open(1, extra: [["Content-Type", "text/plain"]])
+        check(duplicateHeader.capture.activeExchangeCount == 0 && duplicateHeader.capture.drops[.metadata] == 1, "case-insensitive header ambiguity rejected before retention")
+        for kind in ["subagent", "auxiliary", "unknown"] {
+            let h = Harness(); try h.open(1, kind: kind); try h.request(1)
+            check(h.capture.reconciler.store.count == 0 && h.capture.activeExchangeCount == 0, "unintegrated \(kind) capture cannot pollute main history")
+        }
+        let broken = Harness(); try broken.open(1); try broken.request(1); try broken.head(1)
+        try broken.send(.responseBody, 1, Data("data: ".utf8) + Data([255, 10, 10]))
+        check(broken.snapshot?.summary.status == .incomplete && broken.capture.activeExchangeCount == 0, "malformed SSE releases decoder and retires main ticket")
+        let limits = ConversationCapture.Limits(totalBytes: 100_000, fixedBytes: 1000, workingBytes: 10_000, exchanges: 2, requestBytes: 4000,
+            store: .init(conversationBytes: 5000, totalBytes: 20_000, conversations: 4))
+        let bounded = Harness(ConversationCapture(limits: limits))
+        try bounded.open(1); try bounded.open(2); try bounded.open(3)
+        check(bounded.capture.activeExchangeCount == 2 && bounded.capture.drops[.admission] == 1, "independent in-flight count cap")
+        try bounded.send(.requestBody, 1, Data(repeating: 65, count: 4001))
+        check(bounded.capture.activeExchangeCount == 1 && bounded.capture.bufferedRequestBytes == 0, "oversized request drops and releases its buffer")
+        try bounded.open(4); try bounded.request(4); try bounded.head(4); try bounded.answer(4, "other request works"); try bounded.end(4)
+        check(bounded.snapshot?.summary.status == .complete && bounded.capture.accountedBytes <= limits.totalBytes, "one rejected capture cannot stop another exchange")
+        let expansion = Harness(ConversationCapture(limits: limits, makeDecoder: { $0 == "gzip" ? Expansion(Data(repeating: 65, count: 4001)) : nil }))
+        try expansion.open(1, encoding: "gzip"); try expansion.send(.requestBody, 1, Data([1]))
+        check(expansion.capture.activeExchangeCount == 0 && expansion.capture.bufferedRequestBytes == 0, "decompressed output bound is independent of tiny wire size")
+        let memory = Harness(ConversationCapture(limits: .init(totalBytes: 20_000, fixedBytes: 1000, workingBytes: 10_000, exchanges: 4, requestBytes: 8000,
+            store: .init(conversationBytes: 5000, totalBytes: 10_000, conversations: 2))))
+        try memory.open(1); try memory.send(.requestBody, 1, Data(repeating: 65, count: 3000))
+        check(memory.capture.drops[.admission] == 1 && memory.capture.activeExchangeCount == 0, "aggregate accounting reserves 4x body before allocation")
+        check(memory.capture.accountedBytes <= memory.capture.limits.totalBytes, "aggregate bound restored after rejection")
+        let codecRequest = try JSONSerialization.data(withJSONObject: ["messages": [["role": "user", "content": "decoded"]]])
+        let decoded = Harness(ConversationCapture(limits: limits, makeDecoder: { $0 == "gzip" ? Expansion(codecRequest) : nil }))
+        try decoded.open(1, encoding: "gzip"); try decoded.send(.requestBody, 1, Data([1])); try decoded.send(.requestEnd, 1)
+        check(decoded.snapshot?.items.first?.message.blocks.first?.text == "decoded", "host codec output is classified/projected, not raw compressed bytes")
+        decoded.capture.finishAll(); bounded.capture.finishAll()
+        check(decoded.capture.activeExchangeCount == 0 && bounded.capture.activeExchangeCount == 0, "all remaining synthetic exchanges cleaned up")
+    }
+}

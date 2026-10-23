@@ -6,8 +6,8 @@ default and changeable only on This Mac. Its program,
 `hrdrhrdrhrdr-agent-proxy`, passes the model requests of eligible agents the app
 starts (Claude Code, Codex and Pi, signed in with a Claude or ChatGPT
 subscription) on to api.anthropic.com or chatgpt.com. The app-side wiring is
-implemented; reconstructing conversations and showing them in the iPhone and
-iPad app are not implemented yet. It runs as two processes:
+implemented. Bounded main/compaction conversation collection is connected;
+the read API and iPhone/iPad conversation UI are still in development. It runs as two processes:
 
 - The forwarder listens on 127.0.0.1 and passes requests on. Over its control
   socket, `ap.sock`, the app asks it for a route for each agent it starts. A
@@ -16,8 +16,13 @@ iPad app are not implemented yet. It runs as two processes:
   request comes from. `proxy.restartWhenIdle` on the same socket makes the
   forwarder exit as soon as no request is in progress, so that launchd can start
   a newer build.
-- The recorder is a child process that the forwarder sends the copies to. For
-  now it checks them and throws them away.
+- The recorder is a child process that consumes the copies into memory-only
+  conversations. It never writes transcript files or raw error logs. It decodes
+  gzip, zlib-wrapped deflate and zstd copies with bounded output and an 8-MiB
+  zstd window; forwarding retains the original bytes. Unknown/stacked encodings,
+  trailing/concatenated frames, invalid checksums and truncated streams fail
+  capture closed without changing the HTTP exchange. Pi and subagent ingestion
+  still await verified tagging/tracking; they are not promoted to main.
 
 The app's Pi extension adds `x-3rdr-pi-*` headers to say which Pi session a
 request belongs to. The forwarder removes every `x-3rdr-*` header before it
@@ -181,6 +186,17 @@ They use synthetic bytes, not real conversations or credentials.
   Responses continuation IDs are retained so a later store can distinguish
   incremental input from a complete history. The JSON scanner limits nesting
   and token count before materialization; metadata scan work is also bounded.
+
+`ConversationCapture` now connects tee request/body/end and response head/SSE/end
+frames to classification, reconciliation and compaction. It reserves framing and
+metadata space, per-exchange parser/decoder workspace and 4x buffered request
+bytes under a 128-MiB accounting budget. Pressure evicts oldest history plus its
+owned in-flight streams, or rejects capture. Independent count/body/decoded-byte
+caps cover empty exchanges and decompression expansion. The forwarder's monotonic
+open IDs prevent late frames or duplicate opens from resurrecting discarded
+captures. EOF/drop/abort finalize incomplete; no partial request JSON is parsed.
+Native gzip/zlib/zstd fixtures pass through this same ingestion path in the
+forwarder suite. Actual read-socket subscriber queues still need admission.
 
 The byte counts concern payloads and explicit object allowances, not a hard
 allocator/process-RSS limit. `ConversationStore` bounds retained transcripts

@@ -31,6 +31,7 @@ struct ForwarderTests {
         setvbuf(stdout, nil, _IOLBF, 0)
         signal(SIGPIPE, SIG_IGN)
         do {
+            try CompressionTests.run(fixtures: URL(fileURLWithPath: arguments[4]).deletingLastPathComponent())
             let suite = try Suite(output: arguments[2], proxy: arguments[3], fixture: arguments[4])
             exit(suite.run())
         } catch {

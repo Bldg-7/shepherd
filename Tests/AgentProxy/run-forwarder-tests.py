@@ -38,11 +38,19 @@ env = dict(os.environ, HOME=str(out / 'home'), CFFIXED_USER_HOME=str(out / 'home
            CLANG_MODULE_CACHE_PATH=str(out / 'cache'), DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer',
            SWIFTCI_USE_LOCAL_DEPS='1')
 
-package_sources = sorted((ROOT / 'AgentProxy/Sources').rglob('*.swift'))
+package_sources = sorted(p for p in (ROOT / 'AgentProxy/Sources').rglob('*') if p.is_file())
 test_sources = sorted((ROOT / 'Tests/AgentProxy').glob('*.swift'))
 identity = (['AgentProxy/Package.swift'] + [str(f.relative_to(ROOT)) for f in package_sources + test_sources]
             + ['Tests/AgentProxy/process-tests.py', 'Tests/AgentProxy/run-forwarder-tests.py'])
+identity += ['Shepherd/ThirdPartyNotices.txt']
 hashes = {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in identity}
+vendor = ROOT / 'AgentProxy/Sources/AgentProxyCompressionC/vendor'
+provenance = json.loads((vendor / 'SOURCE.json').read_text())
+assert provenance['archiveSHA256'] == '37d7284556b20954e56e1ca85b80226768902e2edabd3b649e9e72c0c9012ee3'
+assert all(hashlib.sha256((vendor / name).read_bytes()).hexdigest() == value for name, value in provenance['files'].items())
+notices = (ROOT / 'Shepherd/ThirdPartyNotices.txt').read_text()
+assert (vendor / 'LICENSE').read_text() in notices
+assert 'Copyright (c) Yann Collet - Meta Platforms, Inc' in notices and 'Copyright (c) 2016 Tino Reichardt' in notices
 (out / 'source-hashes.json').write_text(json.dumps(hashes, indent=2))
 
 # The package's own manifest, read without resolving anything.
@@ -76,17 +84,27 @@ def swift_dependency(item):
 
 targets = []
 for target in manifest['targets']:
-    assert target['type'] in ('regular', 'executable') and not target.get('settings'), 'plain targets only'
+    assert target['type'] in ('regular', 'executable')
+    extra = ''
+    if target['name'] == 'AgentProxyCompressionC':
+        expected = [('c', 'define', 'ZSTD_DISABLE_ASM=1'), ('c', 'define', 'ZSTD_LEGACY_SUPPORT=0'),
+                    ('c', 'define', 'XXH_NAMESPACE=ZSTD_'), ('linker', 'linkedLibrary', 'z')]
+        actual = [(s['tool'], next(iter(s['kind'])), next(iter(s['kind'].values()))['_0']) for s in target['settings']]
+        assert actual == expected, actual
+        assert target['exclude'] == ['vendor/LICENSE', 'vendor/SOURCE.json']
+        extra = ', exclude: ["vendor/LICENSE", "vendor/SOURCE.json"], cSettings: [.define("ZSTD_DISABLE_ASM", to: "1"), .define("ZSTD_LEGACY_SUPPORT", to: "0"), .define("XXH_NAMESPACE", to: "ZSTD_")], linkerSettings: [.linkedLibrary("z")]'
+    else:
+        assert not target.get('settings') and not target.get('exclude'), 'plain Swift targets only'
     kind = '.executableTarget' if target['type'] == 'executable' else '.target'
-    targets.append('%s(name: %s, dependencies: [%s])' % (kind, json.dumps(target['name']),
-                                                          ', '.join(swift_dependency(d) for d in target['dependencies'])))
+    targets.append('%s(name: %s, dependencies: [%s]%s)' % (kind, json.dumps(target['name']),
+                         ', '.join(swift_dependency(d) for d in target['dependencies']), extra))
     source = ROOT / 'AgentProxy/Sources' / target['name']
     shutil.copytree(source, out / 'package/Sources' / target['name'])
-assert {t['name'] for t in manifest['targets']} == {'AgentProxyProtocol', 'AgentProxyCore', 'AgentProxyForwarder', 'AgentProxyTool'}
+assert {t['name'] for t in manifest['targets']} == {'AgentProxyProtocol', 'AgentProxyCore', 'AgentProxyCompressionC', 'AgentProxyForwarder', 'AgentProxyTool'}
 (out / 'package/Sources/ForwarderTests').mkdir()
 for source in test_sources:
     shutil.copy2(source, out / 'package/Sources/ForwarderTests' / source.name)
-targets.append('.executableTarget(name: "ForwarderTests", dependencies: ["AgentProxyForwarder", "AgentProxyProtocol", '
+targets.append('.executableTarget(name: "ForwarderTests", dependencies: ["AgentProxyForwarder", "AgentProxyProtocol", "AgentProxyCore", '
                + ', '.join('.product(name: "%s", package: "%s")' % pair for pair in [
                    ('NIOCore', 'swift-nio'), ('NIOPosix', 'swift-nio'), ('NIOTLS', 'swift-nio'), ('NIOSSL', 'swift-nio-ssl'),
                    ('Crypto', 'swift-crypto'), ('X509', 'swift-certificates'), ('SwiftASN1', 'swift-asn1')]) + '])')
@@ -109,9 +127,9 @@ let package = Package(name: "AgentProxyTests", platforms: [.macOS("26.6")], prod
                   for name in ['swift-nio', 'swift-nio-ssl', 'swift-crypto', 'swift-certificates', 'swift-asn1']),
        ',\n    '.join(targets)))
 
-# A Codex request body as it goes over the wire: zstd. Made here; the proxy
-# never decompresses it.
-body = json.dumps({'model': 'gpt-5', 'stream': True, 'input': [{'role': 'user', 'content': [
+# A synthetic Codex request: forwarding keeps bytes unchanged; the recorder
+# alone decodes its copy. Fixtures also exercise gzip, zlib and decoder bounds.
+body = json.dumps({'model': 'gpt-5', 'stream': True, 'client_metadata': {'x-codex-turn-metadata': json.dumps({'request_kind': 'turn', 'thread_id': 'native'})}, 'input': [{'role': 'user', 'content': [
     {'type': 'input_text', 'text': ' '.join(hashlib.sha256(str(i).encode()).hexdigest()[:i % 9 + 2] for i in range(20000))}]}]}).encode()
 try:
     from compression import zstd
@@ -126,6 +144,21 @@ except ImportError:
         fixture += (last | (len(block) << 3)).to_bytes(3, 'little') + block
     fixture = bytes(fixture)
 (out / 'fixtures/codex-request.zst').write_bytes(fixture)
+(out / 'fixtures/codex-request.json').write_bytes(body)
+import gzip, zlib
+(out / 'fixtures/codex-request.gz').write_bytes(gzip.compress(body, mtime=0))
+(out / 'fixtures/codex-request.zz').write_bytes(zlib.compress(body))
+response = b''.join(b'data: ' + json.dumps(event).encode() + b'\n\n' for event in [
+    {'type': 'response.created', 'response': {'id': 'response'}},
+    {'type': 'response.completed', 'response': {'id': 'response', 'status': 'completed', 'output': [
+        {'id': 'answer', 'type': 'message', 'role': 'assistant', 'content': [{'type': 'output_text', 'text': 'captured response'}]}]}}])
+(out / 'fixtures/capture-response.gz').write_bytes(gzip.compress(response, mtime=0))
+(out / 'fixtures/capture-response.zz').write_bytes(zlib.compress(response))
+try:
+    response_zst = zstd.compress(response, level=3)
+except NameError:
+    response_zst = b'\x28\xb5\x2f\xfd\xe0' + len(response).to_bytes(8, 'little') + (1 | len(response) << 3).to_bytes(3, 'little') + response
+(out / 'fixtures/capture-response.zst').write_bytes(response_zst)
 (out / 'sandbox.sb').write_text('''(version 1)
 (allow default)
 (deny network-outbound)
@@ -149,6 +182,9 @@ build = out / 'package/.build/debug'
 sandbox = ['/usr/bin/sandbox-exec', '-f', str(out / 'sandbox.sb')]
 stage('agent-proxy-build', 900, ['/usr/bin/xcrun', 'swift', 'build', '--package-path', str(out / 'package'), '--jobs', '4',
                                  '--disable-automatic-resolution'])
+linkage = subprocess.check_output(['/usr/bin/otool', '-L', str(build / 'hrdrhrdrhrdr-agent-proxy')], text=True, timeout=30)
+(out / 'compression-linkage.log').write_text(linkage)
+assert '/opt/homebrew/' not in linkage and 'libzstd' not in linkage, 'decoder must not depend on a local zstd dylib'
 stage('forwarder-tests', 300, sandbox + [str(build / 'ForwarderTests'), 'run', str(out / 'run'),
                                          str(build / 'hrdrhrdrhrdr-agent-proxy'), str(out / 'fixtures/codex-request.zst')])
 stage('process-tests', 180, sandbox + [sys.executable, '-I', str(ROOT / 'Tests/AgentProxy/process-tests.py'),
@@ -174,6 +210,7 @@ process = json.loads((out / 'process/results.json').read_text())
 (out / 'validation.json').write_text(json.dumps({
     'passed': forwarder['failed'] == 0 and process['failed'] == 0,
     'forwarderCases': forwarder['passed'], 'processCases': process['passed'],
+    'compressionCases': json.loads((out / 'fixtures/compression-results.json').read_text())['passed'],
     'filesScannedForSecrets': scanned, 'stages': len(records),
     'loopbackOnlySandbox': True, 'actualApp': 'NOTRUN', 'actualAgents': 'NOTRUN', 'launchd': 'NOTRUN'}, indent=2))
 print(f'agent proxy: {forwarder["passed"]} forwarder cases and {process["passed"]} process cases passed; '

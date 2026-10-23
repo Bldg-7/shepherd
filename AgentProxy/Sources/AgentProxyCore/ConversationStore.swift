@@ -157,6 +157,21 @@ public nonisolated struct ConversationStore: Sendable {
         return read(id: entry.id)
     }
 
+    /// Admission pressure may evict retained history before accepting another
+    /// in-flight capture. Deletion advances the cursor; rollover resets epoch.
+    public mutating func evictOldest() -> [String] {
+        guard let victim = entries.values.min(by: { $0.revision < $1.revision }) else { return [] }
+        if sequence == .max {
+            let ids = entries.values.map(\.id)
+            entries.removeAll(); keysByID.removeAll(); accountedBytes = 0
+            sequence = 0; epoch = UUID().uuidString
+            return ids
+        }
+        entries.removeValue(forKey: victim.key); keysByID.removeValue(forKey: victim.id)
+        accountedBytes -= victim.cost; sequence += 1
+        return [victim.id]
+    }
+
     private static func valid(_ message: CapturedMessage) -> Bool {
         guard !message.blocks.isEmpty, message.blocks.count <= 64 else { return false }
         let cap = message.role == .assistant ? ConversationCaptureLimits.assistantText :
