@@ -113,7 +113,7 @@ ChatGPT-Account-ID headers, and the route tokens. None may be there.
 python3 Tests/AgentProxy/run-core-tests.py --output /tmp/shepherd-agent-core-FRESH
 ```
 
-This Foundation-only stage compiles `AgentProxyCore` and its tests in both Debug
+This Foundation/system-CryptoKit stage compiles `AgentProxyCore` and its tests in both Debug
 and optimized mode, then type-checks the core for the iOS Simulator (iOS 17
 minimum), without resolving SwiftPM dependencies. The tests run in a
 sandbox denying all network access, with temporary HOME and cache folders.
@@ -164,10 +164,20 @@ any existing snapshot or eviction order changes. Tests use small limits to
 exercise exact thresholds, empty-object floods and atomic rejection.
 
 The store accepts already reconciled snapshots: it does not classify requests,
-deduplicate by text, or reject stale response generations on its own. In-flight
-request/parser/subscriber budgets still belong to the recorder integration.
-This stage does **not** yet decompress requests, deduplicate or assemble whole
-live conversations, expose `ac.sock`, or
+deduplicate by text, or reject stale response generations on its own.
+`ConversationReconciler.beginMain` accepts only already-classified main requests:
+SHA-256 fingerprints detect retries without swallowing repeated user messages;
+full history replaces provisional response grouping, while Responses predecessor
+IDs distinguish incremental input. Ambiguous/missing history adds a typed
+boundary instead of guessing. Fresh request/epoch tickets reject superseded,
+finished or evicted updates. Metadata retains at most 200 message digests per
+resident conversation and is pruned with store eviction; no raw request copy
+is kept there. Opaque session keys compare exact bytes, not Unicode equivalence.
+
+In-flight body/parser/subscriber admission and the metadata reservation still
+belong to recorder integration. This stage does **not** yet classify provider
+requests, summarize compaction/subagent exchanges, decompress requests, expose
+`ac.sock`, or
 render an iOS chat. Response assembly covers one exchange, not a conversation
 across requests. Request projection does not by itself identify a main
 conversation, distinguish subagents, or turn compaction into a summary.

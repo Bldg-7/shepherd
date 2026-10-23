@@ -16,6 +16,12 @@ struct ConversationStoreTests {
         check(ConversationKey(agent: "pi", herdrSession: "s", nativeSession: "") == nil, "empty native session rejected")
         check(ConversationKey(agent: "pi", herdrSession: "s", nativeSession: String(repeating: "x", count: 257)) == nil, "session metadata bounded")
         check(ConversationContext(routeID: "route\n", paneID: "p", terminalID: "t") == nil, "control characters rejected from context")
+        let composed = key("\u{E9}"), decomposed = key("e\u{301}")
+        check(composed != decomposed, "opaque native session IDs compare by bytes, not Unicode canonical equivalence")
+        var opaqueIDs = ConversationStore()
+        _ = try opaqueIDs.upsert(key: composed, context: context, items: [], status: .complete)
+        _ = try opaqueIDs.upsert(key: decomposed, context: context, items: [], status: .complete)
+        check(opaqueIDs.count == 2, "canonically equivalent opaque IDs cannot merge conversations")
         var store = ConversationStore()
         let initialEpoch = store.epoch
         let firstItem = try item("i", "A")

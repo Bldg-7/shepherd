@@ -15,6 +15,20 @@ public nonisolated struct ConversationKey: Hashable, Sendable {
               RequestProjection.identifier(nativeSession) != nil else { return nil }
         self.agent = agent; self.herdrSession = herdrSession; self.nativeSession = nativeSession
     }
+
+    // These are opaque identifiers, not natural-language text. Swift String
+    // equality otherwise merges canonically equivalent Unicode spellings.
+    public static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.agent.utf8.elementsEqual(rhs.agent.utf8)
+            && lhs.herdrSession.utf8.elementsEqual(rhs.herdrSession.utf8)
+            && lhs.nativeSession.utf8.elementsEqual(rhs.nativeSession.utf8)
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(Data(agent.utf8))
+        hasher.combine(Data(herdrSession.utf8))
+        hasher.combine(Data(nativeSession.utf8))
+    }
 }
 
 public nonisolated struct ConversationContext: Equatable, Sendable {
@@ -29,7 +43,7 @@ public nonisolated struct ConversationContext: Equatable, Sendable {
 }
 
 public nonisolated struct ConversationItem: Equatable, Sendable {
-    public enum Origin: Sendable { case reconstructed, observed, response, summary }
+    public enum Origin: Sendable { case reconstructed, observed, response, summary, discontinuity }
     /// Stable ID supplied by the reconciler, never inferred from text equality.
     public let id: String
     public let message: CapturedMessage

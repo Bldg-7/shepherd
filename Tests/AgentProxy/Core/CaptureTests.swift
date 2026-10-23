@@ -134,6 +134,7 @@ struct CaptureTests {
         try AnthropicResponseTests.run(check: check)
         try ResponsesAssemblyTests.run(check: check)
         try ConversationStoreTests.run(check: check)
+        try ConversationReconcilerTests.run(check: check)
         print("Capture tests: \(passed) passed, \(failed) failed")
         if failed > 0 { exit(1) }
     }
