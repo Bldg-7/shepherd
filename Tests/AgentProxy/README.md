@@ -198,6 +198,19 @@ captures. EOF/drop/abort finalize incomplete; no partial request JSON is parsed.
 Native gzip/zlib/zstd fixtures pass through this same ingestion path in the
 forwarder suite. Actual read-socket subscriber queues still need admission.
 
+`ConversationReadAPI` implements the read-only, versioned query/wire layer (not
+an exposed socket yet). `conversations.list` returns bounded summaries, filtered
+by terminal/herdr/native-session/agent using exact UTF-8 identity.
+`conversation.read` returns the latest page, then older pages via a stable
+`beforeItemID`; epoch changes, missing conversations and removed anchors produce
+explicit resets instead of guessed offsets. Requests are capped at 64 KiB;
+pages at 64 items and about 256 KiB of accounted content (one full bounded item
+is allowed), with a 2-MiB encoded reply cap including JSON escaping. DTOs retain
+compaction/discontinuity types for localized separators and no raw metadata.
+Tests cover pagination, worst-case escaping, filters and bounded static errors.
+The socket host must reserve encoding/write buffers before using this layer;
+`conversation.subscribe`, ac.sock, the CLI and mobile client/UI are not wired yet.
+
 The byte counts concern payloads and explicit object allowances, not a hard
 allocator/process-RSS limit. `ConversationStore` bounds retained transcripts
 (4 MiB per conversation, 128 MiB total), with independent conversation/item
