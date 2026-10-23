@@ -134,6 +134,12 @@ They use synthetic bytes, not real conversations or credentials.
   from user input, including nested wrappers, without rewriting assistant or
   tool output. Unknown shapes are marked incomplete instead of being presented
   as a complete transcript.
+- One Anthropic Messages response is assembled incrementally from SSE blocks:
+  text appears before message completion; tool-argument fragments replace the
+  initial empty object; hidden reasoning/signature blocks and image payloads
+  are not retained. Hidden blocks count toward the entry bound too. Missing
+  block starts/stops, malformed JSON, provider errors, EOF and aborted/dropped
+  transport remain incomplete rather than appearing successfully finished.
 - Projection keeps at most the latest 200 visible messages and 4 MiB of
   accounted content; user/assistant/tool text and block counts are bounded.
   Responses continuation IDs are retained so a later store can distinguish
@@ -143,7 +149,8 @@ They use synthetic bytes, not real conversations or credentials.
 The byte counts concern payloads, not allocator overhead or process RSS. This
 stage does **not** yet enforce aggregate recorder admission/eviction, decompress
 requests, deduplicate or assemble live conversations, expose `ac.sock`, or
-render an iOS chat. Request projection does not by itself identify a main
+render an iOS chat. Responses SSE semantic assembly remains unimplemented.
+Request projection does not by itself identify a main
 conversation, distinguish subagents, or turn compaction into a summary.
 The forwarder's recorder still discards its input; adding these pure primitives
 does not change live forwarding or app behavior.

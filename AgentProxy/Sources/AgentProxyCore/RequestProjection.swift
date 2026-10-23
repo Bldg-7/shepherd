@@ -41,13 +41,7 @@ public nonisolated enum RequestProjection {
         guard maximumBodyBytes >= 0, body.count <= min(maximumBodyBytes, ConversationCaptureLimits.decompressedRequest) else {
             throw Failure.resourceLimit
         }
-        try checkJSONStructure(body)
-        let object: [String: Any]
-        do {
-            guard let value = try JSONSerialization.jsonObject(with: body) as? [String: Any] else { throw Failure.unsupportedShape }
-            object = value
-        } catch let failure as Failure { throw failure }
-        catch { throw Failure.invalidJSON }
+        let object = try decodeObject(body)
         let items: [Any]
         var previous: String?
         switch provider {
@@ -84,6 +78,16 @@ public nonisolated enum RequestProjection {
         return CapturedRequest(messages: Array(messages.reversed()), truncated: truncated, previousResponseID: previous)
     }
 
+    /// Shared by the response adapters, after their smaller event-byte check.
+    static func decodeObject(_ body: Data) throws -> [String: Any] {
+        try checkJSONStructure(body)
+        do {
+            guard let value = try JSONSerialization.jsonObject(with: body) as? [String: Any] else { throw Failure.unsupportedShape }
+            return value
+        } catch let failure as Failure { throw failure }
+        catch { throw Failure.invalidJSON }
+    }
+
     /// Bound the JSON parser's nesting and object overhead before Foundation
     /// materializes an untrusted tree. This scanner is not a JSON validator;
     /// syntax and UTF-8 validation are still Foundation's responsibility.
@@ -110,7 +114,7 @@ public nonisolated enum RequestProjection {
         }
     }
 
-    private static func identifier(_ value: Any?) -> String? {
+    static func identifier(_ value: Any?) -> String? {
         guard let value = value as? String, !value.isEmpty, value.utf8.count <= 256,
               !value.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else { return nil }
         return value
