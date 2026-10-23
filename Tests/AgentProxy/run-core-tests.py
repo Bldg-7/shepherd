@@ -5,7 +5,8 @@ No app, agent, provider request, launchd registration or user settings are used.
 Each compiler/test command is bounded by the existing natural-exit test runner.
 This stage covers capture bounds, SSE framing, request-history projection and
 Anthropic/Responses assembly, bounded storage/reconciliation and Claude/Codex
-classification, not Pi tagging, compression, recorder integration, the read socket or iOS UI.
+classification and compaction response projection, not Pi tagging, compression,
+recorder integration, the read socket or iOS UI.
 """
 import argparse
 import hashlib

@@ -11,6 +11,8 @@ public nonisolated struct CapturedResponse: Equatable, Sendable {
     public let status: Status
     public let truncated: Bool
     public let failure: Failure?
+    /// A typed opaque compaction item was observed; never its encrypted body.
+    public let containsOpaqueCompaction: Bool
 }
 
 /// Semantic assembly of one Anthropic Messages SSE response. Never stores
@@ -49,7 +51,7 @@ public nonisolated struct AnthropicResponseAssembly: Sendable {
             return CapturedBlock(kind: kind, text: entry.text, callID: entry.callID, toolName: entry.toolName)
         }
         return CapturedResponse(responseID: responseID, blocks: blocks, status: status,
-                                truncated: truncated, failure: failure)
+                                truncated: truncated, failure: failure, containsOpaqueCompaction: false)
     }
 
     public mutating func consume(_ event: ServerSentEvent) {

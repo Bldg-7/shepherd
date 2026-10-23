@@ -157,6 +157,15 @@ They use synthetic bytes, not real conversations or credentials.
   Reasoning/encrypted content is omitted, image output is a placeholder, and
   hidden entries still count toward item/content bounds. `[DONE]` without a
   valid Responses completion event does not establish completion.
+- Compaction response projection requires a verified compaction request class.
+  Completed plaintext is bounded to 256 KiB, separators included; tools,
+  reasoning and images cannot become summary text. Codex's `compaction`,
+  `compaction_summary` and `context_compaction` items retain only typed presence,
+  with their optional IDs respected and their ciphertext/unknown fields omitted.
+  Opaque output yields an unavailable-summary marker, never guessed plaintext
+  from adjacent output. Aborted, malformed or unfinished exchanges remain
+  incomplete. This projection does not yet attach boundaries to conversations;
+  verified parent ownership, history preservation and recorder integration remain.
 - Projection keeps at most the latest 200 visible messages and 4 MiB of
   accounted content; user/assistant/tool text and block counts are bounded.
   Responses continuation IDs are retained so a later store can distinguish

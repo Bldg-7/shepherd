@@ -21,7 +21,7 @@ public nonisolated struct ResponsesAssembly: Sendable {
         var truncated = false
     }
     private struct Item: Sendable {
-        let id: String
+        let id: String?
         let type: String
         var blocks: [Int: Block] = [:]
         var done = false
@@ -48,7 +48,8 @@ public nonisolated struct ResponsesAssembly: Sendable {
             }
         }
         return CapturedResponse(responseID: responseID, blocks: blocks, status: status,
-                                truncated: truncated, failure: failure)
+                                truncated: truncated, failure: failure,
+                                containsOpaqueCompaction: items.values.contains { CompactionProjection.isOpaqueItem($0.type) })
     }
 
     public mutating func consume(_ event: ServerSentEvent) {
@@ -151,15 +152,27 @@ public nonisolated struct ResponsesAssembly: Sendable {
 
     @discardableResult
     private mutating func install(_ object: [String: Any], at index: Int, done: Bool) -> Bool {
-        guard let id = RequestProjection.identifier(object["id"]), let type = object["type"] as? String,
-              type.utf8.count <= 128 else { fail(.invalidEvent); return false }
+        guard let type = object["type"] as? String, type.utf8.count <= 128 else { fail(.invalidEvent); return false }
+        let opaque = CompactionProjection.isOpaqueItem(type)
+        let id = RequestProjection.identifier(object["id"])
+        // Codex 0.162.1 makes the id optional for these control items only.
+        // Do not synthesize an ID that could collide with a provider item ID.
+        let absentID = object["id"] == nil || object["id"] is NSNull
+        guard id != nil || (opaque && absentID) else { fail(.invalidEvent); return false }
+        if opaque {
+            let encrypted = object["encrypted_content"]
+            let absent = encrypted == nil || encrypted is NSNull
+            guard encrypted is String || (type == "context_compaction" && absent) else {
+                fail(.invalidEvent); return false
+            }
+        }
         if let old = items[index] {
             guard old.id == id && old.type == type else { fail(.unexpectedSequence); return false }
             bytes -= old.blocks.values.reduce(0) { $0 + $1.text.utf8.count }
             blockCount -= old.blocks.count
         } else {
             guard items.count < 64 else { fail(.resourceLimit); return false }
-            guard !items.values.contains(where: { $0.id == id }) else { fail(.unexpectedSequence); return false }
+            if let id, items.values.contains(where: { $0.id == id }) { fail(.unexpectedSequence); return false }
         }
         items[index] = Item(id: id, type: type)
         switch type {
@@ -180,7 +193,7 @@ public nonisolated struct ResponsesAssembly: Sendable {
             items[index]?.blocks[0] = Block(kind: .toolCall, wireType: "arguments", callID: call, name: name, done: done)
             setText(text, item: index, part: 0, replace: true)
             if done { validateArguments(item: index) }
-        case "reasoning": break
+        case "reasoning", "compaction", "compaction_summary", "context_compaction": break
         case "image_generation_call":
             guard reserveBlock() else { return false }
             items[index]?.blocks[0] = Block(kind: .image, wireType: "image", callID: nil, name: nil, done: done)
