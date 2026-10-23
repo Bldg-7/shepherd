@@ -153,9 +153,21 @@ They use synthetic bytes, not real conversations or credentials.
   incremental input from a complete history. The JSON scanner limits nesting
   and token count before materialization; metadata scan work is also bounded.
 
-The byte counts concern payloads, not allocator overhead or process RSS. This
-stage does **not** yet enforce aggregate recorder admission/eviction, decompress
-requests, deduplicate or assemble live conversations, expose `ac.sock`, or
+The byte counts concern payloads and explicit object allowances, not a hard
+allocator/process-RSS limit. `ConversationStore` bounds retained transcripts
+(4 MiB per conversation, 128 MiB total), with independent conversation/item
+count caps. It retains recent items, evicts the oldest-updated conversations,
+reports truncation/evicted IDs, preserves native identity across route changes,
+and gives a fresh store a fresh epoch. Summaries do not include full bodies;
+identical upserts do not advance the sequence. Invalid input is rejected before
+any existing snapshot or eviction order changes. Tests use small limits to
+exercise exact thresholds, empty-object floods and atomic rejection.
+
+The store accepts already reconciled snapshots: it does not classify requests,
+deduplicate by text, or reject stale response generations on its own. In-flight
+request/parser/subscriber budgets still belong to the recorder integration.
+This stage does **not** yet decompress requests, deduplicate or assemble whole
+live conversations, expose `ac.sock`, or
 render an iOS chat. Response assembly covers one exchange, not a conversation
 across requests. Request projection does not by itself identify a main
 conversation, distinguish subagents, or turn compaction into a summary.
