@@ -128,10 +128,23 @@ They use synthetic bytes, not real conversations or credentials.
   body and cannot be mistaken for complete JSON by a later chunk.
 - Text prefixes fit a byte budget without cutting a UTF-8 scalar. Grapheme
   clusters are not guaranteed to remain whole.
+- Anthropic Messages and Responses request bodies project into neutral user,
+  assistant and tool blocks. System/developer instructions and thinking are
+  omitted; images become placeholders. Known metadata wrappers are removed
+  from user input, including nested wrappers, without rewriting assistant or
+  tool output. Unknown shapes are marked incomplete instead of being presented
+  as a complete transcript.
+- Projection keeps at most the latest 200 visible messages and 4 MiB of
+  accounted content; user/assistant/tool text and block counts are bounded.
+  Responses continuation IDs are retained so a later store can distinguish
+  incremental input from a complete history. The JSON scanner limits nesting
+  and token count before materialization; metadata scan work is also bounded.
 
 The byte counts concern payloads, not allocator overhead or process RSS. This
 stage does **not** yet enforce aggregate recorder admission/eviction, decompress
-requests, reconstruct conversations, expose `ac.sock`, or render an iOS chat.
+requests, deduplicate or assemble live conversations, expose `ac.sock`, or
+render an iOS chat. Request projection does not by itself identify a main
+conversation, distinguish subagents, or turn compaction into a summary.
 The forwarder's recorder still discards its input; adding these pure primitives
 does not change live forwarding or app behavior.
 

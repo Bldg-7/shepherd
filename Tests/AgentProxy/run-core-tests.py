@@ -3,8 +3,8 @@
 
 No app, agent, provider request, launchd registration or user settings are used.
 Each compiler/test command is bounded by the existing natural-exit test runner.
-This initial stage covers capture bounds and SSE framing, not reconstruction,
-compression, recorder integration, the read socket or the iOS conversation UI.
+This stage covers capture bounds, SSE framing and request-history projection,
+not live assembly, compression, recorder integration, the read socket or iOS UI.
 """
 import argparse
 import hashlib
