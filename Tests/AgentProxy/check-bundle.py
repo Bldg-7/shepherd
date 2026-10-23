@@ -59,8 +59,12 @@ if expect(executable.is_file() and not executable.is_symlink(), f'{executable_na
     expect(executable.stat().st_mode & 0o111 == 0o111, 'it is not executable')
     archs = lambda f: set(subprocess.run(['lipo', '-archs', str(f)], capture_output=True, text=True, check=True, timeout=30).stdout.split())
     expect(archs(main) <= archs(executable), f'it lacks architectures the app has: {sorted(archs(main) - archs(executable))}')
-    linked = subprocess.run(['otool', '-L', str(executable)], capture_output=True, text=True, check=True, timeout=30).stdout.splitlines()[1:]
-    own = [line.strip() for line in linked if not re.match(r'\s*(/usr/lib/|/System/Library/)', line)]
+    linked = subprocess.run(['otool', '-L', str(executable)], capture_output=True, text=True, check=True, timeout=30).stdout.splitlines()
+    # A universal executable repeats the filename header for every architecture.
+    # Ignore only those exact headers, never an arbitrary colon-ended dylib path.
+    header = re.compile(re.escape(str(executable)) + r'(?: \(architecture [A-Za-z0-9_]+\))?:')
+    own = [line.strip() for line in linked if line.strip() and not header.fullmatch(line.strip())
+           and not re.match(r'\s*(/usr/lib/|/System/Library/)', line)]
     expect(not own, f'it loads libraries of its own: {own}')
     expect(subprocess.run(['codesign', '--verify', '--strict', str(executable)], capture_output=True, timeout=60).returncode == 0,
            'its signature does not verify')

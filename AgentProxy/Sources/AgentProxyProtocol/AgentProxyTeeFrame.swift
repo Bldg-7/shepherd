@@ -101,7 +101,7 @@ public nonisolated enum AgentProxyTeeFrame {
         "x-claude-code-agent-type", "x-claude-code-prompt-id",
         "session_id", "session-id", "thread-id",
         "x-openai-subagent", "x-openai-memgen-request", "x-codex-parent-thread-id",
-        "x-3rdr-pi-session", "x-3rdr-pi-class"
+        "x-3rdr-pi-session", "x-3rdr-pi-class", "x-3rdr-pi-contract"
     ]
 
     public static func allowedResponseHeader(_ name: String) -> Bool {

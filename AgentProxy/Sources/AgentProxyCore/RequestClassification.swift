@@ -29,8 +29,8 @@ public nonisolated struct ClassifiedRequest: Sendable {
 /// Selects only bounded identity/classification fields, never retaining raw
 /// header maps or client_metadata. Evidence: Claude2.1.309 static header mapping
 /// and Codex rust-v0.162.1 source. Absent/unknown metadata is NOT a main request.
-/// Pi's existing unconditional main tag is deliberately untrusted until its
-/// app-bundled tagging contract is fixed and verified, including auxiliary calls.
+/// Pi contract2 uses request-local operation signals and SDK call options,
+/// verified in1.3.0/1.4.0. Legacy unconditional tags and unknown builds fail closed.
 public nonisolated enum RequestClassification {
     private enum Invalid: Error { case field, conflict, duplicate, missing }
 
@@ -65,9 +65,26 @@ public nonisolated enum RequestClassification {
         guard conversational else {
             return result(.auxiliary, reason: .nonConversationEndpoint, route: route, context: context, provider: provider)
         }
-        if route.kind == .pi { return unknown(.unverifiedPiTag) }
         do {
             let headers = try headerMap(open.headers)
+            if route.kind == .pi {
+                guard ["1.3.0", "1.4.0"].contains(route.cliVersion), headers["x-3rdr-pi-contract"] == "2" else { return unknown(.unverifiedPiTag) }
+                let kind: ClassifiedRequest.Kind
+                switch headers["x-3rdr-pi-class"] {
+                case "main": kind = .main
+                case "compaction": kind = .compaction
+                case "auxiliary": kind = .auxiliary
+                default: throw Invalid.missing
+                }
+                let native = try unique([headers["x-3rdr-pi-session"]])
+                if kind != .auxiliary {
+                    guard let native, native.utf8.count <= 128,
+                          native.utf8.allSatisfy({ (65...90).contains($0) || (97...122).contains($0) || (48...57).contains($0) || $0 == 45 || $0 == 95 }),
+                          headers["x-claude-code-parent-agent-id"] == nil,
+                          headers["x-codex-parent-thread-id"] == nil, headers["x-openai-subagent"] == nil else { throw Invalid.field }
+                }
+                return result(kind, route: route, context: context, provider: provider, native: native)
+            }
             if route.kind == .claude {
                 guard let label = headers["x-claude-code-request-class"] else { throw Invalid.missing }
                 let kind: ClassifiedRequest.Kind

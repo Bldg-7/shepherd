@@ -32,6 +32,12 @@ public nonisolated struct ConversationReconciler: Sendable {
         public let requestID: String
         public let epoch: String
     }
+    public struct SubagentTicket: Equatable, Sendable {
+        public let conversationID: String
+        public let childID: String
+        public let requestID: String
+        public let epoch: String
+    }
     public enum Failure: Error { case invalidProjection, invalidResponse, invalidClassification }
     private struct PendingCompaction: Sendable {
         let requestID: String
@@ -50,6 +56,8 @@ public nonisolated struct ConversationReconciler: Sendable {
     }
     public private(set) var store: ConversationStore
     private var states: [String: State] = [:]
+    private var childTrees: [String: ConversationSubagentTree] = [:]
+    public var trackedSubagentCount: Int { childTrees.values.reduce(0) { $0 + $1.nodes.count } }
 
     public init(limits: ConversationStore.Limits = .init()) { store = ConversationStore(limits: limits) }
     public var trackedConversationCount: Int { states.count }
@@ -59,14 +67,18 @@ public nonisolated struct ConversationReconciler: Sendable {
     /// just the selected IDs required for later compaction/child correlation.
     public mutating func beginMain(classification: ClassifiedRequest, request: CapturedRequest) throws -> Begin {
         guard let owner = ConversationOwner(classification: classification) else { throw Failure.invalidClassification }
-        let begin = try beginMain(key: owner.key, context: owner.context, request: request)
+        let previous = store.read(key: owner.key).flatMap { childTrees[$0.summary.id] }
+        let tree = previous.flatMap { $0.owner.matches(owner) ? $0 : nil } ?? ConversationSubagentTree(owner: owner)
+        let begin = try beginMain(key: owner.key, context: owner.context, request: request, subagents: tree.stats)
         states[begin.ticket.conversationID]?.owner = owner
+        childTrees[begin.ticket.conversationID] = tree
         return begin
     }
 
     /// Low-level entry point for already trusted projections. Without an
     /// observed classification it does NOT authorize auxiliary writes.
-    public mutating func beginMain(key: ConversationKey, context: ConversationContext, request: CapturedRequest) throws -> Begin {
+    public mutating func beginMain(key: ConversationKey, context: ConversationContext, request: CapturedRequest,
+                                   subagents: ConversationSubagents? = nil) throws -> Begin {
         guard request.messages.count <= ConversationCaptureLimits.reconstructedHistoryItems,
               request.messages.reduce(0, { $0 + $1.cost }) <= ConversationCaptureLimits.conversation,
               request.previousResponseID == nil || RequestProjection.identifier(request.previousResponseID) != nil else {
@@ -84,7 +96,12 @@ public nonisolated struct ConversationReconciler: Sendable {
         var responseItemID = UUID().uuidString
 
         if let prior {
-            if prior.didCompact {
+            if prior.didCompact && prior.signature == signature {
+                // A summary response does not prove the caller applied it. If
+                // the next request still has identical context, preserve the
+                // boundary without duplicating the entire old history.
+                suffix = request.messages[request.messages.endIndex...]
+            } else if prior.didCompact {
                 // The old reply belongs BEFORE the compaction boundary. Do not
                 // remove/move it as a provisional response or mistake a rebuilt
                 // context for a retry. Preserve history and label reconstruction.
@@ -127,9 +144,10 @@ public nonisolated struct ConversationReconciler: Sendable {
                                           origin: reconstructed ? .reconstructed : .observed, status: .complete))
         }
         let update = try store.upsert(key: key, context: context, items: items, status: .streaming,
-                                      historyTruncated: request.truncated || discontinuity)
+                                      historyTruncated: request.truncated || discontinuity, subagents: subagents)
         prune(update.evictedConversationIDs)
         let ticket = Ticket(conversationID: update.conversationID, requestID: UUID().uuidString, epoch: store.epoch)
+        childTrees.removeValue(forKey: ticket.conversationID) // low-level callers do not confer ownership
         states[ticket.conversationID] = State(requestID: ticket.requestID, signature: signature, fingerprints: fingerprints,
                                               truncated: request.truncated, responseItemID: responseItemID,
                                               lastResponseID: prior?.lastResponseID)
@@ -211,6 +229,61 @@ public nonisolated struct ConversationReconciler: Sendable {
         return Applied(evictedConversationIDs: update.evictedConversationIDs)
     }
 
+    /// Count only explicitly linked children. Unknown parents, cycles, moved
+    /// routes and ambiguous roots are not guessed from shared native IDs.
+    public mutating func beginSubagent(classification: ClassifiedRequest, requestBody: Data) throws -> SubagentTicket? {
+        guard classification.kind == .subagent, requestBody.count <= ConversationCaptureLimits.decompressedRequest else { return nil }
+        var candidates: [(String, ConversationSubagentTree.Link)] = []
+        for (id, tree) in childTrees {
+            guard let owner = states[id]?.owner, tree.owner.matches(owner), store.read(id: id) != nil,
+                  let link = tree.link(classification) else { continue }
+            candidates.append((id, link))
+            if candidates.count > 1 { return nil }
+        }
+        guard let (id, link) = candidates.first, var tree = childTrees[id], let old = store.read(id: id) else { return nil }
+        let node = tree.begin(link, signature: Data(SHA256.hash(data: requestBody)), totalNodes: trackedSubagentCount)
+        let update = try store.upsert(key: old.summary.key, context: old.summary.context, items: old.items,
+                                      status: old.summary.status, subagents: tree.stats)
+        prune(update.evictedConversationIDs)
+        guard update.conversationID == id, states[id] != nil else { return nil }
+        childTrees[id] = tree
+        guard let node, let requestID = node.requestID else { return nil }
+        return SubagentTicket(conversationID: id, childID: node.id, requestID: requestID, epoch: store.epoch)
+    }
+
+    /// Child content is never streamed into main. Only provider-declared final
+    /// text at successful tee completion is retained, capped at16KiB. A complete
+    /// tool turn/HTTP response is not a final result and says nothing about exit.
+    public mutating func completeSubagent(_ response: CapturedResponse, ticket: SubagentTicket,
+                                          transportComplete: Bool) throws -> Applied? {
+        guard ticket.epoch == store.epoch, var tree = childTrees[ticket.conversationID],
+              let state = states[ticket.conversationID], let owner = state.owner, tree.owner.matches(owner),
+              let old = store.read(id: ticket.conversationID) else { return nil }
+        let final = transportComplete && response.status == .complete && response.isFinalAnswer
+        guard let node = tree.finish(ticket.childID, requestID: ticket.requestID, final: final) else { return nil }
+        var items = old.items
+        if final {
+            var text = "", truncated = response.truncated
+            for block in response.blocks where block.kind == .text && !block.text.isEmpty {
+                let candidate = (text.isEmpty ? "" : "\n") + block.text
+                let prefix = ConversationCaptureLimits.textPrefix(candidate, maximumBytes: max(0, ConversationCaptureLimits.toolText - text.utf8.count))
+                text += prefix
+                if prefix.utf8.count < candidate.utf8.count { truncated = true }
+            }
+            let message = CapturedMessage(role: .assistant, blocks: [CapturedBlock(kind: .text, text: text, callID: nil, toolName: nil)], truncated: truncated)
+            let item = ConversationItem(id: node.resultItemID, message: message,
+                                        origin: .subagent(id: node.id, depth: tree.depth(Data(node.id.utf8))), status: .complete)
+            if let index = items.firstIndex(where: { $0.id == item.id }) { items[index] = item }
+            else if state.requestID != nil, items.last?.id == state.responseItemID { items.insert(item, at: items.count - 1) }
+            else { items.append(item) }
+        }
+        let update = try store.upsert(key: old.summary.key, context: old.summary.context, items: items,
+                                      status: old.summary.status, subagents: tree.stats)
+        prune(update.evictedConversationIDs)
+        if update.conversationID == ticket.conversationID && store.epoch == ticket.epoch { childTrees[ticket.conversationID] = tree }
+        return Applied(evictedConversationIDs: update.evictedConversationIDs)
+    }
+
     public mutating func evictOldest() -> [String] {
         let ids = store.evictOldest()
         prune(ids)
@@ -218,7 +291,7 @@ public nonisolated struct ConversationReconciler: Sendable {
     }
 
     private mutating func prune(_ ids: [String]) {
-        for id in ids { states.removeValue(forKey: id) }
+        for id in ids { states.removeValue(forKey: id); childTrees.removeValue(forKey: id) }
     }
 
     private static func overlapEnd(previous: [Data], current: [Data], previousTruncated: Bool, currentTruncated: Bool) -> Int? {

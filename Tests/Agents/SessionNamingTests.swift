@@ -109,6 +109,17 @@ actor NamingHerdr: HerdrTransport {
     }
 
     static func main() async throws {
+        let native = "a1111111-1111-1111-1111-111111111111"
+        func reference(_ agent: String, _ kind: String, _ value: String) -> AgentSessionReference {
+            AgentSessionReference(json: .object(["source": .string("custom:pi"), "agent": .string(agent), "kind": .string(kind), "value": .string(value)]))!
+        }
+        let piPath = reference("pi", "path", "/owned/not-created/2026-10-23T00-00-00.000Z_\(native).jsonl")
+        check(piPath.conversationID(for: .pi) == native, "Pi conversation matches reported native filename metadata without opening a file")
+        check(piPath.resumeID(for: .pi) == nil, "conversation identity does not qualify legacy Pi resume")
+        check(reference("pi", "path", "/owned/not-a-session.jsonl").conversationID(for: .pi) == nil, "unverified Pi filename does not invent a native identity")
+        check(reference("pi", "path", "relative_\(native).jsonl").conversationID(for: .pi) == nil, "relative reported path rejected")
+        check(reference("codex", "path", "/owned/\(native).jsonl").conversationID(for: .codex) == nil, "Pi filename convention is not applied to another CLI")
+        check(reference("claude-code", "id", native).conversationID(for: .claude) == native, "native ID used directly when present")
         setvbuf(stdout, nil, _IOLBF, 0)
         names()
         commandsAndRegistration()

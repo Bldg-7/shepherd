@@ -47,6 +47,7 @@ public nonisolated struct ConversationItem: Equatable, Sendable {
         case reconstructed, observed, response, summary, discontinuity
         /// Localized separator/status, never an empty assistant speech bubble.
         case compaction(CapturedCompaction.Availability)
+        case subagent(id: String, depth: Int?)
     }
     /// Stable ID supplied by the reconciler, never inferred from text equality.
     public let id: String
@@ -58,7 +59,11 @@ public nonisolated struct ConversationItem: Equatable, Sendable {
         self.id = id; self.message = message; self.origin = origin; self.status = status
     }
 
-    var cost: Int { 128 + id.utf8.count + message.cost }
+    var cost: Int {
+        let childBytes: Int
+        if case .subagent(let child, _) = origin { childBytes = child.utf8.count + 32 } else { childBytes = 0 }
+        return 128 + id.utf8.count + message.cost + childBytes
+    }
 }
 
 public nonisolated struct ConversationSummary: Equatable, Sendable {
@@ -71,6 +76,7 @@ public nonisolated struct ConversationSummary: Equatable, Sendable {
     public let itemCount: Int
     public let truncated: Bool
     public let status: CapturedResponse.Status
+    public let subagents: ConversationSubagents
 }
 
 public nonisolated struct ConversationSnapshot: Equatable, Sendable {
@@ -127,11 +133,12 @@ public nonisolated struct ConversationStore: Sendable {
         let items: [ConversationItem]
         let truncated: Bool
         let status: CapturedResponse.Status
+        let subagents: ConversationSubagents
         let cost: Int
 
         var summary: ConversationSummary {
             ConversationSummary(id: id, key: key, context: context, revision: revision,
-                                historyRevision: historyRevision, itemCount: items.count, truncated: truncated, status: status)
+                                historyRevision: historyRevision, itemCount: items.count, truncated: truncated, status: status, subagents: subagents)
         }
     }
 
@@ -199,10 +206,15 @@ public nonisolated struct ConversationStore: Sendable {
     /// items when a count/byte limit is reached, with explicit truncation.
     public mutating func upsert(key: ConversationKey, context: ConversationContext,
                                 items: [ConversationItem], status: CapturedResponse.Status,
-                                historyTruncated: Bool = false) throws -> Update {
+                                historyTruncated: Bool = false, subagents: ConversationSubagents? = nil) throws -> Update {
         guard items.count <= 16_384 else { throw Failure.tooManyIncomingItems }
         var seen = Set<String>()
         for item in items {
+            if case .subagent(let child, let depth) = item.origin {
+                guard RequestProjection.identifier(child) != nil, depth.map({ (1...16).contains($0) }) ?? true,
+                      item.message.role == .assistant,
+                      item.message.blocks.reduce(0, { $0 + $1.text.utf8.count }) <= ConversationCaptureLimits.toolText else { throw Failure.invalidItems }
+            }
             guard RequestProjection.identifier(item.id) != nil, seen.insert(item.id).inserted,
                   Self.valid(item.message) else { throw Failure.invalidItems }
         }
@@ -217,8 +229,10 @@ public nonisolated struct ConversationStore: Sendable {
         }
         let retained = Array(items[start...])
         let old = entries[key]
+        let childStats = subagents ?? old?.subagents ?? ConversationSubagents()
+        guard childStats.valid else { throw Failure.invalidItems }
         let truncated = historyTruncated || start > 0 || retained.contains(where: { $0.message.truncated }) || old?.truncated == true
-        if let old, old.context == context, old.items == retained, old.status == status, old.truncated == truncated {
+        if let old, old.context == context, old.items == retained, old.status == status, old.truncated == truncated, old.subagents == childStats {
             return Update(conversationID: old.id, changed: false, evictedConversationIDs: [], discardedItemCount: start)
         }
         var evicted: [String] = []
@@ -249,7 +263,7 @@ public nonisolated struct ConversationStore: Sendable {
         } ?? false
         let historyRevision = stablePrefix && old?.id == id ? old!.historyRevision : sequence
         let entry = Entry(id: id, key: key, context: context, revision: sequence,
-                          historyRevision: historyRevision, items: retained, truncated: truncated, status: status, cost: cost)
+                          historyRevision: historyRevision, items: retained, truncated: truncated, status: status, subagents: childStats, cost: cost)
         entries[key] = entry; keysByID[id] = key; accountedBytes += cost
         return Update(conversationID: id, changed: true, evictedConversationIDs: evicted, discardedItemCount: start)
     }

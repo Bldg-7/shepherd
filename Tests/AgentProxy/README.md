@@ -6,8 +6,8 @@ default and changeable only on This Mac. Its program,
 `hrdrhrdrhrdr-agent-proxy`, passes the model requests of eligible agents the app
 starts (Claude Code, Codex and Pi, signed in with a Claude or ChatGPT
 subscription) on to api.anthropic.com or chatgpt.com. The app-side wiring is
-implemented. Bounded main/compaction conversation collection is connected;
-the read API and iPhone/iPad conversation UI are still in development. It runs as two processes:
+implemented. Bounded main/compaction collection, observed child final results,
+the read API and paired iPhone/iPad conversation UI are connected. It runs as two processes:
 
 - The forwarder listens on 127.0.0.1 and passes requests on. Over its control
   socket, `ap.sock`, the app asks it for a route for each agent it starts. A
@@ -21,8 +21,9 @@ the read API and iPhone/iPad conversation UI are still in development. It runs a
   gzip, zlib-wrapped deflate and zstd copies with bounded output and an 8-MiB
   zstd window; forwarding retains the original bytes. Unknown/stacked encodings,
   trailing/concatenated frames, invalid checksums and truncated streams fail
-  capture closed without changing the HTTP exchange. Pi and subagent ingestion
-  still await verified tagging/tracking; they are not promoted to main.
+  capture closed without changing the HTTP exchange. Pi uses request-local
+  contract2 tagging qualified against1.3.0/1.4.0; legacy tags and unknown builds
+  cannot become main. Child ancestry is bounded, byte-exact and scope-checked.
 
 The app's Pi extension adds `x-3rdr-pi-*` headers to say which Pi session a
 request belongs to. The forwarder removes every `x-3rdr-*` header before it
@@ -49,7 +50,8 @@ python3 Tests/AgentProxy/run-forwarder-tests.py --output /tmp/shepherd-agent-pro
 
 The runner reads `AgentProxy/Package.swift`, writes a package with the same
 targets under the output folder, and adds the test program to it. It then runs
-two test stages, described below. Both run under `sandbox-exec` with a profile
+forwarder, process, real read-socket and EmbeddedChannel SSH-bridge stages.
+They run under `sandbox-exec` with a profile
 that allows connections only to 127.0.0.1 and denies the socket of mDNSResponder
 (macOS's name lookup service), so that no name can be looked up either.
 
@@ -177,10 +179,10 @@ They use synthetic bytes, not real conversations or credentials.
   no root agent ID is fabricated. Codex uses its native thread. Both require the current route/pane/terminal/herdr namespace. Active
   main requests, child compactions, retries superseded by newer requests,
   completed tickets, moved routes, eviction and recorder epochs are covered.
-  Post-compaction context is marked reconstructed, not mistaken for a retry
-  that moves the old reply behind its boundary. Direct-child identity matching
-  requires explicit parent links; counts, nested ancestry and final-result
-  tracking are not yet implemented. Recorder/read-API/iOS integration remains.
+  Changed post-compaction context is marked reconstructed, not mistaken for a
+  retry that moves the old reply behind its boundary. Identical context after
+  a summary response is not duplicated: an API response does not prove the
+  caller applied the summary. Child compactions never acquire a main ticket.
 - Projection keeps at most the latest 200 visible messages and 4 MiB of
   accounted content; user/assistant/tool text and block counts are bounded.
   Responses continuation IDs are retained so a later store can distinguish
@@ -196,7 +198,8 @@ caps cover empty exchanges and decompression expansion. The forwarder's monotoni
 open IDs prevent late frames or duplicate opens from resurrecting discarded
 captures. EOF/drop/abort finalize incomplete; no partial request JSON is parsed.
 Native gzip/zlib/zstd fixtures pass through this same ingestion path in the
-forwarder suite. Actual read-socket subscriber queues still need admission.
+forwarder suite. Client4MiB and transient encoding8MiB reservations share this
+same admission boundary; their tokens and connection counts are bounded too.
 
 `ConversationReadAPI` implements the read-only, versioned query/wire layer.
 The recorder exposes it on private `ac.sock`, sharing one event loop with tee
@@ -215,7 +218,8 @@ on incompatible history changes; a client that cannot drain a write in five
 seconds is disconnected rather than retaining queued snapshots. At most16
 connections and one outstanding reply each. `show --terminal ID [--socket PATH]`
 reads a bounded latest page. Shared SSH/client and mobile chat/Screen UI are
-wired; verified Pi purpose tagging and subagent result tracking are still pending.
+wired. Pi purpose tagging and subagent result tracking are connected with the
+qualification limits below.
 
 `read-socket-tests.py` exercises the actual child recorder with synthetic fd3
 frames, including lifecycle/inode ownership, framing, connection caps, slow
@@ -255,14 +259,46 @@ fallbacks. Classification fixtures reflect Claude 2.1.309 and Codex 0.162.1
 source contracts, not live provider traffic. Pi's unconditional legacy main tag
 is explicitly unverified, not silently accepted.
 
-In-flight body/parser/subscriber admission and metadata reservation still belong
-to recorder integration. This stage does **not** yet verify Pi request tagging,
-summarize compaction/subagent exchanges, decompress requests, expose `ac.sock`, or
-render an iOS chat. Response assembly covers one exchange, not a conversation
-across requests. Request projection does not by itself identify a main
-conversation, distinguish subagents, or turn compaction into a summary.
-The forwarder's recorder still discards its input; adding these pure primitives
-does not change live forwarding or app behavior.
+### Qualification boundaries
+
+Pi contract2 is source-qualified for1.3.0/1.4.0. A WeakMap binds operation
+signals to native IDs during context/compaction hooks. The standard agent-loop
+callback shape and session ID further qualify main requests; cache warming's
+new signal/maxTokens1 and branch-summary signals never become main. Public
+provider delegates are preserved without replacing catalogs, auth or cache
+settings. An authenticated app report qualifies the exact native session;
+initial control failure cannot qualify one. Later app/browser disconnection does
+not stop an already-bound proxy session, while replacement/shutdown clears it.
+Stale local headers are removed before delegation to a custom endpoint. Known inherited-child markers are rejected before any provider override;
+headless modes cannot qualify capture. An inherited bootstrap is never treated
+as the child's own owner reservation.
+`PiProxyLoopTests.mjs <absolute public agent-loop.js>` runs that SDK loop with a
+fake stream in a no-network sandbox, not a CLI or real model.
+
+Child metadata is bounded to128 per root,1024 globally and16 observed ancestry
+levels. Explicit parent IDs establish rooted depth. Exact Claude2.1.309 root-ID
+omission can establish managed-native membership from class/native ID plus the
+current route/pane/terminal/herdr namespace, but **not** a guessed parent ID:
+missing depth is reported as unknown, cycles/reparenting are rejected, and this
+membership never authorizes a child's compaction on main. Unknown builds and
+unqualified Pi children remain unavailable. Only successful transport plus
+Anthropic end_turn without tools, or Codex final_answer without a tool/compaction
+turn, can retain a child's final text (16KiB). Counts are observed children and
+children with final answers, never proof of live processes or process exit.
+Retries/tickets/owner changes/eviction cannot resurrect or duplicate results.
+
+The mobile client shares the existing paired-Mac SSH connection; remote herdr
+machines and manual SSH hosts stay on Screen. State/prompt/keys stay with herdr.
+The device bounds decoded lines/queues/history, rejects stale scope/sequence,
+and labels unavailable summaries/ancestry and reconstruction. Pi's already
+reported `<timestamp>_<session UUID>.jsonl` filename metadata supplies a comparable
+native ID when herdr reports a path; no file is opened, and this does not enable
+legacy Pi resume. This prevents selecting another session merely because its
+response updated the same terminal more recently. It uses the
+same inert Markdown block parser as desktop preview; no HTML execution or
+image fetch. Actual provider OAuth traffic, physical-device scrolling and
+blocked dialogs still require manual end-to-end validation; synthetic tests
+and compilation are not claims that those live checks were performed.
 
 ## The app's side (`run-app-tests.py`)
 

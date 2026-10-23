@@ -5,8 +5,10 @@ No app, agent, provider request, launchd registration or user settings are used.
 Each compiler/test command is bounded by the existing natural-exit test runner.
 This stage covers capture bounds, SSE framing, request-history projection and
 Anthropic/Responses assembly, bounded storage/reconciliation and Claude/Codex
-classification, compaction ownership and bounded tee ingestion. Native codecs
-are tested by run-forwarder-tests.py; Pi tagging, read socket and iOS UI remain.
+classification, compaction ownership, bounded tee ingestion, query/paging,
+Pi contract2 and child final-result/ancestry admission. Native codecs/read socket
+and the SSH bridge are tested by run-forwarder-tests.py; shared client/window
+and the observable mobile model by run-client-tests.py.
 """
 import argparse
 import hashlib

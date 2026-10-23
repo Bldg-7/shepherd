@@ -35,6 +35,7 @@ public nonisolated struct ResponsesAssembly: Sendable {
     private var status: CapturedResponse.Status = .streaming
     private var failure: CapturedResponse.Failure?
     private var truncated = false
+    private var finalAnswer = false
 
     public init() {}
 
@@ -49,7 +50,8 @@ public nonisolated struct ResponsesAssembly: Sendable {
         }
         return CapturedResponse(responseID: responseID, blocks: blocks, status: status,
                                 truncated: truncated, failure: failure,
-                                containsOpaqueCompaction: items.values.contains { CompactionProjection.isOpaqueItem($0.type) })
+                                containsOpaqueCompaction: items.values.contains { CompactionProjection.isOpaqueItem($0.type) },
+                                isFinalAnswer: status == .complete && finalAnswer && !blocks.contains(where: { $0.kind == .toolCall }))
     }
 
     public mutating func consume(_ event: ServerSentEvent) {
@@ -121,6 +123,10 @@ public nonisolated struct ResponsesAssembly: Sendable {
                 guard final.install(item, at: index, done: true) else { fail(final.failure ?? .invalidEvent); return }
             }
             final.status = .complete
+            // Codex's explicit final_answer phase is stronger than HTTP/SSE
+            // completion. Commentary/tool/compaction turns are not child results.
+            final.finalAnswer = output.allSatisfy { ["message", "reasoning"].contains($0["type"] as? String ?? "") }
+                && output.contains { $0["type"] as? String == "message" && $0["role"] as? String == "assistant" && $0["phase"] as? String == "final_answer" }
             self = final
         default:
             // Annotations do not change visible text. Other future semantics

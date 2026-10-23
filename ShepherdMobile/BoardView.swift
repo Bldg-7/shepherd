@@ -35,9 +35,9 @@ struct PaneDestination: Hashable {
         self.machine = machine
         self.paneID = pane.paneID
         self.terminalID = pane.terminalID
-        // A session-file path is not a native ID and is never read here.
-        self.nativeSessionID = pane.sessionReference.flatMap { reference in
-            reference.kind == .id && AgentKind(herdrName: reference.agent) == pane.agentName.flatMap(AgentKind.init(herdrName:)) ? reference.value : nil
+        // Identity metadata only; no session file is opened or read.
+        self.nativeSessionID = pane.agentName.flatMap(AgentKind.init(herdrName:)).flatMap { kind in
+            pane.sessionReference?.conversationID(for: kind)
         }
         self.herdrMachine = pane.herdrMachine
         self.title = pane.title

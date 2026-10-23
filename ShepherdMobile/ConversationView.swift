@@ -412,9 +412,7 @@ final class ConversationModel {
         guard let name, let kind = AgentKind(herdrName: name) else { captured.stop(); return }
         let native: String?
         if let agent {
-            native = agent.sessionReference.flatMap { reference in
-                reference.kind == .id && AgentKind(herdrName: reference.agent) == kind ? reference.value : nil
-            }
+            native = agent.sessionReference?.conversationID(for: kind)
         } else { native = destination.nativeSessionID }
         captured.connect(transport: transport, selection: ConversationSelection(
             terminalID: agent?.terminalID ?? destination.terminalID,

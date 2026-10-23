@@ -53,7 +53,7 @@ public nonisolated struct ConversationWindow: Sendable {
 
     public var accountedBytes: Int { 2048 + items.reduce(0) { $0 + Self.cost($1) } }
     private static func cost(_ item: ConversationMessage) -> Int {
-        384 + item.id.utf8.count + item.blocks.reduce(0) {
+        384 + item.id.utf8.count + (item.subagentID.map { $0.utf8.count + 32 } ?? 0) + item.blocks.reduce(0) {
             $0 + 256 + $1.text.utf8.count + ($1.callID?.utf8.count ?? 0) + ($1.toolName?.utf8.count ?? 0)
         }
     }

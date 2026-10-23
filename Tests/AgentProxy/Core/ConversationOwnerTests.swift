@@ -74,7 +74,8 @@ struct ConversationOwnerTests {
         let sequence = core.store.sequence
         check(try core.completeCompaction(summary, ticket: second, transportComplete: true) == nil && core.store.sequence == sequence, "completed compaction ticket cannot replay")
         let rebuilt = try core.beginMain(classification: root, request: request)
-        check(!rebuilt.isRetry && rebuilt.discontinuity, "same request after compaction is rebuilt context, not old retry")
+        check(!rebuilt.isRetry && !rebuilt.discontinuity && core.store.read(id: main.ticket.conversationID)!.items.count == completed.items.count,
+              "unchanged context after summary response is not duplicated or mistaken for an old retry")
         check(Array(core.store.read(id: main.ticket.conversationID)!.items.prefix(completed.items.count)) == completed.items, "post-compaction reconstruction cannot move old reply behind boundary")
         _ = try core.apply(reply, ticket: rebuilt.ticket, finished: true)
         let stale = core.beginCompaction(classification: compact)!

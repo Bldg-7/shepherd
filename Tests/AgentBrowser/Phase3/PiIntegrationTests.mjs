@@ -8,6 +8,7 @@ import {registerPiLifecycle, SERVER as PI_SERVER} from '../../../Shepherd/Agents
 import {detect, injected, resume, childCommand, SERVER} from '../../../Shepherd/Agents/AgentRuntime/runtime-core.mjs';
 import {prepare, stagePi} from '../../../Shepherd/Agents/AgentRuntime/runtime.mjs';
 import {registerPiSessionNaming} from '../../../Shepherd/Agents/AgentRuntime/pi-session-name.mjs';
+import {registerPiHerdr} from '../../../Shepherd/Agents/AgentRuntime/pi-herdr.mjs';
 import {createPiHost} from '../../../Shepherd/Agents/AgentRuntime/pi-host.mjs';
 import {registerPiApiProxy, apiProxyBase, PROXIED_PROVIDERS} from '../../../Shepherd/Agents/AgentRuntime/pi-api-proxy.mjs';
 import net from 'node:net';
@@ -354,6 +355,34 @@ test('Session name arrives in the bridge\'s status replies, through createPiHost
   }
 });
 
+test('Pi report qualifies only successful current-generation native identity', async () => {
+  const root=fs.mkdtempSync('/tmp/shp-pi-owner-'), socketPath=path.join(root,'control.sock'), bootstrap=path.join(root,'bootstrap.json');
+  fs.chmodSync(root,0o700);
+  let hold=false, failures=0;const accepted=deferred(), release=deferred(), qualified=[], handlers=new Map();
+  const server=net.createServer(socket=>{
+    let pending='';socket.on('data',chunk=>{
+      pending+=chunk;if(!pending.includes('\n'))return;
+      socket.removeAllListeners('data');const request=JSON.parse(pending.trim());
+      assert.equal(request.command,'herdrState');
+      if(hold){accepted.resolve();void release.promise.then(()=>socket.end('{"ok":true}\n'));}
+      else socket.end('{"ok":true}\n');
+    });
+  });
+  await new Promise(resolve=>server.listen(socketPath,resolve));fs.chmodSync(socketPath,0o600);
+  fs.writeFileSync(bootstrap,JSON.stringify({version:1,launchID:'synthetic',capability:crypto.randomBytes(32).toString('base64'),socketPath,
+    node:process.execPath,helper:fileURLToPath(new URL('../../../Shepherd/Agents/AgentRuntime/pi-control.mjs',import.meta.url)),herdrReporting:true}),{mode:0o600});
+  const pi={on:(name,handler)=>handlers.set(name,handler),events:{on:()=>{}}};
+  const context={...ctx(),mode:'tui'};
+  try {
+    registerPiHerdr(pi,bootstrap,()=>{failures++;},id=>qualified.push(id));
+    await handlers.get('session_start')({},context);
+    assert.deepEqual(qualified,[context.sessionManager.getSessionId()]);
+    hold=true;const pending=handlers.get('agent_start')({},context);await accepted.promise;
+    const stopping=handlers.get('session_shutdown')();release.resolve();await Promise.all([pending,stopping]);
+    assert.equal(qualified.length,1,'late success cannot qualify a retired session');assert.equal(failures,0);
+  } finally { release.resolve();await new Promise(resolve=>server.close(resolve));fs.rmSync(root,{recursive:true,force:true}); }
+});
+
 // The agent proxy (SHPHRD-105): pi-api-proxy.mjs with a stand-in Pi, reading
 // the launch.json the app writes beside the bridge's bootstrap file.
 function proxyFixture(manifest, { mode = 0o600 } = {}) {
@@ -370,18 +399,84 @@ test('Agent proxy: Pi\'s anthropic and openai-codex providers are pointed at the
   const f = proxyFixture({ version: 1, cli: '/owned/cli.js', bootstrap: '/owned/bootstrap.json', cwd: '/owned', arguments: [], apiProxy: { baseURL: proxyBase } });
   assert.equal(registerPiApiProxy(f.pi, f.bootstrap), true);
   assert.deepEqual(f.providers, [['anthropic', { baseUrl: proxyBase }], ['openai-codex', { baseUrl: proxyBase + '/backend-api' }]]);
-  assert.deepEqual([...f.handlers.keys()], ['before_provider_headers']);
+  assert.deepEqual([...f.handlers.keys()], ['context','session_before_compact','session_before_tree','session_shutdown','session_start']);
   assert.deepEqual(PROXIED_PROVIDERS, ['anthropic', 'openai-codex']);
 });
-test('Agent proxy: requests to those providers say which Pi session they are of; others are left alone', () => {
-  const f = proxyFixture({ version: 1, apiProxy: { baseURL: proxyBase } }); registerPiApiProxy(f.pi, f.bootstrap);
-  const headers = provider => { const event = { type: 'before_provider_headers', headers: { authorization: 'Bearer fixture' } }; f.handlers.get('before_provider_headers')(event, providerContext(provider)); return event.headers; };
-  for (const provider of ['anthropic', 'openai-codex'])
-    assert.deepEqual(headers(provider), { authorization: 'Bearer fixture', 'x-3rdr-pi-session': 'a1111111-1111-1111-1111-111111111111', 'x-3rdr-pi-class': 'main' }, provider);
-  for (const provider of ['openai', 'google', 'openrouter', undefined]) assert.deepEqual(headers(provider), { authorization: 'Bearer fixture' }, String(provider));
-  const event = { headers: {} }; f.handlers.get('before_provider_headers')(event, providerContext('anthropic', 'bad id\nwith a line'));
-  assert.deepEqual(event.headers, { 'x-3rdr-pi-class': 'main' }, 'a session ID that isn\'t one is not sent');
-  assert.doesNotThrow(() => f.handlers.get('before_provider_headers')({}, providerContext('anthropic')));
+test('Agent proxy: request-local purpose survives concurrent main/compaction and excludes replayed warming/auxiliary calls', () => {
+  let healthy=true;
+  const f = proxyFixture({ version: 1, apiProxy: { baseURL: proxyBase } }); registerPiApiProxy(f.pi, f.bootstrap, {env:{},captureAllowed:()=>healthy});
+  const signal = new AbortController().signal;
+  const ctx = {...providerContext('anthropic'),mode:'tui',signal,modelRegistry:{getProvider:()=>({streamSimple:(model,context,options)=>({model,context,options})})}};
+  f.handlers.get('session_start')({},ctx);
+  assert.equal(f.providers.length,4);
+  const main = {signal,sessionId:ctx.sessionManager.getSessionId(),transformContext:()=>{},convertToLlm:()=>{},
+    apiKey:'opaque-fixture',headers:{authorization:'Bearer fixture'},cacheRetention:'long',reasoning:'high',maxRetries:3};
+  for(const provider of PROXIED_PROVIDERS) {
+    const model={provider,api:provider==='anthropic'?'anthropic-messages':'openai-codex-responses',baseUrl:provider==='anthropic'?proxyBase:proxyBase+'/backend-api'};
+    const wrap=f.providers.findLast(([name])=>name===provider)[1].streamSimple;
+    assert.equal(wrap(model,{},main).options.headers['x-3rdr-pi-class'],'auxiliary','unobserved operation is not main');
+    f.handlers.get('context')({},ctx);
+    const context={messages:[]}, observed=wrap(model,context,main);
+    assert.equal(observed.context,context);assert.equal(observed.model,model);
+    assert.deepEqual(observed.options.headers,{authorization:'Bearer fixture','x-3rdr-pi-contract':'2','x-3rdr-pi-class':'main','x-3rdr-pi-session':main.sessionId});
+    for(const [name,value] of Object.entries(main))if(name!=='headers')assert.equal(observed.options[name],value,'opaque option preserved: '+name);
+    assert.deepEqual(main.headers,{authorization:'Bearer fixture'},'caller headers are not mutated');
+    const compact=new AbortController().signal;
+    f.handlers.get('session_before_compact')({signal:compact},ctx);
+    const summary=wrap(model,{}, {signal:compact,sessionId:'fresh-routing-id',cacheRetention:'none'}).options.headers;
+    assert.equal(summary['x-3rdr-pi-class'],'compaction');assert.equal(summary['x-3rdr-pi-session'],main.sessionId);
+    assert.equal(wrap(model,{},main).options.headers['x-3rdr-pi-class'],'main','concurrent main does not inherit compaction purpose');
+    for(const options of [ {...main,signal:new AbortController().signal,maxTokens:1,maxRetries:0}, {...main,maxTokens:1},
+                          {signal,sessionId:main.sessionId}, {...main,signal:new AbortController().signal} ]) {
+      const h=wrap(model,{},options).options.headers;assert.equal(h['x-3rdr-pi-class'],'auxiliary');assert.equal(h['x-3rdr-pi-session'],undefined);
+    }
+    const tree=new AbortController().signal;f.handlers.get('session_before_tree')({signal:tree},ctx);
+    assert.equal(wrap(model,{}, {...main,signal:tree}).options.headers['x-3rdr-pi-class'],'auxiliary');
+    const custom=wrap({...model,baseUrl:'https://custom.invalid'},context,main);
+    assert.equal(custom.options,main,'custom endpoint options are delegated unchanged without local tags');
+    const stale=wrap({...model,baseUrl:'https://custom.invalid'},context,{...main,headers:{...main.headers,'X-3rdr-Pi-Session':'old','x-3rdr-pi-class':'main','x-3rdr-pi-contract':'2'}});
+    assert.deepEqual(stale.options.headers,main.headers,'stale local headers never escape to another endpoint');
+    f.handlers.get('session_shutdown')();
+    assert.equal(wrap(model,{},main).options.headers['x-3rdr-pi-class'],'auxiliary');
+    f.handlers.get('session_start')({},ctx);assert.equal(f.providers.length,4,'same runtime startup does not stack wrappers');
+  }
+  f.handlers.get('context')({},ctx);healthy=false;
+  const denied=f.providers.findLast(([name])=>name==='anthropic')[1].streamSimple(
+    {provider:'anthropic',api:'anthropic-messages',baseUrl:proxyBase},{},main).options.headers;
+  assert.equal(denied['x-3rdr-pi-class'],'auxiliary');assert.equal(denied['x-3rdr-pi-session'],undefined,'managed control failure cannot leave a captured main identity');
+});
+test('Agent proxy: invalid/headless identities and inherited child bootstrap cannot become main', () => {
+  for(const env of [{PI_SUBAGENT_CHILD:'1'},{PI_SUBAGENT_PARENT_SESSION:'parent'}]) {
+    const f=proxyFixture({apiProxy:{baseURL:proxyBase}});assert.equal(registerPiApiProxy(f.pi,f.bootstrap,{env}),false);assert.equal(f.providers.length,0);
+  }
+  const f=proxyFixture({apiProxy:{baseURL:proxyBase}});registerPiApiProxy(f.pi,f.bootstrap,{env:{},captureAllowed:()=>true});
+  const ctx={...providerContext('anthropic','invalid id'),mode:'tui',signal:new AbortController().signal,
+    modelRegistry:{getProvider:()=>({streamSimple:(model,context,options)=>options})}};
+  f.handlers.get('session_start')({},ctx);f.handlers.get('context')({},ctx);
+  const wrapper=f.providers.findLast(([name])=>name==='anthropic')[1].streamSimple;
+  const model={provider:'anthropic',api:'anthropic-messages',baseUrl:proxyBase};
+  const options={signal:ctx.signal,sessionId:'invalid id',transformContext:()=>{},convertToLlm:()=>{}};
+  assert.equal(wrapper(model,{},options).headers['x-3rdr-pi-class'],'auxiliary');
+  f.handlers.get('session_shutdown')();f.handlers.get('session_start')({}, {...ctx,mode:'print'});
+  assert.equal(wrapper(model,{},options).headers['x-3rdr-pi-class'],'auxiliary');
+});
+test('Agent proxy: qualification is bound to an authenticated native session, not a reusable healthy flag', () => {
+  const f=proxyFixture({apiProxy:{baseURL:proxyBase}});let qualified;
+  registerPiApiProxy(f.pi,f.bootstrap,{env:{},captureAllowed:id=>id===qualified});
+  const signal=new AbortController().signal, session='a1111111-1111-1111-1111-111111111111';
+  const ctx={...providerContext('anthropic',session),mode:'tui',signal,modelRegistry:{getProvider:()=>({streamSimple:(m,c,o)=>o})}};
+  f.handlers.get('session_start')({},ctx);f.handlers.get('context')({},ctx);
+  const wrap=f.providers.findLast(([name])=>name==='anthropic')[1].streamSimple;
+  const model={provider:'anthropic',api:'anthropic-messages',baseUrl:proxyBase};
+  const opts={signal,sessionId:session,transformContext:()=>{},convertToLlm:()=>{}};
+  assert.equal(wrap(model,{},opts).headers['x-3rdr-pi-class'],'auxiliary','no initial owner proof');
+  qualified=session;f.handlers.get('context')({},ctx);
+  assert.equal(wrap(model,{},opts).headers['x-3rdr-pi-class'],'main');
+  const other={...ctx,signal:new AbortController().signal,sessionManager:{getSessionId:()=> 'other_session'}};
+  f.handlers.get('context')({},other);
+  assert.equal(wrap(model,{}, {...opts,signal:other.signal,sessionId:'other_session'}).headers['x-3rdr-pi-class'],'auxiliary','proof cannot cross native session');
+  qualified=undefined;
+  assert.equal(wrap(model,{},opts).headers['x-3rdr-pi-class'],'auxiliary','explicit retirement removes capture eligibility');
 });
 test('Agent proxy: without a valid base URL in a private launch.json, Pi is left as it is', () => {
   const cases = [
@@ -401,8 +496,10 @@ test('Agent proxy: without a valid base URL in a private launch.json, Pi is left
 });
 test('Agent proxy: the extension is registered from pi-entry.ts with the bridge\'s bootstrap file, and is part of the runtime\'s version', () => {
   const entry = fs.readFileSync(new URL('../../../Shepherd/Agents/AgentRuntime/pi-entry.ts', import.meta.url), 'utf8');
-  assert(entry.includes("import { registerPiApiProxy } from './pi-api-proxy.mjs';") && entry.includes('registerPiApiProxy(pi, bootstrap);'));
-  assert(entry.indexOf("if (!bootstrap) throw new Error('pi-host-bridge-unavailable');") < entry.indexOf('registerPiApiProxy(pi, bootstrap);'));
+  assert(entry.includes("import { registerPiApiProxy } from './pi-api-proxy.mjs';") && entry.includes('registerPiApiProxy(pi, bootstrap, { captureAllowed: (id: string) => id === captureSession });'));
+  assert(entry.indexOf("if (!bootstrap) throw new Error('pi-host-bridge-unavailable');") < entry.indexOf('registerPiApiProxy(pi, bootstrap,'));
+  assert(entry.includes("pi.on('session_start', () => { captureSession = undefined; });") && entry.includes("pi.on('session_shutdown', () => { captureSession = undefined; });"));
+  assert(entry.includes('registerPiHerdr(pi, bootstrap, onFailure, (id: string) => { captureSession = id; });'));
   const runtime = fs.readFileSync(new URL('../../../Shepherd/Agents/AgentRuntime/runtime.mjs', import.meta.url), 'utf8');
   assert(runtime.includes("'pi-launch.mjs','pi-api-proxy.mjs','pi-guidance.md'"));
 });

@@ -72,7 +72,7 @@ class Recorder:
     def frame(self, kind, payload=b'', exchange=1):
         if not isinstance(payload, bytes): payload = json.dumps(payload).encode()
         self.tee.sendall(struct.pack('>IBQ', 9 + len(payload), kind, exchange) + payload)
-    def event(self, data): self.frame(5, b'data: ' + json.dumps(data).encode() + b'\n\n')
+    def event(self, data, exchange=1): self.frame(5, b'data: ' + json.dumps(data).encode() + b'\n\n', exchange=exchange)
     def begin(self):
         self.frame(1, {'routeID': 'route', 'upstream': 'anthropic', 'method': 'POST', 'path': '/v1/messages',
                       'routeIdentity': {'kind': 'claude', 'session': 'session', 'paneID': 'pane', 'terminalID': 'terminal', 'cliVersion': '2.1.309'},
@@ -137,6 +137,25 @@ try:
     missing = subprocess.run([str(a.binary),'show','--terminal','missing','--socket',str(r.path)], env={}, capture_output=True, timeout=10)
     check(missing.returncode == 2 and not missing.stdout, 'show CLI reports absent conversation with no fabricated history')
     sub.close()
+    r.frame(1, {'routeID':'route','upstream':'anthropic','method':'POST','path':'/v1/messages',
+                'routeIdentity':{'kind':'claude','session':'session','paneID':'pane','terminalID':'terminal','cliVersion':'2.1.309'},
+                'headers':[['x-claude-code-session-id','native'],['x-claude-code-request-class','subagent'],
+                           ['x-claude-code-agent-id','child'],['x-claude-code-parent-agent-id','root']]}, exchange=2)
+    r.frame(2, {'messages':[{'role':'user','content':'private child instructions'}]}, exchange=2); r.frame(3,exchange=2)
+    r.frame(4, {'status':200,'headers':[['content-type','text/event-stream']]}, exchange=2)
+    r.event({'type':'message_start','message':{'id':'child-message','role':'assistant','content':[]}},2)
+    r.event({'type':'content_block_start','index':0,'content_block':{'type':'text','text':'child result'}},2)
+    r.event({'type':'content_block_stop','index':0},2)
+    r.event({'type':'message_delta','delta':{'stop_reason':'end_turn'}},2)
+    r.event({'type':'message_stop'},2); r.frame(6,{'outcome':'complete'},exchange=2)
+    until=time.monotonic()+3
+    while True:
+        child_page=r.query('conversation.read',conversationID=cid)['result']
+        if child_page['summary']['subagents']['withFinalResult']==1: break
+        assert time.monotonic()<until,'child capture deadline'
+        select.select([r.tee],[],[],.02)
+    check(child_page['items'][-1]['origin']=='subagent' and child_page['items'][-1]['subagentID']=='child','real socket exposes typed final child result')
+    check('private child instructions' not in json.dumps(child_page),'real socket omits child request history')
     with r.connect() as oversized:
         oversized.sendall(b'x' * (65536 + 1))
         try: closed = oversized.recv(1) == b''

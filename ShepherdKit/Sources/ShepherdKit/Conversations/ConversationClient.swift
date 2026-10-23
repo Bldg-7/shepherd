@@ -142,15 +142,21 @@ nonisolated enum ConversationWire {
             guard [header.id, header.agent, header.herdrSession, header.nativeSession, header.paneID, header.terminalID].allSatisfy(validID),
                   ["claude", "codex", "pi"].contains(header.agent), (0...4096).contains(header.itemCount),
                   header.revision <= result.seq, header.historyRevision <= header.revision,
+                  (0...128).contains(header.subagents.observed), (0...header.subagents.observed).contains(header.subagents.withFinalResult),
                   ["streaming", "complete", "incomplete"].contains(header.status) else { throw ConversationClientError.invalidReply }
         }
         let items = result.items ?? []
         guard items.count <= 64, Set(items.map { Data($0.id.utf8) }).count == items.count else { throw ConversationClientError.invalidReply }
         for item in items {
             guard validID(item.id), ["user", "assistant", "tool"].contains(item.role),
-                  ["observed", "reconstructed", "response", "summary", "discontinuity", "compaction"].contains(item.origin),
+                  ["observed", "reconstructed", "response", "summary", "discontinuity", "compaction", "subagent"].contains(item.origin),
                   ["streaming", "complete", "incomplete"].contains(item.status), !item.blocks.isEmpty, item.blocks.count <= 64,
                   item.compaction.map({ ["plaintext", "opaque", "no_text", "incomplete"].contains($0) }) ?? true else { throw ConversationClientError.invalidReply }
+            guard (item.origin == "compaction") == (item.compaction != nil) else { throw ConversationClientError.invalidReply }
+            if item.origin == "subagent" {
+                guard let id = item.subagentID, validID(id), item.subagentDepth.map({ (1...16).contains($0) }) ?? true,
+                      item.role == "assistant", item.blocks.reduce(0, { $0 + $1.text.utf8.count }) <= 16 << 10 else { throw ConversationClientError.invalidReply }
+            } else if item.subagentID != nil || item.subagentDepth != nil { throw ConversationClientError.invalidReply }
             let limit = item.role == "assistant" ? 256 << 10 : (item.role == "tool" ? 16 << 10 : 64 << 10)
             var textBytes = 0
             for block in item.blocks {

@@ -29,7 +29,8 @@ public nonisolated struct ConversationOwner: Sendable {
             if Self.same(agentID, request.agentID) { return true }
             return knownOmittedRootIDs && request.agentID == nil && request.route?.cliVersion == "2.1.309"
         case "codex": return true // native thread identity is independently scoped
-        default: return false // Pi's tagging contract is not verified yet
+        case "pi": return true // verified contract2 operation signal, not an inferred main flag
+        default: return false
         }
     }
 
@@ -49,6 +50,41 @@ public nonisolated struct ConversationOwner: Sendable {
             return child
         default: return nil
         }
+    }
+
+    public var canLinkSubagents: Bool { key.agent == "codex" || (key.agent == "claude" && (agentID != nil || knownOmittedRootIDs)) }
+
+    /// Exact-build root omission can establish membership in this managed
+    /// native session, NOT a direct-parent identity. Keep its ancestry unknown;
+    /// this never authorizes a child's compaction to mutate main history.
+    func scopedSubagentID(_ request: ClassifiedRequest) -> String? {
+        guard knownOmittedRootIDs, request.route?.cliVersion == "2.1.309",
+              request.kind == .subagent, sameLocation(request), Self.same(request.nativeSessionID, key.nativeSession),
+              let child = request.agentID, !Self.same(child, request.parentAgentID) else { return nil }
+        return child
+    }
+
+    func matches(_ other: ConversationOwner) -> Bool {
+        key == other.key && Self.same(context.routeID, other.context.routeID)
+            && Self.same(context.paneID, other.context.paneID) && Self.same(context.terminalID, other.context.terminalID)
+            && agentID.map({ Data($0.utf8) }) == other.agentID.map({ Data($0.utf8) })
+            && knownOmittedRootIDs == other.knownOmittedRootIDs
+    }
+
+    /// Only an already linked parent may extend ancestry; no orphan guessing.
+    func descendantSubagentID(_ request: ClassifiedRequest, parent: String) -> String? {
+        guard request.kind == .subagent, sameLocation(request) else { return nil }
+        if key.agent == "claude" {
+            guard Self.same(request.nativeSessionID, key.nativeSession), Self.same(request.parentAgentID, parent),
+                  let child = request.agentID, !Self.same(child, parent), !Self.same(child, agentID) else { return nil }
+            return child
+        }
+        if key.agent == "codex" {
+            guard Self.same(request.parentSessionID, parent), let child = request.nativeSessionID,
+                  !Self.same(child, parent), !Self.same(child, key.nativeSession) else { return nil }
+            return child
+        }
+        return nil
     }
 
     private func sameLocation(_ request: ClassifiedRequest) -> Bool {

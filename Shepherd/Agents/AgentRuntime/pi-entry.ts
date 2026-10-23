@@ -13,10 +13,16 @@ export default function shepherdPi(pi: ExtensionAPI) {
   let controller: ReturnType<typeof registerPiLifecycle> | undefined;
   let ui: { setStatus(key: string, text: string | undefined): void } | undefined;
   let controlHealthy = true;
+  let captureSession: string | undefined;
+  pi.on('session_start', () => { captureSession = undefined; });
+  pi.on('session_shutdown', () => { captureSession = undefined; });
   const onFailure = () => { controlHealthy = false; void controller?.shutdown(); };
   // The agent proxy, when the app gave this launch one (SHPHRD-105).
-  registerPiApiProxy(pi, bootstrap);
-  registerPiHerdr(pi, bootstrap, onFailure);
+  registerPiApiProxy(pi, bootstrap, { captureAllowed: (id: string) => id === captureSession });
+  // A successful authenticated root-process report qualifies only this native
+  // session. Later app/browser disconnection must not stop an already-bound
+  // model proxy session; replacement/shutdown explicitly clears the identity.
+  registerPiHerdr(pi, bootstrap, onFailure, (id: string) => { captureSession = id; });
   // The pane's name from the app's Rename Pane, set on the session while Pi is idle.
   const naming = registerPiSessionNaming(pi);
   const registration = createPiMcpRegistration(pi);

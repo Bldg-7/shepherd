@@ -4,7 +4,7 @@ import {control,readBootstrap} from './pi-control.mjs';
 // Uses Herdr's v9 integration report protocol THROUGH the authenticated app
 // bridge. Never trust inherited HERDR_SOCKET_PATH/PANE_ID to choose a target.
 // No global integration install, shell command, prompt or raw error reporting.
-export function registerPiHerdr(pi,bootstrap,onFailure) {
+export function registerPiHerdr(pi,bootstrap,onFailure,onQualified=()=>{}) {
   if(readBootstrap(bootstrap).herdrReporting!==true)return;
   let queue=Promise.resolve(), active=false, generation=0, blocked=0, latestContext;
   function report(ctx,state) {
@@ -17,6 +17,7 @@ export function registerPiHerdr(pi,bootstrap,onFailure) {
       if(!active || epoch!==generation)return;
       const reply=await control(bootstrap,'herdrState',randomUUID(),identity,{state});
       if(reply.ok!==true)throw new Error('pi-herdr-state-unavailable');
+      if(active && epoch===generation)onQualified(identity.sessionID);
     }).catch(()=>{active=false;onFailure();});
     return queue;
   }

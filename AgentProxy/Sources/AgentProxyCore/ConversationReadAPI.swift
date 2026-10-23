@@ -21,9 +21,11 @@ public nonisolated enum ConversationReadAPI {
         public let itemCount: Int
         public let truncated: Bool
         public let status: String
+        public let subagents: ConversationSubagents
         init(_ source: ConversationSummary) {
             id = source.id; agent = source.key.agent; herdrSession = source.key.herdrSession
             nativeSession = source.key.nativeSession; paneID = source.context.paneID; terminalID = source.context.terminalID
+            subagents = source.subagents
             revision = source.revision; historyRevision = source.historyRevision; itemCount = source.itemCount; truncated = source.truncated; status = Self.status(source.status)
         }
         static func status(_ value: CapturedResponse.Status) -> String {
@@ -44,17 +46,22 @@ public nonisolated enum ConversationReadAPI {
         public let role: String
         public let origin: String
         public let compaction: String?
+        public let subagentID: String?
+        public let subagentDepth: Int?
         public let status: String
         public let truncated: Bool
         public let blocks: [Block]
         init(_ source: ConversationItem) {
             id = source.id; role = source.message.role.rawValue; status = Summary.status(source.status)
             truncated = source.message.truncated; blocks = source.message.blocks.map(Block.init)
+            if case .subagent(let id, let depth) = source.origin { subagentID = id; subagentDepth = depth }
+            else { subagentID = nil; subagentDepth = nil }
             switch source.origin {
             case .reconstructed: origin = "reconstructed"; compaction = nil
             case .observed: origin = "observed"; compaction = nil
             case .response: origin = "response"; compaction = nil
             case .summary: origin = "summary"; compaction = nil
+            case .subagent: origin = "subagent"; compaction = nil
             case .discontinuity: origin = "discontinuity"; compaction = nil
             case .compaction(let value):
                 origin = "compaction"

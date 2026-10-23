@@ -13,6 +13,8 @@ public nonisolated struct CapturedResponse: Equatable, Sendable {
     public let failure: Failure?
     /// A typed opaque compaction item was observed; never its encrypted body.
     public let containsOpaqueCompaction: Bool
+    /// Provider-declared final answer, not merely a completed HTTP/tool turn.
+    public let isFinalAnswer: Bool
 }
 
 /// Semantic assembly of one Anthropic Messages SSE response. Never stores
@@ -42,6 +44,9 @@ public nonisolated struct AnthropicResponseAssembly: Sendable {
     private var status: CapturedResponse.Status = .streaming
     private var failure: CapturedResponse.Failure?
     private var truncated = false
+    private var endTurn = false
+    private var sawStopReason = false
+    private var finalityTrusted = true
 
     public init() {}
 
@@ -51,7 +56,8 @@ public nonisolated struct AnthropicResponseAssembly: Sendable {
             return CapturedBlock(kind: kind, text: entry.text, callID: entry.callID, toolName: entry.toolName)
         }
         return CapturedResponse(responseID: responseID, blocks: blocks, status: status,
-                                truncated: truncated, failure: failure, containsOpaqueCompaction: false)
+                                truncated: truncated, failure: failure, containsOpaqueCompaction: false,
+                                isFinalAnswer: status == .complete && endTurn && finalityTrusted && !blocks.contains(where: { $0.kind == .toolCall }))
     }
 
     public mutating func consume(_ event: ServerSentEvent) {
@@ -101,7 +107,7 @@ public nonisolated struct AnthropicResponseAssembly: Sendable {
             default:
                 // Future block kinds must not accidentally be exposed as text.
                 entries[index] = Entry(kind: nil, text: "", callID: nil, toolName: nil)
-                truncated = true
+                truncated = true; finalityTrusted = false
             }
         case "content_block_delta":
             guard let index = Self.index(object["index"]), var entry = entries[index], !entry.stopped,
@@ -135,15 +141,19 @@ public nonisolated struct AnthropicResponseAssembly: Sendable {
             entry.stopped = true
             entries[index] = entry
         case "message_delta":
-            // Usage and stop_reason are not transcript content.
-            break
+            // Keep only typed finality; no raw usage/metadata or arbitrary reason.
+            if let delta = object["delta"] as? [String: Any], let reason = delta["stop_reason"] as? String {
+                let final = reason == "end_turn"
+                if sawStopReason && endTurn != final { fail(.unexpectedSequence); return }
+                sawStopReason = true; endTurn = final
+            }
         case "message_stop":
             guard entries.values.allSatisfy(\.stopped) else { fail(.unexpectedSequence); return }
             status = .complete
         default:
             // Unknown events may contain semantics the projection cannot show.
             // Keep the stream viable but explicitly mark the view incomplete.
-            truncated = true
+            truncated = true; finalityTrusted = false
         }
     }
 

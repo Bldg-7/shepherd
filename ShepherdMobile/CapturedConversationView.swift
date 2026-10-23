@@ -33,6 +33,17 @@ struct CapturedConversationView: View {
                         Text("Earlier messages were reconstructed from model context.")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
+                    if let stats = model.window.summary?.subagents {
+                        if stats.observed > 0 {
+                            Text("Observed subagents: \(stats.observed) · With final results: \(stats.withFinalResult)")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        if stats.limited { Text("Subagent tracking reached its memory limit.").font(.caption).foregroundStyle(.secondary) }
+                        if stats.ancestryIncomplete { Text("Some subagent parent relationships are unavailable.").font(.caption).foregroundStyle(.secondary) }
+                        if !stats.linkAvailable {
+                            Text("Subagent details couldn't be linked for this session.").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
                     ForEach(model.window.items, id: \.id) { item in
                         CapturedMessageView(item: item).id(item.id)
                     }
@@ -92,7 +103,7 @@ private struct CapturedMessageView: View {
         if item.origin == "compaction" {
             VStack(spacing: 6) {
                 Divider()
-                Text("Conversation compacted").font(.caption.weight(.semibold))
+                Text("Context compaction").font(.caption.weight(.semibold))
                 if item.compaction == "opaque" { Text("The provider did not expose the summary text.").font(.caption) }
                 else if item.compaction == "incomplete" { Text("Compaction did not complete.").font(.caption) }
                 else if item.compaction == "no_text" { Text("No visible summary was returned.").font(.caption) }
@@ -106,6 +117,11 @@ private struct CapturedMessageView: View {
                 if item.role == "user" { Spacer(minLength: 28) }
                 VStack(alignment: .leading, spacing: 8) {
                     if item.origin == "summary" { Label("Context summary", systemImage: "text.alignleft").font(.caption).foregroundStyle(.secondary) }
+                    if item.origin == "subagent" {
+                        Label((item.subagentDepth ?? 1) > 1 ? String(localized: "Nested subagent result") : String(localized: "Subagent result"), systemImage: "person.2")
+                            .font(.caption).foregroundStyle(.secondary)
+                        if item.blocks.allSatisfy({ $0.text.isEmpty }) { Text("No visible final result was returned.").font(.caption).foregroundStyle(.secondary) }
+                    }
                     ForEach(Array(item.blocks.enumerated()), id: \.offset) { _, block in
                         switch block.kind {
                         case "image":

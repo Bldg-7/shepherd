@@ -50,13 +50,14 @@ public final class ConversationCapture {
         var wireBytes = 0
         var main: ConversationReconciler.Ticket?
         var compact: ConversationReconciler.CompactionTicket?
+        var child: ConversationReconciler.SubagentTicket?
         var decoder = ServerSentEventDecoder()
         var anthropic: AnthropicResponseAssembly?
         var responses: ResponsesAssembly?
         init(open: AgentProxyTeeFrame.Open, limit: Int, codec: (any CaptureDecompressor)?) {
             self.open = open; body = BoundedCaptureBody(maximumBytes: limit); self.codec = codec
         }
-        var conversationID: String? { main?.conversationID ?? compact?.conversationID }
+        var conversationID: String? { main?.conversationID ?? compact?.conversationID ?? child?.conversationID }
         func event(_ event: ServerSentEvent) { anthropic?.consume(event); responses?.consume(event) }
         var snapshot: CapturedResponse? { anthropic?.snapshot ?? responses?.snapshot }
     }
@@ -114,6 +115,9 @@ public final class ConversationCapture {
                     let begin = try reconciler.beginMain(classification: classification, request: projection)
                     exchange.main = begin.ticket
                     evicted(begin.evictedConversationIDs)
+                case .subagent:
+                    guard let ticket = try reconciler.beginSubagent(classification: classification, requestBody: body) else { throw Failure.unsupported }
+                    exchange.child = ticket
                 case .compaction:
                     guard let ticket = reconciler.beginCompaction(classification: classification) else { throw Failure.unsupported }
                     exchange.compact = ticket
@@ -224,6 +228,8 @@ public final class ConversationCapture {
         do {
             if let ticket = exchange.main {
                 if let update = try reconciler.apply(snapshot, ticket: ticket, finished: true) { evicted(update.evictedConversationIDs) }
+            } else if let ticket = exchange.child {
+                if let update = try reconciler.completeSubagent(snapshot, ticket: ticket, transportComplete: complete) { evicted(update.evictedConversationIDs) }
             } else if let ticket = exchange.compact {
                 if let update = try reconciler.completeCompaction(snapshot, ticket: ticket, transportComplete: complete) { evicted(update.evictedConversationIDs) }
             }
@@ -251,7 +257,11 @@ public final class ConversationCapture {
         }
         return true
     }
-    private func balance() { _ = makeRoom(0) }
+    private func balance() {
+        let stale = exchanges.values.compactMap(\.conversationID).filter { reconciler.store.read(id: $0) == nil }
+        evicted(stale)
+        _ = makeRoom(0)
+    }
     private static func mediaType(_ value: String?) -> String? {
         value?.split(separator: ";", maxSplits: 1).first?.trimmingCharacters(in: .whitespaces).lowercased()
     }
