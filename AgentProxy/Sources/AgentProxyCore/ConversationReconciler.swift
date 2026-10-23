@@ -8,8 +8,9 @@ import CryptoKit
 ///
 /// Tickets bind response updates to one request and store epoch. Superseded,
 /// finished or evicted requests cannot overwrite/recreate a conversation.
-/// Metadata is bounded by the store's <=256 conversations and <=200 SHA-256
-/// message fingerprints per conversation. No raw requests/responses/headers
+/// Metadata is bounded by the store's <=256 conversations, <=200 SHA-256
+/// message fingerprints, one selected owner and one pending compaction per
+/// conversation. No raw requests/responses/headers
 /// are retained outside the bounded store.
 public nonisolated struct ConversationReconciler: Sendable {
     public struct Ticket: Equatable, Sendable {
@@ -26,7 +27,16 @@ public nonisolated struct ConversationReconciler: Sendable {
     public struct Applied: Sendable {
         public let evictedConversationIDs: [String]
     }
-    public enum Failure: Error { case invalidProjection, invalidResponse }
+    public struct CompactionTicket: Equatable, Sendable {
+        public let conversationID: String
+        public let requestID: String
+        public let epoch: String
+    }
+    public enum Failure: Error { case invalidProjection, invalidResponse, invalidClassification }
+    private struct PendingCompaction: Sendable {
+        let requestID: String
+        let classification: ClassifiedRequest
+    }
     private struct State: Sendable {
         var requestID: String?
         let signature: Data
@@ -34,6 +44,9 @@ public nonisolated struct ConversationReconciler: Sendable {
         let truncated: Bool
         let responseItemID: String
         var lastResponseID: String?
+        var owner: ConversationOwner?
+        var compaction: PendingCompaction?
+        var didCompact = false
     }
     public private(set) var store: ConversationStore
     private var states: [String: State] = [:]
@@ -42,6 +55,17 @@ public nonisolated struct ConversationReconciler: Sendable {
     public var trackedConversationCount: Int { states.count }
     public var retainedFingerprintCount: Int { states.values.reduce(0) { $0 + $1.fingerprints.count } }
 
+    /// Preferred recorder entry point: validate main ownership and remember
+    /// just the selected IDs required for later compaction/child correlation.
+    public mutating func beginMain(classification: ClassifiedRequest, request: CapturedRequest) throws -> Begin {
+        guard let owner = ConversationOwner(classification: classification) else { throw Failure.invalidClassification }
+        let begin = try beginMain(key: owner.key, context: owner.context, request: request)
+        states[begin.ticket.conversationID]?.owner = owner
+        return begin
+    }
+
+    /// Low-level entry point for already trusted projections. Without an
+    /// observed classification it does NOT authorize auxiliary writes.
     public mutating func beginMain(key: ConversationKey, context: ConversationContext, request: CapturedRequest) throws -> Begin {
         guard request.messages.count <= ConversationCaptureLimits.reconstructedHistoryItems,
               request.messages.reduce(0, { $0 + $1.cost }) <= ConversationCaptureLimits.conversation,
@@ -52,7 +76,7 @@ public nonisolated struct ConversationReconciler: Sendable {
         let signature = Self.signature(fingerprints, previous: request.previousResponseID)
         let old = store.read(key: key)
         let prior = old.flatMap { states[$0.summary.id] }
-        let retry = prior.map { $0.signature == signature && !$0.truncated && !request.truncated } ?? false
+        let retry = prior.map { !$0.didCompact && $0.signature == signature && !$0.truncated && !request.truncated } ?? false
         var items = old?.items ?? []
         var suffix = request.messages[...]
         var discontinuity = prior == nil && request.previousResponseID != nil
@@ -60,7 +84,13 @@ public nonisolated struct ConversationReconciler: Sendable {
         var responseItemID = UUID().uuidString
 
         if let prior {
-            if retry {
+            if prior.didCompact {
+                // The old reply belongs BEFORE the compaction boundary. Do not
+                // remove/move it as a provisional response or mistake a rebuilt
+                // context for a retry. Preserve history and label reconstruction.
+                discontinuity = true
+                reconstructed = true
+            } else if retry {
                 suffix = request.messages[request.messages.endIndex...]
                 responseItemID = prior.responseItemID
             } else if let previous = request.previousResponseID {
@@ -126,6 +156,55 @@ public nonisolated struct ConversationReconciler: Sendable {
         prune(update.evictedConversationIDs)
         if response.responseID != nil { state.lastResponseID = response.responseID }
         if finished { state.requestID = nil }
+        if update.conversationID == ticket.conversationID && ticket.epoch == store.epoch {
+            states[ticket.conversationID] = state
+        }
+        return Applied(evictedConversationIDs: update.evictedConversationIDs)
+    }
+
+    /// No new conversation is created by a compaction. An active main request,
+    /// absent owner, moved route, child context or unknown ID fails closed.
+    /// A retry supersedes the previous compaction ticket without growing state.
+    public mutating func beginCompaction(classification: ClassifiedRequest) -> CompactionTicket? {
+        guard classification.kind == .compaction, let route = classification.route,
+              let native = classification.nativeSessionID,
+              let key = ConversationKey(agent: route.kind.rawValue, herdrSession: route.session, nativeSession: native),
+              let old = store.read(key: key), var state = states[old.summary.id], state.requestID == nil,
+              state.owner?.ownsCompaction(classification) == true else { return nil }
+        let id = UUID().uuidString
+        state.compaction = PendingCompaction(requestID: id, classification: classification)
+        states[old.summary.id] = state
+        return CompactionTicket(conversationID: old.summary.id, requestID: id, epoch: store.epoch)
+    }
+
+    /// Finalize exactly once at tee end. All existing visible history is kept
+    /// subject to the existing store limits; opaque output never replaces it.
+    @discardableResult
+    public mutating func completeCompaction(_ response: CapturedResponse, ticket: CompactionTicket,
+                                            transportComplete: Bool) throws -> Applied? {
+        guard ticket.epoch == store.epoch, var state = states[ticket.conversationID],
+              let pending = state.compaction, pending.requestID == ticket.requestID, state.requestID == nil,
+              let old = store.read(id: ticket.conversationID),
+              let summary = CompactionProjection.project(response, classification: pending.classification,
+                                                         transportComplete: transportComplete) else { return nil }
+        let marker = CapturedMessage(role: .assistant,
+            blocks: [CapturedBlock(kind: .text, text: "", callID: nil, toolName: nil)], truncated: false)
+        var items = old.items
+        items.append(ConversationItem(id: UUID().uuidString, message: marker,
+                                      origin: .compaction(summary.availability), status: summary.status))
+        if let text = summary.text {
+            let message = CapturedMessage(role: .assistant,
+                blocks: [CapturedBlock(kind: .text, text: text, callID: nil, toolName: nil)], truncated: summary.truncated)
+            items.append(ConversationItem(id: UUID().uuidString, message: message, origin: .summary, status: summary.status))
+        }
+        let update = try store.upsert(key: old.summary.key, context: old.summary.context, items: items,
+                                      status: summary.status, historyTruncated: summary.truncated)
+        prune(update.evictedConversationIDs)
+        state.compaction = nil
+        if summary.status == .complete {
+            state.didCompact = true
+            state.lastResponseID = nil
+        }
         if update.conversationID == ticket.conversationID && ticket.epoch == store.epoch {
             states[ticket.conversationID] = state
         }

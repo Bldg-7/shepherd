@@ -43,7 +43,11 @@ public nonisolated struct ConversationContext: Equatable, Sendable {
 }
 
 public nonisolated struct ConversationItem: Equatable, Sendable {
-    public enum Origin: Sendable { case reconstructed, observed, response, summary, discontinuity }
+    public enum Origin: Equatable, Sendable {
+        case reconstructed, observed, response, summary, discontinuity
+        /// Localized separator/status, never an empty assistant speech bubble.
+        case compaction(CapturedCompaction.Availability)
+    }
     /// Stable ID supplied by the reconciler, never inferred from text equality.
     public let id: String
     public let message: CapturedMessage

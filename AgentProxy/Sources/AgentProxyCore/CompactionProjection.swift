@@ -4,7 +4,7 @@ import Foundation
 /// still resolve its verified owner and append a typed boundary to that owner's
 /// existing history. A missing summary never authorizes reading transcript files.
 public nonisolated struct CapturedCompaction: Equatable, Sendable {
-    public enum Availability: Sendable { case plaintext, opaque, noText, incomplete }
+    public enum Availability: Equatable, Sendable { case plaintext, opaque, noText, incomplete }
     public let availability: Availability
     public let text: String?
     public let truncated: Bool

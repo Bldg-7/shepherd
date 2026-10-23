@@ -164,8 +164,18 @@ They use synthetic bytes, not real conversations or credentials.
   with their optional IDs respected and their ciphertext/unknown fields omitted.
   Opaque output yields an unavailable-summary marker, never guessed plaintext
   from adjacent output. Aborted, malformed or unfinished exchanges remain
-  incomplete. This projection does not yet attach boundaries to conversations;
-  verified parent ownership, history preservation and recorder integration remain.
+  incomplete. The classified reconciler entry point records main ownership;
+  compaction tickets then append typed boundaries and optional summary text
+  without replacing old visible history. Claude requires an explicit matching
+  root agent ID, or the source-verified omitted-root-ID convention of exactly
+  Claude 2.1.309 on both requests. Unknown builds with absent IDs fail closed;
+  no root agent ID is fabricated. Codex uses its native thread. Both require the current route/pane/terminal/herdr namespace. Active
+  main requests, child compactions, retries superseded by newer requests,
+  completed tickets, moved routes, eviction and recorder epochs are covered.
+  Post-compaction context is marked reconstructed, not mistaken for a retry
+  that moves the old reply behind its boundary. Direct-child identity matching
+  requires explicit parent links; counts, nested ancestry and final-result
+  tracking are not yet implemented. Recorder/read-API/iOS integration remains.
 - Projection keeps at most the latest 200 visible messages and 4 MiB of
   accounted content; user/assistant/tool text and block counts are bounded.
   Responses continuation IDs are retained so a later store can distinguish
