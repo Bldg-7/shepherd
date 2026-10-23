@@ -6,7 +6,7 @@ ROOT=Path(__file__).resolve().parents[2]
 p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--swiftterm-products',type=Path);args=p.parse_args();out=args.output.resolve();out.mkdir(mode=0o700,parents=True,exist_ok=False)
 for name in ['home','tmp','cache','files']:(out/name).mkdir(mode=0o700)
 env=dict(os.environ,DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer',HOME=str(out/'home'),CFFIXED_USER_HOME=str(out/'home'),TMPDIR=str(out/'tmp'),CLANG_MODULE_CACHE_PATH=str(out/'cache'))
-sources=['Shepherd/FilePreview/FilePreviewLink.swift','Shepherd/FilePreview/FilePreviewReader.swift','Shepherd/FilePreview/MarkdownPreview.swift','Shepherd/FilePreview/PreviewSyntaxHighlighter.swift','Shepherd/FilePreview/PreviewSyntaxRendering.swift','ShepherdKit/Sources/ShepherdKit/Machines/Machine.swift','Tests/FilePreview/FilePreviewTests.swift']
+sources=['ShepherdKit/Sources/ShepherdKit/Rendering/PreviewMarkdownBlock.swift','ShepherdKit/Sources/ShepherdKit/Rendering/PreviewSyntaxLanguage.swift']+['Shepherd/FilePreview/FilePreviewLink.swift','Shepherd/FilePreview/FilePreviewReader.swift','Shepherd/FilePreview/MarkdownPreview.swift','Shepherd/FilePreview/PreviewSyntaxHighlighter.swift','Shepherd/FilePreview/PreviewSyntaxRendering.swift','ShepherdKit/Sources/ShepherdKit/Machines/Machine.swift','Tests/FilePreview/FilePreviewTests.swift']
 (out/'source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in sources},indent=2))
 def stage(name,seconds,args,mirrorsLog=False):
  log=out/(name+'.log')
@@ -39,7 +39,7 @@ stage('pane-states-tests',20,[str(out/'pane-states-tests')])
 # to P, each with its own read, source choice and scroll place. SwiftUI's
 # faults go to the log, which must not say state was changed during a view
 # update.
-panel=paneStates+['Shepherd/FilePreview/FilePreviewPanel.swift','Shepherd/FilePreview/MarkdownPreview.swift','Shepherd/FilePreview/PreviewOutline.swift','Shepherd/FilePreview/SourceFilePreview.swift','Shepherd/FilePreview/PreviewSyntaxHighlighter.swift','Shepherd/FilePreview/PreviewSyntaxRendering.swift','Shepherd/FilePreview/PreviewFind.swift','Shepherd/FilePreview/PreviewFindBar.swift','Shepherd/FilePreview/PreviewKeyCatcher.swift']
+panel=['ShepherdKit/Sources/ShepherdKit/Rendering/PreviewMarkdownBlock.swift','ShepherdKit/Sources/ShepherdKit/Rendering/PreviewSyntaxLanguage.swift']+paneStates+['Shepherd/FilePreview/FilePreviewPanel.swift','Shepherd/FilePreview/MarkdownPreview.swift','Shepherd/FilePreview/PreviewOutline.swift','Shepherd/FilePreview/SourceFilePreview.swift','Shepherd/FilePreview/PreviewSyntaxHighlighter.swift','Shepherd/FilePreview/PreviewSyntaxRendering.swift','Shepherd/FilePreview/PreviewFind.swift','Shepherd/FilePreview/PreviewFindBar.swift','Shepherd/FilePreview/PreviewKeyCatcher.swift']
 (out/'panel-files').mkdir(mode=0o700)
 stage('panel-window-build',120,['xcrun','swiftc','ShepherdKit/Sources/ShepherdKit/Resources.swift','-target',platform.machine()+'-apple-macos26.6.2','-swift-version','6','-default-isolation','MainActor','-parse-as-library',*panel,'Tests/FilePreview/PanelWindowTests.swift','-framework','AppKit','-o',str(out/'panel-window-tests')])
 stage('panel-window-tests',60,[str(out/'panel-window-tests'),str(out/'panel-files')],mirrorsLog=True)
@@ -54,7 +54,7 @@ assert 'Modifying state during view update' not in (out/'scroll-restore-tests.lo
 (out/'restore-source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in panel+['Tests/FilePreview/ScrollRestoreTests.swift']},indent=2))
 # Find: what it looks in and matches, where it goes next, its marks and the
 # preview's keys, without a window.
-find=['Shepherd/FilePreview/MarkdownPreview.swift','Shepherd/FilePreview/PreviewSyntaxHighlighter.swift','Shepherd/FilePreview/PreviewSyntaxRendering.swift','Shepherd/FilePreview/PreviewFind.swift','Shepherd/FilePreview/PreviewKeyCatcher.swift','Shepherd/FilePreview/PreviewFindBar.swift','Tests/FilePreview/FindTests.swift']
+find=['ShepherdKit/Sources/ShepherdKit/Rendering/PreviewMarkdownBlock.swift','ShepherdKit/Sources/ShepherdKit/Rendering/PreviewSyntaxLanguage.swift']+['Shepherd/FilePreview/MarkdownPreview.swift','Shepherd/FilePreview/PreviewSyntaxHighlighter.swift','Shepherd/FilePreview/PreviewSyntaxRendering.swift','Shepherd/FilePreview/PreviewFind.swift','Shepherd/FilePreview/PreviewKeyCatcher.swift','Shepherd/FilePreview/PreviewFindBar.swift','Tests/FilePreview/FindTests.swift']
 stage('find-build',90,['xcrun','swiftc','ShepherdKit/Sources/ShepherdKit/Resources.swift','-target',platform.machine()+'-apple-macos26.6.2','-swift-version','6','-default-isolation','MainActor','-parse-as-library',*find,'-framework','AppKit','-o',str(out/'find-tests')])
 stage('find-tests',30,[str(out/'find-tests')])
 (out/'find-source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in find},indent=2))

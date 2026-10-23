@@ -10,7 +10,7 @@ p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p
 a=p.parse_args();out=a.output.resolve();out.mkdir(mode=0o700,parents=True,exist_ok=False)
 for n in ['home','tmp','cache','socket']:(out/n).mkdir(mode=0o700)
 env=dict(os.environ,DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer',HOME=str(out/'home'),CFFIXED_USER_HOME=str(out/'home'),TMPDIR=str(out/'tmp'),CLANG_MODULE_CACHE_PATH=str(out/'cache'))
-models=['ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/HerdrSubscription.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/HerdrMessage.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/JSONValue.swift']
+models=['ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/HerdrLineStream.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/HerdrSubscription.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/HerdrMessage.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/JSONValue.swift']
 schedule=['ShepherdKit/Sources/ShepherdKit/HerdrKit/Live/HerdrRefreshSchedule.swift']
 local=models+['ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/HerdrMachine.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Transport/HerdrTransport.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Transport/LocalHerdrTransport.swift',
  'ShepherdKit/Sources/ShepherdKit/HerdrKit/Transport/ConnectionFailureDescription.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/HerdrExecutable.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/LocalCommand.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/ShellQuoting.swift']

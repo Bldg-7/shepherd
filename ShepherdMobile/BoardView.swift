@@ -23,6 +23,8 @@ struct BoardView: View {
 struct PaneDestination: Hashable {
     let machine: Machine
     let paneID: String
+    let terminalID: String
+    let nativeSessionID: String?
     let herdrMachine: HerdrMachine?
     let title: String
     /// The agent herdr recognised in the pane when it was chosen, or nil
@@ -32,6 +34,11 @@ struct PaneDestination: Hashable {
     init(machine: Machine, pane: AgentSummary) {
         self.machine = machine
         self.paneID = pane.paneID
+        self.terminalID = pane.terminalID
+        // A session-file path is not a native ID and is never read here.
+        self.nativeSessionID = pane.sessionReference.flatMap { reference in
+            reference.kind == .id && AgentKind(herdrName: reference.agent) == pane.agentName.flatMap(AgentKind.init(herdrName:)) ? reference.value : nil
+        }
         self.herdrMachine = pane.herdrMachine
         self.title = pane.title
         self.agentName = pane.agentName

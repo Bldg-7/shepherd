@@ -1,6 +1,415 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+"Conversation display": {
+    "extractionState": "manual",
+    "localizations": {
+      "ko": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "대화 표시 방식"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "会話の表示"
+        }
+      }
+    }
+  },
+  "Conversation": {
+    "extractionState": "manual",
+    "localizations": {
+      "ko": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "대화"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "会話"
+        }
+      }
+    }
+  },
+  "Screen": {
+    "extractionState": "manual",
+    "localizations": {
+      "ko": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "화면"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "画面"
+        }
+      }
+    }
+  },
+  "Conversation unavailable. Showing the screen instead.": {
+    "extractionState": "manual",
+    "localizations": {
+      "ko": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "대화를 불러올 수 없어 화면을 표시합니다."
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "会話を取得できないため、画面を表示しています。"
+        }
+      }
+    }
+  },
+  "Couldn't load older conversation. Try again.": {
+    "extractionState": "manual",
+    "localizations": {
+      "ko": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "이전 대화를 불러오지 못했습니다. 다시 시도해 주세요."
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "以前の会話を読み込めませんでした。もう一度お試しください。"
+        }
+      }
+    }
+  },
+  "Load older conversation": {
+    "extractionState": "manual",
+    "localizations": {
+      "ko": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "이전 대화 불러오기"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "以前の会話を読み込む"
+        }
+      }
+    }
+  },
+  "Older conversation is outside the memory limit.": {
+    "extractionState": "manual",
+    "localizations": {
+      "ko": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "메모리 한도를 넘은 이전 대화는 표시할 수 없습니다."
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "メモリ上限を超えた以前の会話は表示できません。"
+        }
+      }
+    }
+  },
+  "Earlier messages were reconstructed from model context.": {
+    "extractionState": "manual",
+    "localizations": {
+      "ko": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "이전 메시지는 모델 문맥에서 다시 구성했습니다."
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "以前のメッセージはモデルのコンテキストから再構成されました。"
+        }
+      }
+    }
+  },
+  "The agent is waiting for your response.": {
+    "extractionState": "manual",
+    "localizations": {
+      "ko": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "에이전트가 응답을 기다리고 있습니다."
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "エージェントが応答を待っています。"
+        }
+      }
+    }
+  },
+  "View screen": {
+    "extractionState": "manual",
+    "localizations": {
+      "ko": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "화면 보기"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "画面を表示"
+        }
+      }
+    }
+  },
+  "Latest message": {
+    "extractionState": "manual",
+    "localizations": {
+      "ko": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "최신 메시지"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "最新のメッセージ"
+        }
+      }
+    }
+  },
+  "Conversation compacted": {
+    "extractionState": "manual",
+    "localizations": {
+      "ko": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "대화 압축됨"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "会話が圧縮されました"
+        }
+      }
+    }
+  },
+  "The provider did not expose the summary text.": {
+    "extractionState": "manual",
+    "localizations": {
+      "ko": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "공급자가 요약 본문을 공개하지 않았습니다."
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "プロバイダーは要約の本文を公開していません。"
+        }
+      }
+    }
+  },
+  "Compaction did not complete.": {
+    "extractionState": "manual",
+    "localizations": {
+      "ko": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "대화 압축이 완료되지 않았습니다."
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "会話の圧縮が完了しませんでした。"
+        }
+      }
+    }
+  },
+  "No visible summary was returned.": {
+    "extractionState": "manual",
+    "localizations": {
+      "ko": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "표시할 수 있는 요약이 반환되지 않았습니다."
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "表示できる要約が返されませんでした。"
+        }
+      }
+    }
+  },
+  "Conversation context changed": {
+    "extractionState": "manual",
+    "localizations": {
+      "ko": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "대화 문맥이 변경됨"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "会話のコンテキストが変更されました"
+        }
+      }
+    }
+  },
+  "Context summary": {
+    "extractionState": "manual",
+    "localizations": {
+      "ko": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "문맥 요약"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "コンテキストの要約"
+        }
+      }
+    }
+  },
+  "Image not captured": {
+    "extractionState": "manual",
+    "localizations": {
+      "ko": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "이미지는 수집하지 않음"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "画像は収集されません"
+        }
+      }
+    }
+  },
+  "Tool result": {
+    "extractionState": "manual",
+    "localizations": {
+      "ko": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "도구 결과"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ツールの結果"
+        }
+      }
+    }
+  },
+  "Tool": {
+    "extractionState": "manual",
+    "localizations": {
+      "ko": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "도구"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ツール"
+        }
+      }
+    }
+  },
+  "Response incomplete": {
+    "extractionState": "manual",
+    "localizations": {
+      "ko": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "응답이 완료되지 않음"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "応答が完了していません"
+        }
+      }
+    }
+  },
+  "Content truncated at the memory limit.": {
+    "extractionState": "manual",
+    "localizations": {
+      "ko": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "메모리 한도에 따라 내용이 잘렸습니다."
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "メモリ上限により内容が切り詰められました。"
+        }
+      }
+    }
+  },
+  "Code": {
+    "extractionState": "manual",
+    "localizations": {
+      "ko": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "코드"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "コード"
+        }
+      }
+    }
+  },
+  "Copy code": {
+    "extractionState": "manual",
+    "localizations": {
+      "ko": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "코드 복사"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "コードをコピー"
+        }
+      }
+    }
+  },
+
     "%@ asks whether to let this device in. Check that it shows the same confirmation code, then approve it there." : {
       "localizations" : {
         "ja" : {

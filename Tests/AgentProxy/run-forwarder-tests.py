@@ -41,8 +41,11 @@ env = dict(os.environ, HOME=str(out / 'home'), CFFIXED_USER_HOME=str(out / 'home
 package_sources = sorted(p for p in (ROOT / 'AgentProxy/Sources').rglob('*') if p.is_file())
 test_sources = sorted((ROOT / 'Tests/AgentProxy').glob('*.swift'))
 identity = (['AgentProxy/Package.swift'] + [str(f.relative_to(ROOT)) for f in package_sources + test_sources]
-            + ['Tests/AgentProxy/process-tests.py', 'Tests/AgentProxy/run-forwarder-tests.py'])
-identity += ['Shepherd/ThirdPartyNotices.txt']
+            + ['Tests/AgentProxy/process-tests.py', 'Tests/AgentProxy/read-socket-tests.py', 'Tests/AgentProxy/run-forwarder-tests.py'])
+bridge_sources = ['ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/HerdrLineStream.swift',
+                  'ShepherdKit/Sources/ShepherdKit/HerdrKit/Transport/ConversationSSHLineChannel.swift',
+                  'Tests/AgentProxy/Client/SSHLineBridgeTests.swift']
+identity += ['Shepherd/ThirdPartyNotices.txt'] + bridge_sources
 hashes = {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in identity}
 vendor = ROOT / 'AgentProxy/Sources/AgentProxyCompressionC/vendor'
 provenance = json.loads((vendor / 'SOURCE.json').read_text())
@@ -108,6 +111,14 @@ targets.append('.executableTarget(name: "ForwarderTests", dependencies: ["AgentP
                + ', '.join('.product(name: "%s", package: "%s")' % pair for pair in [
                    ('NIOCore', 'swift-nio'), ('NIOPosix', 'swift-nio'), ('NIOTLS', 'swift-nio'), ('NIOSSL', 'swift-nio-ssl'),
                    ('Crypto', 'swift-crypto'), ('X509', 'swift-certificates'), ('SwiftASN1', 'swift-asn1')]) + '])')
+# A marker module enables the production bridge's canImport(Citadel) guard.
+# No SSH client/auth code is linked: real NIOEmbedded exercises channel events.
+(out / 'package/Sources/Citadel').mkdir()
+(out / 'package/Sources/Citadel/Marker.swift').write_text('public enum OwnedCitadelCompileMarker {}\n')
+(out / 'package/Sources/SSHLineTests').mkdir()
+for name in bridge_sources:
+    shutil.copy2(ROOT / name, out / 'package/Sources/SSHLineTests' / Path(name).name)
+targets += ['.target(name: "Citadel")', '.executableTarget(name: "SSHLineTests", dependencies: ["Citadel", .product(name: "NIOCore", package: "swift-nio"), .product(name: "NIOEmbedded", package: "swift-nio")], swiftSettings: [.defaultIsolation(MainActor.self)])']
 for name in ['swift-nio', 'swift-nio-ssl', 'swift-crypto', 'swift-certificates', 'swift-asn1']:
     assert (deps / name / 'Package.swift').is_file(), f'{name} is not in {deps}'
 (out / 'package/Package.swift').write_text('''// swift-tools-version: 6.2
@@ -190,10 +201,16 @@ stage('forwarder-tests', 300, sandbox + [str(build / 'ForwarderTests'), 'run', s
 stage('process-tests', 180, sandbox + [sys.executable, '-I', str(ROOT / 'Tests/AgentProxy/process-tests.py'),
                                        '--binary', str(build / 'hrdrhrdrhrdr-agent-proxy'), '--work', str(out / 'process')])
 
+stage('read-socket-tests', 120, sandbox + [sys.executable, '-I', str(ROOT / 'Tests/AgentProxy/read-socket-tests.py'),
+                                           '--binary', str(build / 'hrdrhrdrhrdr-agent-proxy'), '--work', str(out / 'reads')])
+
+stage('ssh-line-tests', 60, sandbox + [str(build / 'SSHLineTests')])
+
 # Every secret the tests sent, in every file the run left but the copied
 # sources and the lists of secrets themselves.
 needle_files = [out / 'run/needles.json', out / 'process/needles.json']
 needles = [n.encode() for f in needle_files for n in json.loads(f.read_text())]
+needles.append(b'SYNTHETIC_SOCKET_HEADER_NOT_FOR_HISTORY')
 assert len(needles) >= 8, 'the tests listed their secrets'
 scanned = 0
 for path in sorted(out.rglob('*')):
@@ -211,6 +228,8 @@ process = json.loads((out / 'process/results.json').read_text())
     'passed': forwarder['failed'] == 0 and process['failed'] == 0,
     'forwarderCases': forwarder['passed'], 'processCases': process['passed'],
     'compressionCases': json.loads((out / 'fixtures/compression-results.json').read_text())['passed'],
+    'readSocketCases': json.loads((out / 'reads/results.json').read_text())['passed'],
+    'sshLineCases': int(re.search(r'SSH line bridge: (\d+) passed, 0 failed', (out / 'ssh-line-tests.log').read_text()).group(1)),
     'filesScannedForSecrets': scanned, 'stages': len(records),
     'loopbackOnlySandbox': True, 'actualApp': 'NOTRUN', 'actualAgents': 'NOTRUN', 'launchd': 'NOTRUN'}, indent=2))
 print(f'agent proxy: {forwarder["passed"]} forwarder cases and {process["passed"]} process cases passed; '

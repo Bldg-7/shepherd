@@ -7,9 +7,10 @@ import AgentProxyCore
 /// capture. No transcript files or raw logging. The read API is wired separately.
 /// Exits on parent EOF or malformed framing; a new process has a fresh epoch.
 public enum AgentProxyRecorder {
-    public static func run(descriptor: Int32 = 3) -> Int32 {
+    public static func run(descriptor: Int32 = 3, socketPath: String? = nil) -> Int32 {
         var info = stat()
         guard fstat(descriptor, &info) == 0, info.st_mode & S_IFMT == S_IFSOCK else { return 2 }
+        if let socketPath { return ConversationSocket.run(descriptor: descriptor, path: socketPath) }
         var decoder = AgentProxyTeeFrame.Decoder()
         let capture = ConversationCapture(makeDecoder: AgentProxyBodyDecoder.make)
         defer { capture.finishAll() }

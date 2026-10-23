@@ -66,6 +66,8 @@ public nonisolated struct ConversationSummary: Equatable, Sendable {
     public let key: ConversationKey
     public let context: ConversationContext
     public let revision: UInt64
+    /// Changes when history before the last live item is replaced or evicted.
+    public let historyRevision: UInt64
     public let itemCount: Int
     public let truncated: Bool
     public let status: CapturedResponse.Status
@@ -121,6 +123,7 @@ public nonisolated struct ConversationStore: Sendable {
         let key: ConversationKey
         let context: ConversationContext
         var revision: UInt64
+        let historyRevision: UInt64
         let items: [ConversationItem]
         let truncated: Bool
         let status: CapturedResponse.Status
@@ -128,7 +131,7 @@ public nonisolated struct ConversationStore: Sendable {
 
         var summary: ConversationSummary {
             ConversationSummary(id: id, key: key, context: context, revision: revision,
-                                itemCount: items.count, truncated: truncated, status: status)
+                                historyRevision: historyRevision, itemCount: items.count, truncated: truncated, status: status)
         }
     }
 
@@ -237,8 +240,16 @@ public nonisolated struct ConversationStore: Sendable {
             accountedBytes -= victim.cost; evicted.append(victim.id)
         }
         sequence += 1
+        // Only appending or editing the same last item is a safe suffix delta.
+        // Reconciliation/eviction elsewhere invalidates paged client history.
+        let stablePrefix = old.map { previous in
+            !previous.items.isEmpty && retained.count >= previous.items.count
+                && previous.items.dropLast().elementsEqual(retained.prefix(previous.items.count - 1))
+                && previous.items.last?.id == retained[previous.items.count - 1].id
+        } ?? false
+        let historyRevision = stablePrefix && old?.id == id ? old!.historyRevision : sequence
         let entry = Entry(id: id, key: key, context: context, revision: sequence,
-                          items: retained, truncated: truncated, status: status, cost: cost)
+                          historyRevision: historyRevision, items: retained, truncated: truncated, status: status, cost: cost)
         entries[key] = entry; keysByID[id] = key; accountedBytes += cost
         return Update(conversationID: id, changed: true, evictedConversationIDs: evicted, discardedItemCount: start)
     }

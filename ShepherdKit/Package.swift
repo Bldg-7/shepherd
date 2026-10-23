@@ -23,6 +23,7 @@ let package = Package(
         .library(name: "ShepherdKit", targets: ["ShepherdKit"])
     ],
     dependencies: [
+        .package(path: "../AgentProxy"),
         .package(path: "../Vendor/Citadel"),
         .package(path: "../Vendor/swift-nio-ssh"),
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.81.0"),
@@ -32,6 +33,7 @@ let package = Package(
         .target(
             name: "ShepherdKit",
             dependencies: [
+                .product(name: "AgentProxyCore", package: "AgentProxy"),
                 .product(name: "Citadel", package: "Citadel"),
                 .product(name: "NIOSSH", package: "swift-nio-ssh"),
                 .product(name: "NIOCore", package: "swift-nio"),

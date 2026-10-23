@@ -198,8 +198,9 @@ captures. EOF/drop/abort finalize incomplete; no partial request JSON is parsed.
 Native gzip/zlib/zstd fixtures pass through this same ingestion path in the
 forwarder suite. Actual read-socket subscriber queues still need admission.
 
-`ConversationReadAPI` implements the read-only, versioned query/wire layer (not
-an exposed socket yet). `conversations.list` returns bounded summaries, filtered
+`ConversationReadAPI` implements the read-only, versioned query/wire layer.
+The recorder exposes it on private `ac.sock`, sharing one event loop with tee
+ingestion. Release, Debug and custom sockets are isolated. `conversations.list` returns bounded summaries, filtered
 by terminal/herdr/native-session/agent using exact UTF-8 identity.
 `conversation.read` returns the latest page, then older pages via a stable
 `beforeItemID`; epoch changes, missing conversations and removed anchors produce
@@ -208,8 +209,21 @@ pages at 64 items and about 256 KiB of accounted content (one full bounded item
 is allowed), with a 2-MiB encoded reply cap including JSON escaping. DTOs retain
 compaction/discontinuity types for localized separators and no raw metadata.
 Tests cover pagination, worst-case escaping, filters and bounded static errors.
-The socket host must reserve encoding/write buffers before using this layer;
-`conversation.subscribe`, ac.sock, the CLI and mobile client/UI are not wired yet.
+The socket host reserves client/encoding/write capacity in the aggregate capture
+budget. `conversation.subscribe` coalesces suffix patches at <=10Hz and resets
+on incompatible history changes; a client that cannot drain a write in five
+seconds is disconnected rather than retaining queued snapshots. At most16
+connections and one outstanding reply each. `show --terminal ID [--socket PATH]`
+reads a bounded latest page. Shared SSH/client and mobile chat/Screen UI are
+wired; verified Pi purpose tagging and subagent result tracking are still pending.
+
+`read-socket-tests.py` exercises the actual child recorder with synthetic fd3
+frames, including lifecycle/inode ownership, framing, connection caps, slow
+readers and CLI. `SSHLineBridgeTests` uses real NIOEmbedded channels, not an
+authenticated SSH session. `run-client-tests.py --core <run-core-tests output>
+--output <fresh directory>` checks actual client/window and observable mobile
+model code with a synthetic authenticated-transport seam, Debug/-O and iOS17.
+No agent, provider API or user credential is used in these checks.
 
 The byte counts concern payloads and explicit object allowances, not a hard
 allocator/process-RSS limit. `ConversationStore` bounds retained transcripts

@@ -76,6 +76,7 @@ public actor SSHHerdrTransport: HerdrTransport {
 
     private var client: SSHClient?
     private var socketPath: String?
+    private var remoteHome: String?
     private var newlyPinnedFingerprint: String?
     private var nextRequestID = 0
 
@@ -135,6 +136,7 @@ public actor SSHHerdrTransport: HerdrTransport {
         }
 
         let home = try await resolveRemoteHome(client)
+        remoteHome = home
         socketPath = sessionName.isEmpty
             ? "\(home)/.config/herdr/herdr.sock"
             : "\(home)/.config/herdr/sessions/\(sessionName)/herdr.sock"
@@ -156,6 +158,7 @@ public actor SSHHerdrTransport: HerdrTransport {
         try? await client?.close()
         client = nil
         socketPath = nil
+        remoteHome = nil
     }
 
     public func newlyPinnedHostKeyFingerprint() async -> String? {
@@ -195,6 +198,34 @@ public actor SSHHerdrTransport: HerdrTransport {
         try? await channel.close()
         guard let result else { throw SSHHerdrTransportError.noResponse }
         return try result.get()
+    }
+
+    /// The same authenticated connection to the paired Mac, never a second
+    /// SSH hop to a herdr machine. No new credential reads or helper launches.
+    public func openLineStream(endpoint: HerdrLineEndpoint, request: Data) async throws -> HerdrLineStream {
+        guard usesPairedKey else { throw HerdrLineStreamError.unsupported }
+        guard let client, let remoteHome else { throw SSHHerdrTransportError.notConnected }
+        guard !request.isEmpty, request.count <= 64 << 10, request.last == 10,
+              !request.dropLast().contains(10) else { throw HerdrLineStreamError.invalidRequest }
+        let path = try endpoint.path(home: remoteHome)
+        let lifetime = ConversationSSHLineChannel()
+        let (lines, continuation) = AsyncThrowingStream<Data, any Error>.makeStream(bufferingPolicy: .bufferingOldest(2))
+        continuation.onTermination = { _ in lifetime.close() }
+        do {
+            return try await withTaskCancellationHandler {
+                let channel = try await client.createDirectStreamlocalChannel(using: .init(socketPath: path)) { channel in
+                    lifetime.install(channel)
+                    return channel.pipeline.addHandler(ConversationSSHLineBridge(continuation: continuation, lifetime: lifetime))
+                }
+                try Task.checkCancellation()
+                try await channel.writeAndFlush(ByteBuffer(bytes: request)).get()
+                try Task.checkCancellation()
+                return HerdrLineStream(lines: lines, close: { lifetime.close() })
+            } onCancel: { lifetime.close() }
+        } catch {
+            lifetime.close(); continuation.finish(throwing: HerdrLineStreamError.closed)
+            throw error
+        }
     }
 
     /// Runs the herdr CLI on the remote host over this connection, found

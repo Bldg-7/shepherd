@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(ShepherdKit)
+import ShepherdKit
+#endif
 import Observation
 
 nonisolated struct PreviewSyntaxInput: Hashable, Sendable {

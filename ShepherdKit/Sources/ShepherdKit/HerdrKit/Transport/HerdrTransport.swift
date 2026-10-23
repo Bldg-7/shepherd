@@ -20,6 +20,9 @@ public protocol HerdrTransport: Actor {
     /// that can't keep a connection open goes without, and its callers keep
     /// up by asking again instead (see `MachineMonitor`).
     func subscribe(params: JSONValue) async throws -> HerdrSubscriptionLines
+    /// A bounded read-only line channel on the paired Mac, sharing this SSH
+    /// connection. Unsupported for herdr-managed remote machines and previews.
+    func openLineStream(endpoint: HerdrLineEndpoint, request: Data) async throws -> HerdrLineStream
     /// If `connect()` just pinned a host key for the first time (no fingerprint
     /// was known going in), returns that fingerprint so the caller can persist
     /// it. Returns nil once a host already has one pinned, or for transports
@@ -46,6 +49,10 @@ public protocol HerdrTransport: Actor {
 
 extension HerdrTransport {
     public func newlyPinnedHostKeyFingerprint() async -> String? { nil }
+
+    public func openLineStream(endpoint: HerdrLineEndpoint, request: Data) async throws -> HerdrLineStream {
+        throw HerdrLineStreamError.unsupported
+    }
 
     public func subscribe(params: JSONValue) async throws -> HerdrSubscriptionLines {
         throw HerdrSubscriptionError.unsupported

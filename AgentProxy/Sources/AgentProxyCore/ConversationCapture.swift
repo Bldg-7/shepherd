@@ -65,6 +65,16 @@ public final class ConversationCapture {
     public private(set) var drops: [DropReason: Int] = [:]
     private let makeDecoder: (String) -> (any CaptureDecompressor)?
     private var exchanges: [UInt64: Exchange] = [:]
+    private var reservations: [UUID: Int] = [:]
+
+    /// Host-only admission for client buffers and transient encoding. Tokens
+    /// are bounded independently; never accept a requested size from the wire.
+    public func reserve(bytes: Int) -> UUID? {
+        guard bytes > 0, bytes <= limits.totalBytes, reservations.count < 32, makeRoom(bytes) else { return nil }
+        let id = UUID(); reservations[id] = bytes; return id
+    }
+    public func release(_ id: UUID) { reservations.removeValue(forKey: id) }
+    public var reservedBytes: Int { reservations.values.reduce(0, +) }
     // The forwarder allocates IDs and emits open synchronously on its one event
     // loop. Remember one watermark, not unbounded tombstones for dropped IDs.
     private var lastOpened: UInt64 = 0
@@ -76,7 +86,7 @@ public final class ConversationCapture {
     public var activeExchangeCount: Int { exchanges.count }
     public var bufferedRequestBytes: Int { exchanges.values.reduce(0) { $0 + $1.body.bufferedByteCount } }
     public var accountedBytes: Int {
-        limits.fixedBytes + exchanges.count * limits.workingBytes + bufferedRequestBytes * 4 + reconciler.store.accountedBytes
+        limits.fixedBytes + exchanges.count * limits.workingBytes + bufferedRequestBytes * 4 + reconciler.store.accountedBytes + reservedBytes
     }
 
     public func consume(_ frame: AgentProxyTeeFrame.Frame) {

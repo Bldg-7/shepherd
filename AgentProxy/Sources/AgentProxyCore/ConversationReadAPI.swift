@@ -17,13 +17,14 @@ public nonisolated enum ConversationReadAPI {
         public let paneID: String
         public let terminalID: String
         public let revision: UInt64
+        public let historyRevision: UInt64
         public let itemCount: Int
         public let truncated: Bool
         public let status: String
         init(_ source: ConversationSummary) {
             id = source.id; agent = source.key.agent; herdrSession = source.key.herdrSession
             nativeSession = source.key.nativeSession; paneID = source.context.paneID; terminalID = source.context.terminalID
-            revision = source.revision; itemCount = source.itemCount; truncated = source.truncated; status = Self.status(source.status)
+            revision = source.revision; historyRevision = source.historyRevision; itemCount = source.itemCount; truncated = source.truncated; status = Self.status(source.status)
         }
         static func status(_ value: CapturedResponse.Status) -> String {
             switch value { case .streaming: return "streaming"; case .complete: return "complete"; case .incomplete: return "incomplete" }
@@ -78,6 +79,10 @@ public nonisolated enum ConversationReadAPI {
         /// Send this as beforeItemID to read the preceding page. nil means the
         /// oldest retained item was included, not that earlier history existed.
         public var nextBeforeItemID: String?
+        /// A live update replaces the cached suffix starting at this item.
+        /// Missing anchors/base sequence or reset=true require a fresh window.
+        public var replaceFromItemID: String?
+        public var baseSeq: UInt64?
         init(store: ConversationStore) { protocolVersion = ConversationReadAPI.protocolVersion; epoch = store.epoch; seq = store.sequence }
     }
     public struct Reply: Codable, Sendable {
@@ -125,27 +130,14 @@ public nonisolated enum ConversationReadAPI {
                     && (p?.nativeSession.map { same($0, summary.key.nativeSession) } ?? true)
                     && (p?.agent.map { same($0, summary.key.agent) } ?? true)
                 }.map(Summary.init)
-            case "conversation.read":
+            case "conversation.read", "conversation.subscribe":
                 guard let conversationID = p?.conversationID, (1...64).contains(p?.limit ?? 16) else {
                     throw AgentProxyControlError(code: .invalidParams, message: "A conversation ID and limit 1...64 are required.")
                 }
-                guard let snapshot = store.read(id: conversationID) else { return encode(id, reset(store, "not_found")) }
-                var end = snapshot.items.count
-                if let before = p?.beforeItemID {
-                    guard let index = snapshot.items.firstIndex(where: { same($0.id, before) }) else { return encode(id, reset(store, "anchor_removed")) }
-                    end = index
+                guard request.method != "conversation.subscribe" || p?.beforeItemID == nil else {
+                    throw AgentProxyControlError(code: .invalidParams, message: "Subscribe starts at the latest page.")
                 }
-                var start = end, bytes = 0
-                while start > 0 && end - start < (p?.limit ?? 16) {
-                    let item = snapshot.items[start - 1]
-                    // A single maximum-size assistant item may exceed pageBytes
-                    // by its bounded metadata allowance; never split its text.
-                    if start < end && item.cost > pageBytes - min(pageBytes, bytes) { break }
-                    bytes += item.cost; start -= 1
-                }
-                result.summary = Summary(snapshot.summary)
-                result.items = snapshot.items[start..<end].map(Item.init)
-                result.nextBeforeItemID = start > 0 ? snapshot.items[start].id : nil
+                result = page(conversationID, before: p?.beforeItemID, limit: p?.limit ?? 16, store: store)
             default: throw AgentProxyControlError(code: .unknownMethod, message: "Unknown read method.")
             }
             let encoded = encode(id, result)
@@ -153,6 +145,77 @@ public nonisolated enum ConversationReadAPI {
         } catch let error as AgentProxyControlError { return encodeError(id, error) }
         catch { return encodeError(id, AgentProxyControlError(code: .parseError, message: "Invalid JSON request.")) }
     }
+    /// Only bounded identifiers/counters, never a retained snapshot per client.
+    public struct Cursor: Sendable {
+        public let conversationID: String
+        public let epoch: String
+        public let seq: UInt64
+        public let revision: UInt64
+        public let historyRevision: UInt64
+        public let lastItemID: String?
+        public init?(_ result: Result) {
+            guard let summary = result.summary, result.items != nil else { return nil }
+            conversationID = summary.id; epoch = result.epoch; seq = result.seq
+            revision = summary.revision; historyRevision = summary.historyRevision
+            lastItemID = result.items?.last?.id
+        }
+    }
+
+    private static func page(_ id: String, before: String? = nil, limit: Int = 16, store: ConversationStore) -> Result {
+        guard let snapshot = store.read(id: id) else { return reset(store, "not_found") }
+        var end = snapshot.items.count
+        if let before {
+            guard let index = snapshot.items.firstIndex(where: { same($0.id, before) }) else { return reset(store, "anchor_removed") }
+            end = index
+        }
+        var start = end, bytes = 0
+        while start > 0 && end - start < limit {
+            let item = snapshot.items[start - 1]
+            if start < end && item.cost > pageBytes - min(pageBytes, bytes) { break }
+            bytes += item.cost; start -= 1
+        }
+        var result = Result(store: store)
+        result.summary = Summary(snapshot.summary)
+        result.items = snapshot.items[start..<end].map(Item.init)
+        result.nextBeforeItemID = start > 0 ? snapshot.items[start].id : nil
+        return result
+    }
+
+    /// Coalesce any number of upstream changes into one bounded suffix patch.
+    /// Host invokes at most once per 100ms, only after admitting encoding space.
+    public static func update(after cursor: Cursor, store: ConversationStore) -> Result? {
+        if !same(cursor.epoch, store.epoch) { return reset(store, "epoch_changed") }
+        guard let snapshot = store.read(id: cursor.conversationID) else { return reset(store, "not_found") }
+        guard snapshot.summary.revision != cursor.revision else { return nil }
+        if snapshot.summary.historyRevision == cursor.historyRevision, let anchor = cursor.lastItemID,
+           let index = snapshot.items.firstIndex(where: { same($0.id, anchor) }) {
+            let suffix = snapshot.items[index...]
+            if suffix.count <= 64 && (suffix.count == 1 || suffix.reduce(0, { $0 + $1.cost }) <= pageBytes) {
+                var result = Result(store: store); result.summary = Summary(snapshot.summary)
+                result.items = suffix.map(Item.init); result.replaceFromItemID = anchor; result.baseSeq = cursor.seq
+                return result
+            }
+        }
+        var result = page(cursor.conversationID, store: store)
+        result.reset = true; result.reason = "history_changed"; result.baseSeq = cursor.seq
+        return result
+    }
+
+    /// Shared client-side parser boundary: completed lines are bounded too,
+    /// with the same depth/token/UTF-8 preflight as capture before Foundation.
+    public static func decodeWire<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
+        guard data.count <= maximumReplyBytes else { throw RequestProjection.Failure.resourceLimit }
+        _ = try RequestProjection.decodeObject(data)
+        return try JSONDecoder().decode(type, from: data)
+    }
+
+    public static func encodeUpdate(_ result: Result) -> Data {
+        struct Update: Encodable { let method = "conversation.update"; let params: Result }
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        var bytes = (try? encoder.encode(Update(params: result))) ?? Data("{}".utf8)
+        bytes.append(10); return bytes
+    }
+
     public static func reset(_ store: ConversationStore, _ reason: String) -> Result {
         var result = Result(store: store); result.reset = true; result.reason = reason; return result
     }

@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(ShepherdKit)
+import ShepherdKit
+#endif
 
 /// A vertical-only scroll view supplies a finite width to each source row.
 /// Wrapped fragments keep their original line number; geometry changes alter

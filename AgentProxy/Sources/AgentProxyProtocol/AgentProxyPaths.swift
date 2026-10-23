@@ -77,6 +77,19 @@ public nonisolated enum AgentProxyPaths {
         applicationSupport(home: home) + "/" + recorderSocketName
     }
 
+    public static func recorderSocket(home: String, variant: Variant) -> String {
+        applicationSupport(home: home) + (variant == .release ? "/ac.sock" : "/ac-debug.sock")
+    }
+
+    /// Explicit derivation avoids reading HOME in the scrubbed child process.
+    /// Custom control filenames remain isolated from the release/debug sockets.
+    public static func recorderSocket(forControlSocket path: String) -> String {
+        let name = (path as NSString).lastPathComponent
+        let readName = name == controlSocketName ? recorderSocketName :
+            (name == debugControlSocketName ? "ac-debug.sock" : name + ".ac")
+        return (path as NSString).deletingLastPathComponent + "/" + readName
+    }
+
     /// Whether `path` can be bound or connected to as a Unix socket: absolute,
     /// no NUL, and short enough for `sun_path`.
     public static func socketPathFits(_ path: String) -> Bool {

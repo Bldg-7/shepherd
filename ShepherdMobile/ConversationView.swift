@@ -22,7 +22,23 @@ struct ConversationView: View {
     }
 
     var body: some View {
-        output
+        VStack(spacing: 0) {
+            if model.captured.hasConversation {
+                Picker("Conversation display", selection: Binding(get: { model.captured.prefersScreen }, set: { model.captured.prefersScreen = $0 })) {
+                    Text("Conversation").tag(false)
+                    Text("Screen").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+            }
+            if let notice = model.captured.notice {
+                Text(notice).font(.footnote).foregroundStyle(.secondary).padding(.horizontal)
+            }
+            if model.captured.showsConversation {
+                CapturedConversationView(model: model.captured, blocked: model.agentState == .blocked)
+            } else { output }
+        }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 // Liquid Glass over the output, which scrolls on beneath it.
                 if destination.agentName != nil {
@@ -49,6 +65,10 @@ struct ConversationView: View {
             .task { await model.run() }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active { Task { await model.cameBack() } }
+                else { model.captured.pause() }
+            }
+            .onChange(of: model.captured.hasConversation) { old, new in
+                if old && !new { Task { await model.reload(lines: nil) } }
             }
     }
 
@@ -246,6 +266,7 @@ final class ConversationModel {
         case stalled
     }
 
+    let captured = CapturedConversationModel()
     private let destination: PaneDestination
     private let machineStore: MachineStore
     private(set) var output: String?
@@ -258,6 +279,7 @@ final class ConversationModel {
     var draft = ""
 
     @ObservationIgnored private var client: HerdrClient?
+    @ObservationIgnored private var captureTransport: (any HerdrTransport)?
     /// When the last prompt was written, for telling a stall.
     @ObservationIgnored private var sentAt: Date?
 
@@ -295,9 +317,16 @@ final class ConversationModel {
     /// the screen, which also closes the connection.
     func run() async {
         do {
-            let client = HerdrClient(transport: try machineStore.makeHerdrTransport(for: destination.machine))
+            let transport = try machineStore.makeHerdrTransport(for: destination.machine)
+            let client = HerdrClient(transport: transport)
             try await client.connect()
             self.client = client
+            // Only this paired Mac's own herdr, never a nested herdr machine
+            // or an arbitrary manually-configured SSH host.
+            if destination.herdrMachine == nil && destination.machine.authMethod == .secureEnclaveKey {
+                captureTransport = transport
+                refreshCaptureIdentity(nil)
+            }
         } catch {
             failure = connectionFailureDescription(error)
             return
@@ -305,6 +334,7 @@ final class ConversationModel {
         await reload(lines: nil)
         await refreshAgent()
         await watch()
+        captured.stop(); captureTransport = nil
         let client = self.client
         self.client = nil
         await client?.disconnect()
@@ -315,6 +345,7 @@ final class ConversationModel {
     func cameBack() async {
         guard client != nil else { return }
         await refreshAgent()
+        captured.resume()
         await reload(lines: nil)
     }
 
@@ -326,9 +357,11 @@ final class ConversationModel {
             do {
                 let agent = try await client.agentWait(paneID: destination.paneID, until: others, timeoutMs: Self.watchTimeoutMs, on: destination.herdrMachine)
                 guard !Task.isCancelled else { return }
+                refreshCaptureIdentity(agent)
                 await note(agent.state)
             } catch let error as HerdrErrorPayload where error.code == "timeout" {
                 checkForStall()
+                await refreshAgent()
             } catch is CancellationError {
                 return
             } catch {
@@ -366,10 +399,26 @@ final class ConversationModel {
         guard destination.agentName != nil, let client else { return }
         do {
             let agent = try await client.agentGet(paneID: destination.paneID, on: destination.herdrMachine)
+            refreshCaptureIdentity(agent)
             await note(agent.state)
         } catch {
             failure = connectionFailureDescription(error)
         }
+    }
+
+    private func refreshCaptureIdentity(_ agent: AgentSummary?) {
+        guard let transport = captureTransport else { return }
+        let name = agent == nil ? destination.agentName : agent?.agentName
+        guard let name, let kind = AgentKind(herdrName: name) else { captured.stop(); return }
+        let native: String?
+        if let agent {
+            native = agent.sessionReference.flatMap { reference in
+                reference.kind == .id && AgentKind(herdrName: reference.agent) == kind ? reference.value : nil
+            }
+        } else { native = destination.nativeSessionID }
+        captured.connect(transport: transport, selection: ConversationSelection(
+            terminalID: agent?.terminalID ?? destination.terminalID,
+            herdrSession: destination.machine.sessionName, agent: kind.rawValue, nativeSession: native))
     }
 
     // MARK: Reading

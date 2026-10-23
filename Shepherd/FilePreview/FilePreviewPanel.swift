@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(ShepherdKit)
+import ShepherdKit
+#endif
 import ImageIO
 
 struct FilePreviewPanel: View {

@@ -25,11 +25,36 @@ func fail(_ message: String, code: Int32 = 1) -> Never {
 
 var arguments = Array(CommandLine.arguments.dropFirst())
 if arguments.first == "recorder" {
-    guard arguments.count == 1 else { fail("recorder takes no arguments", code: 64) }
-    exit(AgentProxyRecorder.run())
+    guard arguments.count == 1 || (arguments.count == 3 && arguments[1] == "--socket" && AgentProxyPaths.socketPathFits(arguments[2])) else {
+        fail("usage: recorder [--socket PATH]", code: 64)
+    }
+    exit(AgentProxyRecorder.run(socketPath: arguments.count == 3 ? arguments[2] : nil))
 }
 
 let home = FileManager.default.homeDirectoryForCurrentUser.path
+if arguments.first == "show" {
+    arguments.removeFirst()
+    var socket = AgentProxyPaths.recorderSocket(home: home)
+    var terminal: String?
+    var seen = Set<String>()
+    while !arguments.isEmpty {
+        let name = arguments.removeFirst()
+        guard ["--socket", "--terminal"].contains(name), seen.insert(name).inserted, !arguments.isEmpty else {
+            fail("usage: show --terminal ID [--socket PATH]", code: 64)
+        }
+        let value = arguments.removeFirst()
+        if name == "--terminal" { terminal = value }
+        else { socket = value.hasPrefix("~/") ? home + value.dropFirst() : value }
+    }
+    guard let terminal else { fail("show requires --terminal ID", code: 64) }
+    do {
+        let bytes = try AgentProxyConversationCLI.show(socketPath: socket, terminalID: terminal)
+        FileHandle.standardOutput.write(bytes)
+        exit(0)
+    } catch AgentProxyConversationCLI.Failure.noConversation {
+        fail("no captured conversation for that terminal", code: 2)
+    } catch { fail("conversation read unavailable") }
+}
 var stateDirectory = AgentProxyPaths.stateDirectory(home: home)
 var controlSocket = AgentProxyPaths.controlSocket(home: home)
 while !arguments.isEmpty {
@@ -52,7 +77,7 @@ let build = AgentProxyServer.build(ofExecutableAt: executable)
 
 nonisolated(unsafe) var server: AgentProxyServer?
 let configuration = AgentProxyServer.Configuration(
-    stateDirectory: stateDirectory, controlSocketPath: controlSocket, recorderCommand: [executable, "recorder"], build: build,
+    stateDirectory: stateDirectory, controlSocketPath: controlSocket, recorderCommand: [executable, "recorder", "--socket", AgentProxyPaths.recorderSocket(forControlSocket: controlSocket)], build: build,
     log: { log($0) },
     onExitRequest: { code in
         // Off the event loop: shutting down waits for it.
