@@ -59,7 +59,8 @@ pins = {d['sourceControl'][0]['identity']: d['sourceControl'][0]['requirement'][
         for d in manifest['dependencies']}
 assert pins == {'swift-nio': '2.103.0', 'swift-nio-ssl': '2.36.0', 'swift-crypto': '3.12.3'}, f'dependencies: {pins}'
 products = {x['name']: x['targets'] for x in manifest['products']}
-assert products == {'AgentProxyProtocol': ['AgentProxyProtocol'], 'AgentProxyForwarder': ['AgentProxyForwarder'],
+assert products == {'AgentProxyProtocol': ['AgentProxyProtocol'], 'AgentProxyCore': ['AgentProxyCore'],
+                    'AgentProxyForwarder': ['AgentProxyForwarder'],
                     'hrdrhrdrhrdr-agent-proxy': ['AgentProxyTool']}, f'products: {products}'
 
 
@@ -81,7 +82,7 @@ for target in manifest['targets']:
                                                           ', '.join(swift_dependency(d) for d in target['dependencies'])))
     source = ROOT / 'AgentProxy/Sources' / target['name']
     shutil.copytree(source, out / 'package/Sources' / target['name'])
-assert {t['name'] for t in manifest['targets']} == {'AgentProxyProtocol', 'AgentProxyForwarder', 'AgentProxyTool'}
+assert {t['name'] for t in manifest['targets']} == {'AgentProxyProtocol', 'AgentProxyCore', 'AgentProxyForwarder', 'AgentProxyTool'}
 (out / 'package/Sources/ForwarderTests').mkdir()
 for source in test_sources:
     shutil.copy2(source, out / 'package/Sources/ForwarderTests' / source.name)

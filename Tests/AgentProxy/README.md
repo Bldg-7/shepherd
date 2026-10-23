@@ -107,6 +107,34 @@ Last, the runner looks for every secret the tests sent in every file the run
 left: the marker strings sent in the Authorization, x-api-key, Cookie and
 ChatGPT-Account-ID headers, and the route tokens. None may be there.
 
+## Conversation capture primitives (`run-core-tests.py`)
+
+```sh
+python3 Tests/AgentProxy/run-core-tests.py --output /tmp/shepherd-agent-core-FRESH
+```
+
+This Foundation-only stage compiles `AgentProxyCore` and its tests in both Debug
+and optimized mode, then type-checks the core for the iOS Simulator (iOS 17
+minimum), without resolving SwiftPM dependencies. The tests run in a
+sandbox denying all network access, with temporary HOME and cache folders.
+They use synthetic bytes, not real conversations or credentials.
+
+- SSE framing across every pair of byte-chunk boundaries (including the UTF-8
+  BOM, Korean and emoji), CR/LF/CRLF, multiple data lines, empty data, comments,
+  event-name reset, exact bounds, invalid UTF-8 and incomplete EOF.
+- Oversized lines/events permanently stop that decoder and release buffered
+  bytes. A synchronous event sink avoids retaining the whole response stream.
+- Body capture accepts the exact bound; overflow or abort discards the partial
+  body and cannot be mistaken for complete JSON by a later chunk.
+- Text prefixes fit a byte budget without cutting a UTF-8 scalar. Grapheme
+  clusters are not guaranteed to remain whole.
+
+The byte counts concern payloads, not allocator overhead or process RSS. This
+stage does **not** yet enforce aggregate recorder admission/eviction, decompress
+requests, reconstruct conversations, expose `ac.sock`, or render an iOS chat.
+The forwarder's recorder still discards its input; adding these pure primitives
+does not change live forwarding or app behavior.
+
 ## The app's side (`run-app-tests.py`)
 
 ```sh

@@ -8,6 +8,8 @@
 //   `ap.sock` (newline-delimited JSON, as herdr's socket), where its files and
 //   sockets are, and the frames the forwarder sends its recorder. Foundation
 //   only, so the iOS app can share it.
+// - AgentProxyCore: bounded in-memory capture and provider stream framing;
+//   Foundation only. Recorder integration is developed separately.
 // - AgentProxyForwarder: the 127.0.0.1 listener that passes each request on
 //   to api.anthropic.com or chatgpt.com as it came, the control socket, the
 //   state folder and the recorder it starts and restarts.
@@ -28,6 +30,7 @@ let package = Package(
     ],
     products: [
         .library(name: "AgentProxyProtocol", targets: ["AgentProxyProtocol"]),
+        .library(name: "AgentProxyCore", targets: ["AgentProxyCore"]),
         .library(name: "AgentProxyForwarder", targets: ["AgentProxyForwarder"]),
         .executable(name: "hrdrhrdrhrdr-agent-proxy", targets: ["AgentProxyTool"])
     ],
@@ -38,6 +41,7 @@ let package = Package(
     ],
     targets: [
         .target(name: "AgentProxyProtocol"),
+        .target(name: "AgentProxyCore"),
         .target(
             name: "AgentProxyForwarder",
             dependencies: [
