@@ -122,7 +122,8 @@ ChatGPT-Account-ID headers, and the route tokens. None may be there.
 python3 Tests/AgentProxy/run-core-tests.py --output /tmp/shepherd-agent-core-FRESH
 ```
 
-This Foundation/system-CryptoKit stage compiles `AgentProxyCore` and its tests in both Debug
+This Foundation/system-CryptoKit stage compiles the local `AgentProxyProtocol`
+and `AgentProxyCore` modules and the tests in both Debug
 and optimized mode, then type-checks the core for the iOS Simulator (iOS 17
 minimum), without resolving SwiftPM dependencies. The tests run in a
 sandbox denying all network access, with temporary HOME and cache folders.
@@ -183,10 +184,18 @@ finished or evicted updates. Metadata retains at most 200 message digests per
 resident conversation and is pruned with store eviction; no raw request copy
 is kept there. Opaque session keys compare exact bytes, not Unicode equivalence.
 
-In-flight body/parser/subscriber admission and the metadata reservation still
-belong to recorder integration. This stage does **not** yet classify provider
-requests, summarize compaction/subagent exchanges, decompress requests, expose
-`ac.sock`, or
+`RequestClassification` selects bounded Claude request-class/session/agent
+metadata and Codex canonical body request_kind/native thread/parent metadata.
+Non-main results cannot expose a main conversation key. Duplicate headers,
+conflicting IDs, missing route identity and unrecognized values fail closed;
+cache-affinity session IDs and raw turn-metadata headers are not identity
+fallbacks. Classification fixtures reflect Claude 2.1.309 and Codex 0.162.1
+source contracts, not live provider traffic. Pi's unconditional legacy main tag
+is explicitly unverified, not silently accepted.
+
+In-flight body/parser/subscriber admission and metadata reservation still belong
+to recorder integration. This stage does **not** yet verify Pi request tagging,
+summarize compaction/subagent exchanges, decompress requests, expose `ac.sock`, or
 render an iOS chat. Response assembly covers one exchange, not a conversation
 across requests. Request projection does not by itself identify a main
 conversation, distinguish subagents, or turn compaction into a summary.

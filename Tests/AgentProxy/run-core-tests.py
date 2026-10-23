@@ -4,8 +4,8 @@
 No app, agent, provider request, launchd registration or user settings are used.
 Each compiler/test command is bounded by the existing natural-exit test runner.
 This stage covers capture bounds, SSE framing, request-history projection and
-Anthropic/Responses assembly and bounded in-memory snapshot storage, not
-provider classification, compression, recorder integration, the read socket or iOS UI.
+Anthropic/Responses assembly, bounded storage/reconciliation and Claude/Codex
+classification, not Pi tagging, compression, recorder integration, the read socket or iOS UI.
 """
 import argparse
 import hashlib
@@ -27,9 +27,11 @@ env = dict(os.environ, HOME=str(out / 'home'), CFFIXED_USER_HOME=str(out / 'home
            TMPDIR=str(out / 'tmp'), CLANG_MODULE_CACHE_PATH=str(out / 'cache'))
 sources = sorted((ROOT / 'AgentProxy/Sources/AgentProxyCore').glob('*.swift'))
 assert sources, 'no core sources'
+protocol_sources = sorted((ROOT / 'AgentProxy/Sources/AgentProxyProtocol').glob('*.swift'))
+assert protocol_sources, 'no protocol sources'
 tests = sorted((ROOT / 'Tests/AgentProxy/Core').glob('*.swift'))
 assert tests, 'no core tests'
-identity = sources + tests + [ROOT / 'AgentProxy/Package.swift', Path(__file__).resolve()]
+identity = protocol_sources + sources + tests + [ROOT / 'AgentProxy/Package.swift', Path(__file__).resolve()]
 (out / 'source-hashes.json').write_text(json.dumps({str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest()
                                                  for p in identity}, indent=2))
 profile = out / 'sandbox.sb'
@@ -59,7 +61,8 @@ dump = subprocess.run([
 assert dump.returncode == 0, 'manifest could not be read'
 manifest = json.loads(dump.stdout)
 core = next(t for t in manifest['targets'] if t['name'] == 'AgentProxyCore')
-assert core['type'] == 'regular' and core['dependencies'] == [], 'capture core must be standalone'
+assert core['type'] == 'regular'
+assert [d.get('byName', [None])[0] for d in core['dependencies']] == ['AgentProxyProtocol'], 'core has only local protocol dependency'
 assert any(p['name'] == 'AgentProxyCore' and p['targets'] == ['AgentProxyCore'] for p in manifest['products'])
 assert manifest.get('swiftLanguageVersions') == ['5']
 
@@ -70,17 +73,28 @@ for mode, optimization in [('debug', '-Onone'), ('release', '-O')]:
     library = build / 'libAgentProxyCore.dylib'
     common = ['/usr/bin/xcrun', 'swiftc', '-swift-version', '5', optimization, '-parse-as-library',
               '-module-cache-path', str(out / 'cache')]
+    stage(mode + '-protocol-build', common + ['-emit-module', '-emit-library', '-module-name', 'AgentProxyProtocol',
+                                            '-emit-module-path', str(build / 'AgentProxyProtocol.swiftmodule'),
+                                            '-o', str(build / 'libAgentProxyProtocol.dylib'), *map(str, protocol_sources)])
     stage(mode + '-core-build', common + ['-emit-module', '-emit-library', '-module-name', 'AgentProxyCore',
+                                        '-I', str(build), '-L', str(build), '-lAgentProxyProtocol',
+                                        '-Xlinker', '-rpath', '-Xlinker', str(build),
                                         '-emit-module-path', str(module), '-o', str(library), *map(str, sources)])
     binary = build / 'CaptureTests'
-    stage(mode + '-test-build', common + ['-I', str(build), '-L', str(build), '-lAgentProxyCore',
+    stage(mode + '-test-build', common + ['-I', str(build), '-L', str(build), '-lAgentProxyCore', '-lAgentProxyProtocol',
                                         '-Xlinker', '-rpath', '-Xlinker', str(build), '-o', str(binary), *map(str, tests)])
     stage(mode + '-capture-tests', ['/usr/bin/sandbox-exec', '-f', str(profile), str(binary)], seconds=30)
     print((out / (mode + '-capture-tests.log')).read_text().strip())
 sdk = subprocess.check_output(['/usr/bin/xcrun', '--sdk', 'iphonesimulator', '--show-sdk-path'],
                               cwd=ROOT, env=env, text=True, timeout=30).strip()
+ios = out / 'ios'
+ios.mkdir()
+stage('ios-protocol-module', ['/usr/bin/xcrun', 'swiftc', '-swift-version', '5', '-parse-as-library',
+                               '-emit-module', '-module-name', 'AgentProxyProtocol', '-sdk', sdk,
+                               '-target', 'arm64-apple-ios17.0-simulator', '-module-cache-path', str(out / 'cache'),
+                               '-emit-module-path', str(ios / 'AgentProxyProtocol.swiftmodule'), *map(str, protocol_sources)])
 stage('ios-core-typecheck', ['/usr/bin/xcrun', 'swiftc', '-swift-version', '5', '-parse-as-library',
-                             '-typecheck', '-module-name', 'AgentProxyCore', '-sdk', sdk,
+                             '-typecheck', '-module-name', 'AgentProxyCore', '-sdk', sdk, '-I', str(ios),
                              '-target', 'arm64-apple-ios17.0-simulator', '-module-cache-path', str(out / 'cache'),
                              *map(str, sources)])
 print('PASS: capture core manifest, Debug and optimized tests, iOS typecheck; no network or app launch')

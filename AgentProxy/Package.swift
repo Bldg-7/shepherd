@@ -41,7 +41,7 @@ let package = Package(
     ],
     targets: [
         .target(name: "AgentProxyProtocol"),
-        .target(name: "AgentProxyCore"),
+        .target(name: "AgentProxyCore", dependencies: ["AgentProxyProtocol"]),
         .target(
             name: "AgentProxyForwarder",
             dependencies: [
