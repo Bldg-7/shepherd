@@ -894,6 +894,7 @@ struct AgentBoardView: View {
         // Dropped on a terminal, the pane's ID is pasted there.
         .herdrItemDrag(HerdrItemDrag.Item(pane: agent, on: machine.connectionIdentity))
         .onBoardRowActivation { activate(.pane(agent)) }
+        .boardSelectionEmphasized(selection?.id == agent.id)
     }
 
     /// A tab's row: name and actionable browser statuses only, without pane
@@ -932,6 +933,7 @@ struct AgentBoardView: View {
         // Dropped on a terminal, the tab's ID is pasted there.
         .herdrItemDrag(HerdrItemDrag.Item(tab: tab, on: machine.connectionIdentity))
         .onBoardRowActivation { activate(.tab(tab)) }
+        .boardSelectionEmphasized(selection?.id == tab.id)
     }
 
     private func activate(_ item: BoardItem) {

@@ -23,6 +23,28 @@ mouse delivery in an inactive test app is not a live click test. Manually check
 single/repeated row clicks, drag cancellation and context menus in the running
 macOS app. No herdr/SSH session or user-window input is used.
 
+## Sidebar selection appearance
+
+```sh
+python3 Tests/Terminal/run-board-selection-style-tests.py --output /tmp/shepherd-selection-style-FRESH
+```
+
+Selected pane/tab rows retain AppKit's native emphasized (focused) selection
+appearance even when the terminal or another input owns the keyboard. A scoped
+row anchor observes native emphasis changes and restores the last native value
+when deselected, detached or reused. It does not replace the List delegate,
+change first responder, pretend the window is active, or hard-code colors.
+Group headers and other lists are unchanged; seen/notification state continues
+to use the real window activity.
+
+Tests cover native light/dark/high-contrast appearances, focus-loss writes,
+restoration and teardown, and production modifier hosting in a real SwiftUI List
+through pane/tab selection, metadata changes, reorder and deselection. Cached
+native row pixels are compared with keyboard focus in the sidebar and in a
+terminal stand-in. Removing persistent observation fails the focus-loss check.
+The tests use an owned never-shown window. The existing row-activation fixture also includes
+the styling modifier so terminal focus hand-off is checked with both present.
+
 ## File-click ownership
 
 `run-pointer-tests.py` compiles the production terminal handlers against pinned

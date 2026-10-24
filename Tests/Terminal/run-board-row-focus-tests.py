@@ -18,7 +18,7 @@ def stage(name, seconds, command):
     assert status['naturalExitConfirmed'] and status['cleanupVerified'] and not status['signalsSent'], name
     text = log.read_text(errors='replace')
     assert 'Modifying state during view update' not in text, name
-sources = ['Shepherd/Hosts/Views/BoardRowActivation.swift', 'Shepherd/Terminal/TerminalFileGesture.swift', 'Shepherd/Terminal/TerminalWebLink.swift', 'Shepherd/Terminal/TerminalHostView.swift', 'Shepherd/FilePreview/TerminalFileHit.swift', 'Shepherd/FilePreview/FilePreviewLink.swift', 'Shepherd/Terminal/AgentTerminalViewModel.swift', 'Shepherd/Terminal/HerdrAttachInput.swift', 'ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/TerminalSessionProviding.swift', 'Tests/Terminal/BoardRowFocusTests.swift']
+sources = ['Shepherd/Hosts/Views/BoardRowActivation.swift', 'Shepherd/Hosts/Views/BoardSelectionEmphasis.swift', 'Shepherd/Terminal/TerminalFileGesture.swift', 'Shepherd/Terminal/TerminalWebLink.swift', 'Shepherd/Terminal/TerminalHostView.swift', 'Shepherd/FilePreview/TerminalFileHit.swift', 'Shepherd/FilePreview/FilePreviewLink.swift', 'Shepherd/Terminal/AgentTerminalViewModel.swift', 'Shepherd/Terminal/HerdrAttachInput.swift', 'ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/TerminalSessionProviding.swift', 'Tests/Terminal/BoardRowFocusTests.swift']
 # Extract the production request type, rather than replacing its fresh-token behavior.
 switcher = (ROOT/'Shepherd/Hosts/Views/PaneSwitcher.swift').read_text()
 focus = out/'FocusRequest.swift'
