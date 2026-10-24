@@ -41,7 +41,7 @@ public nonisolated enum AgentProxyTeeFrame {
 
     public struct Open: Codable, Sendable, Equatable {
         public let routeID: String
-        /// `anthropic` or `chatgpt`.
+        /// `anthropic`, `chatgpt`, or Pi's direct-subscription `openai`.
         public let upstream: String
         public let method: String
         public let path: String

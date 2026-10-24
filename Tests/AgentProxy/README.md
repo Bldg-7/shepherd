@@ -5,7 +5,8 @@ Mac app can opt in to it with Show Conversations on iPhone and iPad, off by
 default and changeable only on This Mac. Its program,
 `hrdrhrdrhrdr-agent-proxy`, passes the model requests of eligible agents the app
 starts (Claude Code, Codex and Pi, signed in with a Claude or ChatGPT
-subscription) on to api.anthropic.com or chatgpt.com. The app-side wiring is
+subscription) on to api.anthropic.com, chatgpt.com, or the exact api.openai.com
+Responses endpoint for a prepared Pi route. The app-side wiring is
 implemented. Bounded main/compaction collection, observed child final results,
 the read API and paired iPhone/iPad conversation UI are connected. It runs as two processes:
 
@@ -29,11 +30,37 @@ The app's Pi extension adds `x-3rdr-pi-*` headers to say which Pi session a
 request belongs to. The forwarder removes every `x-3rdr-*` header before it
 passes a request on.
 
+## Pi OpenAI direct subscription regression
+
+`Tests/AgentBrowser/Phase3/PiOpenAIProxyTests.mjs` loads qualified public Pi SDK
+provider/composer code through explicit `PI_AI_DIST` and `PI_CODING_DIST` paths.
+Run under a network-denying sandbox. It uses fake fetch, never a live model,
+agent, auth lookup or user settings. It compares real SDK payloads before and
+after proxying: model URL/catalog/OAuth/thinking/cache semantics must remain
+unchanged, while only eligible subscription POST `/v1/responses` fetches go to
+the local `/openai/v1/responses` namespace. API keys, custom endpoints, other
+paths and methods stay unchanged. Main, compaction and warming remain distinct.
+
+The forwarder permits this new upstream only on a known Pi route, with the
+adapter marker and non-API-key Bearer shape; api.openai.com validates the token
+through fully verified TLS. No claim of local cryptographic token validation is
+made. Only POST `/v1/responses` is supported; there is no general `/v1/*` OpenAI
+proxy. Private headers are stripped and redirected fetches are not followed.
+Origin and browser site/destination metadata remain forbidden. Node fetch adds
+its own lone `sec-fetch-mode: cors`; this is accepted only for a known Pi direct
+Responses POST with the contract and adapter marker, never as a general browser
+exception. A real Node fetch traverses the native proxy to loopback TLS in the
+forwarder suite, so mocked fetch tests cannot hide transport-added headers.
+The native test uses a synthetic TLS certificate for the exact host and checks
+path/body/header preservation and refusal before any upstream request. The core
+test drives the tee through complete request/response ingestion to the existing
+mobile-readable store. The protocol shape is unchanged for mobile 0.1.0(4).
+
 ## Running the tests
 
 One runner builds the package and tests it. It needs no app, no real agent, no
 launchd and no network: the tests play the agent, and servers on 127.0.0.1
-stand in for api.anthropic.com and chatgpt.com.
+stand in for api.anthropic.com, chatgpt.com and api.openai.com.
 
 ```sh
 python3 Tests/AgentProxy/run-forwarder-tests.py --output /tmp/shepherd-agent-proxy-FRESH \
@@ -59,7 +86,7 @@ that allows connections only to 127.0.0.1 and denies the socket of mDNSResponder
 
 The forwarder runs inside the test program, through an initializer only tests
 use. TLS servers on 127.0.0.1, with certificates from a test authority, stand in
-for api.anthropic.com and chatgpt.com.
+for api.anthropic.com, chatgpt.com and api.openai.com.
 
 - Passing on: request bodies, a zstd-compressed one among them, arrive byte for
   byte. Request headers arrive as they were sent, except that Host is replaced

@@ -138,6 +138,7 @@ final class Suite {
     let ca: TestCA
     let anthropicIdentity: TestIdentity
     let chatgptIdentity: TestIdentity
+    let openaiIdentity: TestIdentity
     var servers: [AgentProxyServer] = []
     var fakes: [FakeUpstream] = []
     var needles: [String] = []
@@ -151,6 +152,7 @@ final class Suite {
         ca = try TestCA(name: "agent proxy test root")
         anthropicIdentity = try ca.issue(host: "api.anthropic.com")
         chatgptIdentity = try ca.issue(host: "chatgpt.com")
+        openaiIdentity = try ca.issue(host: "api.openai.com")
     }
 
     func run() -> Int32 {
@@ -158,6 +160,8 @@ final class Suite {
             ("control-socket", controlSocket),
             ("forward-claude-body-and-headers", forwardClaude),
             ("forward-codex-zstd-chunked", forwardCodex),
+            ("forward-pi-openai-subscription", forwardOpenAI),
+            ("node-fetch-pi-openai", nodeFetchOpenAI),
             ("head-request", headRequest),
             ("sse-immediacy", sseImmediacy),
             ("client-disconnect-closes-upstream", clientDisconnect),
@@ -218,7 +222,7 @@ final class Suite {
         return fake
     }
 
-    func proxy(_ name: String, anthropic: SocketAddress? = nil, chatgpt: SocketAddress? = nil, recorder: Recorder = .none,
+    func proxy(_ name: String, anthropic: SocketAddress? = nil, chatgpt: SocketAddress? = nil, openai: SocketAddress? = nil, recorder: Recorder = .none,
                connectTimeout: TimeAmount = .seconds(10), idleTimeout: TimeAmount = .seconds(30)) throws -> Proxy {
         let folder = out + "/c/" + name
         try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
@@ -241,6 +245,7 @@ final class Suite {
         var upstreams: [AgentProxyUpstream: SocketAddress] = [:]
         upstreams[.anthropic] = anthropic
         upstreams[.chatgpt] = chatgpt
+        upstreams[.openai] = openai
         let server = AgentProxyServer(configuration: configuration, testUpstreams: upstreams, trustRoots: [ca.root],
                                       connectTimeout: connectTimeout, idleTimeout: idleTimeout)
         servers.append(server)
@@ -450,6 +455,75 @@ final class Suite {
         try check(received.headers.map { $0.0 + ": " + $0.1 } == expected.map { $0.0 + ": " + $0.1 }, "codex headers kept")
         try check(response.status == 200 && response.complete && response.body == bytes(events.joined()), "SSE body complete")
         try check(response.header("content-type") == ["text/event-stream"] && response.header("transfer-encoding") == ["chunked"], "SSE headers")
+    }
+
+    func forwardOpenAI() throws {
+        let events = "data: {\"type\":\"response.completed\"}\n\n"
+        let upstream = try fake(openaiIdentity) { _, connection in
+            connection.send(sseHead); connection.sendChunk(events); connection.send("0\r\n\r\n")
+        }
+        let proxy = try self.proxy("openai", openai: upstream.address)
+        let control = try proxy.control()
+        let pi = try route(control, "pi")
+        let headers = codexHeaders(proxy.port, token: "synthetic-direct-subscription") + [
+            ("x-3rdr-pi-auth", "chatgpt-direct"), ("x-3rdr-pi-contract", "2"),
+            ("x-3rdr-pi-class", "main"), ("x-3rdr-pi-session", "synthetic-native")]
+        let body = bytes("{\"model\":\"synthetic\",\"input\":[],\"stream\":true}")
+        let response = try send(proxy.port, request("POST", "/p/\(pi.token)/openai/v1/responses?fixture=yes", headers, body: body))
+        try check(response.status == 200 && response.body == bytes(events), "direct OpenAI SSE response preserved")
+        try check(waitUntil(2) { upstream.requests.count == 1 }, "OpenAI TLS fixture received request")
+        let got = upstream.requests[0]
+        try check(got.requestLine == "POST /v1/responses?fixture=yes HTTP/1.1" && got.body == body, "local namespace removed; query/body unchanged")
+        try check(got.header("host") == ["api.openai.com"] && got.header("authorization") == ["Bearer synthetic-direct-subscription"], "correct TLS upstream and opaque authorization preserved")
+        try check(!got.headers.contains { $0.0.lowercased().hasPrefix("x-3rdr-") }, "private metadata never reaches provider")
+        for (name, changed) in [
+            ("API key", headers.map { $0.0 == "Authorization" ? ($0.0, "Bearer sk-proj-test") : $0 }),
+            ("missing marker", headers.filter { $0.0 != "x-3rdr-pi-auth" }),
+            ("duplicate marker", headers + [("x-3rdr-pi-auth", "chatgpt-direct")]),
+            ("api key header", headers + [("x-api-key", "synthetic-key")])
+        ] {
+            try check(try send(proxy.port, request("POST", "/p/\(pi.token)/openai/v1/responses", changed, body: body)).status == 403, "reject \(name)")
+        }
+        for kind in ["claude", "codex"] {
+            let other = try route(control, kind)
+            try check(try send(proxy.port, request("POST", "/p/\(other.token)/openai/v1/responses", headers, body: body)).status == 404, "non-Pi route denied")
+        }
+        let missing = String(repeating: "f", count: 32)
+        try check(try send(proxy.port, request("POST", "/p/\(missing)/openai/v1/responses", headers, body: body)).status == 404, "unknown route cannot reach added upstream")
+        for path in ["/openai/v1/models", "/openai/v1/responses/other", "/openai/v1/responses/compact", "/openai/v1/%72esponses"] {
+            try check(try send(proxy.port, request("POST", "/p/\(pi.token)\(path)", headers, body: body)).status == 404, "only exact Responses path accepted")
+        }
+        try check(try send(proxy.port, request("GET", "/p/\(pi.token)/openai/v1/responses", headers)).status == 405, "GET cannot bypass subscription checks")
+        for extra in [[("Origin", "http://evil.invalid")], [("sec-fetch-mode", "cors"), ("sec-fetch-site", "cross-site")], [("sec-fetch-mode", "no-cors")]] {
+            try check(try send(proxy.port, request("POST", "/p/\(pi.token)/openai/v1/responses", headers + extra, body: body)).status == 403, "browser fetch metadata remains refused")
+        }
+        try check(upstream.requests.count == 1, "rejected calls made no upstream request")
+        let wrongHost = try fake(chatgptIdentity) { _, connection in connection.send(okJSON("{}")) }
+        let wrong = try self.proxy("openai-wrong-host", openai: wrongHost.address)
+        let wrongRoute = try route(try wrong.control(), "pi")
+        let wrongHeaders = headers.map { $0.0 == "Host" ? ($0.0, "127.0.0.1:\(wrong.port)") : $0 }
+        try check(try send(wrong.port, request("POST", "/p/\(wrongRoute.token)/openai/v1/responses", wrongHeaders, body: body)).status == 502, "OpenAI TLS rejects a certificate for chatgpt.com")
+        try check(wrongHost.requests.isEmpty, "no credentials sent over unverified TLS")
+    }
+
+    func nodeFetchOpenAI() throws {
+        let upstream = try fake(openaiIdentity) { _, connection in connection.send(okJSON("{\"fixture\":true}")) }
+        let proxy = try self.proxy("node-fetch", openai: upstream.address)
+        let pi = try route(try proxy.control(), "pi")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["node", "Tests/AgentProxy/node-fetch-test.mjs", pi.baseURL]
+        process.environment = ["PATH": ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin", "HOME": out, "TMPDIR": out]
+        let output = Pipe(); process.standardOutput = output; process.standardError = output
+        try process.run()
+        let text = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        process.waitUntilExit()
+        try check(process.terminationStatus == 0, "actual Node fetch failed: \(text)")
+        try check(upstream.requests.count == 1, "Node request reached the loopback TLS upstream")
+        let got = upstream.requests[0]
+        try check(got.header("sec-fetch-mode") == ["cors"] && got.header("origin").isEmpty, "Node adds only cors mode, not browser Origin/site")
+        try check(got.requestLine == "POST /v1/responses HTTP/1.1" && got.body == bytes("{\"input\":\"synthetic-native-fetch\"}"), "SDK-style fetch path and body preserved")
+        try check(!got.headers.contains { $0.0.lowercased().hasPrefix("x-3rdr-") }, "Node fetch metadata stripped before upstream")
     }
 
     func headRequest() throws {

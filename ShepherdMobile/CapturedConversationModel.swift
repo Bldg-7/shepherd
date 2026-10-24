@@ -32,7 +32,7 @@ final class CapturedConversationModel {
     }
     func stop() {
         generation = UUID(); task?.cancel(); task = nil
-        client = nil; selection = nil; window = ConversationWindow(); isLoadingOlder = false
+        client = nil; selection = nil; window = ConversationWindow(); notice = nil; isLoadingOlder = false
     }
     func pause() { paused = true; generation = UUID(); task?.cancel(); task = nil }
     func resume() { paused = false; restart() }
@@ -54,6 +54,7 @@ final class CapturedConversationModel {
             do {
                 guard let selected = try await client.select(selection) else {
                     window = ConversationWindow()
+                    notice = String(localized: "No captured conversation yet. Showing the screen instead.")
                     try await Task.sleep(for: .seconds(3)); continue
                 }
                 let updates = try await client.subscribe(id: selected.header.id, epoch: selected.epoch)
@@ -64,13 +65,13 @@ final class CapturedConversationModel {
                     guard let header = page.summary, selection.matches(header) else { throw ConversationClientError.scopeMismatch }
                     if initial { window = ConversationWindow(); initial = false }
                     try window.apply(page)
-                    notice = nil; delay = 2
+                    notice = hasConversation ? nil : String(localized: "No captured conversation yet. Showing the screen instead."); delay = 2
                 }
                 throw HerdrLineStreamError.closed
             } catch is CancellationError { return }
             catch {
                 guard !Task.isCancelled, generation == self.generation else { return }
-                if hasConversation { notice = String(localized: "Conversation unavailable. Showing the screen instead.") }
+                notice = String(localized: "Conversation unavailable. Showing the screen instead.")
                 window = ConversationWindow()
                 do { try await Task.sleep(for: .seconds(delay)) } catch { return }
                 delay = min(30, delay * 2)

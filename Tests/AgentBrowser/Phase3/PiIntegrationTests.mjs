@@ -400,7 +400,7 @@ test('Agent proxy: Pi\'s anthropic and openai-codex providers are pointed at the
   assert.equal(registerPiApiProxy(f.pi, f.bootstrap), true);
   assert.deepEqual(f.providers, [['anthropic', { baseUrl: proxyBase }], ['openai-codex', { baseUrl: proxyBase + '/backend-api' }]]);
   assert.deepEqual([...f.handlers.keys()], ['context','session_before_compact','session_before_tree','session_shutdown','session_start']);
-  assert.deepEqual(PROXIED_PROVIDERS, ['anthropic', 'openai-codex']);
+  assert.deepEqual(PROXIED_PROVIDERS, ['anthropic', 'openai-codex', 'openai']);
 });
 test('Agent proxy: request-local purpose survives concurrent main/compaction and excludes replayed warming/auxiliary calls', () => {
   let healthy=true;
@@ -411,7 +411,7 @@ test('Agent proxy: request-local purpose survives concurrent main/compaction and
   assert.equal(f.providers.length,4);
   const main = {signal,sessionId:ctx.sessionManager.getSessionId(),transformContext:()=>{},convertToLlm:()=>{},
     apiKey:'opaque-fixture',headers:{authorization:'Bearer fixture'},cacheRetention:'long',reasoning:'high',maxRetries:3};
-  for(const provider of PROXIED_PROVIDERS) {
+  for(const provider of ['anthropic','openai-codex']) {
     const model={provider,api:provider==='anthropic'?'anthropic-messages':'openai-codex-responses',baseUrl:provider==='anthropic'?proxyBase:proxyBase+'/backend-api'};
     const wrap=f.providers.findLast(([name])=>name===provider)[1].streamSimple;
     assert.equal(wrap(model,{},main).options.headers['x-3rdr-pi-class'],'auxiliary','unobserved operation is not main');

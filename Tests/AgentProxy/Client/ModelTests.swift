@@ -8,6 +8,8 @@ actor ModelTransport: HerdrTransport {
     var cursors: [String: ConversationReadAPI.Cursor] = [:]
     var held: [(AsyncThrowingStream<Data, any Error>.Continuation, Data)] = []
     var holdNext = false
+    var unavailable = false
+    func failConnection() { unavailable = true }
     var closeCount = 0
     func prepare(native: String, text: String) throws {
         let message = try RequestProjection.project(JSONSerialization.data(withJSONObject: ["messages": [["role": "user", "content": text]]]), provider: .anthropic).messages[0]
@@ -30,6 +32,7 @@ actor ModelTransport: HerdrTransport {
     func liveCount() -> Int { subscriptions.count }
     func close(_ id: String) { closeCount += 1; subscriptions.removeValue(forKey: id)?.finish(); cursors.removeValue(forKey: id) }
     func openLineStream(endpoint: HerdrLineEndpoint, request: Data) async throws -> HerdrLineStream {
+        if unavailable { throw HerdrLineStreamError.closed }
         let object = try JSONSerialization.jsonObject(with: request) as! [String: Any]
         let id = object["id"] as! String
         let bytes = ConversationReadAPI.answer(request, store: store)
@@ -87,8 +90,14 @@ actor ModelTransport: HerdrTransport {
         await until { await transport.liveCount() == 0 }
         check(!model.hasConversation && model.window.items.isEmpty, "navigation cleanup releases conversation and stream")
         model.connect(transport: transport, selection: selection("not-captured"))
-        for _ in 0..<100 { await Task.yield() }
-        check(!model.hasConversation && model.notice == nil, "opt-out/missing conversation quietly retains screen fallback")
+        await until { model.notice != nil }
+        check(!model.hasConversation && model.notice == "No captured conversation yet. Showing the screen instead.", "missing conversation is explicitly explained without showing an empty conversation")
+        model.stop()
+        check(model.notice == nil, "navigation cleanup clears stale notice")
+        let failed = ModelTransport(); await failed.failConnection()
+        model.connect(transport: failed, selection: selection("one"))
+        await until { model.notice != nil }
+        check(!model.hasConversation && model.notice == "Conversation unavailable. Showing the screen instead.", "initial connection failure is visible even before any captured data")
         model.stop()
         print("Conversation model: \(count) passed, 0 failed")
     }

@@ -41,7 +41,9 @@ env = dict(os.environ, HOME=str(out / 'home'), CFFIXED_USER_HOME=str(out / 'home
 package_sources = sorted(p for p in (ROOT / 'AgentProxy/Sources').rglob('*') if p.is_file())
 test_sources = sorted((ROOT / 'Tests/AgentProxy').glob('*.swift'))
 identity = (['AgentProxy/Package.swift'] + [str(f.relative_to(ROOT)) for f in package_sources + test_sources]
-            + ['Tests/AgentProxy/process-tests.py', 'Tests/AgentProxy/read-socket-tests.py', 'Tests/AgentProxy/run-forwarder-tests.py'])
+            + ['Tests/AgentProxy/process-tests.py', 'Tests/AgentProxy/read-socket-tests.py', 'Tests/AgentProxy/run-forwarder-tests.py',
+               'Tests/AgentProxy/node-fetch-test.mjs', 'Shepherd/Agents/AgentRuntime/pi-api-proxy.mjs',
+               'Shepherd/Agents/AgentRuntime/protected-read.mjs'])
 bridge_sources = ['ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/HerdrLineStream.swift',
                   'ShepherdKit/Sources/ShepherdKit/HerdrKit/Transport/ConversationSSHLineChannel.swift',
                   'Tests/AgentProxy/Client/SSHLineBridgeTests.swift']

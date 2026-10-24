@@ -55,13 +55,14 @@ public nonisolated enum RequestClassification {
         }
         let provider: RequestProjection.Provider
         if open.upstream == "anthropic" { provider = .anthropic }
-        else if open.upstream == "chatgpt" { provider = .responses }
+        else if open.upstream == "chatgpt" || (open.upstream == "openai" && route.kind == .pi) { provider = .responses }
         else { return unknown(.unsupportedProvider) }
         guard !(route.kind == .claude && provider != .anthropic), !(route.kind == .codex && provider != .responses) else {
             return unknown(.unsupportedProvider)
         }
         let conversational = open.method == "POST" && ((provider == .anthropic && open.path == "/v1/messages") ||
-            (provider == .responses && ["/backend-api/codex/responses", "/backend-api/codex/responses/compact"].contains(open.path)))
+            (open.upstream == "chatgpt" && ["/backend-api/codex/responses", "/backend-api/codex/responses/compact"].contains(open.path)) ||
+            (open.upstream == "openai" && open.path == "/v1/responses"))
         guard conversational else {
             return result(.auxiliary, reason: .nonConversationEndpoint, route: route, context: context, provider: provider)
         }

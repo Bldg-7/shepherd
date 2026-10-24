@@ -177,7 +177,8 @@ public final class ConversationCapture {
                   [raw.routeID, identity.session, identity.paneID, identity.terminalID, identity.cliVersion]
                     .allSatisfy({ RequestProjection.identifier($0) != nil }), raw.method == "POST",
                   (raw.upstream == "anthropic" && raw.path == "/v1/messages") ||
-                  (raw.upstream == "chatgpt" && raw.path == "/backend-api/codex/responses") else { throw Failure.unsupported }
+                  (raw.upstream == "chatgpt" && raw.path == "/backend-api/codex/responses") ||
+                  (raw.upstream == "openai" && identity.kind == .pi && raw.path == "/v1/responses") else { throw Failure.unsupported }
             guard headers["content-type"] == nil || Self.mediaType(headers["content-type"]) == "application/json" else { throw Failure.unsupported }
             // Reapply the exact allowlist even if a malformed sender included a
             // credential header; never retain arbitrary raw Open header maps.

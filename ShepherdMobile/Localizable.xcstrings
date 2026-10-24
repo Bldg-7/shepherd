@@ -189,6 +189,23 @@
       }
     }
   },
+  "No captured conversation yet. Showing the screen instead.": {
+    "extractionState": "manual",
+    "localizations": {
+      "ko": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "아직 수집된 대화가 없어 화면을 표시합니다."
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "まだ取得された会話がないため、画面を表示しています。"
+        }
+      }
+    }
+  },
   "Conversation unavailable. Showing the screen instead.": {
     "extractionState": "manual",
     "localizations": {

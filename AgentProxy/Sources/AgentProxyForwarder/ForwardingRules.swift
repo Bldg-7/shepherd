@@ -2,10 +2,11 @@ import Foundation
 import NIOHTTP1
 import AgentProxyProtocol
 
-/// The two places a request may go. Nothing else is ever connected to.
+/// Fixed upstream destinations. Nothing else is ever connected to.
 public enum AgentProxyUpstream: String, Sendable, CaseIterable {
     case anthropic
     case chatgpt
+    case openai
 
     /// The Host header, the TLS server name and the name the certificate has
     /// to be valid for.
@@ -13,6 +14,7 @@ public enum AgentProxyUpstream: String, Sendable, CaseIterable {
         switch self {
         case .anthropic: "api.anthropic.com"
         case .chatgpt: "chatgpt.com"
+        case .openai: "api.openai.com"
         }
     }
 }
@@ -57,8 +59,10 @@ enum ForwardingRules {
         guard hosts.count == 1, hosts[0] == "127.0.0.1:\(port)" else {
             return .failure(Rejection(status: .forbidden, reason: .host, provider: nil, message: "Unexpected Host."))
         }
-        // Agents don't send these; browsers do.
-        if head.headers.contains(name: "origin") || head.headers.contains(where: { $0.name.lowercased().hasPrefix("sec-fetch-") }) {
+        // Cross-origin browser requests are never accepted. Node's fetch also
+        // adds sec-fetch-mode:cors; a narrow exception is checked below only
+        // after resolving a known direct-subscription Pi route.
+        if head.headers.contains(name: "origin") {
             return .failure(Rejection(status: .forbidden, reason: .origin, provider: nil, message: "Requests from web pages are not forwarded."))
         }
         guard head.method == .GET || head.method == .POST || head.method == .HEAD else {
@@ -73,8 +77,22 @@ enum ForwardingRules {
         }
         let (token, target, path, upstream) = (split.token, split.target, destination.path, destination.upstream)
         let route = lookup(token)
-        if let route, !allows(route.kind, upstream) {
+        // The new direct ChatGPT endpoint is only for an explicitly prepared
+        // Pi route; unknown tokens never gain this additional upstream.
+        if (upstream == .openai && route?.kind != .pi) || route.map({ !allows($0.kind, upstream) }) == true {
             return .failure(Rejection(status: .notFound, reason: .kind, provider: upstream, message: "Not found."))
+        }
+        let fetchHeaders = head.headers.filter { $0.name.lowercased().hasPrefix("sec-fetch-") }
+        if !fetchHeaders.isEmpty {
+            let directPiFetch = upstream == .openai && route?.kind == .pi && head.method == .POST &&
+                fetchHeaders.count == 1 && fetchHeaders[0].name.lowercased() == "sec-fetch-mode" && fetchHeaders[0].value == "cors" &&
+                head.headers["x-3rdr-pi-contract"] == ["2"] && head.headers["x-3rdr-pi-auth"] == ["chatgpt-direct"]
+            guard directPiFetch else {
+                return .failure(Rejection(status: .forbidden, reason: .origin, provider: upstream, message: "Requests from web pages are not forwarded."))
+            }
+        }
+        if upstream == .openai && head.method != .POST {
+            return .failure(Rejection(status: .methodNotAllowed, reason: .method, provider: upstream, message: "POST only."))
         }
         if let framing = framingProblem(head.headers) {
             return .failure(Rejection(status: .badRequest, reason: .framing, provider: upstream, message: framing))
@@ -82,7 +100,8 @@ enum ForwardingRules {
         if head.method == .POST, isInference(path, upstream), !hasSubscriptionShape(head.headers, upstream) {
             return .failure(Rejection(status: .forbidden, reason: .oauth, provider: upstream, message: oauthMessage, routeID: route?.routeID))
         }
-        return .success(ForwardDecision(upstream: upstream, target: target, path: path, token: token, route: route))
+        let remoteTarget = upstream == .openai ? String(target.dropFirst("/openai".count)) : target
+        return .success(ForwardDecision(upstream: upstream, target: remoteTarget, path: path, token: token, route: route))
     }
 
     static let oauthMessage = "hrdrhrdrhrdr's agent proxy forwards only requests signed in with a Claude or ChatGPT subscription, and this one used an API key or another sign-in. Open a new tab and start the agent again: it will run without the proxy."
@@ -109,6 +128,9 @@ enum ForwardingRules {
         guard path.hasPrefix("/"), !path.contains("%"), !path.contains("\\"), !path.contains("//") else { return nil }
         let segments = path.dropFirst().split(separator: "/", omittingEmptySubsequences: false)
         guard !segments.contains(where: { $0 == "." || $0 == ".." }) else { return nil }
+        // A local-only namespace keeps /v1/responses from being sent to
+        // Anthropic. Strip it before forwarding and tee canonical API paths.
+        if path == "/openai/v1/responses" { return ("/v1/responses", .openai) }
         if path.hasPrefix("/v1/"), path.count > 4 { return (path, .anthropic) }
         if path == "/api/hello" { return (path, .anthropic) }
         if path.hasPrefix("/backend-api/codex/"), path.count > "/backend-api/codex/".count { return (path, .chatgpt) }
@@ -128,6 +150,7 @@ enum ForwardingRules {
         switch upstream {
         case .anthropic: path == "/v1/messages" || path.hasPrefix("/v1/messages/")
         case .chatgpt: path == "/backend-api/codex/responses" || path.hasPrefix("/backend-api/codex/responses/")
+        case .openai: path == "/v1/responses"
         }
     }
 
@@ -144,6 +167,13 @@ enum ForwardingRules {
             return betas.contains { $0.hasPrefix("oauth-") }
         case .chatgpt:
             return isJWTShaped(bearer)
+        case .openai:
+            // Pi's public ChatGPT direct-token contract does not require JWT
+            // encoding. Match its non-API-key guard, require the local adapter
+            // marker and let the fixed TLS upstream validate the credential.
+            // This is a shape check, not cryptographic proof of a subscription.
+            return !bearer.lowercased().hasPrefix("sk-") && !headers.contains(name: "x-api-key") &&
+                headers["x-3rdr-pi-auth"] == ["chatgpt-direct"]
         }
     }
 
@@ -247,7 +277,7 @@ enum ForwardingRules {
             default: "api_error"
             }
             return ("application/json", json(["type": "error", "error": ["type": type, "message": message]]))
-        case .chatgpt:
+        case .chatgpt, .openai:
             let type = status.code == 403 ? "permission_error" : status.code >= 500 ? "server_error" : "invalid_request_error"
             return ("application/json", json(["error": ["message": message, "type": type, "param": NSNull(), "code": NSNull()]]))
         case nil:

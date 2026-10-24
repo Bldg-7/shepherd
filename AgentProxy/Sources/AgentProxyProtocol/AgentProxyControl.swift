@@ -82,8 +82,9 @@ public nonisolated struct AgentProxyControlError: Codable, Sendable, Error, Equa
 }
 
 /// Which agent a route is for. It decides which upstreams the route may use:
-/// Claude Code only api.anthropic.com, Codex only chatgpt.com, and Pi either,
-/// since its `anthropic` and `openai-codex` providers both go through it.
+/// Claude Code only api.anthropic.com, Codex only chatgpt.com, and Pi those
+/// plus the exact api.openai.com Responses endpoint for ChatGPT direct sign-in.
+/// Pi's API-key and custom-endpoint calls keep their original SDK transport.
 public nonisolated enum AgentProxyRouteKind: String, Codable, Sendable, CaseIterable {
     case claude
     case codex
@@ -113,7 +114,9 @@ public nonisolated struct AgentProxyRouteCreated: Codable, Sendable, Equatable {
     public let routeID: String
     /// `http://127.0.0.1:PORT/p/<token>`. Claude Code and Pi's `anthropic`
     /// provider take it as it is; Codex gets `<baseURL>/backend-api/codex`
-    /// and Pi's `openai-codex` provider `<baseURL>/backend-api`.
+    /// and Pi's `openai-codex` provider `<baseURL>/backend-api`. Pi's current
+    /// `openai` provider retains its model URL and redirects only an eligible
+    /// final fetch through `<baseURL>/openai/v1/responses`.
     public let baseURL: String
 
     public init(routeID: String, baseURL: String) { self.routeID = routeID; self.baseURL = baseURL }

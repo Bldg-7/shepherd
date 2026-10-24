@@ -14,6 +14,25 @@ struct PiClassificationTests {
     }
     static func run(check: (Bool, String) -> Void) throws {
         let body = Data("{}".utf8)
+        func direct(_ kind: String = "main", routeKind: AgentProxyRouteKind = .pi, path: String = "/v1/responses") -> AgentProxyTeeFrame.Open {
+            let base = open(kind, responses: true)
+            return .init(routeID: base.routeID, upstream: "openai", method: "POST", path: path, headers: base.headers,
+                routeIdentity: .init(kind: routeKind, session: "default", paneID: "pane", terminalID: "terminal", cliVersion: "1.4.0"))
+        }
+        check(RequestClassification.classify(direct(), body: body).mainConversationKey?.agent == "pi", "direct OpenAI main uses Pi identity and Responses projection")
+        check(RequestClassification.classify(direct("compaction"), body: body).kind == .compaction, "direct OpenAI compaction remains distinct")
+        for kind: AgentProxyRouteKind in [.claude, .codex] {
+            check(RequestClassification.classify(direct(routeKind: kind), body: body).mainConversationKey == nil, "OpenAI endpoint is Pi only")
+        }
+        check(RequestClassification.classify(direct(path: "/v1/models"), body: body).mainConversationKey == nil, "unrecognized direct endpoint cannot create main history")
+        let directStream = ConversationCaptureTests.Harness()
+        try directStream.json(.open, 1, direct())
+        try directStream.send(.requestBody, 1, JSONSerialization.data(withJSONObject: ["input": [["role": "user", "content": "direct question"]]]))
+        try directStream.send(.requestEnd, 1); try directStream.head(1)
+        try directStream.event(1, ["type": "response.created", "response": ["id": "direct-1", "status": "in_progress", "output": []]])
+        try directStream.event(1, ["type": "response.completed", "response": ["id": "direct-1", "status": "completed", "output": [ResponsesAssemblyTests.message("answer", "direct answer")]]])
+        try directStream.end(1)
+        check(directStream.snapshot?.summary.status == .complete && directStream.snapshot?.items.last?.message.blocks.first?.text == "direct answer", "direct OpenAI tee reaches the existing conversation read store")
         for version in ["1.3.0", "1.4.0"] {
             for responses in [false, true] {
                 let classified = RequestClassification.classify(open(version: version, responses: responses), body: body)
