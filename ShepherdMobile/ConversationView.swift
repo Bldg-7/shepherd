@@ -232,12 +232,9 @@ private struct StateBadge: View {
     let state: AgentState
 
     var body: some View {
-        Text(state.title)
-            .font(.caption.weight(.medium))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(color.opacity(0.15), in: Capsule())
-            .foregroundStyle(color)
+        PaneStatusBadge(title: state.title,
+            reservedTitles: [AgentState.idle, .working, .blocked, .done, .unknown].map(\.title),
+            color: color)
     }
 
     private var color: Color {

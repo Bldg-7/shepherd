@@ -64,8 +64,10 @@ struct MachinesView: View {
                             Label("Open Source Licenses", systemImage: "doc.text")
                         }
                     } label: {
-                        Label("About", systemImage: "info.circle")
+                        MobileToolbarIcon(title: "About", systemImage: "info.circle")
                     }
+                    .fixedSize(horizontal: true, vertical: false)
+                    .accessibilityIdentifier("machines-about")
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
@@ -80,8 +82,10 @@ struct MachinesView: View {
                             Label("Add Machine Manually", systemImage: "keyboard")
                         }
                     } label: {
-                        Label("Add Machine", systemImage: "plus")
+                        MobileToolbarIcon(title: "Add Machine", systemImage: "plus")
                     }
+                    .fixedSize(horizontal: true, vertical: false)
+                    .accessibilityIdentifier("machines-add")
                 }
             }
             .sheet(isPresented: $isAdding) {
