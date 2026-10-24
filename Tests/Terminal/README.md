@@ -1,5 +1,28 @@
 # Terminal focus-frame regression
 
+## Sidebar row activation
+
+```sh
+python3 Tests/Terminal/run-board-row-focus-tests.py --output /tmp/shepherd-row-focus-FRESH \
+  --swiftterm-products /path/to/DerivedData/Build/Products/Debug
+```
+
+macOS pane/tab rows issue an explicit keyboard-focus request on each primary
+click, including reselecting the same row. Tabs use their last activated pane,
+falling back to herdr's focused pane. The terminal view/attach is retained.
+Search edits and metadata refreshes do not issue requests; context menus and
+row dragging keep their native behavior. Clicking a row also ends title editing
+and moves an expanded preview back beside the terminal.
+
+The test compiles the production row modifier, focus request and terminal view
+model, drives a List fixture's activation callback, and checks the actual AppKit
+first responder in an owned never-shown window. It covers first selection,
+reselection with fresh tokens, split targeting, retained views and refreshes
+while another input owns the keyboard. App wiring is source-checked; synthetic
+mouse delivery in an inactive test app is not a live click test. Manually check
+single/repeated row clicks, drag cancellation and context menus in the running
+macOS app. No herdr/SSH session or user-window input is used.
+
 ## File-click ownership
 
 `run-pointer-tests.py` compiles the production terminal handlers against pinned

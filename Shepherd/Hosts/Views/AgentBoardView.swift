@@ -99,6 +99,9 @@ struct AgentBoardView: View {
     /// a failing one again — from a group header's menu.
     var onHerdrMachineSetup: (HerdrMachineSetup.Mode) -> Void
     var onNavigationDestinations: ([PaneDestination]) -> Void
+    /// Explicit row clicks, including clicking the already-selected row.
+    /// Snapshot reconciliation and keyboard list navigation do not activate it.
+    var onActivate: (BoardItem) -> Void
 
     /// The rename being typed into the window's title, if there is one.
     /// A row's Rename item starts it here; `ContentView` shows it in the
@@ -150,7 +153,8 @@ struct AgentBoardView: View {
         onHerdrMachineSetup: @escaping (HerdrMachineSetup.Mode) -> Void = { _ in },
         renaming: Binding<TitleRenameSession?>,
         renameCommit: Binding<TitleRenameCommit?>,
-        onNavigationDestinations: @escaping ([PaneDestination]) -> Void = { _ in }
+        onNavigationDestinations: @escaping ([PaneDestination]) -> Void = { _ in },
+        onActivate: @escaping (BoardItem) -> Void = { _ in }
     ) {
         self.machine = machine
         self.machineStore = machineStore
@@ -164,6 +168,7 @@ struct AgentBoardView: View {
         self._renaming = renaming
         self._renameCommit = renameCommit
         self.onNavigationDestinations = onNavigationDestinations
+        self.onActivate = onActivate
         self._collapsedGroupIDs = AppStorage(wrappedValue: "", "AgentBoardView.collapsedGroups.\(machine.id.uuidString)")
         self._groupOrderIDs = AppStorage(wrappedValue: "", "AgentBoardView.groupOrder.\(machine.id.uuidString)")
     }
@@ -888,6 +893,7 @@ struct AgentBoardView: View {
         }
         // Dropped on a terminal, the pane's ID is pasted there.
         .herdrItemDrag(HerdrItemDrag.Item(pane: agent, on: machine.connectionIdentity))
+        .onBoardRowActivation { activate(.pane(agent)) }
     }
 
     /// A tab's row: name and actionable browser statuses only, without pane
@@ -925,6 +931,13 @@ struct AgentBoardView: View {
         }
         // Dropped on a terminal, the tab's ID is pasted there.
         .herdrItemDrag(HerdrItemDrag.Item(tab: tab, on: machine.connectionIdentity))
+        .onBoardRowActivation { activate(.tab(tab)) }
+    }
+
+    private func activate(_ item: BoardItem) {
+        justCreatedID = nil
+        selection = item
+        onActivate(item)
     }
 
     /// A status dot, or — with no agent's status to show — the mark of a

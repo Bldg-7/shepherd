@@ -124,7 +124,8 @@ struct ContentView: View {
                             guard machineStore.isCurrentConnection(machine),
                                   machineStore.activeMachine?.connectionIdentity == machine.connectionIdentity else { return }
                             paneDestinations = destinations
-                        }
+                        },
+                        onActivate: { item in activateBoardItem(item, on: machine) }
                     )
                         .id(machine.connectionIdentity)
                 } else {
@@ -498,6 +499,20 @@ struct ContentView: View {
         if ending != .left, !session.giveKeyboardBack() {
             terminalPaneFocus = keyboardPane(in: session.item).map { TerminalPaneFocus(paneID: $0) }
         }
+    }
+
+    /// A click is an explicit keyboard hand-off, even when selection did
+    /// not change. Keep the terminal/attach identity and issue a fresh token
+    /// so a second click returns from the sidebar, browser or title field.
+    private func activateBoardItem(_ item: BoardItem, on machine: Machine) {
+        #if os(macOS)
+        guard machineStore.isCurrentConnection(machine),
+              machineStore.activeMachine?.connectionIdentity == machine.connectionIdentity,
+              selection(on: machine).wrappedValue?.id == item.id else { return }
+        if let titleRename { endTitleRename(titleRename, .left) }
+        expandedPreview = nil
+        terminalPaneFocus = keyboardPane(in: item).map { TerminalPaneFocus(paneID: $0) }
+        #endif
     }
 
     /// The pane in `item` that is to have the keyboard: the pane itself, or
