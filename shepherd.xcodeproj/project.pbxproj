@@ -25,6 +25,7 @@
 		C0EF00000000000000000023 /* 3rdr Helper (GPU).app in Embed Browser Engine */ = {isa = PBXBuildFile; fileRef = C0EF00000000000000000013 /* 3rdr Helper (GPU).app */; platformFilters = (macos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		C0EF00000000000000000024 /* 3rdr Helper (Plugin).app in Embed Browser Engine */ = {isa = PBXBuildFile; fileRef = C0EF00000000000000000014 /* 3rdr Helper (Plugin).app */; platformFilters = (macos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		C0EF00000000000000000025 /* 3rdr Helper (Renderer).app in Embed Browser Engine */ = {isa = PBXBuildFile; fileRef = C0EF00000000000000000015 /* 3rdr Helper (Renderer).app */; platformFilters = (macos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		C0EF00000000000000000026 /* ChromiumCredits.html in Resources */ = {isa = PBXBuildFile; fileRef = C0EF00000000000000000016 /* ChromiumCredits.html */; platformFilters = (macos, ); };
 		D01600000000000000000002 /* Shepherd.icon in Resources */ = {isa = PBXBuildFile; fileRef = D01600000000000000000001 /* Shepherd.icon */; platformFilters = (macos, ); };
 		EB28238D51316AC7C2A3FB0D /* Sparkle in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = 50A33A9511F4A8743DB7A373 /* Sparkle */; };
 		A9E100000000000000000010 /* AgentProxyProtocol in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = A9E100000000000000000040 /* AgentProxyProtocol */; };
@@ -92,6 +93,7 @@
 		C0EF00000000000000000013 /* 3rdr Helper (GPU).app */ = {isa = PBXFileReference; lastKnownFileType = wrapper.application; path = "3rdr Helper (GPU).app"; sourceTree = "<group>"; };
 		C0EF00000000000000000014 /* 3rdr Helper (Plugin).app */ = {isa = PBXFileReference; lastKnownFileType = wrapper.application; path = "3rdr Helper (Plugin).app"; sourceTree = "<group>"; };
 		C0EF00000000000000000015 /* 3rdr Helper (Renderer).app */ = {isa = PBXFileReference; lastKnownFileType = wrapper.application; path = "3rdr Helper (Renderer).app"; sourceTree = "<group>"; };
+		C0EF00000000000000000016 /* ChromiumCredits.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = ChromiumCredits.html; sourceTree = "<group>"; };
 		A9E100000000000000000020 /* com.bldg-7.shepherd.agent-proxy.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "com.bldg-7.shepherd.agent-proxy.plist"; sourceTree = "<group>"; };
 		A9E100000000000000000021 /* com.bldg-7.shepherd.agent-proxy.debug.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "com.bldg-7.shepherd.agent-proxy.debug.plist"; sourceTree = "<group>"; };
 		A9E100000000000000000061 /* hrdrhrdrhrdr-agent-proxy */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "hrdrhrdrhrdr-agent-proxy"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -202,6 +204,7 @@
 				C0EF00000000000000000013 /* 3rdr Helper (GPU).app */,
 				C0EF00000000000000000014 /* 3rdr Helper (Plugin).app */,
 				C0EF00000000000000000015 /* 3rdr Helper (Renderer).app */,
+				C0EF00000000000000000016 /* ChromiumCredits.html */,
 			);
 			name = "Browser Engine";
 			path = Vendor/CEF/out;
@@ -364,6 +367,7 @@
 			isa = PBXResourcesBuildPhase;
 			files = (
 				A63E1D0D20AA408AA2C0C024 /* Shepherd/Agents/AgentRuntime in Resources */,
+				C0EF00000000000000000026 /* ChromiumCredits.html in Resources */,
 				D01600000000000000000002 /* Shepherd.icon in Resources */,
 			);
 		};

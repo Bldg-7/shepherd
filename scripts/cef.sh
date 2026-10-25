@@ -14,7 +14,7 @@
 # again after changing CEF_VERSION; it does nothing when everything is
 # already up to date.
 #
-# Usage: scripts/cef.sh
+# Usage: Scripts/cef.sh
 
 set -euo pipefail
 
@@ -26,13 +26,22 @@ CEF_SHA1='bfa2358a5fba8d0a016118941d9cda0bf2d06f20'
 ARCH=arm64
 MIN_MACOS=26.0
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# Tests may point this at an isolated fake root. Normal invocations derive it
+# from this script so all CEF inputs and outputs remain worktree-local.
+ROOT="${CEF_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 VENDOR="$ROOT/Vendor/CEF"
 NAME="cef_binary_${CEF_VERSION}_macos${ARCH}_minimal"
 ARCHIVE="$VENDOR/downloads/$NAME.tar.bz2"
 DIST="$VENDOR/$NAME"
 OUT="$VENDOR/out"
 HELPER_SOURCES="$ROOT/CEFHelper"
+# These are measured from DIST/CREDITS.html in the pinned CEF distribution.
+# Keep them synchronized with the CEF version and its recorded provenance.
+CREDITS_BYTES=8679939
+CREDITS_NEWLINES=154598
+CREDITS_SHA256='3714c02897a1e3bf73fc6273017ce611b01a621d796ec73e52acf83893b44270'
+CREDITS_SOURCE="$DIST/CREDITS.html"
+STAGED_CREDITS="$OUT/ChromiumCredits.html"
 HELPER_NAME="3rdr Helper"
 # The name suffixes CEF looks for, each with the bundle ID suffix and the
 # entitlements its helper is signed with ("<name>:<id>:<entitlements>").
@@ -47,6 +56,31 @@ HELPERS=(
 step() { printf '==> %s\n' "$*"; }
 fail() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
+credits_match() {
+  local credits="$1"
+  [[ -f "$credits" ]] &&
+    [[ "$(wc -c <"$credits" | tr -d '[:space:]')" == "$CREDITS_BYTES" ]] &&
+    [[ "$(wc -l <"$credits" | tr -d '[:space:]')" == "$CREDITS_NEWLINES" ]] &&
+    [[ "$(shasum -a 256 "$credits" | cut -d' ' -f1)" == "$CREDITS_SHA256" ]]
+}
+
+stage_credits() {
+  credits_match "$CREDITS_SOURCE" ||
+    fail "pinned CEF $CEF_VERSION credits are missing or do not match the recorded provenance: $CREDITS_SOURCE"
+
+  if credits_match "$STAGED_CREDITS"; then
+    return
+  fi
+
+  step "Staging Chromium credits"
+  mkdir -p "$OUT"
+  local temporary="$STAGED_CREDITS.tmp"
+  rm -f "$temporary"
+  cp "$CREDITS_SOURCE" "$temporary"
+  credits_match "$temporary" || fail "staged Chromium credits do not match the pinned CEF provenance"
+  mv "$temporary" "$STAGED_CREDITS"
+}
+
 # What the output was built from: the version, and this script and the
 # helper's sources, so that changing either rebuilds it.
 fingerprint() {
@@ -57,11 +91,17 @@ fingerprint() {
 }
 STAMP="$OUT/.built-from"
 if [[ -f "$STAMP" && "$(cat "$STAMP")" == "$(fingerprint)" ]]; then
+  # The wrapper cache can be current while this generated resource is absent
+  # or stale (for example after a CEF update interrupted before staging).
+  stage_credits
   echo "CEF $CEF_VERSION is up to date in $OUT"
   exit 0
 fi
 
-if [[ ! -f "$ARCHIVE" ]]; then
+# An already-extracted pinned distribution is sufficient for a rebuild. This
+# lets the staging/output refresh work from the private local CEF copy without
+# needlessly re-downloading its archive.
+if [[ ! -d "$DIST" && ! -f "$ARCHIVE" ]]; then
   step "Downloading CEF $CEF_VERSION"
   mkdir -p "$(dirname "$ARCHIVE")"
   url="https://cef-builds.spotifycdn.com/$(printf %s "$NAME.tar.bz2" | sed 's/+/%2B/g')"
@@ -166,6 +206,7 @@ for item in "Chromium Embedded Framework" Resources Libraries; do
   ln -s "Versions/Current/$item" "$framework/$item"
 done
 ditto "$DIST/include" "$OUT/include"
+stage_credits
 
 rm -rf "$BUILD"
 fingerprint >"$STAMP"
