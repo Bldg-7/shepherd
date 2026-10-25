@@ -209,6 +209,7 @@ xcodebuild archive -quiet \
     -destination 'generic/platform=macOS' \
     -archivePath "$ARCHIVE" -derivedDataPath "$DERIVED" \
     -clonedSourcePackagesDirPath "$ROOT/build/SourcePackages" \
+    -packageCachePath "$ROOT/build/PackageCache" \
     -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates -jobs 4 \
     SHEPHERD_APP_SIGN_IDENTITY="$SIGN_IDENTITY" MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
 

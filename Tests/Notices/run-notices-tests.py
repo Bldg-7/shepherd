@@ -18,6 +18,7 @@ from pathlib import Path
 import plistlib
 import re
 import shutil
+import subprocess
 import tempfile
 from typing import Iterable
 
@@ -39,25 +40,26 @@ REMOTE_REVISIONS = {
     "swift-system": "869129b7bf4ecc57b97d0193ad29690ca2134750",
     "swiftterm": "5d14406844143538cd8f8851d2d8a67c1fe443e5",
 }
-# These names are intentionally build-output evidence, not a guessed archive
-# layout.  Frameworks are found in an app/archive; static Swift products are
-# found in DerivedData object/module output.
-PRODUCT_EVIDENCE = {
-    "BigInt": ("BigInt",),
-    "Sparkle": ("Sparkle.framework",),
-    "swift-atomics": ("Atomics",),
-    "swift-asn1": ("SwiftASN1",),
-    "swift-certificates": ("X509",),
-    "swift-collections": ("DequeModule",),
-    "swift-crypto": ("Crypto", "CCryptoBoringSSL"),
-    "swift-log": ("Logging",),
-    "swift-nio": ("NIOCore",),
-    "swift-nio-ssl": ("NIOSSL", "CNIOBoringSSL"),
-    "SwiftTerm": ("SwiftTerm",),
-    "Citadel": ("Citadel", "CCitadelBcrypt"),
-    "swift-nio-ssh": ("NIOSSH",),
-    "CEF": ("Chromium Embedded Framework.framework",),
-    "AgentProxy": ("AgentProxyProtocol",),
+# Each static product is checked as an exact, non-empty Mach-O input in the
+# Xcode-generated link-file-list for the target which consumes it.  These are
+# deliberately not filename-search tokens: the expected path is derived from
+# the supplied Release DerivedData root and configuration.
+STATIC_PRODUCT_EVIDENCE = {
+    "BigInt": (("app", "BigInt.o"),),
+    "swift-atomics": (("app", "Atomics.o"),),
+    "swift-asn1": (("app", "SwiftASN1.o"),),
+    "swift-certificates": (("app", "X509.o"),),
+    "swift-collections": (("app", "DequeModule.o"),),
+    "swift-crypto": (("app", "Crypto.o"), ("app", "CCryptoBoringSSL.o")),
+    "swift-log": (("app", "Logging.o"),),
+    "swift-nio": (("app", "NIOCore.o"),),
+    "swift-nio-ssl": (("app", "NIOSSL.o"), ("app", "CNIOBoringSSL.o")),
+    "SwiftTerm": (("app", "SwiftTerm.o"),),
+    "Citadel": (("app", "Citadel.o"), ("app", "CCitadelBcrypt.o")),
+    "swift-nio-ssh": (("app", "NIOSSH.o"),),
+    # AgentProxyForwarder is linked only by the embedded agent-proxy helper;
+    # AgentProxyProtocol is intentionally required in both contexts.
+    "AgentProxy": (("helper", "AgentProxyForwarder.o"), ("helper", "AgentProxyProtocol.o")),
 }
 
 
@@ -167,6 +169,9 @@ def check_notice_sources(inventory: dict, mac: str, ios: str) -> None:
     expected_ushet = "\n".join((ROOT / ushet["sourcePath"]).read_text(encoding="utf-8").splitlines()[:22])
     if notice_section(mac, ushet_title) != expected_ushet or notice_section(ios, ushet_title) != expected_ushet:
         fail("uSHET macOS/iOS parity block does not exactly match frozen source")
+    openssl_copyright = "Copyright 2014-2020 The OpenSSL Project Authors. All Rights Reserved."
+    if mac.count(openssl_copyright) != 1 or ios.count(openssl_copyright) != 1:
+        fail("iOS/macOS BoringSSL OpenSSL copyright line must occur exactly once in each notice")
     for block in inventory["sourceHeaderBlocks"]:
         source_paths = block["sourcePath"].split(" and ")
         if len(source_paths) == 2 and "/" not in source_paths[1]:
@@ -204,7 +209,8 @@ def check_dependency_graph(inventory: dict) -> None:
         if f'.library(name: "{product}"' not in manifest or f"productName = {product};" not in project:
             fail(f"local AgentProxy product graph drifted: {product}")
     linked = {entry["identity"] for entry in inventory["linkedOrRetainedUnlinked"] if entry["status"].startswith("linked")}
-    if set(PRODUCT_EVIDENCE) != linked:
+    expected_evidence = set(STATIC_PRODUCT_EVIDENCE) | {"Sparkle", "CEF"}
+    if expected_evidence != linked:
         fail("gate product evidence mapping no longer matches frozen linked inventory")
 
 
@@ -313,28 +319,166 @@ def check_app(inventory: dict, app: Path) -> None:
     check_runtime_packages(inventory, runtime)
 
 
-def evidence_paths(inputs: Iterable[Path]) -> list[str]:
-    paths: list[str] = []
-    for input_path in inputs:
-        if not input_path.exists():
-            fail(f"--products input does not exist: {input_path}")
-        if input_path.is_file():
-            paths.append(input_path.name)
-            continue
-        for path in input_path.rglob("*"):
-            if path.name.endswith((".o", ".framework", ".app")) or path.is_dir() and path.name.endswith((".framework", ".app")):
-                paths.append(path.as_posix())
-    if not paths:
-        fail("--products found no .o, .framework, or .app evidence; supply the archive plus its DerivedData, not an empty layout")
-    return paths
+def architectures(path: Path) -> set[str]:
+    """Return Mach-O architectures, failing closed for empty/non-Mach-O inputs."""
+    if not path.is_file() or path.stat().st_size == 0:
+        fail(f"required linked input is missing or empty: {path}")
+    try:
+        output = subprocess.run(
+            ["lipo", "-archs", str(path)], text=True, capture_output=True, check=False
+        )
+    except OSError as error:
+        fail(f"cannot inspect Mach-O architecture for {path}: {error}")
+    if output.returncode != 0:
+        fail(f"required linked input is not a valid Mach-O file: {path}")
+    result = set(output.stdout.split())
+    if not result:
+        fail(f"required linked input has no Mach-O architectures: {path}")
+    return result
 
 
-def check_products(inventory: dict, inputs: list[Path]) -> None:
-    paths = evidence_paths(inputs)
-    joined = "\n".join(paths)
-    for identity, names in PRODUCT_EVIDENCE.items():
-        if not all(name in joined for name in names):
-            fail(f"linked product evidence is unavailable for {identity}: expected {names}; archive alone has no static .o evidence, include DerivedData")
+def require_within(path: Path, root: Path, label: str) -> Path:
+    try:
+        return path.resolve().relative_to(root.resolve())
+    except ValueError:
+        fail(f"{label} is outside its supplied root: {path}")
+
+
+def archive_intermediates(derived: Path) -> Path:
+    # xcodebuild archive keeps its exact Release target link inputs under this
+    # scheme-specific ArchiveIntermediates root, separate from ordinary builds.
+    root = derived / "Build/Intermediates.noindex/ArchiveIntermediates/Shepherd"
+    if not root.is_dir():
+        fail(f"DerivedData has no Shepherd archive link inputs: {root}")
+    return root
+
+
+def link_file_list(archive_root: Path, target: str, arch: str) -> Path:
+    if target == "app":
+        relative = Path(
+            "IntermediateBuildFilesPath/shepherd.build/Release/Shepherd.build/"
+            f"Objects-normal/{arch}/hrdrhrdrhrdr.LinkFileList"
+        )
+    else:
+        relative = Path(
+            "IntermediateBuildFilesPath/shepherd.build/Release/hrdrhrdrhrdr-agent-proxy.build/"
+            f"Objects-normal/{arch}/hrdrhrdrhrdr-agent-proxy.LinkFileList"
+        )
+    path = archive_root / relative
+    if not path.is_file() or path.stat().st_size == 0:
+        fail(f"missing Release {target} target link-file-list for {arch}: {path}")
+    return path
+
+
+def link_inputs(path: Path, derived: Path, arch: str) -> set[Path]:
+    result: set[Path] = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        candidate = Path(line)
+        if not candidate.is_absolute():
+            fail(f"link-file-list has a non-absolute input: {path}")
+        require_within(candidate, derived, "link-file-list input")
+        if candidate.suffix != ".o":
+            fail(f"link-file-list has a non-object input: {candidate}")
+        if arch not in architectures(candidate):
+            fail(f"link-file-list input lacks target architecture {arch}: {candidate}")
+        result.add(candidate.resolve())
+    if not result:
+        fail(f"link-file-list has no valid object inputs: {path}")
+    return result
+
+
+def framework_binary(framework: Path) -> Path:
+    binary = framework / framework.stem
+    if not binary.is_file():
+        versions = framework / "Versions"
+        current = versions / "Current" / framework.stem
+        if current.is_file():
+            binary = current
+    if not binary.is_file():
+        fail(f"framework has no executable binary: {framework}")
+    return binary
+
+
+def require_sparkle_load(app_executable: Path) -> None:
+    try:
+        output = subprocess.run(
+            ["otool", "-L", str(app_executable)], text=True, capture_output=True, check=False
+        )
+    except OSError as error:
+        fail(f"cannot inspect app load commands: {error}")
+    if output.returncode != 0 or "@rpath/Sparkle.framework/" not in output.stdout:
+        fail("app executable does not directly link the embedded Sparkle framework")
+
+
+def app_paths(app: Path) -> tuple[Path, Path, Path, Path]:
+    main = app / "Contents/MacOS/hrdrhrdrhrdr"
+    helper = app / "Contents/MacOS/hrdrhrdrhrdr-agent-proxy"
+    sparkle = app / "Contents/Frameworks/Sparkle.framework"
+    cef = app / "Contents/Frameworks/Chromium Embedded Framework.framework"
+    if not main.is_file() or not helper.is_file():
+        fail(f"app is missing its intended main/helper executables: {app}")
+    return main, helper, sparkle, cef
+
+
+def matching_archive_and_derived(inputs: Iterable[Path]) -> tuple[Path, Path, Path]:
+    roots = [path.resolve() for path in inputs]
+    if len(roots) != 2 or len(set(roots)) != 2:
+        fail("--products requires exactly one .xcarchive root and one DerivedData root")
+    for root in roots:
+        if not root.is_dir():
+            fail(f"--products input is not an existing directory: {root}")
+    archives = [root for root in roots if root.suffix == ".xcarchive" and (root / "Products/Applications/hrdrhrdrhrdr.app").is_dir()]
+    derived_roots = [root for root in roots if (root / "Build/Intermediates.noindex").is_dir()]
+    if len(archives) != 1 or len(derived_roots) != 1 or archives[0] == derived_roots[0]:
+        fail("--products requires the matching .xcarchive and DerivedData roots")
+    return archives[0], derived_roots[0], archives[0] / "Products/Applications/hrdrhrdrhrdr.app"
+
+
+def check_products(inventory: dict, app: Path, inputs: list[Path]) -> None:
+    archive, derived, archived_app = matching_archive_and_derived(inputs)
+    check_app(inventory, archived_app)
+    main, helper, sparkle, cef = app_paths(app)
+    archived_main, archived_helper, archived_sparkle, archived_cef = app_paths(archived_app)
+    if (app / "Contents/Info.plist").read_bytes() != (archived_app / "Contents/Info.plist").read_bytes():
+        fail("archive and exported app Info.plist bytes do not match")
+    app_arches = architectures(main)
+    helper_arches = architectures(helper)
+    if app_arches != helper_arches:
+        fail("exported app and embedded agent-proxy helper have different architectures")
+    if architectures(archived_main) != app_arches or architectures(archived_helper) != helper_arches:
+        fail("archive and exported app executable architectures do not match")
+    for candidate in (sparkle, archived_sparkle):
+        binary_arches = architectures(framework_binary(candidate))
+        if not app_arches <= binary_arches:
+            fail(f"embedded Sparkle framework lacks an app architecture: {candidate}")
+    # CEF is embedded and dynamically loaded by design; validating its bundled
+    # binary proves packaging without inventing a direct LC_LOAD_DYLIB contract.
+    for candidate in (cef, archived_cef):
+        binary_arches = architectures(framework_binary(candidate))
+        if not binary_arches <= app_arches:
+            fail(f"embedded CEF framework has an architecture absent from the app: {candidate}")
+    require_sparkle_load(main)
+    require_sparkle_load(archived_main)
+
+    intermediate_root = archive_intermediates(derived)
+    products_root = intermediate_root / "BuildProductsPath/Release"
+    target_inputs: dict[tuple[str, str], set[Path]] = {}
+    for arch in sorted(app_arches):
+        for target in ("app", "helper"):
+            target_inputs[(target, arch)] = link_inputs(link_file_list(intermediate_root, target, arch), derived, arch)
+    for identity, requirements in STATIC_PRODUCT_EVIDENCE.items():
+        for target, filename in requirements:
+            expected = (products_root / filename).resolve()
+            for arch in app_arches:
+                if expected not in target_inputs[(target, arch)]:
+                    fail(f"linked product evidence is unavailable for {identity}: {filename} is not an exact {target} link input")
+    # Both local AgentProxy products must appear in the helper link context,
+    # not merely elsewhere in the DerivedData tree.
+    for filename in ("AgentProxyProtocol.o", "AgentProxyForwarder.o"):
+        expected = (products_root / filename).resolve()
+        for arch in app_arches:
+            if expected not in target_inputs[("helper", arch)]:
+                fail(f"agent proxy helper link evidence is incomplete: {filename}")
 
 
 def stamp_version(version: str) -> None:
@@ -368,11 +512,18 @@ def self_test() -> None:
 
     rejected("format", lambda: check_notice_structure(inventory, "broken\n", ios))
     rejected("duplicate section", lambda: check_notice_structure(inventory, mac + f"\n{SEP}\nTrademarks\n{SEP}\nextra\n", ios))
+    rejected(
+        "missing iOS BoringSSL OpenSSL copyright line",
+        lambda: check_notice_sources(
+            inventory,
+            mac,
+            ios.replace("Copyright 2014-2020 The OpenSSL Project Authors. All Rights Reserved.\n", "", 1),
+        ),
+    )
     rejected("source attribution hash", lambda: require_hash(ROOT / inventory["verbatimBlocks"][0]["sourcePath"], "0" * 64, "fixture"))
     rejected("CEF provenance", lambda: check_cef({**inventory, "cefCredits": {**inventory["cefCredits"], "sha256": "0" * 64}}))
     rejected("package pin drift", lambda: check_dependency_graph({**inventory, "changeFingerprints": {**inventory["changeFingerprints"], "packageResolved": "Tests/Notices/fixtures/missing.json"}}))
     rejected("runtime lock/license drift", lambda: check_runtime_packages(inventory, ROOT / "Tests/Notices/fixtures"))
-    rejected("missing product evidence", lambda: check_products(inventory, [ROOT / "Tests/Notices/fixtures"]))
 
     with tempfile.TemporaryDirectory(prefix="shphrd-87-notices-") as temporary:
         fixture = Path(temporary)
@@ -385,18 +536,22 @@ def self_test() -> None:
         copy_runtime_for_fixture(resources / "AgentRuntime")
         check_app(inventory, app)
 
+        # Product fixtures deliberately use empty objects and misleading names.
+        # The gate has no synthetic success path: only real archive/DerivedData
+        # target link inputs can pass, so these must all fail closed.
         products = fixture / "products"
         products.mkdir()
-        for names in PRODUCT_EVIDENCE.values():
-            for name in names:
-                evidence = products / (name if name.endswith(".framework") else f"{name}.o")
-                if evidence.suffix == ".framework":
-                    evidence.mkdir()
-                else:
-                    evidence.touch()
-        check_products(inventory, [products])
-        (products / "NIOSSH.o").unlink()
-        rejected("incomplete product evidence", lambda: check_products(inventory, [products]))
+        for requirements in STATIC_PRODUCT_EVIDENCE.values():
+            for _, filename in requirements:
+                (products / filename).touch()
+        misleading = fixture / "BigInt-NIOCore-AgentProxyForwarder-Release.xcarchive"
+        misleading.mkdir()
+        rejected("arbitrary empty named products", lambda: check_products(inventory, app, [products, misleading]))
+        rejected("misleading product path tokens", lambda: check_products(inventory, app, [misleading, products]))
+        rejected("wrong product roots", lambda: check_products(inventory, app, [products, fixture]))
+        (products / "AgentProxyForwarder.o").unlink()
+        rejected("missing AgentProxyForwarder", lambda: check_products(inventory, app, [products, misleading]))
+        rejected("incomplete product evidence", lambda: check_products(inventory, app, [products, fixture]))
 
         (resources / "ThirdPartyNotices.txt").write_text("stale\n", encoding="utf-8")
         rejected("app notice/version content mismatch", lambda: check_app(inventory, app))
@@ -423,7 +578,9 @@ def main() -> int:
         if args.app:
             check_app(inventory, args.app)
         if args.products:
-            check_products(inventory, args.products)
+            if not args.app:
+                fail("--products requires --app so evidence is tied to the exported app")
+            check_products(inventory, args.app, args.products)
     except NoticeFailure as error:
         print(f"error: {error}", file=os.sys.stderr)
         return 1

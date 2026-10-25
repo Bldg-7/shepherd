@@ -183,9 +183,15 @@ the macOS notice header with the requested release version and restores the revi
 file on exit. The gate is offline and checks the frozen notice/source hashes, Package.resolved
 and local AgentProxy product graph, runtime `package-lock.json`/bundled license locations,
 pinned and staged CEF credits, bundled notice/credits bytes, and linked-product evidence.
-It receives both the `.xcarchive` and release DerivedData: archives hold the exported app,
-while static Swift package object evidence remains in DerivedData. Missing evidence is a
-failure, not an empty-glob success.
+It receives both the `.xcarchive` and release DerivedData. The gate requires the archive's
+intended app/helper executables and embedded frameworks to match the exported app's
+architectures, then reads the exact Xcode-generated Release link-file-list for each target.
+Every static product must be a non-empty Mach-O object at its expected DerivedData product
+path and a direct input of the intended app or agent-proxy helper target (including both
+`AgentProxyProtocol` and `AgentProxyForwarder` in the helper). Sparkle must be both embedded
+and directly loaded by the app; CEF is only required to be a valid embedded framework because
+the app dynamically loads it by design. Missing, wrong-root, empty, or merely similarly named
+evidence is a failure, not an empty-glob success.
 
 Existing output is not deleted. On a Mac, keep what a failed attempt left in
 `build/release/<version>`, and set `SHEPHERD_RELEASE_WORK` to a fresh directory for the
