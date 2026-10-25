@@ -1,0 +1,40 @@
+name: Shepherd Tart Build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shepherd-tart-build
+  cancel-in-progress: false
+
+jobs:
+  unsigned-build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, macOS, ARM64, shepherd-tart]
+    timeout-minutes: 60
+    steps:
+      # No checkout or repository script executes on the host. The root-owned
+      # supervisor builds only the source SHA approved in its host config.
+      - name: Build approved source in the persistent isolated VM
+        env:
+          SHEPHERD_CI_MODE: '1'
+          SHEPHERD_STATUS_DIR: /Library/Application Support/ShepherdRunner/state
+        run: >-
+          /opt/homebrew/opt/python@3.13/bin/python3.13 -u
+          '/Library/Application Support/ShepherdRunner/bin/run-persistent-build.py'
+      - name: Verify build and graceful VM shutdown
+        run: |
+          /opt/homebrew/opt/python@3.13/bin/python3.13 - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path('/Library/Application Support/ShepherdRunner/state/persistent-result.json')
+          result = json.loads(p.read_text())
+          assert result['status'] == 'passed', 'Build did not pass'
+          assert result['source_sha'] == os.environ['GITHUB_SHA'], 'Unexpected source SHA'
+          assert result['vm_stopped'] is True, 'VM did not shut down'
+          assert result['network_smoke'] == 'passed', 'Network isolation was not verified'
+          print(json.dumps(result, indent=2))
+          PY
