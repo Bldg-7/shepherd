@@ -38,7 +38,12 @@ final class MobileAgentListCache {
     /// A machine-wide removal can be followed by a newly added variant not
     /// present when it was removed. That variant must still wait for the old
     /// record eviction before it gets any generation or clears the tombstone.
-    private var machineEvictions: [UUID: Task<Bool, Never>] = [:]
+    private struct MachineEviction {
+        let retirementIncarnation: UInt64
+        let task: Task<Bool, Never>
+    }
+
+    private var machineEvictions: [UUID: MachineEviction] = [:]
 
     init(machineStore: MachineStore, directory: URL) {
         self.machineStore = machineStore
@@ -139,7 +144,7 @@ final class MobileAgentListCache {
     }
 
     private func invalidate(machineID: UUID) -> Bool {
-        guard retired.retire(machineID: machineID) else { return false }
+        guard let retirementIncarnation = retired.retire(machineID: machineID) else { return false }
         let matching = states.keys.filter { $0.machineID == machineID }
         for identity in matching {
             var state = states[identity] ?? IdentityState()
@@ -151,16 +156,12 @@ final class MobileAgentListCache {
             state.writeTask = nil
             states[identity] = state
         }
-        // All later generations wait for this same actor operation, including
-        // an A -> B -> A return that happens before an old eviction completes.
-        let hook = testingHooks?.evictMachine
-        let eviction = Task { [cache] in
-            if let hook { return await hook(machineID) }
-            return await cache.evict(machineID: machineID)
-        }
-        machineEvictions[machineID] = eviction
+        // A retirement incarnation is carried with the actor operation. A
+        // delayed acknowledgement from an earlier removal must never clear a
+        // newer machine-wide barrier.
+        let eviction = startMachineEviction(machineID: machineID, retirementIncarnation: retirementIncarnation)
         for identity in matching {
-            states[identity]?.evictionTask = eviction
+            states[identity]?.evictionTask = eviction.task
         }
         return true
     }
@@ -215,10 +216,18 @@ final class MobileAgentListCache {
 
     private func generation(for identity: Machine.ConnectionIdentity, revision: UInt64) async -> UInt64? {
         if let generation = states[identity]?.generation { return generation }
-        if let eviction = machineEvictions[identity.machineID] {
-            _ = await eviction.value
-            guard states[identity]?.revision == revision else { return nil }
-            machineEvictions.removeValue(forKey: identity.machineID)
+        // The durable machine marker is deliberately independent from exact
+        // identities. Re-enabling one connection must first remove every old
+        // variant for the machine, including variants that survived a process
+        // loss before the original actor eviction could run.
+        if let retirementIncarnation = retired.machineRetirement(for: identity.machineID) {
+            let eviction = startMachineEviction(machineID: identity.machineID, retirementIncarnation: retirementIncarnation)
+            guard await eviction.task.value,
+                  states[identity]?.revision == revision,
+                  retired.restore(machineID: identity.machineID, retirementIncarnation: retirementIncarnation) else { return nil }
+            if machineEvictions[identity.machineID]?.retirementIncarnation == retirementIncarnation {
+                machineEvictions.removeValue(forKey: identity.machineID)
+            }
         }
         if let eviction = states[identity]?.evictionTask {
             _ = await eviction.value
@@ -229,6 +238,20 @@ final class MobileAgentListCache {
         guard generation != .max, states[identity]?.revision == revision else { return nil }
         states[identity]?.generation = generation
         return generation
+    }
+
+    private func startMachineEviction(machineID: UUID, retirementIncarnation: UInt64) -> MachineEviction {
+        if let existing = machineEvictions[machineID], existing.retirementIncarnation == retirementIncarnation {
+            return existing
+        }
+        let hook = testingHooks?.evictMachine
+        let task = Task { [cache] in
+            if let hook { return await hook(machineID) }
+            return await cache.evict(machineID: machineID)
+        }
+        let eviction = MachineEviction(retirementIncarnation: retirementIncarnation, task: task)
+        machineEvictions[machineID] = eviction
+        return eviction
     }
 
     private func storeCurrent(identity: Machine.ConnectionIdentity, revision: UInt64) async {
@@ -251,9 +274,10 @@ final class MobileAgentListCache {
         let stored = await cache.store(snapshot, for: identity, generation: generation)
         testingHooks?.didStore?(identity, revision, stored)
         guard stored, states[identity]?.revision == revision else { return }
-        // Retirements stay durable until the fresh live snapshot is durably
-        // stored. A failed tombstone clear is fail-closed: cache reads remain
-        // blocked rather than reusing any retired data after recreation.
+        // Exact-identity retirement is cleared only by its own fresh durable
+        // replacement. It intentionally cannot clear the separate machine
+        // barrier, which is released only after a successful all-variant
+        // eviction in generation(for:revision:).
         _ = retired.restore(identity)
         state = states[identity] ?? state
         if state.revision == revision { state.writeTask = nil; states[identity] = state }
@@ -294,10 +318,39 @@ final class MobileAgentListCache {
 /// unreadable journal bytes are never erased and fail closed.
 @MainActor
 private final class RetiredCacheIdentities {
+    private static let schemaVersion = 2
+    private static let maximumFileBytes = 64 * 1024
+    private static let maximumRetirements = 64
+    fileprivate static let maximumStringLength = 1_024
+
+    private struct IdentityRetirement: Codable, Hashable {
+        let identity: AgentListCache.ConnectionFingerprint
+        let incarnation: UInt64
+    }
+
+    private struct MachineRetirement: Codable, Hashable {
+        let machineID: UUID
+        let incarnation: UInt64
+        /// Exact markers no newer than this were present before this
+        /// all-variant eviction began, so its successful acknowledgement may
+        /// safely reclaim them with the machine marker.
+        let identityIncarnationThrough: UInt64
+    }
+
     private struct Journal: Codable {
-        var schemaVersion = 1
-        var identities: Set<AgentListCache.ConnectionFingerprint> = []
-        var machineIDs: Set<UUID> = []
+        var schemaVersion = RetiredCacheIdentities.schemaVersion
+        var nextIncarnation: UInt64 = 0
+        var identities: Set<IdentityRetirement> = []
+        var machines: Set<MachineRetirement> = []
+    }
+
+    /// The initial journal format had no incarnation. It is read only within
+    /// the same bounded decoder path, then upgraded on the next successful
+    /// journal write without ever dropping its barriers.
+    private struct LegacyJournal: Codable {
+        let schemaVersion: Int
+        let identities: Set<AgentListCache.ConnectionFingerprint>
+        let machineIDs: Set<UUID>
     }
 
     private enum State { case loaded(Journal), unavailable }
@@ -312,7 +365,7 @@ private final class RetiredCacheIdentities {
         self.fileManager = fileManager
         if !fileManager.fileExists(atPath: fileURL.path) {
             state = .loaded(Journal())
-        } else if let data = try? Data(contentsOf: fileURL), let journal = try? JSONDecoder().decode(Journal.self, from: data), journal.schemaVersion == 1 {
+        } else if let data = try? Self.readBoundedFile(at: fileURL), let journal = Self.decode(data) {
             state = .loaded(journal)
         } else {
             state = .unavailable
@@ -322,39 +375,80 @@ private final class RetiredCacheIdentities {
     func contains(_ identity: Machine.ConnectionIdentity) -> Bool {
         guard case .loaded(let journal) = state else { return true }
         let fingerprint = AgentListCache.ConnectionFingerprint(identity)
-        return journal.identities.contains(fingerprint) || journal.machineIDs.contains(identity.machineID)
+        return journal.identities.contains { $0.identity == fingerprint } ||
+            journal.machines.contains { $0.machineID == identity.machineID }
+    }
+
+    func machineRetirement(for machineID: UUID) -> UInt64? {
+        guard case .loaded(let journal) = state else { return nil }
+        return journal.machines.first { $0.machineID == machineID }?.incarnation
     }
 
     func retire(_ identity: Machine.ConnectionIdentity) -> Bool {
-        update { $0.identities.insert(AgentListCache.ConnectionFingerprint(identity)) }
+        guard case .loaded(var journal) = state,
+              let incarnation = Self.nextIncarnation(for: &journal) else { return false }
+        let fingerprint = AgentListCache.ConnectionFingerprint(identity)
+        journal.identities = Set(journal.identities.filter { $0.identity != fingerprint })
+        journal.identities.insert(.init(identity: fingerprint, incarnation: incarnation))
+        guard Self.isWithinBounds(journal), persist(journal) else { return false }
+        state = .loaded(journal)
+        return true
     }
 
-    func retire(machineID: UUID) -> Bool {
-        update { $0.machineIDs.insert(machineID) }
+    /// Returns the durable incarnation that an eviction acknowledgement must
+    /// match. Repeated removals always get a newer incarnation.
+    func retire(machineID: UUID) -> UInt64? {
+        guard case .loaded(var journal) = state,
+              let incarnation = Self.nextIncarnation(for: &journal) else { return nil }
+        journal.machines = Set(journal.machines.filter { $0.machineID != machineID })
+        journal.machines.insert(.init(machineID: machineID, incarnation: incarnation,
+                                      identityIncarnationThrough: incarnation - 1))
+        guard persist(journal) else { return nil }
+        state = .loaded(journal)
+        return incarnation
     }
 
     /// A new, successfully stored live snapshot is the only evidence allowed
-    /// to clear a retirement. It never clears unrelated retired variants.
+    /// to clear an exact retirement. It never clears a machine barrier.
     func restore(_ identity: Machine.ConnectionIdentity) -> Bool {
-        update {
-            $0.identities.remove(AgentListCache.ConnectionFingerprint(identity))
-            $0.machineIDs.remove(identity.machineID)
+        update { journal in
+            let fingerprint = AgentListCache.ConnectionFingerprint(identity)
+            journal.identities = Set(journal.identities.filter { $0.identity != fingerprint })
         }
     }
 
-    private func update(_ mutate: (inout Journal) -> Void) -> Bool {
-        guard case .loaded(var journal) = state else { return false }
-        mutate(&journal)
+    /// Clears only the exact machine retirement acknowledged by a successful
+    /// all-variant cache eviction. A delayed older acknowledgement fails
+    /// closed when a later retirement has replaced the marker.
+    func restore(machineID: UUID, retirementIncarnation: UInt64) -> Bool {
+        guard case .loaded(var journal) = state,
+              let retirement = journal.machines.first(where: {
+                  $0.machineID == machineID && $0.incarnation == retirementIncarnation
+              }) else { return false }
+        journal.machines.remove(retirement)
+        journal.identities = Set(journal.identities.filter {
+            !($0.identity.machineID == machineID && $0.incarnation <= retirement.identityIncarnationThrough)
+        })
         guard persist(journal) else { return false }
         state = .loaded(journal)
         return true
     }
 
+    private func update(_ mutate: (inout Journal) -> Void) -> Bool {
+        guard case .loaded(var journal) = state else { return false }
+        mutate(&journal)
+        guard Self.isWithinBounds(journal), persist(journal) else { return false }
+        state = .loaded(journal)
+        return true
+    }
+
     private func persist(_ journal: Journal) -> Bool {
+        guard Self.isWithinBounds(journal) else { return false }
         do {
             try fileManager.createDirectory(at: directory, withIntermediateDirectories: true,
                                             attributes: [.posixPermissions: 0o700])
             let data = try JSONEncoder().encode(journal)
+            guard data.count <= Self.maximumFileBytes else { return false }
             let temporary = directory.appendingPathComponent(".agent-list-cache-retired-\(UUID().uuidString).tmp")
             defer { try? fileManager.removeItem(at: temporary) }
             try data.write(to: temporary, options: .withoutOverwriting)
@@ -368,4 +462,69 @@ private final class RetiredCacheIdentities {
             return false
         }
     }
+
+    private static func nextIncarnation(for journal: inout Journal) -> UInt64? {
+        guard journal.nextIncarnation < .max else { return nil }
+        journal.nextIncarnation += 1
+        return journal.nextIncarnation
+    }
+
+    private static func decode(_ data: Data) -> Journal? {
+        let decoder = JSONDecoder()
+        if let journal = try? decoder.decode(Journal.self, from: data), isWithinBounds(journal) {
+            return journal
+        }
+        guard let legacy = try? decoder.decode(LegacyJournal.self, from: data), legacy.schemaVersion == 1,
+              legacy.identities.count <= maximumRetirements, legacy.machineIDs.count <= maximumRetirements,
+              legacy.identities.allSatisfy(isWithinBounds) else { return nil }
+        var next: UInt64 = 0
+        var identities: Set<IdentityRetirement> = []
+        for identity in legacy.identities {
+            next += 1
+            identities.insert(.init(identity: identity, incarnation: next))
+        }
+        var machines: Set<MachineRetirement> = []
+        for machineID in legacy.machineIDs {
+            next += 1
+            machines.insert(.init(machineID: machineID, incarnation: next, identityIncarnationThrough: next - 1))
+        }
+        let journal = Journal(nextIncarnation: next, identities: identities, machines: machines)
+        return isWithinBounds(journal) ? journal : nil
+    }
+
+    /// Reads at most one byte beyond the cap before JSON decoding, preserving
+    /// unreadable bytes and avoiding an unbounded materialization at launch.
+    private static func readBoundedFile(at fileURL: URL) throws -> Data {
+        let handle = try FileHandle(forReadingFrom: fileURL)
+        defer { try? handle.close() }
+        let data = try handle.read(upToCount: maximumFileBytes + 1) ?? Data()
+        guard data.count <= maximumFileBytes else { throw JournalReadError.invalid }
+        return data
+    }
+
+    private static func isWithinBounds(_ journal: Journal) -> Bool {
+        journal.schemaVersion == schemaVersion && journal.identities.count <= maximumRetirements &&
+            journal.machines.count <= maximumRetirements &&
+            Set(journal.identities.map(\.identity)).count == journal.identities.count &&
+            Set(journal.machines.map(\.machineID)).count == journal.machines.count &&
+            journal.identities.allSatisfy {
+                $0.incarnation > 0 && $0.incarnation <= journal.nextIncarnation && isWithinBounds($0.identity)
+            } && journal.machines.allSatisfy {
+                $0.incarnation > 0 && $0.incarnation <= journal.nextIncarnation &&
+                    $0.identityIncarnationThrough < $0.incarnation
+            }
+    }
+
+    private static func isWithinBounds(_ identity: AgentListCache.ConnectionFingerprint) -> Bool {
+        identity.port > 0 && identity.port <= 65_535 &&
+            identity.hostname.isNonemptyJournalString && identity.username.isNonemptyJournalString &&
+            identity.sessionName.isJournalString && identity.credentialReferenceDigest.isNonemptyJournalString
+    }
+
+    private enum JournalReadError: Error { case invalid }
+}
+
+private extension String {
+    var isJournalString: Bool { count <= RetiredCacheIdentities.maximumStringLength }
+    var isNonemptyJournalString: Bool { !isEmpty && isJournalString }
 }

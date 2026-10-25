@@ -24,6 +24,15 @@ the cache actor and journal still read/write the owned disk files. Cases cover:
 - ordinary and paired-address A→B→A fresh cache recovery;
 - process loss while edit/removal eviction is delayed, without retired disk
   resurrection;
+- multi-variant machine retirement: a fresh A publication waits for successful
+  all-variant eviction before it can release the machine barrier, so stale B
+  cannot return; failed eviction and a delayed older acknowledgement retain the
+  newest barrier;
+- corrupt, oversized, and full bounded journals failing closed before a
+  replacement credential write, followed by capacity reclamation only after a successful
+  machine-wide purge; and
+- an executable original-P1 negative control: `8d76aab` is compiled into the
+  owned output and fails the all-variant-purge assertion as expected;
 - journal persistence failure rejecting a replacement credential before its
   write;
 - bounded burst coalescing plus explicit flush; and
