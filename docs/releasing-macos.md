@@ -177,6 +177,16 @@ as 0.5.0 did. A reused `build/DerivedData` can still hold helpers under the earl
 `Shepherd Helper`, which also fails the check; delete `build/DerivedData` and run the
 script again.
 
+The script then runs `Tests/Notices/run-notices-tests.py --app --products` before it
+accepts the exported app for signing/notarization. Before archiving it temporarily stamps
+the macOS notice header with the requested release version and restores the reviewed source
+file on exit. The gate is offline and checks the frozen notice/source hashes, Package.resolved
+and local AgentProxy product graph, runtime `package-lock.json`/bundled license locations,
+pinned and staged CEF credits, bundled notice/credits bytes, and linked-product evidence.
+It receives both the `.xcarchive` and release DerivedData: archives hold the exported app,
+while static Swift package object evidence remains in DerivedData. Missing evidence is a
+failure, not an empty-glob success.
+
 Existing output is not deleted. On a Mac, keep what a failed attempt left in
 `build/release/<version>`, and set `SHEPHERD_RELEASE_WORK` to a fresh directory for the
 retry. A workflow run starts from nothing each time.
@@ -185,9 +195,14 @@ retry. A workflow run starts from nothing each time.
 
 Verify version/build, architectures, Developer ID team, hardened runtime, every nested
 CEF/helper signature, notarization/staple, third-party notices, bundled runtime integrity,
-and absence of development credentials/profiles/evidence. Use private profiles of your own
-for any runtime smoke tests. Do not restart or operate a copy of the app that someone is
-using.
+and absence of development credentials/profiles/evidence. The automated notice gate is not
+a replacement for a human resource review: in the candidate app, inspect
+`Contents/Resources/ThirdPartyNotices.txt` for the matching header version and the unique
+two BoringSSL sections, Niels Provos, WIDE Project, Rich Felker, and uSHET; manually open
+`Contents/Resources/ChromiumCredits.html` in Safari and confirm the credits are readable.
+This manual viewing remains required; do not automate a browser for it. Use private profiles
+of your own for any runtime smoke tests. Do not restart or operate a copy of the app that
+someone is using.
 
 ## Publish
 

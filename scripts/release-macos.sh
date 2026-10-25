@@ -178,6 +178,20 @@ fi
 [[ ! -e "$WORK" ]] || fail "Output already exists; preserve it and use SHEPHERD_RELEASE_WORK for a fresh attempt"
 [[ -f "$ROOT/Shepherd/Agents/AgentRuntime/node_modules/@playwright/mcp/package.json" ]] || fail "Prepare the locked browser runtime before archiving"
 [[ -d "$ROOT/Vendor/CEF/out/Chromium Embedded Framework.framework" ]] || fail "Run scripts/cef.sh before archiving"
+# The notice resource is source-synchronized by Xcode. Stamp the candidate's
+# header before archiving, then always restore the reviewed source file when
+# this script exits. The exported bundle is checked against this stamped copy.
+mkdir -p "$WORK"
+NOTICE_SOURCE="$ROOT/Shepherd/ThirdPartyNotices.txt"
+NOTICE_BACKUP="$WORK/.ThirdPartyNotices.txt.before-release"
+cp "$NOTICE_SOURCE" "$NOTICE_BACKUP"
+restore_notice_source() {
+    cmp -s "$NOTICE_BACKUP" "$NOTICE_SOURCE" || cp "$NOTICE_BACKUP" "$NOTICE_SOURCE"
+    rm -f "$NOTICE_BACKUP"
+}
+trap restore_notice_source EXIT
+python3 "$ROOT/Tests/Notices/run-notices-tests.py" --stamp-version "$VERSION" \
+    || fail "couldn't stamp the third-party notice header"
 if [[ -f "$UPDATES/appcast.xml" ]]; then
     python3 - "$UPDATES/appcast.xml" "$BUILD_NUMBER" <<'PY'
 import sys,xml.etree.ElementTree as ET
@@ -190,7 +204,6 @@ fi
 step "Signing pinned CEF framework and helper inputs"
 python3 "$ROOT/scripts/sign-cef.py" --identity "$SIGN_IDENTITY"
 step "Archiving hrdrhrdrhrdr $VERSION ($BUILD_NUMBER)"
-mkdir -p "$WORK"
 xcodebuild archive -quiet \
     -project "$ROOT/shepherd.xcodeproj" -scheme Shepherd -configuration Release \
     -destination 'generic/platform=macOS' \
@@ -224,6 +237,11 @@ xcodebuild -exportArchive -quiet \
 # left there by a reused DerivedData, is refused too.
 python3 "$ROOT/Tests/AgentBrowser/run-cef-helper-name-tests.py" --app "$APP" \
     || fail "the exported app's browser helpers don't match the name it starts them by"
+# An xcarchive contains the exported app but not static-package object files.
+# Supply its DerivedData too, so the notice gate rejects unavailable linked
+# product evidence rather than accepting an empty archive glob.
+python3 "$ROOT/Tests/Notices/run-notices-tests.py" --app "$APP" --products "$ARCHIVE" "$DERIVED" \
+    || fail "the exported app's third-party notices, Chromium credits, runtime licenses, or linked-product evidence are incomplete"
 # The agent proxy (SHPHRD-105) runs from Contents/MacOS as a LaunchAgent the
 # app registers: its executable there, linking no framework of the app's and
 # signed by the team with the hardened runtime, as notarization requires, and
