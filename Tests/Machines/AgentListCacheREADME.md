@@ -12,8 +12,14 @@ Keychain, SSH, herdr, the installed app, or the network.
 The checks cover restart persistence, the explicit DTO allowlist (including no
 raw Keychain reference or session/output/transcript fields), authoritative
 empty snapshots, retaining an old DTO when a caller has a partial nested
-round, connection-generation invalidation, count/string bounds, corrupt-file
-preservation, and a failed atomic replacement preserving the prior file.
+round, connection-generation invalidation (including issued-but-never-stored
+connection variants), count/string bounds, corrupt-file preservation, and a
+failed atomic replacement preserving the prior file.
+
+Generations are opaque, non-reusable leases. `evict` and `prune` invalidate a
+lease even when its first store is still in flight; a later re-add receives a
+new token. The cache retains only active leases (up to its record bound), so a
+lease request that cannot be issued returns `.max`, which `store` rejects.
 
 `AgentListCache` deliberately has no singleton and no default Application
 Support location. The iOS composition owner must pass its app-owned Application

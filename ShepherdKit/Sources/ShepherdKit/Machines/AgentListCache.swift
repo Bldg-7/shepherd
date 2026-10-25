@@ -221,7 +221,11 @@ public actor AgentListCache {
     private let fileURL: URL
     private let fileManager: FileManager
     private var loadState: LoadState = .notLoaded
+    /// Only currently usable leases are retained. Invalidating a lease removes
+    /// it; a globally unique replacement token prevents an old lease from
+    /// becoming valid again if that identity is later re-added.
     private var generations: [ConnectionFingerprint: UInt64] = [:]
+    private var nextGeneration: UInt64 = 0
 
     /// `directory` must be an app-owned directory. Tests inject an owned
     /// temporary directory; production iOS code must pass Application Support.
@@ -239,12 +243,17 @@ public actor AgentListCache {
         return envelope.snapshots.first { $0.identity == ConnectionFingerprint(identity) }
     }
 
-    /// A monotonically increasing token for one identity. Callers capture this
+    /// An opaque, non-reusable token for one identity. Callers capture this
     /// before async work and pass it to `store`; `evict`/`prune` invalidate old
-    /// tokens so late tasks cannot recreate an evicted cache value.
+    /// tokens so late tasks cannot recreate an evicted cache value. If the
+    /// bounded lease table or token space is exhausted, this returns `.max`;
+    /// `.max` is never issued and `store` rejects it.
     public func generation(for identity: Machine.ConnectionIdentity) -> UInt64 {
         let fingerprint = ConnectionFingerprint(identity)
-        return generations[fingerprint, default: 0]
+        if let generation = generations[fingerprint] { return generation }
+        guard let generation = issueGeneration() else { return .max }
+        generations[fingerprint] = generation
+        return generation
     }
 
     /// Stores a complete immutable value only when it still belongs to the
@@ -254,7 +263,8 @@ public actor AgentListCache {
     public func store(_ snapshot: Snapshot, for identity: Machine.ConnectionIdentity, generation: UInt64) -> Bool {
         let fingerprint = ConnectionFingerprint(identity)
         guard snapshot.identity == fingerprint,
-              generations[fingerprint, default: 0] == generation,
+              let currentGeneration = generations[fingerprint],
+              currentGeneration == generation,
               snapshot.isWithinBounds else { return false }
         guard let current = ensureLoaded() else { return false }
 
@@ -278,29 +288,40 @@ public actor AgentListCache {
     }
 
     /// Removes all saved connection variants for a removed machine and blocks
-    /// writers that captured any of their old generations.
+    /// writers that captured any of their old generations, including variants
+    /// that have not reached their first store yet.
     @discardableResult
     public func evict(machineID: UUID) -> Bool {
+        invalidate { $0.machineID == machineID }
         guard let current = ensureLoaded() else { return false }
-        let removed = current.snapshots.filter { $0.identity.machineID == machineID }
-        for snapshot in removed { invalidate(snapshot.identity) }
         return persist(current.snapshots.filter { $0.identity.machineID != machineID })
     }
 
     /// Keeps only current exact identities. This also evicts stale identities
-    /// created by connection edits, paired-address changes, or removals.
+    /// created by connection edits, paired-address changes, or removals,
+    /// including issued identities that have not been stored yet.
     @discardableResult
     public func prune(keeping identities: [Machine.ConnectionIdentity]) -> Bool {
-        guard let current = ensureLoaded() else { return false }
         let keep = Set(identities.map(ConnectionFingerprint.init))
-        let removed = current.snapshots.filter { !keep.contains($0.identity) }
-        for snapshot in removed { invalidate(snapshot.identity) }
+        invalidate { !keep.contains($0) }
+        guard let current = ensureLoaded() else { return false }
         return persist(current.snapshots.filter { keep.contains($0.identity) })
     }
 
+    private func issueGeneration() -> UInt64? {
+        guard generations.count < Self.maximumRecords, nextGeneration < .max else { return nil }
+        defer { nextGeneration += 1 }
+        return nextGeneration
+    }
+
     private func invalidate(_ fingerprint: ConnectionFingerprint) {
-        let current = generations[fingerprint, default: 0]
-        generations[fingerprint] = current == .max ? 0 : current + 1
+        generations.removeValue(forKey: fingerprint)
+    }
+
+    private func invalidate(where shouldInvalidate: (ConnectionFingerprint) -> Bool) {
+        for fingerprint in generations.keys.filter(shouldInvalidate) {
+            invalidate(fingerprint)
+        }
     }
 
     private func removing(_ shouldRemove: (Snapshot) -> Bool) -> Bool {
@@ -327,8 +348,7 @@ public actor AgentListCache {
             return empty
         }
         do {
-            let data = try Data(contentsOf: fileURL, options: .mappedIfSafe)
-            guard data.count <= Self.maximumFileBytes else { throw CacheReadError.invalid }
+            let data = try readBoundedFile()
             let decoded = try JSONDecoder().decode(Envelope.self, from: data)
             guard decoded.schemaVersion == Self.schemaVersion,
                   decoded.snapshots.count <= Self.maximumRecords,
@@ -339,6 +359,16 @@ public actor AgentListCache {
             loadState = .unavailable
             return nil
         }
+    }
+
+    /// Reads at most one byte beyond the cache limit, so a hostile file is not
+    /// mapped or materialized in full before its size is rejected.
+    private func readBoundedFile() throws -> Data {
+        let handle = try FileHandle(forReadingFrom: fileURL)
+        defer { try? handle.close() }
+        let data = try handle.read(upToCount: Self.maximumFileBytes + 1) ?? Data()
+        guard data.count <= Self.maximumFileBytes else { throw CacheReadError.invalid }
+        return data
     }
 
     private func write(_ envelope: Envelope) -> Bool {

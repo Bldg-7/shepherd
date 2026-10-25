@@ -8,8 +8,9 @@ import Foundation
         checks += 1
     }
 
-    static func identity(hostname: String = "cache.example", tag: String = "synthetic-keychain-reference") -> Machine.ConnectionIdentity {
-        var machine = Machine(id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!, displayName: "Cache fixture",
+    static func identity(hostname: String = "cache.example", tag: String = "synthetic-keychain-reference",
+                         machineID: UUID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!) -> Machine.ConnectionIdentity {
+        var machine = Machine(id: machineID, displayName: "Cache fixture",
                               hostname: hostname, port: 2222, username: "fixture", authMethod: .key,
                               sessionName: "board", isLocal: false, addressKind: .tailscaleMagicDNS)
         machine.keychainTag = tag
@@ -45,6 +46,8 @@ import Foundation
         try await restartRoundTripAndAllowlist(root.appendingPathComponent("roundtrip", isDirectory: true))
         try await emptyFailureAndPartialRetention(root.appendingPathComponent("merge", isDirectory: true))
         try await identityInvalidation(root.appendingPathComponent("identity", isDirectory: true))
+        try await issuedIdentityInvalidation(root.appendingPathComponent("issued-identity", isDirectory: true))
+        try await boundedGenerationLeases(root.appendingPathComponent("leases", isDirectory: true))
         try await boundsCorruptionAndAtomicFailure(root.appendingPathComponent("failure", isDirectory: true))
         print("PASS \(checks) agent-list cache storage checks; owned temporary storage only")
     }
@@ -109,6 +112,61 @@ import Foundation
         check(await cache.store(snapshot(editedIdentity), for: editedIdentity, generation: reloadedGeneration), "current identity can store after prune")
         check(await cache.evict(machineID: editedIdentity.machineID), "machine removal evicts all remaining variants")
         check(await cache.load(for: editedIdentity) == nil, "removed machine has no cache")
+    }
+
+    static func issuedIdentityInvalidation(_ directory: URL) async throws {
+        let removed = identity(hostname: "removed.example")
+        let other = identity(hostname: "retained.example", machineID: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!)
+        let cache = AgentListCache(directory: directory)
+
+        let removalGeneration = await cache.generation(for: removed)
+        let otherGeneration = await cache.generation(for: other)
+        check(!(await cache.store(snapshot(other), for: other, generation: otherGeneration + 1)), "unknown generation is rejected")
+        check(await cache.evict(machineID: removed.machineID), "machine removal succeeds with only in-flight identities")
+        check(!(await cache.store(snapshot(removed), for: removed, generation: removalGeneration)), "machine removal rejects a writer issued before its first store")
+        check(await cache.store(snapshot(other), for: other, generation: otherGeneration), "machine removal leaves an unrelated issued identity valid")
+        let readdedRemovalGeneration = await cache.generation(for: removed)
+        check(readdedRemovalGeneration != removalGeneration, "re-adding an identity receives a new generation")
+        check(await cache.store(snapshot(removed), for: removed, generation: readdedRemovalGeneration), "re-added identity can store with its new generation")
+
+        let pruneOnly = identity(hostname: "pruned-before-store.example", machineID: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!)
+        let pruneGeneration = await cache.generation(for: pruneOnly)
+        check(await cache.prune(keeping: [other]), "prune succeeds with an in-flight identity")
+        check(!(await cache.store(snapshot(pruneOnly), for: pruneOnly, generation: pruneGeneration)), "prune rejects a writer issued before its first store")
+        check(await cache.load(for: other) != nil, "prune retains the kept identity")
+        let readdedPruneGeneration = await cache.generation(for: pruneOnly)
+        check(readdedPruneGeneration != pruneGeneration, "prune re-add receives a new generation")
+        check(await cache.store(snapshot(pruneOnly), for: pruneOnly, generation: readdedPruneGeneration), "pruned identity can store with its new generation")
+
+        let variantsMachineID = UUID(uuidString: "00000000-0000-0000-0000-000000000004")!
+        let variantOne = identity(hostname: "variant-one.example", machineID: variantsMachineID)
+        let variantTwo = identity(hostname: "variant-two.example", tag: "different-keychain-reference", machineID: variantsMachineID)
+        let variantOneGeneration = await cache.generation(for: variantOne)
+        let variantTwoGeneration = await cache.generation(for: variantTwo)
+        check(await cache.evict(machineID: variantOne.machineID), "machine removal invalidates every issued connection variant")
+        check(!(await cache.store(snapshot(variantOne), for: variantOne, generation: variantOneGeneration)), "first issued variant is rejected after machine removal")
+        check(!(await cache.store(snapshot(variantTwo), for: variantTwo, generation: variantTwoGeneration)), "second issued variant is rejected after machine removal")
+
+        let stored = identity(hostname: "stored-before-removal.example", machineID: UUID(uuidString: "00000000-0000-0000-0000-000000000005")!)
+        let storedGeneration = await cache.generation(for: stored)
+        check(await cache.store(snapshot(stored), for: stored, generation: storedGeneration), "stores identity before machine removal")
+        check(await cache.evict(machineID: stored.machineID), "machine removal evicts an existing stored identity")
+        check(!(await cache.store(snapshot(stored), for: stored, generation: storedGeneration)), "machine removal rejects an old stored identity writer")
+    }
+
+    static func boundedGenerationLeases(_ directory: URL) async throws {
+        let cache = AgentListCache(directory: directory)
+        for index in 0..<64 {
+            let identity = identity(hostname: "lease-\(index).example")
+            check(await cache.generation(for: identity) != .max, "issues generation lease \(index)")
+        }
+        let overflow = identity(hostname: "lease-overflow.example")
+        check(await cache.generation(for: overflow) == .max, "generation lease table fails closed at its record bound")
+        check(!(await cache.store(snapshot(overflow), for: overflow, generation: .max)), "unissued exhaustion sentinel is rejected")
+        check(await cache.prune(keeping: []), "prune releases invalidated generation leases")
+        let replacementGeneration = await cache.generation(for: overflow)
+        check(replacementGeneration != .max, "pruned lease capacity can be reused without reusing a token")
+        check(await cache.store(snapshot(overflow), for: overflow, generation: replacementGeneration), "replacement lease stores successfully")
     }
 
     static func boundsCorruptionAndAtomicFailure(_ directory: URL) async throws {
