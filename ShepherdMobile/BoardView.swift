@@ -24,11 +24,13 @@ struct BoardView: View {
                 // An unloaded board must hydrate its inert display cache before
                 // acquiring the lease that can start a network connection. A
                 // monitor already live for another owner remains live-first.
-                cachedSnapshot = await agentListCache.snapshot(for: machine)
-                guard !Task.isCancelled else { return }
-                async let boardLease: Void = MachineMonitors.shared.holdForBoard(machine, in: machineStore)
-                monitor.refreshNow()
-                await boardLease
+                await MobileBoardLoadCoordinator.run(
+                    machine: machine,
+                    cache: agentListCache,
+                    publishCachedSnapshot: { cachedSnapshot = $0 },
+                    startLease: { await MachineMonitors.shared.holdForBoard(machine, in: machineStore) },
+                    refresh: { monitor.refreshNow() }
+                )
                 await agentListCache.flush(for: machine)
             }
     }

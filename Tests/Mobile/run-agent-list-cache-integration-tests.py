@@ -18,6 +18,7 @@ out.mkdir(parents=True, mode=0o700, exist_ok=False)
 
 mobile = (ROOT / "ShepherdMobile" / "MobileAgentListCache.swift").read_text()
 board = (ROOT / "ShepherdMobile" / "BoardView.swift").read_text()
+board_coordinator = (ROOT / "ShepherdMobile" / "MobileBoardLoadCoordinator.swift").read_text()
 app = (ROOT / "ShepherdMobile" / "ShepherdMobileApp.swift").read_text()
 store = (ROOT / "ShepherdKit" / "Sources" / "ShepherdKit" / "Machines" / "MachineStore.swift").read_text()
 monitor = (ROOT / "ShepherdKit" / "Sources" / "ShepherdKit" / "Machines" / "MachineMonitor.swift").read_text()
@@ -25,8 +26,12 @@ monitor = (ROOT / "ShepherdKit" / "Sources" / "ShepherdKit" / "Machines" / "Mach
 checks = {
     "ios_application_support_only": "applicationSupportDirectory" in app and "AgentListCache" in app,
     "selected_board_only": "func snapshot(for machine: Machine)" in mobile and "allMachines" not in mobile,
-    "cache_before_access_refresh": "cachedSnapshot = await agentListCache.snapshot(for: machine)" in board
-        and board.index("cachedSnapshot = await agentListCache.snapshot(for: machine)") < board.index("monitor.refreshNow()"),
+    "cache_before_access_refresh": "MobileBoardLoadCoordinator.run" in board
+        and "let snapshot = await cache.snapshot(for: machine)" in board_coordinator
+        and "publishCachedSnapshot(snapshot)" in board_coordinator
+        and board_coordinator.index("let snapshot = await cache.snapshot(for: machine)") < board_coordinator.index("publishCachedSnapshot(snapshot)")
+        and board_coordinator.index("publishCachedSnapshot(snapshot)") < board_coordinator.index("async let lease")
+        and board_coordinator.index("async let lease") < board_coordinator.index("refresh()"),
     "pull_awaits_monitor_completion": "_ = await monitor.refresh()" in board,
     "successful_publication_mapping": "observePublication" in mobile and "case .host:" in mobile
         and "case .herdrMachines:" in mobile,

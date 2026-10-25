@@ -22,9 +22,18 @@ final class MobileAgentListCache {
         var evictionTask: Task<Bool, Never>?
     }
 
+    struct TestingHooks {
+        var load: (@MainActor (Machine.ConnectionIdentity) async -> AgentListCache.Snapshot?)?
+        var beforeStore: (@MainActor (Machine.ConnectionIdentity, UInt64) async -> Void)?
+        var evictIdentity: (@MainActor (Machine.ConnectionIdentity) async -> Bool)?
+        var evictMachine: (@MainActor (UUID) async -> Bool)?
+        var didStore: (@MainActor (Machine.ConnectionIdentity, UInt64, Bool) -> Void)?
+    }
+
     private let machineStore: MachineStore
     private let cache: AgentListCache
     private let retired: RetiredCacheIdentities
+    private let testingHooks: TestingHooks?
     private var states: [Machine.ConnectionIdentity: IdentityState] = [:]
     /// A machine-wide removal can be followed by a newly added variant not
     /// present when it was removed. That variant must still wait for the old
@@ -35,6 +44,22 @@ final class MobileAgentListCache {
         self.machineStore = machineStore
         self.cache = AgentListCache(directory: directory)
         self.retired = RetiredCacheIdentities(directory: directory)
+        self.testingHooks = nil
+        installCallbacks()
+    }
+
+    /// Internal harness-only timing seams retain the production coordinator,
+    /// journal and storage actor while holding a single operation at a known
+    /// suspension point.
+    init(machineStore: MachineStore, directory: URL, testingHooks: TestingHooks) {
+        self.machineStore = machineStore
+        self.cache = AgentListCache(directory: directory)
+        self.retired = RetiredCacheIdentities(directory: directory)
+        self.testingHooks = testingHooks
+        installCallbacks()
+    }
+
+    private func installCallbacks() {
         machineStore.connectionWillInvalidate = { [weak self] identity in
             self?.invalidate(identity) ?? false
         }
@@ -61,7 +86,11 @@ final class MobileAgentListCache {
         guard generation != nil,
               machineStore.isCurrentConnection(machine),
               !retired.contains(identity) else { return nil }
-        let loaded = await cache.load(for: identity)
+        let loaded = if let load = testingHooks?.load {
+            await load(identity)
+        } else {
+            await cache.load(for: identity)
+        }
         guard machineStore.isCurrentConnection(machine),
               !retired.contains(identity) else { return nil }
         state = states[identity] ?? IdentityState()
@@ -100,7 +129,11 @@ final class MobileAgentListCache {
         state.pendingNestedGroups = nil
         state.writeTask?.cancel()
         state.writeTask = nil
-        state.evictionTask = Task { [cache] in await cache.evict(identity) }
+        let hook = testingHooks?.evictIdentity
+        state.evictionTask = Task { [cache] in
+            if let hook { return await hook(identity) }
+            return await cache.evict(identity)
+        }
         states[identity] = state
         return true
     }
@@ -120,7 +153,11 @@ final class MobileAgentListCache {
         }
         // All later generations wait for this same actor operation, including
         // an A -> B -> A return that happens before an old eviction completes.
-        let eviction = Task { [cache] in await cache.evict(machineID: machineID) }
+        let hook = testingHooks?.evictMachine
+        let eviction = Task { [cache] in
+            if let hook { return await hook(machineID) }
+            return await cache.evict(machineID: machineID)
+        }
         machineEvictions[machineID] = eviction
         for identity in matching {
             states[identity]?.evictionTask = eviction
@@ -202,10 +239,17 @@ final class MobileAgentListCache {
               machineStore.isCurrentConnectionIdentity(identity),
               states[identity]?.revision == revision,
               states[identity]?.generation == generation else { return }
-        // The revision check immediately precedes the actor message. Since
-        // this main actor does not suspend between the check and call, an older
-        // candidate cannot be enqueued after a newer publication.
+        // The normal path has no suspension between this guard and the actor
+        // message. The harness hook deliberately creates one, and the second
+        // guard proves a newer publication still prevents an old candidate
+        // from being enqueued.
+        if let beforeStore = testingHooks?.beforeStore {
+            await beforeStore(identity, revision)
+            guard states[identity]?.revision == revision,
+                  states[identity]?.generation == generation else { return }
+        }
         let stored = await cache.store(snapshot, for: identity, generation: generation)
+        testingHooks?.didStore?(identity, revision, stored)
         guard stored, states[identity]?.revision == revision else { return }
         // Retirements stay durable until the fresh live snapshot is durably
         // stored. A failed tombstone clear is fail-closed: cache reads remain

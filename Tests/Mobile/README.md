@@ -36,6 +36,17 @@ the toolbar's effective Dynamic Type size, including UIKit's normal size cap.
 Per-device JSON records, compiler/process logs and source hashes are retained
 under the output path. `owned-devices.json` must end as an empty array.
 
+# Mobile agent-list cache coordinator
+
+```sh
+python3 Tests/Mobile/run-agent-list-cache-coordinator-harness.py --output /owned/output
+```
+
+This executable controlled-timing harness runs the production cache coordinator,
+durable journal, storage actor, and MachineStore against owned persistence and
+fake monitor/credential boundaries. See `AgentListCacheCoordinatorHarnessREADME.md`
+for its exact coverage and fake-versus-real boundaries.
+
 # Keyboard avoidance
 
 ```sh
