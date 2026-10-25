@@ -18,9 +18,21 @@ final class KeyboardAvoidanceState {
 /// window lookup, so separate scenes keep their keyboard layouts independent.
 struct KeyboardAvoidanceGuide: UIViewRepresentable {
     let state: KeyboardAvoidanceState
+    /// Hosted-layout fixtures may supply a deterministic obstruction. The app
+    /// always uses `nil`, which reads the owning view's real keyboard guide.
+    let layoutSource: KeyboardAvoidanceLayoutSource?
+
+    init(state: KeyboardAvoidanceState, layoutSource: KeyboardAvoidanceLayoutSource? = nil) {
+        self.state = state
+        self.layoutSource = layoutSource
+    }
 
     func makeUIView(context: Context) -> KeyboardAvoidanceView {
-        KeyboardAvoidanceView(state: state)
+        let view = KeyboardAvoidanceView(state: state, layoutSource: layoutSource)
+        // A deterministic fixture source is already valid before attachment.
+        // The real guide remains recalculated at the normal UIKit boundaries.
+        view.updateBottomInset()
+        return view
     }
 
     func updateUIView(_ view: KeyboardAvoidanceView, context: Context) {
@@ -29,8 +41,24 @@ struct KeyboardAvoidanceGuide: UIViewRepresentable {
     }
 
     static func dismantleUIView(_ view: KeyboardAvoidanceView, coordinator: ()) {
+        view.layoutSource?.invalidate = nil
         view.state?.bottomInset = 0
         view.state = nil
+    }
+}
+
+/// An internal deterministic obstruction source for the hosted fixture.
+/// It is not a keyboard-frame substitute: production supplies no source and
+/// continues to use `UIKeyboardLayoutGuide` with its public docked behavior.
+@MainActor
+final class KeyboardAvoidanceLayoutSource {
+    var dockedBottomInset: CGFloat {
+        didSet { invalidate?() }
+    }
+    var invalidate: (() -> Void)?
+
+    init(dockedBottomInset: CGFloat) {
+        self.dockedBottomInset = dockedBottomInset
     }
 }
 
@@ -39,10 +67,14 @@ final class KeyboardAvoidanceView: UIView {
     weak var state: KeyboardAvoidanceState?
     private(set) lazy var dockedKeyboardGuide: UIKeyboardLayoutGuide = keyboardLayoutGuide
     private let guideProbe = UIView()
+    let layoutSource: KeyboardAvoidanceLayoutSource?
 
-    init(state: KeyboardAvoidanceState) {
+    init(state: KeyboardAvoidanceState, layoutSource: KeyboardAvoidanceLayoutSource? = nil) {
         self.state = state
+        self.layoutSource = layoutSource
         super.init(frame: .zero)
+
+        layoutSource?.invalidate = { [weak self] in self?.setNeedsLayout() }
 
         configureKeyboardGuide()
 
@@ -85,12 +117,47 @@ final class KeyboardAvoidanceView: UIView {
     }
 
     func updateBottomInset() {
-        let inset = KeyboardAvoidanceGeometry.dockedBottomInset(
+        let inset = layoutSource?.dockedBottomInset ?? KeyboardAvoidanceGeometry.dockedBottomInset(
             safeAreaBottom: safeAreaLayoutGuide.layoutFrame.maxY,
             keyboardTop: dockedKeyboardGuide.layoutFrame.minY)
         if state?.bottomInset != inset {
             state?.bottomInset = inset
         }
+    }
+}
+
+/// The production bottom-input modifier chain. Keeping it here makes the
+/// hosted fixture exercise the exact representable-to-SwiftUI placement path.
+struct KeyboardAvoidingBottomBarContainer<Content: View, BottomBar: View>: View {
+    let state: KeyboardAvoidanceState
+    let layoutSource: KeyboardAvoidanceLayoutSource?
+    let content: Content
+    let bottomBar: BottomBar
+
+    init(
+        state: KeyboardAvoidanceState,
+        layoutSource: KeyboardAvoidanceLayoutSource? = nil,
+        @ViewBuilder content: () -> Content,
+        @ViewBuilder bottomBar: () -> BottomBar
+    ) {
+        self.state = state
+        self.layoutSource = layoutSource
+        self.content = content()
+        self.bottomBar = bottomBar()
+    }
+
+    var body: some View {
+        content
+            // SwiftUI's automatic keyboard safe area would follow a floating
+            // iPad keyboard. The guide below supplies only docked obstruction.
+            .ignoresSafeArea(.keyboard, edges: .bottom)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                bottomBar.padding(.bottom, state.bottomInset)
+            }
+            .background {
+                KeyboardAvoidanceGuide(state: state, layoutSource: layoutSource)
+                    .allowsHitTesting(false)
+            }
     }
 }
 

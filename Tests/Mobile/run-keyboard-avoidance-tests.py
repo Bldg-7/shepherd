@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Run the keyboard-guide bridge fixture on newly created simulators only.
 
-The fixture checks synthetic guide geometry and UIKit guide ownership/configuration;
-it explicitly does not claim to drive a floating keyboard UI.
+The fixture compiles the production SwiftUI bottom-bar wrapper, injects only a
+synthetic docked obstruction, and explicitly does not claim to drive floating
+keyboard UI gestures.
 """
 from pathlib import Path
 import argparse, hashlib, json, plistlib, signal, subprocess, sys, uuid
@@ -18,8 +19,9 @@ app = output / 'KeyboardAvoidanceHarness.app'
 app.mkdir()
 bundle = 'com.bldg7.shepherd.tests.keyboard.' + uuid.uuid4().hex
 sources = ['ShepherdMobile/KeyboardAvoidance.swift', 'Tests/Mobile/KeyboardAvoidanceHarness.swift']
+hashed_sources = [*sources, 'ShepherdMobile/ConversationView.swift', 'Tests/Mobile/run-keyboard-avoidance-tests.py']
 (output / 'source-hashes.json').write_text(json.dumps(
-    {source: hashlib.sha256((ROOT / source).read_bytes()).hexdigest() for source in sources}, indent=2))
+    {source: hashlib.sha256((ROOT / source).read_bytes()).hexdigest() for source in hashed_sources}, indent=2))
 sdk = subprocess.check_output(['xcrun', '--sdk', 'iphonesimulator', '--show-sdk-path'], text=True).strip()
 compile = [
     'xcrun', 'swiftc', '-swift-version', '6', '-default-isolation', 'MainActor',
@@ -102,6 +104,10 @@ finally:
         created.remove(udid)
     (output / 'owned-devices.json').write_text(json.dumps(created))
 assert len(reports) == 2
+assert all(report['hostedProductionWrapper'] and report['deterministicLayoutSource'] for report in reports)
+conversation = (ROOT / 'ShepherdMobile/ConversationView.swift').read_text()
+assert 'KeyboardAvoidingBottomBarContainer(state: keyboardAvoidance)' in conversation
+assert 'ResponseBar(model: model)' in conversation and 'Composer(model: model)' in conversation
 (output / 'verification.json').write_text(json.dumps({
     'passed': True,
     'fixtures': ['iPhone', 'iPad'],
@@ -109,7 +115,9 @@ assert len(reports) == 2
     'existingDevicesUntouched': True,
     'naturalFixtureExit': True,
     'defensiveHelperCleanup': True,
+    'hostedProductionWrapper': True,
+    'deterministicLayoutSource': True,
     'actualFloatingKeyboardUI': False,
     'runtime': args.runtime,
 }, indent=2))
-print('PASS keyboard guide geometry/configuration/lifetime fixtures on owned iPhone and iPad simulators')
+print('PASS keyboard guide and hosted production-wrapper fixtures on owned iPhone and iPad simulators')
