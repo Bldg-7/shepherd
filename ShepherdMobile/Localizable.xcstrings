@@ -1060,6 +1060,38 @@
         }
       }
     },
+    "Cached panes" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "キャッシュされた pane"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "캐시된 pane"
+          }
+        }
+      }
+    },
+    "Connect to refresh this cached pane." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続してこのキャッシュ済み pane を更新します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결하여 이 캐시된 pane을(를) 새로 고칩니다."
+          }
+        }
+      }
+    },
     "Local Network access is off" : {
       "localizations" : {
         "ja" : {

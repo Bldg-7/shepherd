@@ -8,6 +8,7 @@ import ShepherdKit
 /// the open-source licenses.
 struct MachinesView: View {
     let machineStore: MachineStore
+    let agentListCache: MobileAgentListCache
     @State private var path = NavigationPath()
     @State private var isAdding = false
     @State private var isPairing = false
@@ -47,7 +48,7 @@ struct MachinesView: View {
             }
             .navigationTitle("Machines")
             .navigationDestination(for: Machine.self) { machine in
-                BoardView(machine: machine, machineStore: machineStore)
+                BoardView(machine: machine, machineStore: machineStore, agentListCache: agentListCache)
             }
             .navigationDestination(for: PaneDestination.self) { destination in
                 ConversationView(destination: destination, machineStore: machineStore)

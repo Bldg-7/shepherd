@@ -7,12 +7,31 @@ import ShepherdKit
 struct BoardView: View {
     let machine: Machine
     let machineStore: MachineStore
+    let agentListCache: MobileAgentListCache
+    @State private var cachedSnapshot: AgentListCache.Snapshot?
+
+    private var monitor: MachineMonitor {
+        MachineMonitors.shared.monitor(for: machine, in: machineStore)
+    }
 
     var body: some View {
-        BoardList(machine: machine, monitor: MachineMonitors.shared.monitor(for: machine, in: machineStore))
+        BoardList(machine: machine, monitor: monitor, cachedSnapshot: cachedSnapshot)
             .navigationTitle(machine.displayName)
+            .refreshable {
+                _ = await monitor.refresh()
+            }
             .task(id: machine.connectionIdentity) {
-                await MachineMonitors.shared.holdForBoard(machine, in: machineStore)
+                // Establish the board lease before requesting the access
+                // refresh, while the display-only disk snapshot races in.
+                async let boardLease: Void = MachineMonitors.shared.holdForBoard(machine, in: machineStore)
+                await Task.yield()
+                cachedSnapshot = await agentListCache.snapshot(for: machine)
+                guard !Task.isCancelled else {
+                    await boardLease
+                    return
+                }
+                monitor.refreshNow()
+                await boardLease
             }
     }
 }
@@ -48,6 +67,21 @@ struct PaneDestination: Hashable {
 private struct BoardList: View {
     let machine: Machine
     let monitor: MachineMonitor
+    let cachedSnapshot: AgentListCache.Snapshot?
+
+    private var showingCachedHost: Bool { !monitor.hasLoaded && cachedSnapshot != nil }
+    private var showingCachedNestedGroups: Bool { monitor.herdrMachineRoundCount == 0 && cachedSnapshot != nil }
+    private var hasVisiblePanes: Bool {
+        if showingCachedHost {
+            if !(cachedSnapshot?.host.panes.isEmpty ?? true) { return true }
+        } else if !monitor.panes.isEmpty {
+            return true
+        }
+        if showingCachedNestedGroups {
+            return cachedSnapshot?.nestedGroups.contains { !$0.snapshot.panes.isEmpty } ?? false
+        }
+        return monitor.herdrMachineGroups.contains { !$0.agents.isEmpty }
+    }
 
     var body: some View {
         List {
@@ -58,7 +92,8 @@ private struct BoardList: View {
                         Button("Retry") { monitor.retry() }
                     }
                 }
-            } else if !monitor.hasLoaded {
+            }
+            if !monitor.hasLoaded, cachedSnapshot == nil, monitor.loadError == nil {
                 Section {
                     HStack(spacing: 12) {
                         ProgressView()
@@ -66,18 +101,28 @@ private struct BoardList: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-            } else if monitor.panes.isEmpty && monitor.herdrMachineGroups.isEmpty {
+            } else if !hasVisiblePanes, (monitor.hasLoaded || cachedSnapshot != nil) {
                 Section {
                     Text("No panes")
                         .foregroundStyle(.secondary)
                 }
             }
-            ForEach(BoardSection.sections(of: monitor.panes, in: monitor.workspaces)) { section in
-                paneSection(section, title: section.title)
+            if showingCachedHost, let cachedSnapshot {
+                cachedSection(cachedSnapshot.host.panes, title: String(localized: "Cached panes"))
+            } else {
+                ForEach(BoardSection.sections(of: monitor.panes, in: monitor.workspaces)) { section in
+                    paneSection(section, title: section.title)
+                }
             }
-            ForEach(monitor.herdrMachineGroups) { group in
-                ForEach(BoardSection.sections(of: group.agents, in: group.workspaces)) { section in
-                    paneSection(section, title: "\(group.machine.label) · \(section.title)")
+            if showingCachedNestedGroups, let cachedSnapshot {
+                ForEach(cachedSnapshot.nestedGroups, id: \.machine.id) { group in
+                    cachedSection(group.snapshot.panes, title: "\(group.machine.label) · \(String(localized: "Cached panes"))")
+                }
+            } else {
+                ForEach(monitor.herdrMachineGroups) { group in
+                    ForEach(BoardSection.sections(of: group.agents, in: group.workspaces)) { section in
+                        paneSection(section, title: "\(group.machine.label) · \(section.title)")
+                    }
                 }
             }
         }
@@ -90,6 +135,16 @@ private struct BoardList: View {
                 NavigationLink(value: PaneDestination(machine: machine, pane: pane)) {
                     PaneRow(pane: pane)
                 }
+            }
+        }
+    }
+
+    private func cachedSection(_ panes: [AgentListCache.AgentDTO], title: String) -> some View {
+        Section(title) {
+            ForEach(panes, id: \.paneID) { pane in
+                // Cached DTOs deliberately omit sessionReference. They are
+                // display-only until a live monitor resolves this exact pane.
+                CachedPaneRow(pane: pane)
             }
         }
     }
@@ -121,6 +176,51 @@ private struct BoardSection: Identifiable {
             sections.append(BoardSection(id: "rest", title: String(localized: "Other"), panes: BoardOrder.panes(rest)))
         }
         return sections
+    }
+}
+
+private struct CachedPaneRow: View {
+    let pane: AgentListCache.AgentDTO
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: pane.label ?? pane.terminalTitle ?? pane.agentName ?? pane.paneID)
+                    .lineLimit(1)
+                Text(verbatim: pane.agentName ?? String(localized: "Shell"))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if pane.agentName != nil {
+                Text(stateTitle)
+                    .font(.caption.weight(.medium))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(color.opacity(0.15), in: Capsule())
+                    .foregroundStyle(color)
+            }
+        }
+        .accessibilityHint(Text("Connect to refresh this cached pane."))
+    }
+
+    private var stateTitle: String {
+        switch pane.state {
+        case "blocked": String(localized: "Blocked")
+        case "working": String(localized: "Working")
+        case "done": String(localized: "Done")
+        case "idle": String(localized: "Idle")
+        default: String(localized: "Unknown")
+        }
+    }
+
+    private var color: Color {
+        switch pane.state {
+        case "blocked": .orange
+        case "working": .blue
+        case "done": .green
+        default: .secondary
+        }
     }
 }
 

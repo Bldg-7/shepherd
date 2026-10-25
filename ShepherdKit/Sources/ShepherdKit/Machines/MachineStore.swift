@@ -27,6 +27,12 @@ public final class MachineStore {
     private let unreadableDefaultsKey = "herdr-client.machines.unreadable"
     private let activeDefaultsKey = "herdr-client.active-machine-id"
     private let keychain: any MachineSecretStore
+    /// A mobile composition hook that synchronously blocks stale display-cache
+    /// writers before this store retires a connection identity. It never
+    /// receives credential bytes and is nil for the unchanged macOS app.
+    public var connectionWillInvalidate: ((Machine.ConnectionIdentity) -> Void)?
+    /// As above, for every saved connection variant of a removed machine.
+    public var machineWillRemove: ((UUID) -> Void)?
 
     public enum EditError: LocalizedError {
         case notEditable, settingsChanged, invalidFields, credentialRequired, missingCredential
@@ -142,6 +148,9 @@ public final class MachineStore {
         next[index] = updated
         let encoded = try JSONEncoder().encode(next)
         if let replacementSecret { try keychain.saveSecret(replacementSecret, tag: updated.keychainTag) }
+        if updated.connectionIdentity != current.connectionIdentity {
+            connectionWillInvalidate?(current.connectionIdentity)
+        }
         defaults.set(encoded, forKey: defaultsKey)
         machines = next
         // Cleanup is after the successful commit, never before the new secret is
@@ -165,6 +174,7 @@ public final class MachineStore {
     public func removeMachine(_ machine: Machine) {
         guard !machine.isLocal,
               let current = machines.first(where: { $0.id == machine.id }), !current.isLocal else { return }
+        machineWillRemove?(current.id)
         // A removal confirmation may predate an edit in another window.
         try? keychain.deleteSecret(tag: current.keychainTag)
         machines.removeAll { $0.id == machine.id }
@@ -211,6 +221,7 @@ public final class MachineStore {
         next[index].hostname = host
         next[index].addressKind = addressKind
         let encoded = try JSONEncoder().encode(next)
+        connectionWillInvalidate?(machine.connectionIdentity)
         defaults.set(encoded, forKey: defaultsKey)
         machines = next
     }

@@ -61,6 +61,17 @@ struct SSHHerdrTransport: HerdrTransport {
         try store.addMachine(first, password: String(decoding: originalSecret, as: UTF8.self))
         try store.addMachine(second, privateKey: Data("synthetic-other-key".utf8))
         store.activeMachineID = first.id
+        var invalidatedConnections: [Machine.ConnectionIdentity] = []
+        var removedMachineIDs: [UUID] = []
+        var invalidationPrecedesCommit = true
+        store.connectionWillInvalidate = { identity in
+            invalidatedConnections.append(identity)
+            invalidationPrecedesCommit = invalidationPrecedesCommit && store.allMachines.contains { $0.connectionIdentity == identity }
+        }
+        store.machineWillRemove = { machineID in
+            removedMachineIDs.append(machineID)
+            invalidationPrecedesCommit = invalidationPrecedesCommit && store.allMachines.contains { $0.id == machineID }
+        }
         secrets.events = []
         var draft = first
         draft.displayName = " Renamed "
@@ -82,6 +93,8 @@ struct SSHHerdrTransport: HerdrTransport {
         check(current.hostname == "new.invalid" && current.pinnedHostKeyFingerprint == nil, "new host resets pin")
         check(current.connectionIdentity != beforeHost.connectionIdentity, "host change retires old identity")
         check(!store.isCurrentConnection(beforeHost), "old connection no longer current")
+        check(invalidatedConnections == [beforeHost.connectionIdentity] && invalidationPrecedesCommit,
+              "connection cache hook runs before an identity edit commits")
         store.pinHostKeyFingerprint("SHA256:stale", for: beforeHost)
         check(store.machines[0].pinnedHostKeyFingerprint == nil, "late old-host pin denied")
         rejects("stale secret read denied") { _ = try store.secret(for: beforeHost) }
@@ -166,6 +179,8 @@ struct SSHHerdrTransport: HerdrTransport {
         let tag = current.keychainTag
         store.removeMachine(beforeCredential)
         check(!store.machines.contains(where: { $0.id == current.id }) && secrets.values[tag] == nil, "stale removal confirmation deletes current credential")
+        check(removedMachineIDs == [current.id] && invalidationPrecedesCommit,
+              "machine cache hook runs before removal commits")
         check(store.machines.map(\.id) == [second.id] && secrets.values[second.keychainTag] != nil, "other machines and credentials retained")
         rejects("removed machine cannot be resurrected by old editor") { try store.updateMachine(current, replacing: current) }
 
@@ -186,6 +201,8 @@ struct SSHHerdrTransport: HerdrTransport {
         check(moved.hostname == "100.101.102.103" && moved.addressKind == .tailscaleIPv4 && moved.pinnedHostKeyFingerprint == "SHA256:studio"
               && moved.keychainTag == paired.keychainTag && moved.authMethod == .secureEnclaveKey, "a new address keeps the pin and the key")
         check(moved.connectionIdentity != paired.connectionIdentity && secrets.events.isEmpty, "the move reconnects without touching the Keychain")
+        check(invalidatedConnections.last == paired.connectionIdentity && invalidationPrecedesCommit,
+              "paired address cache hook runs before its connection changes")
         rejects("a stale paired machine is not moved") { try store.updatePairedAddress(of: paired, hostname: "studio.local", addressKind: .localName) }
         rejects("a machine added by hand has no paired address") {
             try store.updatePairedAddress(of: store.machines.first { $0.id == second.id }!, hostname: "10.0.0.2", addressKind: .privateIPv4)
