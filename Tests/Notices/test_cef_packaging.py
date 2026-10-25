@@ -14,8 +14,8 @@ import unittest
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = REPOSITORY_ROOT / "Scripts" / "cef.sh"
-PROJECT = REPOSITORY_ROOT / "Shepherd.xcodeproj" / "project.pbxproj"
+SCRIPT = REPOSITORY_ROOT / "scripts" / "cef.sh"
+PROJECT = REPOSITORY_ROOT / "shepherd.xcodeproj" / "project.pbxproj"
 INVENTORY = REPOSITORY_ROOT / "Tests" / "Notices" / "inventory.json"
 
 
