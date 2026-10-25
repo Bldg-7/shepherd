@@ -14,6 +14,7 @@ import ShepherdKit
 struct ConversationView: View {
     let destination: PaneDestination
     @State private var model: ConversationModel
+    @State private var keyboardAvoidance = KeyboardAvoidanceState()
     @Environment(\.scenePhase) private var scenePhase
 
     init(destination: PaneDestination, machineStore: MachineStore) {
@@ -39,15 +40,27 @@ struct ConversationView: View {
                 CapturedConversationView(model: model.captured, blocked: model.agentState == .blocked)
             } else { output }
         }
+            // SwiftUI's automatic keyboard safe area would follow a floating
+            // iPad keyboard. The UIKit guide below supplies only docked
+            // obstruction; the ordinary container safe area remains intact.
+            .ignoresSafeArea(.keyboard, edges: .bottom)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 // Liquid Glass over the output, which scrolls on beneath it.
-                if destination.agentName != nil {
-                    if model.agentState == .blocked {
-                        ResponseBar(model: model)
-                    } else {
-                        Composer(model: model)
+                // The same docked-only offset keeps both prompt modes aligned.
+                Group {
+                    if destination.agentName != nil {
+                        if model.agentState == .blocked {
+                            ResponseBar(model: model)
+                        } else {
+                            Composer(model: model)
+                        }
                     }
                 }
+                .padding(.bottom, keyboardAvoidance.bottomInset)
+            }
+            .background {
+                KeyboardAvoidanceGuide(state: keyboardAvoidance)
+                    .allowsHitTesting(false)
             }
             .navigationTitle(destination.title)
             .navigationBarTitleDisplayMode(.inline)

@@ -35,3 +35,18 @@ the toolbar's effective Dynamic Type size, including UIKit's normal size cap.
 
 Per-device JSON records, compiler/process logs and source hashes are retained
 under the output path. `owned-devices.json` must end as an empty array.
+
+# Keyboard avoidance
+
+```sh
+python3 Tests/Mobile/run-keyboard-avoidance-tests.py --output /tmp/shepherd-keyboard-FRESH
+```
+
+This runner compiles `ShepherdMobile/KeyboardAvoidance.swift` into an owned
+UIKit fixture on newly created iPhone and iPad simulators and deletes only those
+devices afterward. It checks synthetic docked, hidden, rotation, and narrow
+container guide positions; verifies the docked-only guide configuration,
+owning-view/window isolation, and teardown behavior; and verifies the ordinary
+bottom safe area is consumed once. Synthetic guide positions deliberately do
+not claim to exercise a real floating-keyboard UI. `verification.json` records
+that distinction, natural fixture exit, and defensive helper cleanup.
