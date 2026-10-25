@@ -1,0 +1,252 @@
+{
+  "schema": "shepherd.third-party-notices.inventory/v1",
+  "schemaStatus": "frozen-for-package-and-gate-integration",
+  "noticeFiles": {
+    "macOS": "Shepherd/ThirdPartyNotices.txt",
+    "iOS": "ShepherdMobile/ThirdPartyNotices.txt"
+  },
+  "linkedOrRetainedUnlinked": [
+    {
+      "identity": "BigInt",
+      "scope": [
+        "macOS",
+        "iOS"
+      ],
+      "status": "linked"
+    },
+    {
+      "identity": "Sparkle",
+      "scope": [
+        "macOS"
+      ],
+      "status": "linked"
+    },
+    {
+      "identity": "swift-atomics",
+      "scope": [
+        "macOS",
+        "iOS"
+      ],
+      "status": "linked"
+    },
+    {
+      "identity": "swift-asn1",
+      "revision": "3b6410",
+      "scope": [
+        "macOS",
+        "iOS"
+      ],
+      "status": "linked"
+    },
+    {
+      "identity": "swift-certificates",
+      "revision": "f4cd9e78a1ec209b27e426a5f5c693675f95e75a",
+      "scope": [
+        "macOS",
+        "iOS"
+      ],
+      "status": "linked"
+    },
+    {
+      "identity": "swift-collections",
+      "revision": "98ef3c",
+      "scope": [
+        "macOS",
+        "iOS"
+      ],
+      "status": "linked"
+    },
+    {
+      "identity": "swift-crypto",
+      "revision": "95ba0316a9b733e92bb6b071255ff46263bbe7dc",
+      "scope": [
+        "macOS",
+        "iOS"
+      ],
+      "status": "linked"
+    },
+    {
+      "identity": "swift-log",
+      "revision": "9c6fb1",
+      "scope": [
+        "macOS",
+        "iOS"
+      ],
+      "status": "linked"
+    },
+    {
+      "identity": "swift-nio",
+      "revision": "21de5f08c1a166a6dd293d0e587ad977bf8dac5d",
+      "scope": [
+        "macOS",
+        "iOS"
+      ],
+      "status": "linked"
+    },
+    {
+      "identity": "swift-nio-ssl",
+      "revision": "173cc69a058623525a58ae6710e2f5727c663793",
+      "scope": [
+        "macOS"
+      ],
+      "status": "linked"
+    },
+    {
+      "identity": "SwiftTerm",
+      "scope": [
+        "macOS"
+      ],
+      "status": "linked"
+    },
+    {
+      "identity": "Citadel",
+      "scope": [
+        "macOS"
+      ],
+      "status": "linked"
+    },
+    {
+      "identity": "swift-nio-ssh",
+      "scope": [
+        "macOS"
+      ],
+      "status": "linked"
+    },
+    {
+      "identity": "CEF",
+      "scope": [
+        "macOS"
+      ],
+      "status": "linked"
+    },
+    {
+      "identity": "AgentProxy",
+      "scope": [
+        "macOS"
+      ],
+      "status": "linked-local"
+    },
+    {
+      "identity": "swift-argument-parser",
+      "scope": [
+        "macOS"
+      ],
+      "status": "retained-unlinked"
+    },
+    {
+      "identity": "swift-system",
+      "scope": [
+        "macOS"
+      ],
+      "status": "retained-unlinked"
+    }
+  ],
+  "verbatimBlocks": [
+    {
+      "section": "swift-asn1 NOTICE",
+      "sourcePath": "build/SourcePackages/checkouts/swift-asn1/NOTICE.txt",
+      "sha256": "11dd3b3b783e6ec26098dd38ebc962986ea109b85447e28e62867b83bd0f8c5b",
+      "normalization": "copy text with trailing horizontal whitespace removed from each line and omit the terminal newline"
+    },
+    {
+      "section": "swift-crypto NOTICE",
+      "sourcePath": "build/SourcePackages/checkouts/swift-crypto/NOTICE.txt",
+      "sha256": "b3ddc2ae068e76b3beb71be03c0400f90090f9469aa491bf7b1ac42320af37b8",
+      "normalization": "copy text with trailing horizontal whitespace removed from each line and omit the terminal newline"
+    },
+    {
+      "section": "swift-log NOTICE",
+      "sourcePath": "build/SourcePackages/checkouts/swift-log/NOTICE.txt",
+      "sha256": "879b241d49b407215a0ad8e1c6a71c358d7b29591b090cf379d37a5f50cff918",
+      "normalization": "copy text with trailing horizontal whitespace removed from each line and omit the terminal newline"
+    },
+    {
+      "section": "swift-nio NOTICE",
+      "sourcePath": "build/SourcePackages/checkouts/swift-nio/NOTICE.txt",
+      "sha256": "d25ed2452b3476c342082d11e4e8bf5459174d2836124f842b499850bcebc50e",
+      "normalization": "copy text with trailing horizontal whitespace removed from each line and omit the terminal newline"
+    },
+    {
+      "section": "swift-certificates NOTICE",
+      "sourcePath": "build/SourcePackages/checkouts/swift-certificates/NOTICE.txt",
+      "sha256": "57d7797703d906b63c2be50d891cf70bdec307ae6f77a881638c33343f3dd195",
+      "normalization": "copy text with trailing horizontal whitespace removed from each line and omit the terminal newline"
+    },
+    {
+      "section": "swift-nio-ssl NOTICE",
+      "sourcePath": "build/SourcePackages/checkouts/swift-nio-ssl/NOTICE.txt",
+      "sha256": "03e8ca5c65a3df21fe1ab48eef91bca7d370db56c290d8ef16eaaa09ba322abe",
+      "normalization": "copy text with trailing horizontal whitespace removed from each line and omit the terminal newline"
+    },
+    {
+      "section": "BoringSSL 817ab07 LICENSE",
+      "sourcePath": "Tests/Notices/fixtures/boringssl-817ab07-LICENSE.txt",
+      "upstream": "https://boringssl.googlesource.com/boringssl/+show/817ab07ebb53da35afea409ab9328f578492832d/LICENSE?format=TEXT",
+      "sha256": "bed7465f4e9faa86586ac2226d0154c306584c2438f5bb78c597ffabb7fff308",
+      "normalization": "base64-decode upstream format=TEXT, remove trailing horizontal whitespace from each line, and omit the terminal newline",
+      "upstreamSha256": "756a61a8300d105ae68e7f2993e27d41a765c946f3400422e2403b01e7ded527"
+    },
+    {
+      "section": "uSHET cpp_magic.h MIT",
+      "sourcePath": "Tests/Notices/fixtures/ushet-c09e0ac-LICENSE.txt",
+      "upstream": "https://raw.githubusercontent.com/18sg/uSHET/c09e0acafd86720efe42dc15c63e0cc228244c32/LICENSE",
+      "sha256": "62a279b6a64b37680b691436c3ac1c0f6e8eeb81d8ad0a05c1dfc68f2c9ca28a",
+      "normalization": "copy lines 1-22 only: the cpp_magic.h attribution identifies uSHET; exclude the unrelated following jsmn license"
+    }
+  ],
+  "sourceHeaderBlocks": [
+    {
+      "section": "FreeBSD SHA-1",
+      "sourcePath": "build/SourcePackages/checkouts/swift-nio/Sources/CNIOSHA1/c_nio_sha1.c",
+      "sha256": "67b5830b93c592a5f6bc08fef3673d8d80cd37170e528124b3f14fb401ac84a1",
+      "normalization": "copy physical lines 10-38, removing trailing horizontal whitespace only"
+    },
+    {
+      "section": "musl TimeCalculations",
+      "sourcePath": "build/SourcePackages/checkouts/swift-certificates/Sources/X509/X509BaseTypes/TimeCalculations.swift",
+      "sha256": "96135d14eef88b5cd918e36f537e2054469c1ab3f97912d684eb7cfcb4df0544",
+      "normalization": "copy physical lines 22-45 unchanged"
+    },
+    {
+      "section": "Citadel bcrypt",
+      "sourcePath": "Vendor/Citadel/Sources/CCitadelBcrypt/bcrypt.c",
+      "sha256": "6ff669e3486d13e426d3e223b299d6506d8734fce790c93adce0d709f5e62dbb",
+      "normalization": "existing notice copies the license comment unchanged"
+    },
+    {
+      "section": "Citadel Blowfish",
+      "sourcePath": "Vendor/Citadel/Sources/CCitadelBcrypt/blf.c and blf.h",
+      "sha256": "9793f6e45a4eff070194ad3e1a20ed79b00fc5e9bd89bc30367837cc65d5a4dd; e3b1bdf7276f3f14af41a00d86b9f8d7e6dab43f1a07a8d4dd7530149c77e38b",
+      "normalization": "existing notice retains the identical shared license comment once"
+    }
+  ],
+  "runtimePackageLicenseMetadata": {
+    "lockfile": "Shepherd/Agents/AgentRuntime/package-lock.json",
+    "bundledRoot": "Shepherd/Agents/AgentRuntime/node_modules/@playwright/mcp",
+    "noticeSection": "Shepherd/Agents/AgentRuntime/node_modules/@playwright/mcp bundled licenses",
+    "rule": "enumerate package-lock identities and locate each bundled package license at gate time; do not freeze a speculative copied list"
+  },
+  "cefCredits": {
+    "version": "154.0.33+ga03e714+chromium-154.0.8037.94",
+    "sourcePath": "Vendor/CEF/cef_binary_154.0.33+ga03e714+chromium-154.0.8037.94_macosarm64_minimal/CREDITS.html",
+    "resourcePath": "Contents/Resources/ChromiumCredits.html",
+    "bytes": 8679939,
+    "newlines": 154598,
+    "sha256": "3714c02897a1e3bf73fc6273017ce611b01a621d796ec73e52acf83893b44270",
+    "gitPolicy": "metadata only; do not commit the credits artifact"
+  },
+  "changeFingerprints": {
+    "packageResolved": "shepherd.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved",
+    "productGraph": "shepherd.xcodeproj/project.pbxproj",
+    "localAgentProxy": "AgentProxy/Package.swift",
+    "cefConstants": "scripts/cef.sh",
+    "runtimePackages": "Shepherd/Agents/AgentRuntime/package-lock.json"
+  },
+  "sectionInvariants": {
+    "zstandardSection": "Zstandard 1.5.7 \u2014 AgentProxy/Sources/AgentProxyCompressionC/vendor/LICENSE",
+    "zstandardCount": 1,
+    "trademarksSection": "Trademarks",
+    "trademarksFinal": true,
+    "boringSSLSectionsDistinct": true
+  }
+}
