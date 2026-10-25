@@ -52,6 +52,25 @@ public final class MachineMonitor {
         public var id: String { machine.id }
     }
 
+    /// A successful snapshot publication. Consumers that persist display
+    /// state can read the monitor's current host or nested rows in response;
+    /// failed reads do not publish either case.
+    public nonisolated enum SnapshotPublication: Sendable, Equatable {
+        case host
+        case herdrMachines
+    }
+
+    /// The outcome of a requested refresh. A nested failure preserves its
+    /// previous rows, so it is reported separately from a host/session
+    /// failure. Caller cancellation removes only that caller's wait.
+    public nonisolated enum RefreshResult: Sendable, Equatable {
+        case completed
+        case completedWithNestedFailures
+        case failed
+        case stopped
+        case cancelled
+    }
+
     /// How long things take. Tests shorten them.
     public nonisolated struct Timing: Sendable {
         public var refresh = HerdrRefreshSchedule.Timing()
@@ -148,6 +167,7 @@ public final class MachineMonitor {
     private let pinHostKey: (String) -> Void
     private let pollInterval: Duration
     private let listener: (any MachineMonitorListener)?
+    private let publication: (@MainActor (SnapshotPublication) -> Void)?
     private let isPermanent: (any Error) -> Bool
     public let timing: Timing
 
@@ -168,7 +188,17 @@ public final class MachineMonitor {
     @ObservationIgnored private var isWaitingToReconnect = false
     @ObservationIgnored private var isStoppedOnFailure = false
     @ObservationIgnored private var reconnectDelay: Duration
+    @ObservationIgnored private var refreshRequest: RefreshRequest?
+    @ObservationIgnored private var nextRefreshWaiterID = 0
     private let reconnectAlarm = Alarm()
+
+    private struct RefreshRequest {
+        let runID: Int
+        var hostPublished = false
+        var nestedPublished = false
+        var nestedHadFailures = false
+        var waiters: [Int: CheckedContinuation<RefreshResult, Never>]
+    }
 
     /// - `makeClient` returns the client for one connection attempt, or nil
     ///   when there is nothing to connect to any more (the machine was
@@ -186,6 +216,7 @@ public final class MachineMonitor {
         pinHostKey: @escaping (String) -> Void,
         pollInterval: Duration,
         listener: (any MachineMonitorListener)?,
+        publication: (@MainActor (SnapshotPublication) -> Void)? = nil,
         isPermanentFailure: @escaping (any Error) -> Bool = MachineMonitor.isPermanentFailure,
         timing: Timing = Timing()
     ) {
@@ -193,6 +224,7 @@ public final class MachineMonitor {
         self.pinHostKey = pinHostKey
         self.pollInterval = pollInterval
         self.listener = listener
+        self.publication = publication
         self.isPermanent = isPermanentFailure
         self.timing = timing
         self.reconnectDelay = timing.firstReconnectDelay
@@ -265,7 +297,7 @@ public final class MachineMonitor {
         let id = runID
         reconnectDelay = timing.firstReconnectDelay
         run = Task {
-            await keepConnected()
+            await keepConnected(runID: id)
             if runID == id {
                 run = nil
             }
@@ -305,6 +337,7 @@ public final class MachineMonitor {
     }
 
     private func cancelRun() {
+        finishRefresh(.stopped, forRun: runID)
         run?.cancel()
         run = nil
         runID += 1
@@ -338,6 +371,89 @@ public final class MachineMonitor {
         }
     }
 
+    /// Requests one coalesced refresh of the host and its nested machines,
+    /// then waits for their current run to publish. It does not create a
+    /// connection or a board lease; callers keep using `holdForBoard()` for
+    /// that. A cancelled caller gets `.cancelled` without cancelling the
+    /// shared read or other callers.
+    public func refresh() async -> RefreshResult {
+        guard !Task.isCancelled else { return .cancelled }
+        let waiterID = nextRefreshWaiterID
+        nextRefreshWaiterID += 1
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                addRefreshWaiter(waiterID, continuation: continuation)
+            }
+        } onCancel: {
+            Task { @MainActor in
+                self.cancelRefreshWaiter(waiterID)
+            }
+        }
+    }
+
+    private func addRefreshWaiter(_ waiterID: Int, continuation: CheckedContinuation<RefreshResult, Never>) {
+        guard !Task.isCancelled else {
+            continuation.resume(returning: .cancelled)
+            return
+        }
+        if var request = refreshRequest {
+            request.waiters[waiterID] = continuation
+            refreshRequest = request
+            return
+        }
+        guard !isStoppedOnFailure else {
+            continuation.resume(returning: .failed)
+            return
+        }
+        guard run != nil else {
+            continuation.resume(returning: .stopped)
+            return
+        }
+        refreshRequest = RefreshRequest(runID: runID, waiters: [waiterID: continuation])
+        refreshNow()
+    }
+
+    private func cancelRefreshWaiter(_ waiterID: Int) {
+        guard var request = refreshRequest,
+              let continuation = request.waiters.removeValue(forKey: waiterID) else { return }
+        refreshRequest = request
+        continuation.resume(returning: .cancelled)
+    }
+
+    private func publishedHost(in session: Session) {
+        guard var request = refreshRequest,
+              request.runID == runID,
+              self.session === session else { return }
+        request.hostPublished = true
+        refreshRequest = request
+        completeRefreshIfReady()
+    }
+
+    private func publishedNested(in session: Session, hadFailures: Bool) {
+        guard var request = refreshRequest,
+              request.runID == runID,
+              self.session === session else { return }
+        request.nestedPublished = true
+        request.nestedHadFailures = hadFailures
+        refreshRequest = request
+        completeRefreshIfReady()
+    }
+
+    private func completeRefreshIfReady() {
+        guard let request = refreshRequest,
+              request.hostPublished,
+              request.nestedPublished else { return }
+        finishRefresh(request.nestedHadFailures ? .completedWithNestedFailures : .completed, forRun: request.runID)
+    }
+
+    private func finishRefresh(_ result: RefreshResult, forRun id: Int) {
+        guard let request = refreshRequest, request.runID == id else { return }
+        refreshRequest = nil
+        for continuation in request.waiters.values {
+            continuation.resume(returning: result)
+        }
+    }
+
     // MARK: Connecting
 
     /// Connects, keeps up to date for as long as the connection works, and
@@ -350,13 +466,16 @@ public final class MachineMonitor {
     /// for good. Ends when cancelled, when there is nothing to connect to
     /// any more, or after a failure `isPermanentFailure` says no further
     /// attempt can get past.
-    private func keepConnected() async {
+    private func keepConnected(runID: Int) async {
         while !Task.isCancelled {
             // What ended this attempt. Nil means it was not a failure but the
             // task being cancelled.
             let failure: (any Error)?
             do {
-                guard let client = try makeClient() else { return }
+                guard let client = try makeClient() else {
+                    finishRefresh(.stopped, forRun: runID)
+                    return
+                }
                 // Cancellation doesn't reach into every await of a
                 // connection: Citadel's NIO-backed ones (EventLoopFuture.get())
                 // don't check for it, so a cancelled run would leave its SSH
@@ -409,6 +528,7 @@ public final class MachineMonitor {
                 failure = error
             }
             guard let failure else { return }
+            finishRefresh(.failed, forRun: runID)
             if isPermanent(failure) {
                 isStoppedOnFailure = true
                 return
@@ -472,6 +592,8 @@ public final class MachineMonitor {
         }
         snapshotCount += 1
         listener?.observe(panes: snapshot.panes, tabs: snapshot.tabs, workspaces: snapshot.workspaces, on: nil)
+        publication?(.host)
+        publishedHost(in: session)
         // A second snapshot over the same connection: it has kept working
         // for a whole round, so whatever goes wrong from here on is a new
         // outage, not more of the one the delay had grown for.
@@ -724,6 +846,7 @@ public final class MachineMonitor {
                 listed = try await session.client.listAllHerdrMachines()
             } catch {
                 guard !Task.isCancelled else { return }
+                publishedNested(in: session, hadFailures: true)
                 // Kept with its reason rather than dropped: it is what the
                 // menus that add and remove herdr machines are greyed out
                 // for, and what the new tab launcher says in their place.
@@ -751,7 +874,7 @@ public final class MachineMonitor {
                 let machines = listed.filter(\.enabled)
                 let groups = await Self.fetchSnapshots(on: machines, previous: herdrMachineGroups, client: session.client)
                 guard !Task.isCancelled else { return }
-                show(groups)
+                show(groups, in: session)
                 failureDelay = timing.herdrMachineInterval
                 delay = timing.herdrMachineInterval
             } else {
@@ -770,7 +893,7 @@ public final class MachineMonitor {
     /// Shows a round over the herdr machines, and passes on the machines
     /// listed this time. One that couldn't be reached still has the panes it
     /// last listed, which say nothing new.
-    private func show(_ groups: [HerdrMachineGroup]) {
+    private func show(_ groups: [HerdrMachineGroup], in session: Session) {
         if groups != herdrMachineGroups {
             herdrMachineGroups = groups
         }
@@ -778,6 +901,8 @@ public final class MachineMonitor {
         for group in groups where group.error == nil && group.hasLoaded {
             listener?.observe(panes: group.agents, tabs: group.tabs, workspaces: group.workspaces, on: group.machine)
         }
+        publication?(.herdrMachines)
+        publishedNested(in: session, hadFailures: groups.contains { $0.error != nil })
     }
 
     /// One round over the machines: all of them at once, each on its own, so

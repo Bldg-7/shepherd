@@ -20,6 +20,11 @@ import Foundation
         await unacknowledgedFallsBack()
         await refusedFallsBack()
         await refreshDoesNotReconnect()
+        await refreshCompletionCoalescesAndPublishes()
+        await refreshCompletionReportsPartialNestedFailure()
+        await refreshCompletionFailsWithoutClearingRows()
+        await refreshCancellationAndRunGeneration()
+        await refreshCompletionStopsWithBoardLease()
         await permanentFailureWaitsForRetry()
         await passingFailureRetriesByItself()
         await herdrMachinesArePolled()
@@ -72,6 +77,7 @@ import Foundation
     final class Fixture {
         let fake: FakeHerdr
         let listener = Listener()
+        let publications = PublicationListener()
         var clients = 0
         var monitor: MachineMonitor!
         var board: Task<Void, Never>?
@@ -86,6 +92,9 @@ import Foundation
                 pinHostKey: { _ in },
                 pollInterval: pollInterval,
                 listener: listener,
+                publication: { [publications] publication in
+                    publications.publications.append(publication)
+                },
                 isPermanentFailure: { $0 is PermanentTestFailure },
                 timing: timing
             )
@@ -313,6 +322,116 @@ import Foundation
         await fixture.finish()
     }
 
+    static func refreshCompletionCoalescesAndPublishes() async {
+        let fake = FakeHerdr(herdrMachines: ["gpu"])
+        let fixture = Fixture(fake)
+        fixture.showOnBoard()
+        await eventually("refresh completion: initial host and nested snapshots") {
+            fixture.monitor.hasLoaded && fixture.monitor.herdrMachineGroups.first?.hasLoaded == true
+        }
+        await eventually("refresh completion: subscription is ready") { await fake.isSubscribedForTheAgent }
+        let hostReads = await fake.snapshotTimes.count
+        let nestedReads = await fake.herdrMachineSnapshots.count
+        let publications = fixture.publications.publications.count
+        await fake.setSnapshotDelay(.milliseconds(150))
+        await fake.emit(#"{"event":"pane_updated","data":{}}"#)
+        await eventually("refresh completion: an event snapshot is in flight") { await fake.snapshotTimes.count > hostReads }
+        let first = Task { await fixture.monitor.refresh() }
+        let second = Task { await fixture.monitor.refresh() }
+        let outcomes = await (first.value, second.value)
+        check(outcomes.0 == .completed && outcomes.1 == .completed,
+              "refresh completion: callers coalesce onto host and nested publications")
+        check(await fake.herdrMachineSnapshots.count > nestedReads,
+              "refresh completion: the requested nested round runs")
+        check(fixture.publications.publications.count >= publications + 2
+              && fixture.publications.publications.contains(.host)
+              && fixture.publications.publications.contains(.herdrMachines),
+              "refresh completion: successful scope publications are exposed")
+        await fixture.finish()
+    }
+
+    static func refreshCompletionReportsPartialNestedFailure() async {
+        let fake = FakeHerdr(herdrMachines: ["gpu", "down"])
+        let fixture = Fixture(fake)
+        fixture.showOnBoard()
+        await eventually("refresh partial: both nested groups initially load") {
+            fixture.monitor.herdrMachineGroups.count == 2
+                && fixture.monitor.herdrMachineGroups.allSatisfy(\.hasLoaded)
+        }
+        await fake.setMachineFailure("down")
+        let outcome = await fixture.monitor.refresh()
+        check(outcome == .completedWithNestedFailures,
+              "refresh partial: nested failure completes without pretending success")
+        let down = fixture.monitor.herdrMachineGroups.first { $0.id == "down" }
+        check(down?.hasLoaded == true && down?.agents.first?.terminalID == "term-down" && down?.error != nil,
+              "refresh partial: failed nested machine retains its previous rows")
+        await fixture.finish()
+    }
+
+    static func refreshCompletionFailsWithoutClearingRows() async {
+        let fixture = Fixture()
+        let fake = fixture.fake
+        fixture.showOnBoard()
+        await eventually("refresh failure: initial rows load") { fixture.monitor.hasLoaded && !fixture.monitor.panes.isEmpty }
+        let title = fixture.title(of: "w1:p1")
+        await fake.failSnapshots(1)
+        let outcome = await fixture.monitor.refresh()
+        check(outcome == .failed, "refresh failure: session failure completes the waiter")
+        check(fixture.title(of: "w1:p1") == title && !fixture.monitor.panes.isEmpty,
+              "refresh failure: host rows remain after a failed refresh")
+        await fixture.finish()
+    }
+
+    static func refreshCancellationAndRunGeneration() async {
+        let fixture = Fixture()
+        let fake = fixture.fake
+        fixture.showOnBoard()
+        await eventually("refresh cancellation: initial snapshot") { fixture.monitor.hasLoaded }
+        let hostReads = await fake.snapshotTimes.count
+        await fake.setSnapshotDelay(.milliseconds(250))
+        let shared = Task { await fixture.monitor.refresh() }
+        await eventually("refresh cancellation: shared read begins") { await fake.snapshotTimes.count > hostReads }
+        let cancelled = Task { await fixture.monitor.refresh() }
+        cancelled.cancel()
+        check(await cancelled.value == .cancelled,
+              "refresh cancellation: cancelling one caller returns without cancelling shared work")
+        check(await shared.value == .completed,
+              "refresh cancellation: the other caller receives the shared completion")
+
+        await fake.setSnapshotDelay(.milliseconds(250))
+        let oldRun = Task { await fixture.monitor.refresh() }
+        let oldRunReads = await fake.snapshotTimes.count
+        await eventually("refresh generation: old run has a read in flight") { await fake.snapshotTimes.count > oldRunReads }
+        fixture.monitor.retry()
+        check(await oldRun.value == .stopped,
+              "refresh generation: replacing a run resolves only its old waiters")
+        await fake.setSnapshotDelay(.zero)
+        await eventually("refresh generation: replacement connection publishes") {
+            let connects = await fake.connects
+            return connects >= 2 && fixture.monitor.loadError == nil
+        }
+        check(await fixture.monitor.refresh() == .completed,
+              "refresh generation: a new waiter awaits the replacement run")
+        await fixture.finish()
+    }
+
+    static func refreshCompletionStopsWithBoardLease() async {
+        var shortStop = timing()
+        shortStop.stopDelay = .milliseconds(80)
+        let fixture = Fixture(timing: shortStop)
+        let fake = fixture.fake
+        fixture.showOnBoard()
+        await eventually("refresh stop: initial snapshot") { fixture.monitor.hasLoaded }
+        let reads = await fake.snapshotTimes.count
+        await fake.hangSnapshots(true)
+        let refresh = Task { await fixture.monitor.refresh() }
+        await eventually("refresh stop: refresh read begins") { await fake.snapshotTimes.count > reads }
+        fixture.leaveBoard()
+        check(await refresh.value == .stopped,
+              "refresh stop: losing the final board lease resolves the waiter")
+        await eventually("refresh stop: monitor stops naturally") { !fixture.monitor.isActive }
+    }
+
     static func permanentFailureWaitsForRetry() async {
         let fake = FakeHerdr()
         await fake.failConnecting(with: PermanentTestFailure())
@@ -320,6 +439,8 @@ import Foundation
         fixture.showOnBoard()
         await eventually("permanent: shown") { fixture.monitor.loadError != nil }
         check(!fixture.monitor.isRetrying, "permanent: not trying again by itself")
+        check(await fixture.monitor.refresh() == .failed,
+              "permanent: refresh waiter completes rather than hanging")
         await pause(500)
         check(await fake.connects == 1, "permanent: no further attempt")
         await fake.failConnecting(with: nil)
@@ -443,6 +564,10 @@ import Foundation
 }
 
 nonisolated struct PermanentTestFailure: Error {}
+
+@MainActor final class PublicationListener {
+    var publications: [MachineMonitor.SnapshotPublication] = []
+}
 
 final class Listener: MachineMonitorListener {
     var connections = 0

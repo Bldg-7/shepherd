@@ -19,6 +19,11 @@ public final class MachineMonitors {
     /// (`NotificationFeed`). Set by the app before any monitor is made; nil
     /// gives monitors with no listener.
     public var makeListener: (@MainActor (Machine) -> (any MachineMonitorListener)?)?
+    /// Called after a monitor has successfully published its host or nested
+    /// snapshot. This is separate from `makeListener` so a mobile display
+    /// cache can observe publications without replacing notification
+    /// listeners used by macOS.
+    public var observePublication: (@MainActor (Machine, MachineMonitor.SnapshotPublication) -> Void)?
 
     private init() {}
 
@@ -50,7 +55,10 @@ public final class MachineMonitors {
             // can't subscribe: three seconds for this Mac's own herdr, five
             // for one over SSH.
             pollInterval: machine.isLocal ? .seconds(3) : .seconds(5),
-            listener: makeListener?(machine)
+            listener: makeListener?(machine),
+            publication: { [weak self] publication in
+                self?.observePublication?(machine, publication)
+            }
         )
         monitors[identity] = monitor
         return monitor
