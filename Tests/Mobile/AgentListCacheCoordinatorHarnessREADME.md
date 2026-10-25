@@ -4,6 +4,17 @@
 python3 Tests/Mobile/run-agent-list-cache-coordinator-harness.py --output /owned/output
 ```
 
+The default run uses only the current production sources and does not require
+Git history. To additionally run the historical P1 negative control, opt in:
+
+```sh
+python3 Tests/Mobile/run-agent-list-cache-coordinator-harness.py \
+  --output /owned/output-with-negative-control --negative-control
+```
+
+That mode requires commit `8d76aab6a55103401e039faf58f24d6cffe673be`; it fails
+clearly when that history is unavailable.
+
 This is an executable controlled-timing harness, not a source-substring check.
 It compiles and runs the production `MobileAgentListCache`,
 `MobileBoardLoadCoordinator`, `AgentListCache`, `MachineStore`, and the private
@@ -31,8 +42,8 @@ the cache actor and journal still read/write the owned disk files. Cases cover:
 - corrupt, oversized, and full bounded journals failing closed before a
   replacement credential write, followed by capacity reclamation only after a successful
   machine-wide purge; and
-- an executable original-P1 negative control: `8d76aab` is compiled into the
-  owned output and fails the all-variant-purge assertion as expected;
+- optionally, an executable original-P1 negative control: `8d76aab` is compiled
+  into the owned output and fails the all-variant-purge assertion as expected;
 - journal persistence failure rejecting a replacement credential before its
   write;
 - bounded burst coalescing plus explicit flush; and
