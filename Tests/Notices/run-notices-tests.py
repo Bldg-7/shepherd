@@ -337,6 +337,48 @@ def architectures(path: Path) -> set[str]:
     return result
 
 
+UUID_LINE = re.compile(
+    r"UUID: ([0-9A-Fa-f]{8}-(?:[0-9A-Fa-f]{4}-){3}[0-9A-Fa-f]{12}) \(([^()]+)\) .+"
+)
+
+
+def uuid_map_from_output(output: str, path: Path, expected_arches: set[str]) -> dict[str, str]:
+    """Parse exactly one LC_UUID identity for every expected Mach-O slice."""
+    result: dict[str, str] = {}
+    for line in output.splitlines():
+        match = UUID_LINE.fullmatch(line)
+        if match is None:
+            fail(f"cannot parse Mach-O UUID evidence for {path}: {line}")
+        identity, arch = match.group(1).upper(), match.group(2)
+        if arch in result:
+            fail(f"duplicate Mach-O UUID evidence for architecture {arch}: {path}")
+        result[arch] = identity
+    if set(result) != expected_arches:
+        fail(f"Mach-O UUID evidence has wrong architectures for {path}: {sorted(result)}")
+    if len(set(result.values())) != len(result):
+        fail(f"Mach-O UUID evidence has duplicate slice identities: {path}")
+    return result
+
+
+def macho_uuids(path: Path, expected_arches: set[str]) -> dict[str, str]:
+    if not path.is_file() or path.stat().st_size == 0:
+        fail(f"required Mach-O UUID evidence is missing or empty: {path}")
+    try:
+        output = subprocess.run(
+            ["dwarfdump", "--uuid", str(path)], text=True, capture_output=True, check=False
+        )
+    except OSError as error:
+        fail(f"cannot inspect Mach-O UUID evidence for {path}: {error}")
+    if output.returncode != 0:
+        fail(f"cannot inspect Mach-O UUID evidence for {path}: {output.stderr.strip()}")
+    return uuid_map_from_output(output.stdout, path, expected_arches)
+
+
+def require_same_uuids(label: str, expected: dict[str, str], actual: dict[str, str]) -> None:
+    if actual != expected:
+        fail(f"{label} Mach-O UUID identities do not match")
+
+
 def require_within(path: Path, root: Path, label: str) -> Path:
     try:
         return path.resolve().relative_to(root.resolve())
@@ -420,6 +462,53 @@ def app_paths(app: Path) -> tuple[Path, Path, Path, Path]:
     return main, helper, sparkle, cef
 
 
+def target_dsym(archive_root: Path, target: str) -> Path:
+    # These are the fixed Xcode archive target outputs, not a UUID search.  A
+    # dSYM exists before signing/export and retains the target LC_UUIDs through
+    # normal code-signing and export transformations.
+    filenames = {
+        "app": ("hrdrhrdrhrdr.app.dSYM", "hrdrhrdrhrdr"),
+        "helper": ("hrdrhrdrhrdr-agent-proxy.dSYM", "hrdrhrdrhrdr-agent-proxy"),
+    }
+    dsym_name, binary_name = filenames[target]
+    path = archive_root / "BuildProductsPath/Release" / dsym_name / "Contents/Resources/DWARF" / binary_name
+    if not path.is_file():
+        fail(f"missing exact Release {target} target dSYM UUID evidence: {path}")
+    require_within(path, archive_root, f"{target} target dSYM UUID evidence")
+    return path
+
+
+def bind_build_identities(
+    app_executables: dict[str, Path],
+    archived_executables: dict[str, Path],
+    archive_root: Path,
+    target_inputs: dict[tuple[str, str], set[Path]],
+) -> None:
+    """Bind app/archive identities to the exact targets whose links were checked.
+
+    LC_UUID is ordinary build-coherence evidence: it rejects a mismatched
+    archive/export/DerivedData trio, but is not cryptographic attestation
+    against a malicious builder.
+    """
+    for target in ("app", "helper"):
+        expected_arches = architectures(archived_executables[target])
+        require_same_uuids(
+            f"archive and supplied {target}",
+            macho_uuids(archived_executables[target], expected_arches),
+            macho_uuids(app_executables[target], expected_arches),
+        )
+        # Do not let an output merely found elsewhere in DerivedData bind this
+        # target.  These exact link inputs were validated above for every slice.
+        for arch in expected_arches:
+            if not target_inputs.get((target, arch)):
+                fail(f"cannot bind {target} UUID evidence without exact {arch} link inputs")
+        require_same_uuids(
+            f"archive and exact DerivedData {target} target output",
+            macho_uuids(archived_executables[target], expected_arches),
+            macho_uuids(target_dsym(archive_root, target), expected_arches),
+        )
+
+
 def matching_archive_and_derived(inputs: Iterable[Path]) -> tuple[Path, Path, Path]:
     roots = [path.resolve() for path in inputs]
     if len(roots) != 2 or len(set(roots)) != 2:
@@ -479,6 +568,12 @@ def check_products(inventory: dict, app: Path, inputs: list[Path]) -> None:
         for arch in app_arches:
             if expected not in target_inputs[("helper", arch)]:
                 fail(f"agent proxy helper link evidence is incomplete: {filename}")
+    bind_build_identities(
+        {"app": main, "helper": helper},
+        {"app": archived_main, "helper": archived_helper},
+        intermediate_root,
+        target_inputs,
+    )
 
 
 def stamp_version(version: str) -> None:
@@ -524,6 +619,40 @@ def self_test() -> None:
     rejected("CEF provenance", lambda: check_cef({**inventory, "cefCredits": {**inventory["cefCredits"], "sha256": "0" * 64}}))
     rejected("package pin drift", lambda: check_dependency_graph({**inventory, "changeFingerprints": {**inventory["changeFingerprints"], "packageResolved": "Tests/Notices/fixtures/missing.json"}}))
     rejected("runtime lock/license drift", lambda: check_runtime_packages(inventory, ROOT / "Tests/Notices/fixtures"))
+
+    uuid_path = Path("fixture-macho")
+    valid_uuids = {
+        "arm64": "11111111-1111-1111-1111-111111111111",
+        "x86_64": "22222222-2222-2222-2222-222222222222",
+    }
+    rejected(
+        "missing Mach-O UUID slice",
+        lambda: uuid_map_from_output(
+            "UUID: 11111111-1111-1111-1111-111111111111 (arm64) fixture-macho\\n", uuid_path, set(valid_uuids)
+        ),
+    )
+    rejected(
+        "duplicate Mach-O UUID architecture",
+        lambda: uuid_map_from_output(
+            "UUID: 11111111-1111-1111-1111-111111111111 (arm64) fixture-macho\\n"
+            "UUID: 22222222-2222-2222-2222-222222222222 (arm64) fixture-macho\\n", uuid_path, set(valid_uuids)
+        ),
+    )
+    rejected(
+        "duplicate Mach-O UUID identity",
+        lambda: uuid_map_from_output(
+            "UUID: 11111111-1111-1111-1111-111111111111 (arm64) fixture-macho\\n"
+            "UUID: 11111111-1111-1111-1111-111111111111 (x86_64) fixture-macho\\n", uuid_path, set(valid_uuids)
+        ),
+    )
+    rejected(
+        "wrong-target Mach-O UUID output",
+        lambda: require_same_uuids("archive and exact DerivedData helper target output", valid_uuids, {**valid_uuids, "arm64": "33333333-3333-3333-3333-333333333333"}),
+    )
+    rejected(
+        "mismatched archive/export Mach-O UUIDs",
+        lambda: require_same_uuids("archive and supplied app", valid_uuids, {**valid_uuids, "x86_64": "44444444-4444-4444-4444-444444444444"}),
+    )
 
     with tempfile.TemporaryDirectory(prefix="shphrd-87-notices-") as temporary:
         fixture = Path(temporary)
