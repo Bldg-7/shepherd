@@ -21,17 +21,15 @@ struct BoardView: View {
                 _ = await monitor.refresh()
             }
             .task(id: machine.connectionIdentity) {
-                // Establish the board lease before requesting the access
-                // refresh, while the display-only disk snapshot races in.
-                async let boardLease: Void = MachineMonitors.shared.holdForBoard(machine, in: machineStore)
-                await Task.yield()
+                // An unloaded board must hydrate its inert display cache before
+                // acquiring the lease that can start a network connection. A
+                // monitor already live for another owner remains live-first.
                 cachedSnapshot = await agentListCache.snapshot(for: machine)
-                guard !Task.isCancelled else {
-                    await boardLease
-                    return
-                }
+                guard !Task.isCancelled else { return }
+                async let boardLease: Void = MachineMonitors.shared.holdForBoard(machine, in: machineStore)
                 monitor.refreshNow()
                 await boardLease
+                await agentListCache.flush(for: machine)
             }
     }
 }

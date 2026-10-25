@@ -5,6 +5,7 @@ import ShepherdKit
 /// pane shows — read over SSH, from the device itself (docs/mobile-design.md,
 /// Phase 1). One window; Config/Info-iOS.plist keeps it to one scene.
 @main struct ShepherdMobileApp: App {
+    @Environment(\.scenePhase) private var scenePhase
     @State private var machineStore: MachineStore
     @State private var agentListCache: MobileAgentListCache
 
@@ -20,6 +21,12 @@ import ShepherdKit
     var body: some Scene {
         WindowGroup {
             MachinesView(machineStore: machineStore, agentListCache: agentListCache)
+                .onChange(of: scenePhase) { _, phase in
+                    // Debounced writes are flushed when iOS backgrounds the
+                    // scene, preserving the newest complete snapshot.
+                    guard phase == .background else { return }
+                    Task { await agentListCache.flush() }
+                }
         }
     }
 }

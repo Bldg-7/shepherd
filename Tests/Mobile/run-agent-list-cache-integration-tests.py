@@ -31,7 +31,9 @@ checks = {
     "successful_publication_mapping": "observePublication" in mobile and "case .host:" in mobile
         and "case .herdrMachines:" in mobile,
     "partial_nested_retention": "return previous[group.machine.id]" in mobile
-        and ".replacing(nestedGroups: groups)" in mobile,
+        and "pendingNestedGroups" in mobile,
+    "nested_before_host_is_retained": "state.pendingNestedGroups = groups" in mobile
+        and "state.snapshot?.nestedGroups ?? state.pendingNestedGroups ?? []" in mobile,
     "authoritative_empty_nested": "nestedGroups: groups" in mobile,
     "safe_cached_taps": "CachedPaneRow(pane: pane)" in board
         and "NavigationLink(value: PaneDestination" not in board[board.index("private func cachedSection"):board.index("private struct BoardSection")],
@@ -39,8 +41,13 @@ checks = {
     "precommit_identity_invalidation": "connectionWillInvalidate?(current.connectionIdentity)" in store
         and "connectionWillInvalidate?(machine.connectionIdentity)" in store
         and "machineWillRemove?(current.id)" in store,
-    "late_write_guard": "!self.invalidated.contains(identity)" in mobile
-        and "self.generations[identity] == generation" in mobile,
+    "revision_ordered_write_guard": "state.revision == revision" in mobile
+        and "states[identity]?.generation == generation" in mobile,
+    "durable_retirement_before_commit": "RetiredCacheIdentities" in mobile
+        and "guard retired.retire(identity) else { return false }" in mobile
+        and "cacheInvalidationFailed" in store,
+    "bounded_debounce_and_flush": "debounceNanoseconds" in mobile
+        and "func flush(for machine" in mobile,
     "monitor_refresh_contract_unchanged": "public func refresh() async -> RefreshResult" in monitor,
 }
 failed = [name for name, passed in checks.items() if not passed]

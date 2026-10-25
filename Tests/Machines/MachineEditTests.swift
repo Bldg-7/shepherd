@@ -67,10 +67,12 @@ struct SSHHerdrTransport: HerdrTransport {
         store.connectionWillInvalidate = { identity in
             invalidatedConnections.append(identity)
             invalidationPrecedesCommit = invalidationPrecedesCommit && store.allMachines.contains { $0.connectionIdentity == identity }
+            return true
         }
         store.machineWillRemove = { machineID in
             removedMachineIDs.append(machineID)
             invalidationPrecedesCommit = invalidationPrecedesCommit && store.allMachines.contains { $0.id == machineID }
+            return true
         }
         secrets.events = []
         var draft = first
@@ -177,7 +179,7 @@ struct SSHHerdrTransport: HerdrTransport {
         var wrongID = current; wrongID.id = UUID()
         rejects("identity replacement denied") { try store.updateMachine(wrongID, replacing: current) }
         let tag = current.keychainTag
-        store.removeMachine(beforeCredential)
+        check(store.removeMachine(beforeCredential), "removal commits after durable cache hook")
         check(!store.machines.contains(where: { $0.id == current.id }) && secrets.values[tag] == nil, "stale removal confirmation deletes current credential")
         check(removedMachineIDs == [current.id] && invalidationPrecedesCommit,
               "machine cache hook runs before removal commits")
@@ -206,6 +208,19 @@ struct SSHHerdrTransport: HerdrTransport {
         rejects("a stale paired machine is not moved") { try store.updatePairedAddress(of: paired, hostname: "studio.local", addressKind: .localName) }
         rejects("a machine added by hand has no paired address") {
             try store.updatePairedAddress(of: store.machines.first { $0.id == second.id }!, hostname: "10.0.0.2", addressKind: .privateIPv4)
+        }
+        let beforeRetirementFailure = moved
+        store.connectionWillInvalidate = { _ in false }
+        var rejectedMove = moved; rejectedMove.hostname = "blocked.invalid"
+        rejects("failed durable retirement rejects connection edit") {
+            try store.updateMachine(rejectedMove, replacing: moved)
+        }
+        check(store.machines.first { $0.id == moved.id } == beforeRetirementFailure,
+              "rejected retirement leaves machine metadata unchanged")
+        store.connectionWillInvalidate = { identity in
+            invalidatedConnections.append(identity)
+            invalidationPrecedesCommit = invalidationPrecedesCommit && store.allMachines.contains { $0.connectionIdentity == identity }
+            return true
         }
         rejects("an empty address") { try store.updatePairedAddress(of: moved, hostname: " ", addressKind: .privateIPv4) }
         var kindDraft = moved; kindDraft.displayName = "Studio Mac"; kindDraft.addressKind = nil

@@ -30,12 +30,15 @@ public final class MachineStore {
     /// A mobile composition hook that synchronously blocks stale display-cache
     /// writers before this store retires a connection identity. It never
     /// receives credential bytes and is nil for the unchanged macOS app.
-    public var connectionWillInvalidate: ((Machine.ConnectionIdentity) -> Void)?
+    /// Returning false declines the mutation: mobile uses this to ensure its
+    /// durable cache-retirement journal is committed before connection state.
+    /// Nil retains the unchanged macOS behavior.
+    public var connectionWillInvalidate: ((Machine.ConnectionIdentity) -> Bool)?
     /// As above, for every saved connection variant of a removed machine.
-    public var machineWillRemove: ((UUID) -> Void)?
+    public var machineWillRemove: ((UUID) -> Bool)?
 
     public enum EditError: LocalizedError {
-        case notEditable, settingsChanged, invalidFields, credentialRequired, missingCredential
+        case notEditable, settingsChanged, invalidFields, credentialRequired, missingCredential, cacheInvalidationFailed
 
         public var errorDescription: String? {
             switch self {
@@ -44,6 +47,7 @@ public final class MachineStore {
             case .invalidFields: String(localized: "Check the name, hostname, username, port and session.", bundle: .shepherdKit)
             case .credentialRequired: String(localized: "Enter a new credential when changing authentication.", bundle: .shepherdKit)
             case .missingCredential: String(localized: "No saved SSH credential was found. Edit the machine to set up authentication.", bundle: .shepherdKit)
+            case .cacheInvalidationFailed: String(localized: "Could not safely retire the saved board cache. Try again.", bundle: .shepherdKit)
             }
         }
     }
@@ -147,10 +151,14 @@ public final class MachineStore {
         var next = machines
         next[index] = updated
         let encoded = try JSONEncoder().encode(next)
-        if let replacementSecret { try keychain.saveSecret(replacementSecret, tag: updated.keychainTag) }
-        if updated.connectionIdentity != current.connectionIdentity {
-            connectionWillInvalidate?(current.connectionIdentity)
+        // Retire the old display cache before either the new credential or
+        // connection metadata can commit. If the journal write fails, no new
+        // credential is written and the edit is honestly rejected.
+        if updated.connectionIdentity != current.connectionIdentity,
+           !(connectionWillInvalidate?(current.connectionIdentity) ?? true) {
+            throw EditError.cacheInvalidationFailed
         }
+        if let replacementSecret { try keychain.saveSecret(replacementSecret, tag: updated.keychainTag) }
         defaults.set(encoded, forKey: defaultsKey)
         machines = next
         // Cleanup is after the successful commit, never before the new secret is
@@ -159,7 +167,13 @@ public final class MachineStore {
     }
 
     public func isCurrentConnection(_ machine: Machine) -> Bool {
-        allMachines.contains { $0.connectionIdentity == machine.connectionIdentity }
+        isCurrentConnectionIdentity(machine.connectionIdentity)
+    }
+
+    /// Identity-only counterpart used by cache writers that intentionally do
+    /// not retain a whole mutable `Machine` value across an async store.
+    public func isCurrentConnectionIdentity(_ identity: Machine.ConnectionIdentity) -> Bool {
+        allMachines.contains { $0.connectionIdentity == identity }
     }
 
     /// Keep the connection scope but refresh metadata, especially a TOFU pin
@@ -171,10 +185,11 @@ public final class MachineStore {
         return current
     }
 
-    public func removeMachine(_ machine: Machine) {
+    @discardableResult
+    public func removeMachine(_ machine: Machine) -> Bool {
         guard !machine.isLocal,
-              let current = machines.first(where: { $0.id == machine.id }), !current.isLocal else { return }
-        machineWillRemove?(current.id)
+              let current = machines.first(where: { $0.id == machine.id }), !current.isLocal else { return false }
+        guard machineWillRemove?(current.id) ?? true else { return false }
         // A removal confirmation may predate an edit in another window.
         try? keychain.deleteSecret(tag: current.keychainTag)
         machines.removeAll { $0.id == machine.id }
@@ -182,6 +197,7 @@ public final class MachineStore {
             activeMachineID = allMachines.first?.id
         }
         save()
+        return true
     }
 
     /// The raw secret bytes for a Machine — a private key PEM or a
@@ -221,7 +237,9 @@ public final class MachineStore {
         next[index].hostname = host
         next[index].addressKind = addressKind
         let encoded = try JSONEncoder().encode(next)
-        connectionWillInvalidate?(machine.connectionIdentity)
+        guard connectionWillInvalidate?(machine.connectionIdentity) ?? true else {
+            throw EditError.cacheInvalidationFailed
+        }
         defaults.set(encoded, forKey: defaultsKey)
         machines = next
     }
