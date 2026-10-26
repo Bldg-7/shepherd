@@ -10,8 +10,9 @@ const APIS={anthropic:'anthropic-messages','openai-codex':'openai-codex-response
 const OPENAI_BASE='https://api.openai.com/v1';
 const OWNED_HEADERS=new Set(['x-3rdr-pi-session','x-3rdr-pi-class','x-3rdr-pi-contract','x-3rdr-pi-auth']);
 
-// A native root lease qualifies its session before MCP/browser readiness. Lease
-// retirement is not a session boundary: only replacement or shutdown clears it.
+// An authenticated native root/session acknowledgement qualifies its session
+// before MCP/browser readiness. Browser lease lifetime is not capture authority;
+// only replacement or shutdown clears it.
 export function createPiCaptureAuthority() {
   let session;
   return Object.freeze({
