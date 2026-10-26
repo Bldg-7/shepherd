@@ -45,7 +45,10 @@ assert '.frame(minWidth: TitleRenameToolbar.minimumWidth, idealWidth: TitleRenam
 assert 'TitleRenameToolbarRoom(active: titleRenameShown(on: machine) != nil)' in c
 assert 'enum TitleRenameToolbar {' in f and 'static let itemID = "title-rename"' in f
 assert 'static let minimumWidth: CGFloat = 120' in f and 'static let idealWidth: CGFloat = 280' in f
-assert 'NSWindow.didResizeNotification' in f and 'item.view?.window === window' in f
+assert 'NSWindow.didResizeNotification' in f and 'let itemView = item.view' in f
+assert 'itemView.window == nil || itemView.window === window' in f
+assert 'func windowDidResize(_ window: NSWindow?)' in f
+assert 'guard active,\n                  let window,\n                  observedWindow === window,\n                  anchor?.window === window else { return }' in f
 assert 'DispatchQueue.main.async' in f and 'generation == scheduledGeneration' in f and 'coordinator.stopObserving()' in f
 # Only while the field is up, the space after it keeps the buttons at the bar's far end, where the title kept them.
 shown=c[c.index('                if let session = titleRenameShown(on: machine) {'):c.index('                if ShepherdBrowserFeature.shared.isEnabled {')]

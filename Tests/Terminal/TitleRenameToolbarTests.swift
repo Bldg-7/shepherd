@@ -110,12 +110,12 @@ final class RecordingWindow: NSWindow {
 @main @MainActor enum TitleRenameToolbarTests {
     static var checks = 0
     static func check(_ value: Bool, _ message: String) { precondition(value, message); checks += 1 }
-    static func spin(until condition: () -> Bool, _ message: String) {
+    static func spin(until condition: () -> Bool, _ message: @autoclosure () -> String) {
         let deadline = Date().addingTimeInterval(4)
         while !condition() && Date() < deadline {
             RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))
         }
-        check(condition(), message)
+        check(condition(), message())
     }
     static func fields(in view: NSView) -> [TitleRenameTextField] {
         ((view as? TitleRenameTextField).map { [$0] } ?? []) + view.subviews.flatMap(fields(in:))
@@ -318,6 +318,52 @@ final class RecordingWindow: NSWindow {
             guard let item = renameItem() else { return false }
             return item.minSize.width == TitleRenameToolbar.minimumWidth && item.maxSize.width == TitleRenameToolbar.idealWidth
         }, "the native title item has the 120...280pt range after SwiftUI layout")
+
+        // Seam regression, not synthetic OS dispatch: `windowDidResize` is
+        // the production observer entry point. B deliberately has no room of
+        // its own, so only the rehosted coordinator can repair its item.
+        let oldWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 200), styleMask: [.titled], backing: .buffered, defer: false)
+        oldWindow.isReleasedWhenClosed = false
+        let rehostProbe = ToolbarProbe()
+        let rehostWindow = window(ToolbarRoot(probe: rehostProbe, sidebarState: WorkspaceSidebarState(initialVisibility: .all), appliesToolbarRoom: false), width: 1000)
+        spin(until: { rehostWindow.toolbar != nil && rehostWindow.title == "pane title" }, "isolated B has its own toolbar without an independent room writer")
+        rehostProbe.session = TitleRenameSession(item: .pane(item))
+        func rehostFrameView() -> NSView { rehostWindow.contentView!.superview! }
+        spin(until: { fields(in: rehostFrameView()).count == 1 && fields(in: rehostFrameView())[0].window === rehostWindow }, "isolated B has an attached title field")
+        let rehostedItem = rehostWindow.toolbar!.items.first { $0.itemIdentifier.rawValue == TitleRenameToolbar.itemID }!
+        let rehostCoordinator = TitleRenameToolbarRoom.Coordinator()
+        let rehostAnchor = TitleRenameToolbarRoom.AnchorView(frame: .zero)
+        rehostAnchor.coordinator = rehostCoordinator
+        func rehostDiagnostics() -> String {
+            let member = rehostWindow.toolbar?.items.contains { $0 === rehostedItem } == true
+            let itemWindow = rehostedItem.view?.window === rehostWindow ? "B" : rehostedItem.view?.window == nil ? "nil" : "other"
+            return "member=\(member),itemWindow=\(itemWindow),min=\(rehostedItem.minSize.width),max=\(rehostedItem.maxSize.width),anchorWindow=\(rehostAnchor.window === rehostWindow ? "B" : rehostAnchor.window === oldWindow ? "A" : "other"),generation=\(rehostCoordinator.generation)"
+        }
+        check(rehostedItem.view?.window === rehostWindow, "isolated B's target item is attached before the rehost seam; \(rehostDiagnostics())")
+        oldWindow.contentView!.addSubview(rehostAnchor)
+        rehostCoordinator.update(active: true, anchor: rehostAnchor)
+        // 200pt is an attached in-range sentinel at B's wide width, unlike an
+        // overflow-sized 777pt item whose view may be detached before apply.
+        rehostedItem.minSize.width = 200
+        rehostedItem.maxSize.width = 200
+        let beforeRehost = rehostDiagnostics()
+        rehostWindow.contentView!.superview!.layoutSubtreeIfNeeded()
+        rehostWindow.contentView!.addSubview(rehostAnchor)
+        spin(until: { rehostAnchor.window === rehostWindow }, "the production room anchor rehosts from old A into isolated B")
+        check(rehostedItem.view?.window === rehostWindow && rehostWindow.toolbar!.items.contains { $0 === rehostedItem },
+              "isolated B's target remains attached after rehost; before {\(beforeRehost)} after {\(rehostDiagnostics())}")
+        rehostCoordinator.windowDidResize(oldWindow)
+        let deadline = Date().addingTimeInterval(4)
+        while !(rehostedItem.minSize.width == 120 && rehostedItem.maxSize.width == 280) && Date() < deadline {
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))
+        }
+        check(rehostedItem.minSize.width == 120 && rehostedItem.maxSize.width == 280,
+              "an old A resize callback cannot cancel isolated B's 120...280pt update; before {\(beforeRehost)} after {\(rehostDiagnostics())}")
+        rehostCoordinator.stopObserving()
+        rehostAnchor.removeFromSuperview()
+        oldWindow.close()
+        rehostWindow.close()
+
         check(toolbar.titleVisibility == .hidden, "the title is out of the toolbar while the field stands in its place")
         let identifiers = toolbar.toolbar!.items.map(\.itemIdentifier.rawValue)
         let separator = identifiers.firstIndex { $0.contains("splitViewSeparator") }
@@ -341,6 +387,14 @@ final class RecordingWindow: NSWindow {
         _ = resizeSidebar(280)
         toolbar.setContentSize(NSSize(width: 1000, height: 500))
         spin(until: { renameItem()?.minSize.width == 120 && renameItem()?.maxSize.width == 280 }, "a 280pt sidebar leaves the native range installed")
+        spin(until: { fields(in: frameView()).first.map { $0.convert($0.bounds, to: nil).width == 280 } == true }, "a 280pt sidebar starts with an actual 280pt field")
+        toolbar.setContentSize(NSSize(width: 620, height: 500))
+        spin(until: { fields(in: frameView()).first?.window === toolbar }, "the field stays attached while a 280pt sidebar narrows")
+        let narrow280Frame = fields(in: frameView())[0].convert(fields(in: frameView())[0].bounds, to: nil)
+        check(narrow280Frame.width >= TitleRenameToolbar.minimumWidth && narrow280Frame.width < TitleRenameToolbar.idealWidth,
+              "the actual field with a 280pt sidebar shrinks within 120...280pt before toolbar overflow")
+        toolbar.setContentSize(NSSize(width: 1000, height: 500))
+        spin(until: { fields(in: frameView()).first.map { $0.convert($0.bounds, to: nil).width == 280 } == true }, "the field expands back to 280pt after the 280pt-sidebar narrow path")
         _ = resizeSidebar(360)
         toolbar.setContentSize(NSSize(width: 700, height: 500))
         spin(until: { fields(in: frameView()).first?.window === toolbar }, "the field stays in the toolbar after width shrinks")
@@ -401,23 +455,29 @@ final class RecordingWindow: NSWindow {
         check(probe.endings.count == 2 && probe.endings[1].0 == .cancel, "Escape takes it back")
         spin(until: { fields(in: frameView()).isEmpty && toolbar.titleVisibility == .visible }, "the field goes, and the title is back")
 
-        // A second, initially narrow window has its sidebar hidden before a
-        // rename starts. Its item must be configured in that window only.
+        // A second window has its sidebar hidden. Drive its actual field from
+        // wide to narrow before using it for window isolation below.
         let narrowProbe = ToolbarProbe()
         let hiddenSidebar = WorkspaceSidebarState(initialVisibility: .detailOnly)
-        let narrow = window(ToolbarRoot(probe: narrowProbe, sidebarState: hiddenSidebar), width: 500)
+        let narrow = window(ToolbarRoot(probe: narrowProbe, sidebarState: hiddenSidebar), width: 1000)
         spin(until: { narrow.toolbar != nil && narrow.title == "pane title" }, "the hidden-sidebar fixture has its own toolbar")
         narrowProbe.session = TitleRenameSession(item: .pane(item))
         func narrowFrameView() -> NSView { narrow.contentView!.superview! }
-        spin(until: { fields(in: narrowFrameView()).count == 1 && fields(in: narrowFrameView())[0].window === narrow }, "a rename starting narrow stays in its own hidden-sidebar toolbar")
+        spin(until: { fields(in: narrowFrameView()).count == 1 && fields(in: narrowFrameView())[0].window === narrow }, "the hidden-sidebar field is in its own toolbar")
         let narrowField = fields(in: narrowFrameView())[0]
         spin(until: {
             narrow.toolbar?.items.first { $0.itemIdentifier.rawValue == TitleRenameToolbar.itemID }.map {
                 $0.minSize.width == 120 && $0.maxSize.width == 280
             } == true
-        }, "the narrow window gets the same native range")
+        }, "the hidden-sidebar window gets the native range")
+        check(narrowField.convert(narrowField.bounds, to: nil).width == 280, "a hidden sidebar starts with an actual 280pt field")
+        narrow.setContentSize(NSSize(width: 450, height: 500))
+        spin(until: { fields(in: narrowFrameView()).first?.window === narrow }, "the hidden-sidebar field stays attached while narrowing")
+        let hiddenNarrowFrame = fields(in: narrowFrameView())[0].convert(fields(in: narrowFrameView())[0].bounds, to: nil)
+        check(hiddenNarrowFrame.width >= TitleRenameToolbar.minimumWidth && hiddenNarrowFrame.width < TitleRenameToolbar.idealWidth,
+              "the actual field with the sidebar hidden shrinks within 120...280pt before toolbar overflow")
         check((narrow.firstResponder as? NSTextView)?.delegate === narrowField && (narrow.firstResponder as? NSTextView)?.selectedRange() == NSRange(location: 0, length: 5),
-              "a narrow-start rename retains native focus and selection")
+              "a hidden-sidebar rename retains native focus and selection while narrowing")
 
         probe.session = TitleRenameSession(item: .pane(item))
         spin(until: { fields(in: frameView()).count == 1 }, "the first window can rebuild its title item")
@@ -430,7 +490,35 @@ final class RecordingWindow: NSWindow {
         (toolbar.firstResponder as? NSTextView)?.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
         (narrow.firstResponder as? NSTextView)?.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
         spin(until: { fields(in: frameView()).isEmpty && fields(in: narrowFrameView()).isEmpty }, "both independent rename states clean up")
-        check(!toolbar.isVisible && !narrow.isVisible, "none of the toolbar fixtures showed a window")
+
+        // Keep the separate start-narrow case: no wide field is required for
+        // this window before the rename begins.
+        let startNarrowProbe = ToolbarProbe()
+        let startNarrow = window(ToolbarRoot(probe: startNarrowProbe, sidebarState: WorkspaceSidebarState(initialVisibility: .detailOnly)), width: 450)
+        spin(until: { startNarrow.toolbar != nil }, "the start-narrow hidden-sidebar fixture has a toolbar")
+        startNarrowProbe.session = TitleRenameSession(item: .pane(item))
+        func startNarrowFrameView() -> NSView { startNarrow.contentView!.superview! }
+        spin(until: { fields(in: startNarrowFrameView()).count == 1 && fields(in: startNarrowFrameView())[0].window === startNarrow }, "a rename starting narrow stays in its hidden-sidebar toolbar")
+        let startNarrowField = fields(in: startNarrowFrameView())[0]
+        let startNarrowFrame = startNarrowField.convert(startNarrowField.bounds, to: nil)
+        check(startNarrowFrame.width >= TitleRenameToolbar.minimumWidth && startNarrowFrame.width < TitleRenameToolbar.idealWidth,
+              "a hidden-sidebar rename that starts narrow has actual 120...280pt geometry")
+        func startNarrowFocusMetadata() -> String {
+            let editor = startNarrow.firstResponder as? NSTextView
+            let responder = startNarrow.firstResponder.map { String(describing: type(of: $0)) } ?? "nil"
+            let delegate = editor?.delegate.map { String(describing: type(of: $0)) } ?? "nil"
+            let range = editor.map { String(describing: $0.selectedRange()) } ?? "nil"
+            let ended = startNarrowProbe.session.map { String($0.isEnded) } ?? "nil"
+            return "firstResponder=\(responder),editorDelegate=\(delegate),selectedRange=\(range),sessionEnded=\(ended)"
+        }
+        spin(until: {
+            (startNarrow.firstResponder as? NSTextView)?.delegate === startNarrowField && (startNarrow.firstResponder as? NSTextView)?.selectedRange() == NSRange(location: 0, length: 5)
+        }, "a start-narrow rename retains native focus and selection; \(startNarrowFocusMetadata())")
+        (startNarrow.firstResponder as? NSTextView)?.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
+        spin(until: { fields(in: startNarrowFrameView()).isEmpty }, "the start-narrow rename cleans up")
+
+        check(!toolbar.isVisible && !narrow.isVisible && !startNarrow.isVisible, "none of the toolbar fixtures showed a window")
+        startNarrow.close()
         narrow.close()
         toolbar.close()
 

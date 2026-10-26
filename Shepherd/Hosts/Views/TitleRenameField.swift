@@ -166,7 +166,7 @@ struct TitleRenameToolbarRoom: NSViewRepresentable {
         private weak var observedWindow: NSWindow?
         private var resizeObserver: NSObjectProtocol?
         private var active = false
-        private var generation = 0
+        private(set) var generation = 0
 
         func update(active: Bool, anchor: AnchorView) {
             self.active = active
@@ -204,15 +204,27 @@ struct TitleRenameToolbarRoom: NSViewRepresentable {
                 queue: .main
             ) { [weak self, weak window] _ in
                 Task { @MainActor [weak self, weak window] in
-                    self?.scheduleUpdate(for: window)
+                    self?.windowDidResize(window)
                 }
             }
         }
 
+        /// The resize observer's main-actor entry point. Kept separate so its
+        /// stale-window rejection happens before a callback can invalidate a
+        /// newer window's scheduled update.
+        func windowDidResize(_ window: NSWindow?) {
+            scheduleUpdate(for: window)
+        }
+
         /// Waiting one main-queue turn keeps this out of SwiftUI's view update
-        /// and AppKit's current layout pass. The generation/window checks make
-        /// stale callbacks harmless after a rebuild or a move between windows.
+        /// and AppKit's current layout pass. Reject stale requests before
+        /// advancing generation: an old window's queued resize must not cancel
+        /// the valid pending update after this anchor has moved to another one.
         private func scheduleUpdate(for window: NSWindow?) {
+            guard active,
+                  let window,
+                  observedWindow === window,
+                  anchor?.window === window else { return }
             generation += 1
             let scheduledGeneration = generation
             DispatchQueue.main.async { [weak self, weak window] in
@@ -229,7 +241,12 @@ struct TitleRenameToolbarRoom: NSViewRepresentable {
                   observedWindow === window,
                   let toolbar = window.toolbar,
                   let item = toolbar.items.first(where: { $0.itemIdentifier.rawValue == TitleRenameToolbar.itemID }),
-                  item.view?.window === window else { return }
+                  let itemView = item.view,
+                  itemView.window == nil || itemView.window === window else { return }
+            // A title item can be in this window's toolbar before AppKit has
+            // attached its view at a narrow initial layout. Its own toolbar
+            // membership and stable identifier establish ownership then; a
+            // non-nil view window must still be this window.
             item.minSize = NSSize(width: TitleRenameToolbar.minimumWidth, height: item.minSize.height)
             item.maxSize = NSSize(width: TitleRenameToolbar.idealWidth, height: item.maxSize.height)
         }

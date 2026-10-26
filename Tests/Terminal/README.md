@@ -465,13 +465,16 @@ Needs no SwiftTerm build. It has three stages.
   line, no taller than they are. A legacy no-seam negative control records
   SwiftUI's original fixed native 280...280 pt range. The production item's
   actual `NSToolbarItem` range is 120...280 pt (not merely the SwiftUI source),
-  and the actual field stays 280 pt wide at 1000 pt, shrinks within that range
-  at 700 pt with a 360 pt sidebar, then expands back. The fixture also drives 280 pt and 360 pt sidebars, starts a
-  second rename narrow with the sidebar hidden, rebuilds layout, and verifies
-  that resizing one window cannot alter the other window's item. Synthetic IME
-  composition keeps Return with the input method until its marked text commits.
-  After Return the title and the buttons come back as they were, and both
-  independent rename states clean up.
+  and the actual field stays 280 pt wide at 1000 pt. It then shrinks within
+  that range while attached for 280 pt and 360 pt sidebars, and with the
+  sidebar hidden, before expanding back. A separate hidden-sidebar window also
+  starts a rename narrow and checks its actual field geometry, native focus and
+  selection. The fixture rebuilds layout, verifies an old-window resize seam
+  callback cannot cancel a rehosted window's update, and verifies that resizing
+  one window cannot alter the other window's item. Synthetic IME composition
+  keeps Return with the input method until its marked text commits. After Return
+  the title and the buttons come back as they were, and all independent rename
+  states clean up.
 - Title double-click, in the toolbar stage: the watcher in
   `TitleDoubleClick.swift`, on the same window. A double-click on the title's
   text starts a rename, as the row's Rename item does, with the name selected.
