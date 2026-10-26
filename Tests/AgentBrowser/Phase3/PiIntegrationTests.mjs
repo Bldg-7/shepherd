@@ -359,7 +359,13 @@ test('Session name arrives in the bridge\'s status replies, through createPiHost
 // the launch.json the app writes beside the bridge's bootstrap file.
 function proxyFixture(manifest, { mode = 0o600 } = {}) {
   const folder = fs.mkdtempSync(path.join(directory, 'proxy-')), bootstrap = path.join(folder, 'bootstrap.json');
-  if (manifest !== undefined) fs.writeFileSync(path.join(folder, 'launch.json'), typeof manifest === 'string' ? manifest : JSON.stringify(manifest), { mode });
+  if (manifest !== undefined) {
+    const launch = path.join(folder, 'launch.json');
+    fs.writeFileSync(launch, typeof manifest === 'string' ? manifest : JSON.stringify(manifest), { mode });
+    // The fixture must exercise the requested mode, independent of the runner's umask.
+    fs.chmodSync(launch, mode);
+    assert.equal(fs.statSync(launch).mode & 0o777, mode);
+  }
   const providers = [], handlers = new Map();
   const pi = { registerProvider(name, config) { providers.push([name, config]); }, on(name, handler) { assert(!handlers.has(name)); handlers.set(name, handler); } };
   return { bootstrap, providers, handlers, pi };
