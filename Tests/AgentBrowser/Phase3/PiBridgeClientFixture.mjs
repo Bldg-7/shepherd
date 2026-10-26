@@ -69,6 +69,9 @@ if(process.argv[3]==='intruder') {
   const context={cwd:config.cwd,sessionManager:{getSessionId:()=>identity.sessionID,getSessionFile:()=>identity.sessionFile,getLeafId:()=>identity.leafID},
     isIdle:()=>true,hasPendingMessages:()=>false};
   await handlers.get('session_start')({reason:'startup'},context);
+  const retiredStateReport=await control(config.bootstrap,'herdrState',crypto.randomUUID(),identity,{state:'working'});
+  assert.equal(retiredStateReport.ok,false);
+  assert.equal(retiredStateReport.error,'invalidRequest');
   if(config.mode==='shadow'){
     assert.equal(controller.state(),'failed');assert.equal(children.length,0);
   } else {

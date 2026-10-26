@@ -70,7 +70,6 @@ nonisolated struct PiBridgeLaunch: Sendable {
         let command: String
         let attemptID: String
         let identity: PiSessionIdentity?
-        let state: String?
     }
     private var registrations: [String: Registration] = [:]
     private var entries: [String: Entry] = [:]
@@ -79,13 +78,11 @@ nonisolated struct PiBridgeLaunch: Sendable {
     private let admit: (PiBridgeLaunch, PiProcessIdentity) -> Bool
     private let acquire: (PiBridgeLaunch, PiSessionIdentity, String) throws -> PiBridgeNativeLease
     private let inspect: (Int32) throws -> PiProcessIdentity
-    private let reportState: ((PiBridgeLaunch, PiSessionIdentity, String) async throws -> Void)?
 
     init(inspect: @escaping (Int32) throws -> PiProcessIdentity = PiProcessIdentity.capture,
          admit: @escaping (PiBridgeLaunch, PiProcessIdentity) -> Bool,
-         acquire: @escaping (PiBridgeLaunch, PiSessionIdentity, String) throws -> PiBridgeNativeLease,
-         reportState: ((PiBridgeLaunch, PiSessionIdentity, String) async throws -> Void)? = nil) {
-        self.inspect = inspect; self.admit = admit; self.acquire = acquire; self.reportState = reportState
+         acquire: @escaping (PiBridgeLaunch, PiSessionIdentity, String) throws -> PiBridgeNativeLease) {
+        self.inspect = inspect; self.admit = admit; self.acquire = acquire
     }
 
     var hasWork: Bool { entries.values.contains { !$0.closed } }
@@ -112,7 +109,7 @@ nonisolated struct PiBridgeLaunch: Sendable {
         guard SecRandomCopyBytes(kSecRandomDefault, random.count, &random) == errSecSuccess else { throw PiBridgeFailure.unavailable }
         let capability = Data(random).base64EncodedString()
         let payload: [String: Any] = ["version":1,"launchID":launch.id,"capability":capability,"socketPath":socketPath,
-                                     "node":launch.node,"helper":launch.helper,"herdrReporting":reportState != nil]
+                                     "node":launch.node,"helper":launch.helper]
         let bytes = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
         let fd = Darwin.open(launch.bootstrap, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
         guard fd >= 0 else { throw PiBridgeFailure.conflict }
@@ -171,12 +168,6 @@ nonisolated struct PiBridgeLaunch: Sendable {
                 tail: [launch.bootstrap], cwd: launch.cwd)
             let key = launch.id + "/" + request.attemptID
             switch request.command {
-            case "herdrState":
-                guard root, let reportState, let identity = request.identity, let state = request.state,
-                      ["idle", "working", "blocked"].contains(state), Self.matches(identity, launch: launch, process: process) else { throw PiBridgeFailure.denied }
-                try await reportState(launch, identity, state)
-                guard let latest = registrations[launch.id], !latest.retired, rootIsCurrent(latest) else { throw PiBridgeFailure.identity }
-                return Self.reply(["ok":true])
             case "boot":
                 guard root, registration.attempts.isEmpty else { throw PiBridgeFailure.denied }
                 return Self.reply(["ok":true])

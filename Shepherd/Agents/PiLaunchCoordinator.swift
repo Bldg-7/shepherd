@@ -10,7 +10,6 @@ import Foundation
         var received: ContinuousClock.Instant?
         var active = true
         var nativeAuthorized: (() -> Bool)?
-        var reportSequence = UInt64(Date().timeIntervalSince1970 * 1_000_000)
         init(owner: AgentPaneIdentity) { self.owner = owner }
         func permits(_ launch: PiBridgeLaunch, _ proof: PiProcessIdentity) -> Bool {
             active && launch.owner == owner && process?.paneID == owner.paneID &&
@@ -56,11 +55,7 @@ import Foundation
             authorize: { [weak admissionState] in admissionState?.nativeAuthorized?() == true })
         provider = PiBrowserLeaseProvider(proxy: proxy, claim: claim, directory: URL(fileURLWithPath: stage.folder), preferences: preferences)
         let admission = admission, provider = provider
-        host = PiHostBridge(admit: { admission.permits($0, $1) }, acquire: { try provider.acquire(launch: $0, identity: $1, attempt: $2) },
-            reportState: { launch, identity, state in
-                admission.reportSequence = max(admission.reportSequence + 2, UInt64(Date().timeIntervalSince1970 * 1_000_000))
-                try await client.reportPiState(paneID: launch.owner.paneID, sessionFile: identity.sessionFile, state: state, sequence: admission.reportSequence)
-            })
+        host = PiHostBridge(admit: { admission.permits($0, $1) }, acquire: { try provider.acquire(launch: $0, identity: $1, attempt: $2) })
         let bridge = host, launchID = stage.id
         admission.nativeAuthorized = { [weak bridge] in bridge?.isMcpReady(launchID: launchID) == true }
         launch = PiBridgeLaunch(id: stage.id, owner: owner, node: stage.node, entry: stage.entry,

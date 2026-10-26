@@ -96,10 +96,12 @@ hand-off 뒤의 대기와 실패는 launcher가 아니라 사이드바에만 보
 
 ### Herdr 상태와 실제 MCP
 
-`pi-herdr.mjs`는 실제 Pi session/agent_settled 이벤트를 authenticated host에 보고한다.
-앱이 검증한 Herdr client/pane으로 공식 report-agent/session API를 호출한다.
-상속된 `HERDR_SOCKET_PATH`나 `HERDR_PANE_ID`로 대상을 선택하지 않고 전역 hook도 설치하지 않는다.
-이 상태 보고는 UI/lifecycle 힌트이며 native browser 권한 자체가 아니다.
+앱은 Pi 상태를 Herdr에 보고하지 않는다. 새 관리형 Pi 세션의 상태 권한은 Herdr 자체 Pi integration에 있으며,
+그 integration이 없을 때는 Herdr의 화면 감지가 결정한다. native browser 권한은 이 상태와 독립적으로,
+앱이 검증한 MCP lease로만 결정된다.
+
+앱은 기존 pane의 agent authority를 지우거나 가져오지 않으며, 이미 실행 중인 Pi를 자동으로 재시작하지 않는다.
+이 변경 전 binary로 실행된 pane은 새 동작을 쓰려면 사용자가 Pi를 재시작해야 한다.
 
 `pi-session-name.mjs`는 앱의 Rename Pane이 정한 이름을 bridge의 `status` 응답(`sessionName`, launch마다 매기는 순번)으로 받는다. 순번마다 한 번 `pi.setSessionName()`을 호출하는데, Pi가 idle이고 보낼 메시지가 남아 있지 않으면 바로, 아니면 Pi의 다음 `agent_settled` 이벤트 때 호출한다. 터미널에는 아무것도 입력하지 않는다. Pi가 새 session을 시작하면 아직 적용하지 않은 이름은 버린다.
 

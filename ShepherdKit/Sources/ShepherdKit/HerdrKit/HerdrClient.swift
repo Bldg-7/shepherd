@@ -223,20 +223,6 @@ public actor HerdrClient {
         return info
     }
 
-    /// Session-only Pi state integration (Herdr 0.9.1 integration protocol v9).
-    /// This is display/lifecycle evidence, never native browser authorization.
-    public func reportPiState(paneID: String, sessionFile: String, state: String, sequence: UInt64) async throws {
-        guard ["idle", "working", "blocked"].contains(state), sessionFile.hasPrefix("/"), !sessionFile.utf8.contains(0),
-              sequence < 9_007_199_254_740_991 else { throw Self.agentResponseError() }
-        let session = try await agentRequest(method: "pane.report_agent_session", params: ["pane_id":.string(paneID), "source":.string("herdr:pi"),
-            "agent":.string("pi"),"agent_session_path":.string(sessionFile),"seq":.number(Double(sequence))], cli: [], on: nil, deadlineMs: 2_000)
-        guard session["type"]?.stringValue == "ok" else { throw Self.agentResponseError() }
-        let result = try await agentRequest(method: "pane.report_agent", params: ["pane_id":.string(paneID), "source":.string("herdr:pi"),
-            "agent":.string("pi"),"state":.string(state),"agent_session_path":.string(sessionFile),"seq":.number(Double(sequence + 1))],
-            cli: [], on: nil, deadlineMs: 2_000)
-        guard result["type"]?.stringValue == "ok" else { throw Self.agentResponseError() }
-    }
-
     /// Supported agent input, never arbitrary shell text or a process-name kill.
     public func agentSendKeys(paneID: String, keys: [String], on machine: HerdrMachine? = nil) async throws {
         let result = try await agentRequest(method: "agent.send_keys", params: ["target": .string(paneID), "keys": .array(keys.map(JSONValue.string))], cli: ["agent", "send-keys", paneID] + keys, on: machine, deadlineMs: 5_000)
