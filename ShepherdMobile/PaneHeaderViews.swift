@@ -11,13 +11,34 @@ struct PaneStatusBadge: View {
     let title: LocalizedStringResource
     let reservedTitles: [LocalizedStringResource]
     let color: Color
+    /// Callers opt in only while this is a current, herdr-reported working
+    /// state. The default keeps cached and ordinary status badges inert.
+    var showsActivity = false
+    /// An explicit caller policy can request the static ornament in addition
+    /// to the system Reduce Motion setting. Production callers use the
+    /// default; the hosted layout fixture uses this deterministic policy.
+    var activityUsesReducedMotion = false
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
-            ForEach(reservedTitles.indices, id: \.self) { index in
-                Text(reservedTitles[index]).hidden().accessibilityHidden(true)
+            // Reserve both the widest localized label and the activity slot.
+            // A working transition must not resize the toolbar item or move
+            // native navigation controls beside it.
+            HStack(spacing: 4) {
+                Color.clear.frame(width: 12, height: 12)
+                reservedLabel
             }
-            Text(title)
+            .hidden()
+            HStack(spacing: 4) {
+                if showsActivity {
+                    activity
+                } else {
+                    Color.clear.frame(width: 12, height: 12)
+                }
+                Text(title)
+            }
         }
         .font(.caption.weight(.medium))
         .lineLimit(1)
@@ -27,10 +48,33 @@ struct PaneStatusBadge: View {
         .background(color.opacity(0.15), in: Capsule())
         .foregroundStyle(color)
         .layoutPriority(1)
+        // The status title is the one concise VoiceOver value. The visual
+        // activity ornament is hidden from accessibility to avoid duplicate
+        // announcements every time its spinner advances.
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(title))
         .accessibilityAddTraits(.isStaticText)
         .accessibilityIdentifier("pane-status-badge")
+    }
+
+    private var reservedLabel: some View {
+        ZStack {
+            ForEach(reservedTitles.indices, id: \.self) { index in
+                Text(reservedTitles[index]).hidden().accessibilityHidden(true)
+            }
+        }
+    }
+
+    @ViewBuilder private var activity: some View {
+        if reduceMotion || activityUsesReducedMotion {
+            Image(systemName: "circle.fill")
+                .font(.system(size: 8, weight: .semibold))
+                .frame(width: 12, height: 12)
+        } else {
+            ProgressView()
+                .controlSize(.mini)
+                .frame(width: 12, height: 12)
+        }
     }
 }
 

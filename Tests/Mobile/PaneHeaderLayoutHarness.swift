@@ -38,6 +38,8 @@ private struct Fixture: View {
     let title: String
     let labels: [String]
     let state: Int
+    let showsActivity: Bool
+    let reduceMotion: Bool
     let extraActions: Bool
     let values: Measurements
     @State private var path = ["pane"]
@@ -50,7 +52,8 @@ private struct Fixture: View {
                         .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
                         .toolbar {
                             ToolbarItem(placement: .topBarTrailing) {
-                                PaneStatusBadge(title: resource(labels[state]), reservedTitles: labels.map(resource), color: .orange)
+                                PaneStatusBadge(title: resource(labels[state]), reservedTitles: labels.map(resource), color: .orange,
+                                    showsActivity: showsActivity, activityUsesReducedMotion: reduceMotion)
                                     .background { Measure(name: "badge", values: values) }
                             }.sharedBackgroundVisibility(.hidden)
                             // Stress the same icon controls beside the pane
@@ -112,9 +115,22 @@ final class LayoutSceneDelegate: UIResponder, UIWindowSceneDelegate {
                 for width in widths {
                   for extraActions in [false, true] {
                     var baseline: [String: CGFloat] = [:]
-                    for (index, title) in ["Pane", String(repeating: "Long pane title · ", count: 8), "Short"].enumerated() {
+                    // These are consecutive render states of the production
+                    // badge: every nonworking state is inert, working gets
+                    // both its normal spinner and its Reduce Motion mark.
+                    let statusCases: [(name: String, state: Int, showsActivity: Bool, reduceMotion: Bool, title: String)] = [
+                        ("idle", 0, false, false, "Pane"),
+                        ("working", 1, true, false, String(repeating: "Long pane title · ", count: 8)),
+                        ("working-reduce-motion", 1, true, true, "Short"),
+                        ("blocked", 2, false, false, "Short"),
+                        ("done", 3, false, false, "Pane"),
+                        ("unknown", 4, false, false, "Pane")
+                    ]
+                    for status in statusCases {
                         let values = Measurements()
-                        let fixture = Fixture(title: title, labels: labels, state: index == 0 ? 0 : 2, extraActions: extraActions, values: values)
+                        let fixture = Fixture(title: status.title, labels: labels, state: status.state,
+                            showsActivity: status.showsActivity, reduceMotion: status.reduceMotion,
+                            extraActions: extraActions, values: values)
                             .environment(\.dynamicTypeSize, size)
                             .environment(\.locale, Locale(identifier: language))
                         let host = UIHostingController(rootView: fixture)
@@ -129,9 +145,10 @@ final class LayoutSceneDelegate: UIResponder, UIWindowSceneDelegate {
                         }
                         // Drain navigation and hosted-toolbar sizing transactions.
                         for _ in 0..<5 { host.view.layoutIfNeeded(); try? await Task.sleep(for: .milliseconds(20)) }
-                        let key = "\(language)/\(size)/\(width)/actions=\(extraActions)/\(index)"
-                        var entry: [String: Any] = ["case": key]
-                        if index == 0 {
+                        let key = "\(language)/\(size)/\(width)/actions=\(extraActions)/\(status.name)"
+                        var entry: [String: Any] = ["case": key, "state": status.name,
+                            "activity": status.showsActivity, "reduceMotion": status.reduceMotion]
+                        if status.state == 0 {
                             func controls(_ view: UIView) -> [[String: Any]] {
                                 var found: [[String: Any]] = []
                                 if view is UIControl || view.accessibilityIdentifier != nil {
@@ -198,7 +215,9 @@ final class LayoutSceneDelegate: UIResponder, UIWindowSceneDelegate {
                             }
                         }
                         if let badge = values.rect("badge") {
-                            let intrinsic = UIHostingController(rootView: PaneStatusBadge(title: LocalizedStringResource(stringLiteral: labels[2]), reservedTitles: labels.map { LocalizedStringResource(stringLiteral: $0) }, color: .orange).environment(\.dynamicTypeSize, values.textSizes["badge"] ?? size))
+                            let intrinsic = UIHostingController(rootView: PaneStatusBadge(title: LocalizedStringResource(stringLiteral: labels[2]), reservedTitles: labels.map { LocalizedStringResource(stringLiteral: $0) }, color: .orange,
+                                showsActivity: status.showsActivity, activityUsesReducedMotion: status.reduceMotion)
+                                .environment(\.dynamicTypeSize, values.textSizes["badge"] ?? size))
                             let ideal = intrinsic.sizeThatFits(in: CGSize(width: 2000, height: 200))
                             require(badge.width + 1 >= ideal.width, "badge is narrower than its full localized status labels")
                         }

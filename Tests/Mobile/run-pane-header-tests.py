@@ -10,7 +10,7 @@ out = a.output.resolve(); out.mkdir(parents=True, mode=0o700, exist_ok=False)
 app = out/'PaneHeaderLayoutHarness.app'; app.mkdir()
 bundle = 'com.bldg7.shepherd.tests.header.'+uuid.uuid4().hex
 sources = ['ShepherdMobile/PaneHeaderViews.swift', 'Tests/Mobile/PaneHeaderLayoutHarness.swift']
-(out/'source-hashes.json').write_text(json.dumps({f:hashlib.sha256((ROOT/f).read_bytes()).hexdigest() for f in sources+['ShepherdMobile/ConversationView.swift','ShepherdMobile/MachinesView.swift','ShepherdKit/Sources/ShepherdKit/Resources/Localizable.xcstrings','Tests/Mobile/run-pane-header-tests.py']},indent=2))
+(out/'source-hashes.json').write_text(json.dumps({f:hashlib.sha256((ROOT/f).read_bytes()).hexdigest() for f in sources+['ShepherdMobile/BoardView.swift','ShepherdMobile/ConversationView.swift','ShepherdMobile/MachinesView.swift','ShepherdKit/Sources/ShepherdKit/Resources/Localizable.xcstrings','Tests/Mobile/run-pane-header-tests.py']},indent=2))
 sdk = subprocess.check_output(['xcrun','--sdk','iphonesimulator','--show-sdk-path'],text=True).strip()
 compiled_sources=[str(ROOT/f) for f in sources]
 if a.legacy_badge:
@@ -74,9 +74,21 @@ if a.legacy_badge:
 assert len(results)==2 and all(r['passed'] for r in results), 'layout failure; see per-device results'
 conversation=(ROOT/'ShepherdMobile/ConversationView.swift').read_text()
 assert '.navigationTitle(destination.title)' in conversation and 'PaneStatusBadge(title: state.title,' in conversation
+assert 'StateBadge(state: state, showsActivity: model.failure == nil)' in conversation
+assert 'showsActivity: showsActivity && state == .working' in conversation
 assert 'placement: .principal' not in conversation, 'native inline title keeps its compression and back-navigation behavior'
 assert '[AgentState.idle, .working, .blocked, .done, .unknown].map(\\.title)' in conversation
+badge=(ROOT/'ShepherdMobile/PaneHeaderViews.swift').read_text()
+assert 'var showsActivity = false' in badge and '@Environment(\\.accessibilityReduceMotion)' in badge
+assert 'if showsActivity {' in badge and 'ProgressView()' in badge and 'Image(systemName: "circle.fill")' in badge
+assert '.accessibilityElement(children: .ignore)' in badge and '.accessibilityLabel(Text(title))' in badge
+board=(ROOT/'ShepherdMobile/BoardView.swift').read_text()
+assert 'PaneRow(pane: pane, showsWorkingActivity: showsWorkingActivity)' in board
+assert 'showsActivity: showsWorkingActivity && pane.state == .working' in board
+assert 'monitor.hasLoaded && monitor.loadError == nil' in board
+assert 'group.hasLoaded && group.error == nil' in board
+assert 'private struct CachedPaneRow' in board and 'PaneStatusBadge' not in board[board.index('private struct CachedPaneRow'):board.index('private struct PaneRow')]
 machines=(ROOT/'ShepherdMobile/MachinesView.swift').read_text()
 assert 'MobileToolbarIcon(title: "About"' in machines and 'MobileToolbarIcon(title: "Add Machine"' in machines
-(out/'verification.json').write_text(json.dumps({'passed':True,'cases':sum(len(r['cases']) for r in results),'ownedDevicesRemoved':True,'existingDevicesUntouched':True,'credentialsOrNetworkUsed':False,'nativeNavigationStack':True,'runtime':a.runtime},indent=2))
+(out/'verification.json').write_text(json.dumps({'passed':True,'cases':sum(len(r['cases']) for r in results),'statesRendered':['idle','working','working-reduce-motion','blocked','done','unknown'],'ownedDevicesRemoved':True,'existingDevicesUntouched':True,'credentialsOrNetworkUsed':False,'nativeNavigationStack':True,'runtime':a.runtime},indent=2))
 print('PASS mobile pane title/status/button layout on iPhone and iPad')

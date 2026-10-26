@@ -61,7 +61,7 @@ struct ConversationView: View {
                     // A status, not a control: without the glass background
                     // the toolbar would give it, which reads as a button.
                     ToolbarItem(placement: .topBarTrailing) {
-                        StateBadge(state: state)
+                        StateBadge(state: state, showsActivity: model.failure == nil)
                             .accessibilityAddTraits(.isStaticText)
                     }
                     .sharedBackgroundVisibility(.hidden)
@@ -235,11 +235,15 @@ private enum GlassBar {
 
 private struct StateBadge: View {
     let state: AgentState
+    /// A connection failure leaves the last state label visible, but must not
+    /// animate it as though that historical observation were still live.
+    let showsActivity: Bool
 
     var body: some View {
         PaneStatusBadge(title: state.title,
             reservedTitles: [AgentState.idle, .working, .blocked, .done, .unknown].map(\.title),
-            color: color)
+            color: color,
+            showsActivity: showsActivity && state == .working)
     }
 
     private var color: Color {

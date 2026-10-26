@@ -111,7 +111,8 @@ private struct BoardList: View {
                 cachedSection(cachedSnapshot.host.panes, title: String(localized: "Cached panes"))
             } else {
                 ForEach(BoardSection.sections(of: monitor.panes, in: monitor.workspaces)) { section in
-                    paneSection(section, title: section.title)
+                    paneSection(section, title: section.title,
+                        showsWorkingActivity: monitor.hasLoaded && monitor.loadError == nil)
                 }
             }
             if showingCachedNestedGroups, let cachedSnapshot {
@@ -121,7 +122,8 @@ private struct BoardList: View {
             } else {
                 ForEach(monitor.herdrMachineGroups) { group in
                     ForEach(BoardSection.sections(of: group.agents, in: group.workspaces)) { section in
-                        paneSection(section, title: "\(group.machine.label) · \(section.title)")
+                        paneSection(section, title: "\(group.machine.label) · \(section.title)",
+                            showsWorkingActivity: group.hasLoaded && group.error == nil)
                     }
                 }
             }
@@ -129,11 +131,11 @@ private struct BoardList: View {
         .listStyle(.insetGrouped)
     }
 
-    private func paneSection(_ section: BoardSection, title: String) -> some View {
+    private func paneSection(_ section: BoardSection, title: String, showsWorkingActivity: Bool) -> some View {
         Section(title) {
             ForEach(section.panes) { pane in
                 NavigationLink(value: PaneDestination(machine: machine, pane: pane)) {
-                    PaneRow(pane: pane)
+                    PaneRow(pane: pane, showsWorkingActivity: showsWorkingActivity)
                 }
             }
         }
@@ -226,6 +228,9 @@ private struct CachedPaneRow: View {
 
 private struct PaneRow: View {
     let pane: AgentSummary
+    /// A failed monitor retains its last rows for context, but those rows are
+    /// no longer a live observation and therefore remain visually inert.
+    let showsWorkingActivity: Bool
 
     var body: some View {
         HStack {
@@ -238,12 +243,10 @@ private struct PaneRow: View {
             }
             Spacer()
             if pane.hasAgent {
-                Text(pane.state.title)
-                    .font(.caption.weight(.medium))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(color.opacity(0.15), in: Capsule())
-                    .foregroundStyle(color)
+                PaneStatusBadge(title: pane.state.title,
+                    reservedTitles: [AgentState.idle, .working, .blocked, .done, .unknown].map(\.title),
+                    color: color,
+                    showsActivity: showsWorkingActivity && pane.state == .working)
             }
         }
     }
