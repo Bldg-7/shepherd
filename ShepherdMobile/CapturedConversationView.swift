@@ -72,7 +72,7 @@ struct CapturedConversationView: View {
             .onScrollGeometryChange(for: CGFloat.self) { $0.contentSize.height } action: { _, _ in
                 if followsLatest { proxy.scrollTo("capture-end", anchor: .bottom) }
             }
-            .overlay(alignment: .bottomTrailing) {
+            .overlay(alignment: .bottom) {
                 if !followsLatest {
                     Button {
                         followsLatest = true
