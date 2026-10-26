@@ -210,6 +210,73 @@ struct Failure: Error, LocalizedError { var errorDescription: String? { "refused
     }
 }
 
+/// A synthetic control plane whose first two status calls stop at gates. It
+/// exercises AgentProxyService's check ownership without a socket or proxy.
+actor GatedCheckControl: AgentProxyControlling {
+    private var statusCalls = 0
+    private var entered: [Int: CheckedContinuation<Void, Never>] = [:]
+    private var released: Set<Int> = []
+    private var waiters: [Int: CheckedContinuation<Void, Never>] = [:]
+    private var liveTerminalSessions: [String] = []
+
+    func status() async throws -> AgentProxyStatus {
+        statusCalls += 1
+        let call = statusCalls
+        waiters.removeValue(forKey: call)?.resume()
+        if call <= 2 { await waitForRelease(call) }
+        return AgentProxyStatus(protocolVersion: AgentProxyControl.protocolVersion, build: "build-a", port: 24680,
+                                state: .running, routeCount: 1, inFlight: 0,
+                                recorder: .init(state: .running, pid: nil, restarts: 0),
+                                counters: .init(exchanges: 0, rejected: 0, upstreamFailures: 0, recorderDropped: 0))
+    }
+
+    func restartWhenIdle() async throws -> AgentProxyRestartWhenIdle { .init(accepted: true, inFlight: 0) }
+    func createRoute(_ request: AgentProxyRouteCreate) async throws -> AgentProxyRouteCreated {
+        .init(routeID: "synthetic", baseURL: "http://127.0.0.1:24680/p/00000000000000000000000000000000")
+    }
+    func removeRoute(_ routeID: String) async throws -> Bool { true }
+    func listRoutes() async throws -> [AgentProxyRoute] {
+        [.init(routeID: "synthetic", kind: .claude, session: "sweep", paneID: "p", terminalID: "live", cliVersion: "1",
+               createdAt: "2026-10-26T00:00:00Z", oauthRejected: false, inFlight: 0)]
+    }
+
+    func waitForStatusCall(_ call: Int) async {
+        guard statusCalls < call else { return }
+        await withCheckedContinuation { waiters[call] = $0 }
+    }
+
+    func releaseStatusCall(_ call: Int) {
+        released.insert(call)
+        entered.removeValue(forKey: call)?.resume()
+    }
+
+    func statusCallCount() -> Int { statusCalls }
+    func recordLiveTerminals(_ session: String) { liveTerminalSessions.append(session) }
+    func askedLiveTerminals() -> [String] { liveTerminalSessions }
+
+    private func waitForRelease(_ call: Int) async {
+        guard !released.contains(call) else { return }
+        await withCheckedContinuation { entered[call] = $0 }
+    }
+}
+
+@MainActor final class CheckHeartbeat {
+    private var beats: Set<String> = []
+    private var waiters: [String: CheckedContinuation<Void, Never>] = [:]
+
+    func beat(_ name: String) {
+        beats.insert(name)
+        waiters.removeValue(forKey: name)?.resume()
+    }
+
+    func wait(for name: String) async {
+        guard !beats.contains(name) else { return }
+        await withCheckedContinuation { waiters[name] = $0 }
+    }
+
+    func contains(_ names: Set<String>) -> Bool { names.isSubset(of: beats) }
+}
+
 let thisMac = Machine(displayName: "This Mac", hostname: "localhost", username: "owner", isLocal: true)
 let remote = Machine(displayName: "Studio", hostname: "studio.invalid", username: "owner")
 func pane(_ id: String, terminal: String, session: String = "default", herdrMachine: String? = nil) -> AgentPaneIdentity {
@@ -468,6 +535,63 @@ func pane(_ id: String, terminal: String, session: String = "default", herdrMach
     world.proxy.stop()
 }
 
+@MainActor func checkOwnership() async {
+    let control = GatedCheckControl()
+    let agent = FakeLaunchAgent()
+    agent.state = .enabled
+    let heartbeat = CheckHeartbeat()
+    let service = AgentProxyService(environment: .init(
+        launchAgent: agent,
+        control: control,
+        loadSetting: { true },
+        saveSetting: { _ in },
+        loadRejectedKinds: { [] },
+        saveRejectedKinds: { _ in },
+        bundledBuild: { "build-a" },
+        systemProxyConfigured: { false },
+        liveTerminals: { session in
+            await control.recordLiveTerminals(session)
+            return ["live"]
+        },
+        checkInterval: nil))
+
+    // The owner is stopped in status while the contender joins its check.
+    let owner = Task { @MainActor in
+        heartbeat.beat("owner-started")
+        await service.check(sweeping: false)
+        heartbeat.beat("owner-completed")
+    }
+    await control.waitForStatusCall(1)
+    let contender = Task { @MainActor in
+        heartbeat.beat("contender-started")
+        await service.check(sweeping: true)
+        heartbeat.beat("contender-completed")
+    }
+    await heartbeat.wait(for: "contender-started")
+    await control.releaseStatusCall(1)
+    await control.waitForStatusCall(2)
+
+    // While the second check is gated, the observer must wait on its published
+    // marker rather than begin a third status call.
+    let observer = Task { @MainActor in
+        heartbeat.beat("observer-started")
+        await service.check(sweeping: false)
+        heartbeat.beat("observer-completed")
+    }
+    await heartbeat.wait(for: "observer-started")
+    check(await control.statusCallCount() == 2, "check: a gated newer task stays published for waiting callers")
+
+    await control.releaseStatusCall(2)
+    await owner.value
+    await contender.value
+    await observer.value
+    check(heartbeat.contains(["owner-completed", "contender-completed", "observer-completed"]),
+          "check: every overlapping caller completes with a MainActor heartbeat")
+    check(await control.statusCallCount() == 3, "check: every caller performs its serialized check")
+    check(await control.askedLiveTerminals() == ["sweep"],
+          "check: true sweeping intent runs once; false callers do not sweep")
+}
+
 @MainActor func baseURLs() {
     let token = String(repeating: "ab", count: 16)
     check(AgentProxyService.isBaseURL("http://127.0.0.1:24680/p/" + token), "base URL: the proxy's form")
@@ -490,6 +614,7 @@ func pane(_ id: String, terminal: String, session: String = "default", herdrMach
         await rejections(root + "/rejections")
         await sweepAndStop(root + "/sweep")
         await approval(root + "/approval")
+        await checkOwnership()
         baseURLs()
         print("agent proxy service: \(passes) passed, \(failures) failed")
         exit(failures == 0 ? 0 : 1)

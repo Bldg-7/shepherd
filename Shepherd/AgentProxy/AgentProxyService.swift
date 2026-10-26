@@ -109,10 +109,12 @@ final class AgentProxyService: AgentProxyRouting {
     /// doesn't wait for that.
     func check(sweeping: Bool = true) async {
         while let running { await running.value }
-        let task = Task { await performCheck(sweeping: sweeping) }
+        let task = Task {
+            await performCheck(sweeping: sweeping)
+            running = nil
+        }
         running = task
         await task.value
-        running = nil
     }
 
     private func scheduleChecks() {

@@ -38,6 +38,45 @@ env = dict(os.environ, DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer
 records = []
 
 
+def producer_owned_check_contract(check):
+    """The check producer must clear only its own published marker."""
+    producer = '''        let task = Task {
+            await performCheck(sweeping: sweeping)
+            running = nil
+        }'''
+    if 'while let running { await running.value }' not in check or producer not in check:
+        return False
+    producer_cleanup = check.index('running = nil')
+    published = check.index('running = task')
+    outer_wait = check.rindex('await task.value')
+    return check.count('running = nil') == 1 and producer_cleanup < published < outer_wait
+
+
+def check_ownership_source_contract(source):
+    start = source.index('    func check(sweeping: Bool = true) async {')
+    end = source.index('\n    private func scheduleChecks()', start)
+    return producer_owned_check_contract(source[start:end])
+
+
+# This is the exact pre-fix ownership shape. It must fail the same source
+# contract without executing the historical livelock reproducer.
+pre_fix_check = '''    func check(sweeping: Bool = true) async {
+        while let running { await running.value }
+        let task = Task { await performCheck(sweeping: sweeping) }
+        running = task
+        await task.value
+        running = nil
+    }
+'''
+source_contract = {
+    'currentProducerOwnedCleanup': check_ownership_source_contract((ROOT / 'Shepherd/AgentProxy/AgentProxyService.swift').read_text()),
+    'exactPreFixOuterCleanupRejected': not producer_owned_check_contract(pre_fix_check),
+}
+assert all(source_contract.values()), source_contract
+(out / 'source-contract.json').write_text(json.dumps(source_contract, indent=2))
+print('source contract: producer-owned cleanup accepted; exact pre-fix outer cleanup rejected')
+
+
 def stage(name, seconds, command, extra_env=None):
     log = out / (name + '.log')
     with open(log, 'wb') as handle:
@@ -171,7 +210,8 @@ service_summary = service_log.strip().splitlines()[-1]
 process = json.loads((out / 'process/results.json').read_text())
 (out / 'validation.json').write_text(json.dumps({
     'passed': True, 'stages': records, 'service': service_summary, 'bundledProcessCases': process['passed'],
-    'bundle': bundle_log.strip().splitlines()[-1], 'sandboxed': True, 'networkAccess': 'loopback and Unix sockets only',
+    'bundle': bundle_log.strip().splitlines()[-1], 'ownershipSourceContract': source_contract,
+    'sandboxed': True, 'networkAccess': 'loopback and Unix sockets only',
     'smAppService': False, 'launchd': False, 'app': False, 'herdr': False, 'agents': False}, indent=2))
 print(service_summary)
 print(bundle_log.strip().splitlines()[-1])
