@@ -3,7 +3,7 @@ import { createPiHost } from './pi-host.mjs';
 import { registerPiLifecycle } from './pi-lifecycle.mjs';
 import { createPiMcpRegistration } from './pi-mcp-registration.mjs';
 import { registerPiSessionNaming } from './pi-session-name.mjs';
-import { registerPiApiProxy } from './pi-api-proxy.mjs';
+import { createPiCaptureAuthority, registerPiApiProxy } from './pi-api-proxy.mjs';
 
 /** Loaded only by an explicitly prepared invocation; never installed globally. */
 export default function shepherdPi(pi: ExtensionAPI) {
@@ -12,12 +12,12 @@ export default function shepherdPi(pi: ExtensionAPI) {
   let controller: ReturnType<typeof registerPiLifecycle> | undefined;
   let ui: { setStatus(key: string, text: string | undefined): void } | undefined;
   let controlHealthy = true;
-  let captureSession: string | undefined;
-  pi.on('session_start', () => { captureSession = undefined; });
-  pi.on('session_shutdown', () => { captureSession = undefined; });
+  const capture = createPiCaptureAuthority();
+  pi.on('session_start', (_event, ctx: any) => { if (ctx?.mode === 'tui') capture.clear(); });
+  pi.on('session_shutdown', (_event, ctx: any) => { if (ctx?.mode === 'tui') capture.clear(); });
   const onFailure = () => { controlHealthy = false; void controller?.shutdown(); };
   // The agent proxy, when the app gave this launch one (SHPHRD-105).
-  registerPiApiProxy(pi, bootstrap, { captureAllowed: (id: string) => id === captureSession });
+  registerPiApiProxy(pi, bootstrap, { captureAllowed: capture.allows });
   // The pane's name from the app's Rename Pane, set on the session while Pi is idle.
   const naming = registerPiSessionNaming(pi);
   const registration = createPiMcpRegistration(pi);
@@ -34,23 +34,14 @@ export default function shepherdPi(pi: ExtensionAPI) {
     open: async (identity: any, signal: AbortSignal) => {
       if (!controlHealthy) throw new Error('pi-control-channel-failed');
       const lease = await nativeHost.open(identity, signal);
+      // Native host admission proves this root session; browser/MCP readiness
+      // and later lease retirement do not replace that session identity.
+      capture.qualify(identity.sessionID);
       return {
         ...lease,
         verifyMcp: async () => {
           await registration.ensureConnected();
-          const verified = await lease.verifyMcp();
-          // Capture labels are allowed only for the app-authenticated lease whose
-          // effective MCP registration the lifecycle just proved.
-          if (verified) captureSession = identity.sessionID;
-          return verified;
-        },
-        revoke: () => {
-          if (captureSession === identity.sessionID) captureSession = undefined;
-          return lease.revoke();
-        },
-        close: async () => {
-          if (captureSession === identity.sessionID) captureSession = undefined;
-          await lease.close();
+          return lease.verifyMcp();
         },
       };
     },

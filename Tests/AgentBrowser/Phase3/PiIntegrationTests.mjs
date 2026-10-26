@@ -9,7 +9,7 @@ import {detect, injected, resume, childCommand, SERVER} from '../../../Shepherd/
 import {prepare, stagePi} from '../../../Shepherd/Agents/AgentRuntime/runtime.mjs';
 import {registerPiSessionNaming} from '../../../Shepherd/Agents/AgentRuntime/pi-session-name.mjs';
 import {createPiHost} from '../../../Shepherd/Agents/AgentRuntime/pi-host.mjs';
-import {registerPiApiProxy, apiProxyBase, PROXIED_PROVIDERS} from '../../../Shepherd/Agents/AgentRuntime/pi-api-proxy.mjs';
+import {createPiCaptureAuthority, registerPiApiProxy, apiProxyBase, PROXIED_PROVIDERS} from '../../../Shepherd/Agents/AgentRuntime/pi-api-proxy.mjs';
 import net from 'node:net';
 import crypto from 'node:crypto';
 import {fileURLToPath} from 'node:url';
@@ -431,23 +431,32 @@ test('Agent proxy: invalid/headless identities and inherited child bootstrap can
   f.handlers.get('session_shutdown')();f.handlers.get('session_start')({}, {...ctx,mode:'print'});
   assert.equal(wrapper(model,{},options).headers['x-3rdr-pi-class'],'auxiliary');
 });
-test('Agent proxy: qualification is bound to an authenticated native session, not a reusable healthy flag', () => {
-  const f=proxyFixture({apiProxy:{baseURL:proxyBase}});let qualified;
-  registerPiApiProxy(f.pi,f.bootstrap,{env:{},captureAllowed:id=>id===qualified});
+test('Agent proxy capture follows the native session, not browser/MCP lease retirement', async () => {
+  const f=proxyFixture({apiProxy:{baseURL:proxyBase}}), capture=createPiCaptureAuthority();
+  registerPiApiProxy(f.pi,f.bootstrap,{env:{},captureAllowed:capture.allows});
   const signal=new AbortController().signal, session='a1111111-1111-1111-1111-111111111111';
   const ctx={...providerContext('anthropic',session),mode:'tui',signal,modelRegistry:{getProvider:()=>({streamSimple:(m,c,o)=>o})}};
   f.handlers.get('session_start')({},ctx);f.handlers.get('context')({},ctx);
   const wrap=f.providers.findLast(([name])=>name==='anthropic')[1].streamSimple;
   const model={provider:'anthropic',api:'anthropic-messages',baseUrl:proxyBase};
   const opts={signal,sessionId:session,transformContext:()=>{},convertToLlm:()=>{}};
-  assert.equal(wrap(model,{},opts).headers['x-3rdr-pi-class'],'auxiliary','no initial owner proof');
-  qualified=session;f.handlers.get('context')({},ctx);
-  assert.equal(wrap(model,{},opts).headers['x-3rdr-pi-class'],'main');
+  assert.equal(wrap(model,{},opts).headers['x-3rdr-pi-class'],'auxiliary','no native session proof');
+  capture.qualify(session);
+  f.handlers.get('context')({},ctx);
+  assert.equal(wrap(model,{},opts).headers['x-3rdr-pi-class'],'main','native qualification does not wait for browser/MCP readiness');
+  const lease={revoke:()=>true,close:async()=>{}};
+  assert.equal(lease.revoke(),true);await lease.close();
+  assert.equal(wrap(model,{},opts).headers['x-3rdr-pi-class'],'main','browser loss and lease revoke/close do not clear the native session');
   const other={...ctx,signal:new AbortController().signal,sessionManager:{getSessionId:()=> 'other_session'}};
   f.handlers.get('context')({},other);
   assert.equal(wrap(model,{}, {...opts,signal:other.signal,sessionId:'other_session'}).headers['x-3rdr-pi-class'],'auxiliary','proof cannot cross native session');
-  qualified=undefined;
-  assert.equal(wrap(model,{},opts).headers['x-3rdr-pi-class'],'auxiliary','explicit retirement removes capture eligibility');
+  capture.clear();
+  assert.equal(wrap(model,{},opts).headers['x-3rdr-pi-class'],'auxiliary','session replacement clears capture eligibility');
+  capture.qualify(session);f.handlers.get('session_shutdown')();capture.clear();
+  assert.equal(wrap(model,{},opts).headers['x-3rdr-pi-class'],'auxiliary','shutdown clears capture eligibility');
+  const child={...ctx,mode:'print',signal:new AbortController().signal,sessionManager:{getSessionId:()=>session}};
+  f.handlers.get('session_start')({},child);f.handlers.get('context')({},child);
+  assert.equal(wrap(model,{}, {...opts,signal:child.signal}).headers['x-3rdr-pi-class'],'auxiliary','a child cannot inherit a cleared native capture');
 });
 test('Agent proxy: without a valid base URL in a private launch.json, Pi is left as it is', () => {
   const cases = [
@@ -465,13 +474,14 @@ test('Agent proxy: without a valid base URL in a private launch.json, Pi is left
   assert.equal(apiProxyBase('relative/bootstrap.json'), null);
   assert.equal(apiProxyBase(undefined), null);
 });
-test('Agent proxy remains bound to an authenticated native MCP lease without app-owned Herdr state reporting', () => {
+test('Agent proxy uses native session qualification without app-owned Herdr state reporting', () => {
   const entry = fs.readFileSync(new URL('../../../Shepherd/Agents/AgentRuntime/pi-entry.ts', import.meta.url), 'utf8');
-  assert(entry.includes("import { registerPiApiProxy } from './pi-api-proxy.mjs';") && entry.includes('registerPiApiProxy(pi, bootstrap, { captureAllowed: (id: string) => id === captureSession });'));
+  assert(entry.includes("import { createPiCaptureAuthority, registerPiApiProxy } from './pi-api-proxy.mjs';") && entry.includes('registerPiApiProxy(pi, bootstrap, { captureAllowed: capture.allows });'));
   assert(entry.indexOf("if (!bootstrap) throw new Error('pi-host-bridge-unavailable');") < entry.indexOf('registerPiApiProxy(pi, bootstrap,'));
-  assert(entry.includes("pi.on('session_start', () => { captureSession = undefined; });") && entry.includes("pi.on('session_shutdown', () => { captureSession = undefined; });"));
-  assert(entry.includes('const verified = await lease.verifyMcp();') && entry.includes('if (verified) captureSession = identity.sessionID;'));
-  assert(entry.includes('if (captureSession === identity.sessionID) captureSession = undefined;'));
+  assert(entry.includes("if (ctx?.mode === 'tui') capture.clear();") && entry.includes('capture.qualify(identity.sessionID);'));
+  assert(entry.indexOf('capture.qualify(identity.sessionID);') < entry.indexOf('await registration.ensureConnected();'));
+  const lease = entry.slice(entry.indexOf('const lease = await nativeHost.open'), entry.indexOf('  const interactive ='));
+  assert(!lease.includes('capture.clear()'), 'lease revoke/close does not clear a native session capture');
   assert(!entry.includes('registerPiHerdr') && !entry.includes('herdrState') && !entry.includes('herdrReporting'));
   const runtime = fs.readFileSync(new URL('../../../Shepherd/Agents/AgentRuntime/runtime.mjs', import.meta.url), 'utf8');
   assert(runtime.includes("'pi-launch.mjs','pi-api-proxy.mjs','pi-guidance.md'"));

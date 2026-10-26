@@ -17,6 +17,7 @@ sources = [
     'Shepherd/Agents/PiLaunchCoordinator.swift',
     'ShepherdKit/Sources/ShepherdKit/HerdrKit/HerdrClient.swift',
     'Shepherd/Agents/AgentRuntime/pi-entry.ts',
+    'Shepherd/Agents/AgentRuntime/pi-api-proxy.mjs',
     'Tests/AgentBrowser/Phase3/PiBridgeClientFixture.mjs',
     'docs/pi-agent-support.md',
 ]
@@ -35,8 +36,15 @@ fixture = text['Tests/AgentBrowser/Phase3/PiBridgeClientFixture.mjs']
 assert "control(config.bootstrap,'herdrState'" in fixture
 assert "retiredStateReport.error,'invalidRequest'" in fixture
 entry = text['Shepherd/Agents/AgentRuntime/pi-entry.ts']
-assert 'captureSession = identity.sessionID' in entry
+assert 'const capture = createPiCaptureAuthority();' in entry
+assert 'capture.qualify(identity.sessionID);' in entry
+assert entry.index('capture.qualify(identity.sessionID);') < entry.index('await registration.ensureConnected();')
+lease = entry[entry.index('const lease = await nativeHost.open'):entry.index('  const interactive =')]
+assert 'capture.clear()' not in lease
+assert "if (ctx?.mode === 'tui') capture.clear();" in entry
 assert 'registration.ensureConnected()' in entry
+proxy = text['Shepherd/Agents/AgentRuntime/pi-api-proxy.mjs']
+assert 'export function createPiCaptureAuthority()' in proxy
 support = text['docs/pi-agent-support.md']
 assert '앱은 Pi 상태를 Herdr에 보고하지 않는다.' in support
 assert '사용자가 Pi를 재시작해야 한다.' in support

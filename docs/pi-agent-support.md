@@ -98,7 +98,8 @@ hand-off 뒤의 대기와 실패는 launcher가 아니라 사이드바에만 보
 
 앱은 Pi 상태를 Herdr에 보고하지 않는다. 새 관리형 Pi 세션의 상태 권한은 Herdr 자체 Pi integration에 있으며,
 그 integration이 없을 때는 Herdr의 화면 감지가 결정한다. native browser 권한은 이 상태와 독립적으로,
-앱이 검증한 MCP lease로만 결정된다.
+앱이 검증한 MCP lease로만 결정된다. proxy capture label은 native root session이 인증되면 MCP/browser readiness와
+독립적으로 그 session에 묶이며, lease retirement가 아니라 session 교체 또는 종료에서만 해제된다.
 
 앱은 기존 pane의 agent authority를 지우거나 가져오지 않으며, 이미 실행 중인 Pi를 자동으로 재시작하지 않는다.
 이 변경 전 binary로 실행된 pane은 새 동작을 쓰려면 사용자가 Pi를 재시작해야 한다.

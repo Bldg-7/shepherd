@@ -10,6 +10,17 @@ const APIS={anthropic:'anthropic-messages','openai-codex':'openai-codex-response
 const OPENAI_BASE='https://api.openai.com/v1';
 const OWNED_HEADERS=new Set(['x-3rdr-pi-session','x-3rdr-pi-class','x-3rdr-pi-contract','x-3rdr-pi-auth']);
 
+// A native root lease qualifies its session before MCP/browser readiness. Lease
+// retirement is not a session boundary: only replacement or shutdown clears it.
+export function createPiCaptureAuthority() {
+  let session;
+  return Object.freeze({
+    qualify(sessionID) { session=typeof sessionID==='string' && SESSION.test(sessionID) ? sessionID : undefined; },
+    clear() { session=undefined; },
+    allows(sessionID) { return sessionID===session; },
+  });
+}
+
 // Keep the model URL unchanged: Pi's OpenAI SDK uses that exact URL to select
 // ChatGPT-specific payload semantics. Redirect only the final Responses fetch,
 // never model discovery, auth refresh, API-key calls or custom destinations.
