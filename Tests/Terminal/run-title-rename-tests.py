@@ -39,15 +39,22 @@ assert 'guard renaming == nil, closing == nil, actionFailure == nil else { retur
 assert 'perform(failureTitle: String(localized: "Couldn\'t Rename"), succeeded:' in b and 'if renameCommit?.id == commit.id { renameCommit = nil }' in b
 assert b.count('settleRenameCommit(onHerdrMachine:')==3,'settled by reads of the host and of herdr machines'
 # The title: the field in its place while a name is typed; the typed name shown on the terminal's title until herdr reports it.
-assert '.toolbar(removing: titleRenameShown(on: machine) == nil ? nil : .title)' in c and 'ToolbarItem(placement: .navigation) {\n                        TitleRenameField(' in c
+assert '.toolbar(removing: titleRenameShown(on: machine) == nil ? nil : .title)' in c and 'ToolbarItem(id: TitleRenameToolbar.itemID, placement: .navigation) {\n                        TitleRenameField(' in c
 assert '.sharedBackgroundVisibility(.hidden)' in c and '.id(session.id)' in c
+assert '.frame(minWidth: TitleRenameToolbar.minimumWidth, idealWidth: TitleRenameToolbar.idealWidth, maxWidth: TitleRenameToolbar.idealWidth)' in c
+assert 'TitleRenameToolbarRoom(active: titleRenameShown(on: machine) != nil)' in c
+assert 'enum TitleRenameToolbar {' in f and 'static let itemID = "title-rename"' in f
+assert 'static let minimumWidth: CGFloat = 120' in f and 'static let idealWidth: CGFloat = 280' in f
+assert 'NSWindow.didResizeNotification' in f and 'item.view?.window === window' in f
+assert 'DispatchQueue.main.async' in f and 'generation == scheduledGeneration' in f and 'coordinator.stopObserving()' in f
 # Only while the field is up, the space after it keeps the buttons at the bar's far end, where the title kept them.
 shown=c[c.index('                if let session = titleRenameShown(on: machine) {'):c.index('                if ShepherdBrowserFeature.shared.isEnabled {')]
 assert c.count('ToolbarSpacer(')==1 and shown.index('.sharedBackgroundVisibility(.hidden)')<shown.index('ToolbarSpacer(.flexible, placement: .navigation)'),'the space after the field'
 # What is typed is kept in from the bezel's ends, the prompt and the editor with it.
 assert 'override class var cellClass: AnyClass? {\n        get { TitleRenameFieldCell.self }' in f and 'static let horizontalInset: CGFloat = 6' in f
-# A double-click on the title starts the rename a row's Rename item does, of what ⌘W would close, while none is being typed.
-assert '.background {\n                TitleDoubleClick(rename: { renameFromTitle(on: machine) })\n            }' in c
+# A double-click on the title stays the row Rename path, alongside (not instead
+# of) the title item's native-width room observer in the same background.
+assert '.background {\n                ZStack {\n                    TitleDoubleClick(rename: { renameFromTitle(on: machine) })\n                    TitleRenameToolbarRoom(active: titleRenameShown(on: machine) != nil)\n                }\n            }' in c
 fromTitle=c[c.index('    private func renameFromTitle('):c.index('    private func endTitleRename(')]
 assert 'guard titleRename == nil, let machine, let item = closeCommandTarget(on: machine).item else { return false }' in fromTitle and 'beginTitleRename(TitleRenameSession(item: item), on: machine)' in fromTitle
 d=(R/'Shepherd/Hosts/Views/TitleDoubleClick.swift').read_text()
@@ -67,5 +74,5 @@ update=f[f.index('    func updateNSView('):f.index('    static func dismantleNSV
 assert 'context.coordinator.parent = self' in update and 'field.' not in update,'nothing about the field changes on a refresh'
 assert 'guard !session.isEnded, !textView.hasMarkedText() else { return false }' in f
 assert 'session.text = textView.string' in f and 'DispatchQueue.main.async { onEnd(session, .left) }' in f
-(o/'validation.json').write_text(json.dumps({'passed':True,'stages':checks,'productionRulesFieldAndSplitViews':True,'ownedNeverShownWindows':True,'imeCompositionSimulatedThroughNSTextInputClient':True,'installedAppHerdrOrNetwork':False,'realGUIKeyboardOrFullScreen':'NOTRUN','titleDoubleClickSystemZoomInShownWindow':'NOTRUN'},indent=2))
+(o/'validation.json').write_text(json.dumps({'passed':True,'stages':checks,'productionRulesFieldAndSplitViews':True,'ownedNeverShownWindows':True,'imeCompositionSimulatedThroughNSTextInputClient':True,'nativeToolbarItemAndFieldGeometry':True,'installedAppHerdrOrNetwork':False,'realGUIKeyboardOrFullScreen':'NOTRUN','physicalIMEOrWindowResizeGesture':'NOTRUN','titleDoubleClickSystemZoomInShownWindow':'NOTRUN'},indent=2))
 print('PASS',len(checks),'stages and source checks')

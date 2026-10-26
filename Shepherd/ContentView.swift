@@ -190,21 +190,24 @@ struct ContentView: View {
             .navigationTitle(detailNavigationTitle(on: machine))
             // A double-click on the title has a new name typed into it.
             .background {
-                TitleDoubleClick(rename: { renameFromTitle(on: machine) })
+                ZStack {
+                    TitleDoubleClick(rename: { renameFromTitle(on: machine) })
+                    TitleRenameToolbarRoom(active: titleRenameShown(on: machine) != nil)
+                }
             }
             // While a name is typed into the title, the field stands in its
             // place.
             .toolbar(removing: titleRenameShown(on: machine) == nil ? nil : .title)
             .toolbar {
                 if let session = titleRenameShown(on: machine) {
-                    ToolbarItem(placement: .navigation) {
+                    ToolbarItem(id: TitleRenameToolbar.itemID, placement: .navigation) {
                         TitleRenameField(
                             session: session,
                             canSubmit: { TitleRename.canSubmit($0, for: session.item) },
                             onEnd: endTitleRename
                         )
                         .id(session.id)
-                        .frame(minWidth: 160, idealWidth: 280, maxWidth: 420)
+                        .frame(minWidth: TitleRenameToolbar.minimumWidth, idealWidth: TitleRenameToolbar.idealWidth, maxWidth: TitleRenameToolbar.idealWidth)
                     }
                     .sharedBackgroundVisibility(.hidden)
                     // The title took up the rest of the bar, which kept the

@@ -457,13 +457,21 @@ Needs no SwiftTerm build. It has three stages.
   The insertion point, the text and the grey placeholder start 12pt in from
   the field's left edge. AppKit alone puts them 6pt in, against the rounded
   end.
-- Toolbar: the production split views in a never-shown window. It checks that
+- Toolbar: the production split views in never-shown windows. It checks that
   the window's title is the selected terminal view's title, also while a file
   preview is open. While renaming, the title is hidden and the field takes its
   place, before the other toolbar items, and gets the keyboard. The buttons
   after the field stay exactly where they were, and the field sits on their
-  line, no taller than they are. After Return the title and the buttons come
-  back as they were.
+  line, no taller than they are. A legacy no-seam negative control records
+  SwiftUI's original fixed native 280...280 pt range. The production item's
+  actual `NSToolbarItem` range is 120...280 pt (not merely the SwiftUI source),
+  and the actual field stays 280 pt wide at 1000 pt, shrinks within that range
+  at 700 pt with a 360 pt sidebar, then expands back. The fixture also drives 280 pt and 360 pt sidebars, starts a
+  second rename narrow with the sidebar hidden, rebuilds layout, and verifies
+  that resizing one window cannot alter the other window's item. Synthetic IME
+  composition keeps Return with the input method until its marked text commits.
+  After Return the title and the buttons come back as they were, and both
+  independent rename states clean up.
 - Title double-click, in the toolbar stage: the watcher in
   `TitleDoubleClick.swift`, on the same window. A double-click on the title's
   text starts a rename, as the row's Rename item does, with the name selected.
@@ -484,9 +492,10 @@ being composed. The source checks also look for three things in the code. The
 flexible space after the field is there only while the field is up. The field
 uses its own cell. A double-click on the title renames what Cmd-W would close,
 and does so only while no name is being typed and no sheet is over the window.
-A real keyboard, input method, full screen and the installed app are not
-covered. Nor is what the system does with a double-click in the title bar,
-because a never-shown window neither zooms nor minimizes.
+A physical keyboard, physical input method, real window-resize gestures, full
+screen and the installed app are not covered. Nor is what the system does with
+a double-click in the title bar, because a never-shown window neither zooms nor
+minimizes.
 
 ## Passing the name on to the agent's session
 

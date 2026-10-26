@@ -43,6 +43,7 @@ struct SplitRoot: View {
     @ObservationIgnored var coversTerminal = false
     @ObservationIgnored var endings: [(TitleRenameEnding, String)] = []
     @ObservationIgnored var renamesFromTitle = 0
+    var refresh = 0
     func end(_ session: TitleRenameSession, _ ending: TitleRenameEnding) {
         guard session.end() else { return }
         endings.append((ending, session.text))
@@ -58,24 +59,36 @@ struct SplitRoot: View {
 
 struct ToolbarRoot: View {
     let probe: ToolbarProbe
+    let sidebarState: WorkspaceSidebarState
+    /// The legacy fixture omits this production seam to prove the native
+    /// fixed-width regression it replaces.
+    var appliesToolbarRoom = true
     var body: some View {
-        WorkspaceNavigationSplitView { Text(verbatim: "board") } detail: {
+        WorkspaceNavigationSplitView(sidebarState: sidebarState) { Text(verbatim: "board \(probe.refresh)") } detail: {
             WorkspaceDetailSplitView(showsPanel: false, panelMinimum: 320, panelIdeal: 560) {
                 Color.black.navigationTitle("pane title")
             } panel: { EmptyView() }
                 .navigationTitle("pane title")
-                .background { TitleDoubleClick(rename: probe.renameFromTitle) }
+                .background {
+                    ZStack {
+                        TitleDoubleClick(rename: probe.renameFromTitle)
+                        if appliesToolbarRoom {
+                            TitleRenameToolbarRoom(active: probe.session != nil)
+                        }
+                    }
+                }
                 .toolbar(removing: probe.session == nil ? nil : .title)
                 .toolbar {
                     if let session = probe.session {
-                        ToolbarItem(placement: .navigation) {
+                        ToolbarItem(id: TitleRenameToolbar.itemID, placement: .navigation) {
                             TitleRenameField(session: session, canSubmit: { TitleRename.canSubmit($0, for: session.item) }, onEnd: probe.end)
                                 .id(session.id)
-                                .frame(minWidth: 160, idealWidth: 280, maxWidth: 420)
+                                .frame(minWidth: TitleRenameToolbar.minimumWidth, idealWidth: TitleRenameToolbar.idealWidth, maxWidth: TitleRenameToolbar.idealWidth)
                         }
                         .sharedBackgroundVisibility(.hidden)
                         ToolbarSpacer(.flexible, placement: .navigation)
                     }
+                    ToolbarItem(placement: .primaryAction) { Button("Browser") {} }
                     ToolbarItem(placement: .primaryAction) { Button("Preview") {} }
                 }
         }
@@ -174,9 +187,26 @@ final class RecordingWindow: NSWindow {
         spin(until: { split.titleVisibility == .visible }, "and put back")
         split.close()
 
+        // The unchanged SwiftUI frame reaches AppKit as a fixed 280pt item.
+        // Keep this legacy fixture without the room seam as a native negative
+        // control: it is the range that made the title field overflow instead
+        // of shrink in a narrow toolbar.
+        let legacyProbe = ToolbarProbe()
+        let legacy = window(ToolbarRoot(probe: legacyProbe, sidebarState: WorkspaceSidebarState(initialVisibility: .all), appliesToolbarRoom: false), width: 700)
+        spin(until: { legacy.toolbar != nil }, "the legacy fixture has a toolbar")
+        let legacyItemSource = AgentSummary(json: .object(["pane_id": .string("legacy:pane"), "terminal_id": .string("legacy-terminal"), "label": .string("build")]), on: nil)!
+        legacyProbe.session = TitleRenameSession(item: .pane(legacyItemSource))
+        spin(until: {
+            legacy.toolbar?.items.first { $0.itemIdentifier.rawValue == TitleRenameToolbar.itemID }.map {
+                $0.minSize.width == 280 && $0.maxSize.width == 280
+            } == true
+        }, "without the AppKit seam, SwiftUI exposes the original fixed 280pt native range")
+        legacy.close()
+
         // The field in the toolbar, in the title's place.
         let probe = ToolbarProbe()
-        let toolbar = window(ToolbarRoot(probe: probe), width: 1000)
+        let sidebarState = WorkspaceSidebarState(initialVisibility: .all)
+        let toolbar = window(ToolbarRoot(probe: probe, sidebarState: sidebarState), width: 1000)
         spin(until: { toolbar.toolbar != nil && toolbar.title == "pane title" }, "the detail's title is the window's")
         let item = AgentSummary(json: .object(["pane_id": .string("w1:p1"), "terminal_id": .string("terminal-1"), "label": .string("build")]), on: nil)!
         /// The detail's last item, the Preview button, where it is in the window.
@@ -185,6 +215,98 @@ final class RecordingWindow: NSWindow {
             guard let view = toolbar.toolbar!.items.last?.view, view.window === toolbar else { return nil }
             return view.convert(view.bounds, to: nil)
         }
+        func renameItem(in window: NSWindow = toolbar) -> NSToolbarItem? {
+            window.toolbar?.items.first { $0.itemIdentifier.rawValue == TitleRenameToolbar.itemID }
+        }
+        /// The production sidebar reservation finds this exact native split:
+        /// it is the only split whose delegate is an `NSSplitViewController`
+        /// with sidebar and detail items. Do not use the first nested split —
+        /// `WorkspaceDetailSplitView` has its own unrelated terminal/panel
+        /// split.
+        func nativeSidebar() -> (split: NSSplitView, controller: NSSplitViewController, sidebar: NSSplitViewItem) {
+            func splitViews(in view: NSView) -> [NSSplitView] {
+                ((view as? NSSplitView).map { [$0] } ?? []) + view.subviews.flatMap(splitViews(in:))
+            }
+            let candidates = splitViews(in: toolbar.contentView!)
+            guard let split = candidates.first(where: {
+                guard let controller = $0.delegate as? NSSplitViewController else { return false }
+                return $0.isVertical && controller.splitViewItems.count >= 2
+            }), let controller = split.delegate as? NSSplitViewController else {
+                let descriptions = candidates.map { "vertical=\($0.isVertical),subviews=\($0.subviews.count),delegate=\(String(describing: type(of: $0.delegate)))" }.joined(separator: ";")
+                preconditionFailure("the fixture has no native sidebar split; candidates: \(descriptions)")
+            }
+            return (split, controller, controller.splitViewItems[0])
+        }
+        struct SidebarGeometry: CustomStringConvertible {
+            let split: ObjectIdentifier
+            let controller: ObjectIdentifier
+            let sidebar: ObjectIdentifier
+            let column: ObjectIdentifier
+            let splitBounds: NSRect
+            let columnFrame: NSRect
+            let itemFrame: NSRect
+            let itemFrameInSplit: NSRect
+
+            var contentWidth: CGFloat { itemFrameInSplit.width }
+            var columnToContentDelta: CGFloat { columnFrame.width - itemFrameInSplit.width }
+            var description: String {
+                "split=\(split),controller=\(controller),sidebar=\(sidebar),column=\(column),splitBounds=\(splitBounds),columnFrame=\(columnFrame),itemFrame=\(itemFrame),itemInSplit=\(itemFrameInSplit),delta=\(columnToContentDelta)"
+            }
+        }
+        /// The public `subviews` list also holds titlebar/shadow/divider
+        /// decoration views, so it is not the logical split-item order. Walk
+        /// the selected item's public ancestry to its direct child of this
+        /// split instead of indexing or classifying those decorations.
+        func sidebarColumn(in native: (split: NSSplitView, controller: NSSplitViewController, sidebar: NSSplitViewItem)) -> NSView {
+            let itemView = native.sidebar.viewController.view
+            var column = itemView
+            while let parent = column.superview, parent !== native.split {
+                column = parent
+            }
+            guard column.superview === native.split else {
+                preconditionFailure("the selected sidebar item has no direct-child ancestor in its native split")
+            }
+            return column
+        }
+        /// `NSSplitView.setPosition` takes the direct child wrapper's divider
+        /// coordinate. The sidebar assertion is about its actual content
+        /// width, so measure both coordinate systems rather than treating them
+        /// as interchangeable.
+        func sidebarGeometry(_ native: (split: NSSplitView, controller: NSSplitViewController, sidebar: NSSplitViewItem)? = nil) -> SidebarGeometry {
+            let native = native ?? nativeSidebar()
+            let itemView = native.sidebar.viewController.view
+            let column = sidebarColumn(in: native)
+            return SidebarGeometry(
+                split: ObjectIdentifier(native.split),
+                controller: ObjectIdentifier(native.controller),
+                sidebar: ObjectIdentifier(native.sidebar),
+                column: ObjectIdentifier(column),
+                splitBounds: native.split.bounds,
+                columnFrame: column.frame,
+                itemFrame: itemView.frame,
+                itemFrameInSplit: itemView.convert(itemView.bounds, to: native.split)
+            )
+        }
+        func sidebarWidth() -> CGFloat { sidebarGeometry().contentWidth }
+        @discardableResult
+        func resizeSidebar(_ requestedContentWidth: CGFloat) -> CGFloat {
+            let native = nativeSidebar()
+            let before = sidebarGeometry(native)
+            // Project the requested content width through the measured
+            // arranged-column/content delta. This derives the native divider
+            // coordinate without assuming a particular inset.
+            let requestedDividerPosition = before.columnFrame.maxX + (requestedContentWidth - before.contentWidth)
+            native.split.setPosition(requestedDividerPosition, ofDividerAt: 0)
+            toolbar.contentView!.superview!.layoutSubtreeIfNeeded()
+            let deadline = Date().addingTimeInterval(4)
+            while abs(sidebarWidth() - requestedContentWidth) >= 1 && Date() < deadline {
+                RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))
+            }
+            let after = sidebarGeometry(native)
+            check(abs(after.contentWidth - requestedContentWidth) < 1,
+                  "the fixture's native sidebar requested content \(requestedContentWidth)pt via divider \(requestedDividerPosition)pt, measured \(after.contentWidth)pt; before {\(before)}; after {\(after)}; min \(native.sidebar.minimumThickness), max \(native.sidebar.maximumThickness), collapsed \(native.sidebar.isCollapsed)")
+            return after.contentWidth
+        }
         let previewBefore = previewFrame()
         check(previewBefore != nil, "the Preview button is in the window's toolbar")
         let session = TitleRenameSession(item: .pane(item))
@@ -192,6 +314,10 @@ final class RecordingWindow: NSWindow {
         func frameView() -> NSView { toolbar.contentView!.superview! }
         spin(until: { fields(in: frameView()).count == 1 && fields(in: frameView())[0].window === toolbar }, "the field is in the window's toolbar")
         let field = fields(in: frameView())[0]
+        spin(until: {
+            guard let item = renameItem() else { return false }
+            return item.minSize.width == TitleRenameToolbar.minimumWidth && item.maxSize.width == TitleRenameToolbar.idealWidth
+        }, "the native title item has the 120...280pt range after SwiftUI layout")
         check(toolbar.titleVisibility == .hidden, "the title is out of the toolbar while the field stands in its place")
         let identifiers = toolbar.toolbar!.items.map(\.itemIdentifier.rawValue)
         let separator = identifiers.firstIndex { $0.contains("splitViewSeparator") }
@@ -203,12 +329,39 @@ final class RecordingWindow: NSWindow {
         check(previewEditing == previewBefore, "the buttons after the title stay where they were while the field stands in its place")
         check(abs(fieldFrame.midY - previewBefore!.midY) < 0.5 && fieldFrame.height <= previewBefore!.height,
               "the field is on the buttons' line, and no taller than they are")
+        check(fieldFrame.width == TitleRenameToolbar.idealWidth, "at 1000pt the actual native field remains 280pt wide")
+
+        // Exercise the real split at both supported sidebar widths, then make
+        // the window narrow enough that the native toolbar must use the
+        // item's range rather than put it straight into its overflow menu.
+        spin(until: {
+            let sidebar = nativeSidebar().sidebar
+            return sidebar.minimumThickness == WorkspaceSidebarMetrics.minimum && sidebar.maximumThickness == WorkspaceSidebarMetrics.maximum
+        }, "the production sidebar reservation owns the native sidebar split")
+        _ = resizeSidebar(280)
+        toolbar.setContentSize(NSSize(width: 1000, height: 500))
+        spin(until: { renameItem()?.minSize.width == 120 && renameItem()?.maxSize.width == 280 }, "a 280pt sidebar leaves the native range installed")
+        _ = resizeSidebar(360)
+        toolbar.setContentSize(NSSize(width: 700, height: 500))
+        spin(until: { fields(in: frameView()).first?.window === toolbar }, "the field stays in the toolbar after width shrinks")
+        let narrowFrame = fields(in: frameView())[0].convert(fields(in: frameView())[0].bounds, to: nil)
+        check(narrowFrame.width >= TitleRenameToolbar.minimumWidth && narrowFrame.width < TitleRenameToolbar.idealWidth,
+              "the actual native field shrinks within 120...280pt before toolbar overflow")
+        toolbar.setContentSize(NSSize(width: 1000, height: 500))
+        spin(until: { fields(in: frameView()).first.map { $0.convert($0.bounds, to: nil).width == 280 } == true }, "the actual native field expands back to 280pt")
+        probe.refresh += 1
+        spin(until: { renameItem()?.minSize.width == 120 && renameItem()?.maxSize.width == 280 }, "a SwiftUI layout rebuild retains the native range")
+
         let text = toolbar.firstResponder as! NSTextView
         check(text.string == "build" && text.selectedRange() == NSRange(location: 0, length: 5), "starting from the name, selected")
         text.insertText("server", replacementRange: NSRange(location: NSNotFound, length: 0))
+        text.setMarkedText("ㅎ", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        let coordinator = field.delegate as! TitleRenameField.Coordinator
+        check(!coordinator.control(field, textView: text, doCommandBy: #selector(NSResponder.insertNewline(_:))), "Return remains with a synthetic input-method composition")
+        text.insertText("한", replacementRange: text.markedRange())
         text.doCommand(by: #selector(NSResponder.insertNewline(_:)))
-        check(probe.endings.count == 1 && probe.endings[0].0 == .submit && probe.endings[0].1 == "server", "Return in the toolbar sends the name")
-        spin(until: { fields(in: frameView()).isEmpty && toolbar.titleVisibility == .visible }, "the field goes, and the title is back")
+        check(probe.endings.count == 1 && probe.endings[0].0 == .submit && probe.endings[0].1 == "server한", "Return in the toolbar sends the committed input-method text")
+        spin(until: { fields(in: frameView()).isEmpty && toolbar.titleVisibility == .visible && renameItem() == nil }, "the field, its toolbar item, and its state go away")
         check(previewFrame() == previewBefore, "the buttons too")
 
         // A double-click on the title's text: the same rename. Every other
@@ -247,9 +400,40 @@ final class RecordingWindow: NSWindow {
         titleText.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
         check(probe.endings.count == 2 && probe.endings[1].0 == .cancel, "Escape takes it back")
         spin(until: { fields(in: frameView()).isEmpty && toolbar.titleVisibility == .visible }, "the field goes, and the title is back")
-        check(!toolbar.isVisible, "none of it showed the window")
+
+        // A second, initially narrow window has its sidebar hidden before a
+        // rename starts. Its item must be configured in that window only.
+        let narrowProbe = ToolbarProbe()
+        let hiddenSidebar = WorkspaceSidebarState(initialVisibility: .detailOnly)
+        let narrow = window(ToolbarRoot(probe: narrowProbe, sidebarState: hiddenSidebar), width: 500)
+        spin(until: { narrow.toolbar != nil && narrow.title == "pane title" }, "the hidden-sidebar fixture has its own toolbar")
+        narrowProbe.session = TitleRenameSession(item: .pane(item))
+        func narrowFrameView() -> NSView { narrow.contentView!.superview! }
+        spin(until: { fields(in: narrowFrameView()).count == 1 && fields(in: narrowFrameView())[0].window === narrow }, "a rename starting narrow stays in its own hidden-sidebar toolbar")
+        let narrowField = fields(in: narrowFrameView())[0]
+        spin(until: {
+            narrow.toolbar?.items.first { $0.itemIdentifier.rawValue == TitleRenameToolbar.itemID }.map {
+                $0.minSize.width == 120 && $0.maxSize.width == 280
+            } == true
+        }, "the narrow window gets the same native range")
+        check((narrow.firstResponder as? NSTextView)?.delegate === narrowField && (narrow.firstResponder as? NSTextView)?.selectedRange() == NSRange(location: 0, length: 5),
+              "a narrow-start rename retains native focus and selection")
+
+        probe.session = TitleRenameSession(item: .pane(item))
+        spin(until: { fields(in: frameView()).count == 1 }, "the first window can rebuild its title item")
+        let narrowItem = narrow.toolbar!.items.first { $0.itemIdentifier.rawValue == TitleRenameToolbar.itemID }!
+        narrowItem.minSize.width = 777
+        narrowItem.maxSize.width = 777
+        toolbar.setContentSize(NSSize(width: 980, height: 500))
+        spin(until: { renameItem()?.minSize.width == 120 && renameItem()?.maxSize.width == 280 }, "a resize repairs the first window's rebuilt item")
+        check(narrowItem.minSize.width == 777 && narrowItem.maxSize.width == 777, "the first window never changes another window's toolbar item")
+        (toolbar.firstResponder as? NSTextView)?.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
+        (narrow.firstResponder as? NSTextView)?.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
+        spin(until: { fields(in: frameView()).isEmpty && fields(in: narrowFrameView()).isEmpty }, "both independent rename states clean up")
+        check(!toolbar.isVisible && !narrow.isVisible, "none of the toolbar fixtures showed a window")
+        narrow.close()
         toolbar.close()
 
-        print("PASS \(checks) title rename window title/terminal title precedence/preview/title removal/toolbar field/layout/title double-click checks; owned never-shown windows, no app or herdr")
+        print("PASS \(checks) title rename window title/terminal title precedence/preview/title removal/toolbar width/layout/two-window isolation/title double-click checks; owned never-shown windows, no app or herdr")
     }
 }

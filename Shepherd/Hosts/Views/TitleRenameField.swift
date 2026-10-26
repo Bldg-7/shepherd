@@ -116,6 +116,126 @@ struct TitleRenameField: NSViewRepresentable {
     }
 }
 
+/// The AppKit identity and allowed width range of the replacement title item.
+/// SwiftUI gives its hosted toolbar item its ideal width as both limits, so
+/// AppKit must be told about the range after it has finished that update.
+enum TitleRenameToolbar {
+    static let itemID = "title-rename"
+    static let minimumWidth: CGFloat = 120
+    static let idealWidth: CGFloat = 280
+}
+
+/// A non-interactive detail-background anchor that gives the title rename
+/// toolbar item its real AppKit width range. It deliberately changes only the
+/// toolbar belonging to its own window; a SwiftUI toolbar rebuild can recreate
+/// the item at any time, so updates and resize notifications are deferred past
+/// layout and verify that this anchor is still current before changing it.
+struct TitleRenameToolbarRoom: NSViewRepresentable {
+    let active: Bool
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeNSView(context: Context) -> AnchorView {
+        let view = AnchorView()
+        view.coordinator = context.coordinator
+        context.coordinator.anchor = view
+        return view
+    }
+
+    func updateNSView(_ view: AnchorView, context: Context) {
+        context.coordinator.update(active: active, anchor: view)
+    }
+
+    static func dismantleNSView(_ view: AnchorView, coordinator: Coordinator) {
+        coordinator.stopObserving()
+    }
+
+    final class AnchorView: NSView {
+        weak var coordinator: Coordinator?
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            coordinator?.anchorWindowDidChange(self)
+        }
+    }
+
+    final class Coordinator {
+        weak var anchor: AnchorView?
+        private weak var observedWindow: NSWindow?
+        private var resizeObserver: NSObjectProtocol?
+        private var active = false
+        private var generation = 0
+
+        func update(active: Bool, anchor: AnchorView) {
+            self.active = active
+            self.anchor = anchor
+            guard active else {
+                stopObserving()
+                return
+            }
+            observe(anchor.window)
+            scheduleUpdate(for: anchor.window)
+        }
+
+        func anchorWindowDidChange(_ anchor: AnchorView) {
+            guard active, self.anchor === anchor else { return }
+            observe(anchor.window)
+            scheduleUpdate(for: anchor.window)
+        }
+
+        func stopObserving() {
+            generation += 1
+            if let resizeObserver { NotificationCenter.default.removeObserver(resizeObserver) }
+            resizeObserver = nil
+            observedWindow = nil
+        }
+
+        private func observe(_ window: NSWindow?) {
+            guard observedWindow !== window else { return }
+            if let resizeObserver { NotificationCenter.default.removeObserver(resizeObserver) }
+            resizeObserver = nil
+            observedWindow = window
+            guard let window else { return }
+            resizeObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didResizeNotification,
+                object: window,
+                queue: .main
+            ) { [weak self, weak window] _ in
+                Task { @MainActor [weak self, weak window] in
+                    self?.scheduleUpdate(for: window)
+                }
+            }
+        }
+
+        /// Waiting one main-queue turn keeps this out of SwiftUI's view update
+        /// and AppKit's current layout pass. The generation/window checks make
+        /// stale callbacks harmless after a rebuild or a move between windows.
+        private func scheduleUpdate(for window: NSWindow?) {
+            generation += 1
+            let scheduledGeneration = generation
+            DispatchQueue.main.async { [weak self, weak window] in
+                self?.applyUpdate(generation: scheduledGeneration, in: window)
+            }
+        }
+
+        private func applyUpdate(generation scheduledGeneration: Int, in window: NSWindow?) {
+            guard active,
+                  generation == scheduledGeneration,
+                  let anchor,
+                  let window,
+                  anchor.window === window,
+                  observedWindow === window,
+                  let toolbar = window.toolbar,
+                  let item = toolbar.items.first(where: { $0.itemIdentifier.rawValue == TitleRenameToolbar.itemID }),
+                  item.view?.window === window else { return }
+            item.minSize = NSSize(width: TitleRenameToolbar.minimumWidth, height: item.minSize.height)
+            item.maxSize = NSSize(width: TitleRenameToolbar.idealWidth, height: item.maxSize.height)
+        }
+    }
+}
+
 /// The field itself, which takes the keyboard the first time it lands in a
 /// window, with what it starts out with selected — on the next turn of the
 /// run loop, as `TerminalHostView` does: it lands in the middle of
