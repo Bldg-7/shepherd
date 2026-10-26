@@ -58,7 +58,8 @@ assert 'registrations[launch.id]?.sessionName' in status,'a status reply carries
 entry=read('Shepherd/Agents/AgentRuntime/pi-entry.ts');host=read('Shepherd/Agents/AgentRuntime/pi-host.mjs');runtime=read('Shepherd/Agents/AgentRuntime/runtime.mjs')
 assert "const naming = registerPiSessionNaming(pi);" in entry and 'sessionName: naming.offer,' in entry
 assert 'if(current.sessionName!==undefined){try{sessionName(current.sessionName);}catch{}}' in host
-assert "'pi-herdr.mjs','pi-session-name.mjs','pi-entry.ts'" in runtime,'the version folder hash covers the new file'
+assert "'pi-mcp-registration.mjs','pi-session-name.mjs','pi-entry.ts'" in runtime,'the version folder hash covers the Pi session naming files'
+assert 'pi-herdr.mjs' not in runtime,'the version folder does not bundle the retired app-owned Herdr reporter'
 module=read('Shepherd/Agents/AgentRuntime/pi-session-name.mjs')
 assert 'pi.setSessionName(name)' in module and 'sendUserMessage' not in module and 'sendMessage' not in module,'Pi is named, never typed into'
 # The idle stop before a resume keeps its own rule.

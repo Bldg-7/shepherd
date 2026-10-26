@@ -2,7 +2,6 @@ import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { createPiHost } from './pi-host.mjs';
 import { registerPiLifecycle } from './pi-lifecycle.mjs';
 import { createPiMcpRegistration } from './pi-mcp-registration.mjs';
-import { registerPiHerdr } from './pi-herdr.mjs';
 import { registerPiSessionNaming } from './pi-session-name.mjs';
 import { registerPiApiProxy } from './pi-api-proxy.mjs';
 
@@ -19,10 +18,6 @@ export default function shepherdPi(pi: ExtensionAPI) {
   const onFailure = () => { controlHealthy = false; void controller?.shutdown(); };
   // The agent proxy, when the app gave this launch one (SHPHRD-105).
   registerPiApiProxy(pi, bootstrap, { captureAllowed: (id: string) => id === captureSession });
-  // A successful authenticated root-process report qualifies only this native
-  // session. Later app/browser disconnection must not stop an already-bound
-  // model proxy session; replacement/shutdown explicitly clears the identity.
-  registerPiHerdr(pi, bootstrap, onFailure, (id: string) => { captureSession = id; });
   // The pane's name from the app's Rename Pane, set on the session while Pi is idle.
   const naming = registerPiSessionNaming(pi);
   const registration = createPiMcpRegistration(pi);
@@ -39,7 +34,25 @@ export default function shepherdPi(pi: ExtensionAPI) {
     open: async (identity: any, signal: AbortSignal) => {
       if (!controlHealthy) throw new Error('pi-control-channel-failed');
       const lease = await nativeHost.open(identity, signal);
-      return { ...lease, verifyMcp: async () => { await registration.ensureConnected(); return lease.verifyMcp(); } };
+      return {
+        ...lease,
+        verifyMcp: async () => {
+          await registration.ensureConnected();
+          const verified = await lease.verifyMcp();
+          // Capture labels are allowed only for the app-authenticated lease whose
+          // effective MCP registration the lifecycle just proved.
+          if (verified) captureSession = identity.sessionID;
+          return verified;
+        },
+        revoke: () => {
+          if (captureSession === identity.sessionID) captureSession = undefined;
+          return lease.revoke();
+        },
+        close: async () => {
+          if (captureSession === identity.sessionID) captureSession = undefined;
+          await lease.close();
+        },
+      };
     },
   };
   const interactive = {

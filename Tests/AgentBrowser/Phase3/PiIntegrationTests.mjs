@@ -8,7 +8,6 @@ import {registerPiLifecycle, SERVER as PI_SERVER} from '../../../Shepherd/Agents
 import {detect, injected, resume, childCommand, SERVER} from '../../../Shepherd/Agents/AgentRuntime/runtime-core.mjs';
 import {prepare, stagePi} from '../../../Shepherd/Agents/AgentRuntime/runtime.mjs';
 import {registerPiSessionNaming} from '../../../Shepherd/Agents/AgentRuntime/pi-session-name.mjs';
-import {registerPiHerdr} from '../../../Shepherd/Agents/AgentRuntime/pi-herdr.mjs';
 import {createPiHost} from '../../../Shepherd/Agents/AgentRuntime/pi-host.mjs';
 import {registerPiApiProxy, apiProxyBase, PROXIED_PROVIDERS} from '../../../Shepherd/Agents/AgentRuntime/pi-api-proxy.mjs';
 import net from 'node:net';
@@ -335,7 +334,7 @@ test('Session name arrives in the bridge\'s status replies, through createPiHost
   try {
     await new Promise(resolve => server.listen(socketPath, resolve)); fs.chmodSync(socketPath, 0o600);
     fs.writeFileSync(bootstrap, JSON.stringify({ version: 1, launchID: crypto.randomUUID(), capability: crypto.randomBytes(32).toString('base64'), socketPath,
-      node: process.execPath, helper: fileURLToPath(new URL('../../../Shepherd/Agents/AgentRuntime/pi-control.mjs', import.meta.url)), herdrReporting: false }), { mode: 0o600 });
+      node: process.execPath, helper: fileURLToPath(new URL('../../../Shepherd/Agents/AgentRuntime/pi-control.mjs', import.meta.url)) }), { mode: 0o600 });
     const f = namingFixture(); f.emit('session_start');
     const host = createPiHost(bootstrap, { report: () => {}, onFailure: () => assert.fail('bridge failure'), sessionName: f.naming.offer });
     const lease = await host.open({ pid: process.pid }, undefined);
@@ -353,34 +352,6 @@ test('Session name arrives in the bridge\'s status replies, through createPiHost
   } finally {
     await new Promise(resolve => server.close(resolve)); fs.rmSync(root, { recursive: true, force: true });
   }
-});
-
-test('Pi report qualifies only successful current-generation native identity', async () => {
-  const root=fs.mkdtempSync('/tmp/shp-pi-owner-'), socketPath=path.join(root,'control.sock'), bootstrap=path.join(root,'bootstrap.json');
-  fs.chmodSync(root,0o700);
-  let hold=false, failures=0;const accepted=deferred(), release=deferred(), qualified=[], handlers=new Map();
-  const server=net.createServer(socket=>{
-    let pending='';socket.on('data',chunk=>{
-      pending+=chunk;if(!pending.includes('\n'))return;
-      socket.removeAllListeners('data');const request=JSON.parse(pending.trim());
-      assert.equal(request.command,'herdrState');
-      if(hold){accepted.resolve();void release.promise.then(()=>socket.end('{"ok":true}\n'));}
-      else socket.end('{"ok":true}\n');
-    });
-  });
-  await new Promise(resolve=>server.listen(socketPath,resolve));fs.chmodSync(socketPath,0o600);
-  fs.writeFileSync(bootstrap,JSON.stringify({version:1,launchID:'synthetic',capability:crypto.randomBytes(32).toString('base64'),socketPath,
-    node:process.execPath,helper:fileURLToPath(new URL('../../../Shepherd/Agents/AgentRuntime/pi-control.mjs',import.meta.url)),herdrReporting:true}),{mode:0o600});
-  const pi={on:(name,handler)=>handlers.set(name,handler),events:{on:()=>{}}};
-  const context={...ctx(),mode:'tui'};
-  try {
-    registerPiHerdr(pi,bootstrap,()=>{failures++;},id=>qualified.push(id));
-    await handlers.get('session_start')({},context);
-    assert.deepEqual(qualified,[context.sessionManager.getSessionId()]);
-    hold=true;const pending=handlers.get('agent_start')({},context);await accepted.promise;
-    const stopping=handlers.get('session_shutdown')();release.resolve();await Promise.all([pending,stopping]);
-    assert.equal(qualified.length,1,'late success cannot qualify a retired session');assert.equal(failures,0);
-  } finally { release.resolve();await new Promise(resolve=>server.close(resolve));fs.rmSync(root,{recursive:true,force:true}); }
 });
 
 // The agent proxy (SHPHRD-105): pi-api-proxy.mjs with a stand-in Pi, reading
@@ -494,12 +465,15 @@ test('Agent proxy: without a valid base URL in a private launch.json, Pi is left
   assert.equal(apiProxyBase('relative/bootstrap.json'), null);
   assert.equal(apiProxyBase(undefined), null);
 });
-test('Agent proxy: the extension is registered from pi-entry.ts with the bridge\'s bootstrap file, and is part of the runtime\'s version', () => {
+test('Agent proxy remains bound to an authenticated native MCP lease without app-owned Herdr state reporting', () => {
   const entry = fs.readFileSync(new URL('../../../Shepherd/Agents/AgentRuntime/pi-entry.ts', import.meta.url), 'utf8');
   assert(entry.includes("import { registerPiApiProxy } from './pi-api-proxy.mjs';") && entry.includes('registerPiApiProxy(pi, bootstrap, { captureAllowed: (id: string) => id === captureSession });'));
   assert(entry.indexOf("if (!bootstrap) throw new Error('pi-host-bridge-unavailable');") < entry.indexOf('registerPiApiProxy(pi, bootstrap,'));
   assert(entry.includes("pi.on('session_start', () => { captureSession = undefined; });") && entry.includes("pi.on('session_shutdown', () => { captureSession = undefined; });"));
-  assert(entry.includes('registerPiHerdr(pi, bootstrap, onFailure, (id: string) => { captureSession = id; });'));
+  assert(entry.includes('const verified = await lease.verifyMcp();') && entry.includes('if (verified) captureSession = identity.sessionID;'));
+  assert(entry.includes('if (captureSession === identity.sessionID) captureSession = undefined;'));
+  assert(!entry.includes('registerPiHerdr') && !entry.includes('herdrState') && !entry.includes('herdrReporting'));
   const runtime = fs.readFileSync(new URL('../../../Shepherd/Agents/AgentRuntime/runtime.mjs', import.meta.url), 'utf8');
   assert(runtime.includes("'pi-launch.mjs','pi-api-proxy.mjs','pi-guidance.md'"));
+  assert(!runtime.includes('pi-herdr.mjs'));
 });
