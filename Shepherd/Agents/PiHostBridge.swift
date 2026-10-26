@@ -171,6 +171,12 @@ nonisolated struct PiBridgeLaunch: Sendable {
             case "boot":
                 guard root, registration.attempts.isEmpty else { throw PiBridgeFailure.denied }
                 return Self.reply(["ok":true])
+            case "captureAck":
+                // Capture proof authenticates only this prepared root/session.
+                // It deliberately creates neither an attempt nor a browser/MCP lease.
+                guard root, let identity = request.identity,
+                      Self.matches(identity, launch: launch, process: process) else { throw PiBridgeFailure.identity }
+                return Self.reply(["ok":true])
             case "open":
                 guard root, let identity = request.identity, Self.matches(identity, launch: launch, process: process),
                       !registration.attempts.contains(request.attemptID), registration.attempts.count < 128,

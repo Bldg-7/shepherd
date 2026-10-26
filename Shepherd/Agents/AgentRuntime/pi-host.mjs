@@ -24,6 +24,13 @@ export function createPiHost(bootstrapFile, { report = () => {}, onFailure = () 
   }
   return {
     report,
+    async acknowledgeCapture(identity, signal) {
+      try {
+        // This is an authenticated root/session acknowledgement only. It does
+        // not allocate a browser lease or make MCP readiness a capture gate.
+        return (await control(bootstrapFile,'captureAck',crypto.randomUUID(),identity,{signal})).ok === true;
+      } catch { return false; }
+    },
     async open(identity, signal) {
       const attemptID=crypto.randomUUID();
       let result;

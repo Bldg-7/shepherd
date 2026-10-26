@@ -17,7 +17,7 @@ export function createPiCaptureAuthority() {
   return Object.freeze({
     qualify(sessionID) { session=typeof sessionID==='string' && SESSION.test(sessionID) ? sessionID : undefined; },
     clear() { session=undefined; },
-    allows(sessionID) { return sessionID===session; },
+    allows(sessionID) { return typeof sessionID==='string' && sessionID===session; },
   });
 }
 

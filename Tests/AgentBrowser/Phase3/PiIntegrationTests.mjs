@@ -10,6 +10,7 @@ import {prepare, stagePi} from '../../../Shepherd/Agents/AgentRuntime/runtime.mj
 import {registerPiSessionNaming} from '../../../Shepherd/Agents/AgentRuntime/pi-session-name.mjs';
 import {createPiHost} from '../../../Shepherd/Agents/AgentRuntime/pi-host.mjs';
 import {createPiCaptureAuthority, registerPiApiProxy, apiProxyBase, PROXIED_PROVIDERS} from '../../../Shepherd/Agents/AgentRuntime/pi-api-proxy.mjs';
+import {createPiCaptureProof} from '../../../Shepherd/Agents/AgentRuntime/pi-capture-proof.mjs';
 import net from 'node:net';
 import crypto from 'node:crypto';
 import {fileURLToPath} from 'node:url';
@@ -458,6 +459,29 @@ test('Agent proxy capture follows the native session, not browser/MCP lease reti
   f.handlers.get('session_start')({},child);f.handlers.get('context')({},child);
   assert.equal(wrap(model,{}, {...opts,signal:child.signal}).headers['x-3rdr-pi-class'],'auxiliary','a child cannot inherit a cleared native capture');
 });
+test('Capture acknowledgement is root/session-only and independent of browser allocation', async () => {
+  const session='a1111111-1111-1111-1111-111111111111', capture=createPiCaptureAuthority();
+  const acknowledged=deferred();
+  const proof=createPiCaptureProof({acknowledgeCapture:()=>acknowledged.promise},capture,{proxyEnabled:true});
+  await assert.rejects(proof.open({sessionID:session},undefined,async()=>{throw new Error('browser-provider-unavailable');}));
+  assert.equal(capture.allows(session),false);
+  assert.equal(capture.allows(undefined),false,'undefined must fail closed');
+  assert.equal(capture.allows(null),false,'null must fail closed');
+  acknowledged.resolve(true);await turn();
+  assert.equal(capture.allows(session),true,'a root acknowledgement survives unavailable browser allocation');
+
+  const late=deferred();
+  const replacement=createPiCaptureProof({acknowledgeCapture:()=>late.promise},capture,{proxyEnabled:true});
+  replacement.acknowledge({sessionID:session});replacement.reset();late.resolve(true);await turn();
+  assert.equal(capture.allows(session),false,'late old-session proof cannot resurrect capture');
+
+  const rejected=createPiCaptureProof({acknowledgeCapture:async()=>false},capture,{proxyEnabled:true});
+  rejected.acknowledge({sessionID:session});await turn();
+  assert.equal(capture.allows(session),false,'refused/quarantined proof cannot qualify capture');
+  const disabled=createPiCaptureProof({acknowledgeCapture:async()=>true},capture,{proxyEnabled:false});
+  disabled.acknowledge({sessionID:session});await turn();
+  assert.equal(capture.allows(session),false,'a launch without the app proxy cannot request capture proof');
+});
 test('Agent proxy: without a valid base URL in a private launch.json, Pi is left as it is', () => {
   const cases = [
     proxyFixture({ version: 1, cli: '/owned/cli.js', arguments: [] }),
@@ -477,13 +501,14 @@ test('Agent proxy: without a valid base URL in a private launch.json, Pi is left
 test('Agent proxy uses native session qualification without app-owned Herdr state reporting', () => {
   const entry = fs.readFileSync(new URL('../../../Shepherd/Agents/AgentRuntime/pi-entry.ts', import.meta.url), 'utf8');
   assert(entry.includes("import { createPiCaptureAuthority, registerPiApiProxy } from './pi-api-proxy.mjs';") && entry.includes('registerPiApiProxy(pi, bootstrap, { captureAllowed: capture.allows });'));
+  assert(entry.includes("import { createPiCaptureProof } from './pi-capture-proof.mjs';"));
   assert(entry.indexOf("if (!bootstrap) throw new Error('pi-host-bridge-unavailable');") < entry.indexOf('registerPiApiProxy(pi, bootstrap,'));
-  assert(entry.includes("if (ctx?.mode === 'tui') capture.clear();") && entry.includes('capture.qualify(identity.sessionID);'));
-  assert(entry.indexOf('capture.qualify(identity.sessionID);') < entry.indexOf('await registration.ensureConnected();'));
-  const lease = entry.slice(entry.indexOf('const lease = await nativeHost.open'), entry.indexOf('  const interactive ='));
+  assert(entry.includes("if (ctx?.mode === 'tui') captureProof.reset();") && entry.includes('captureProof.open(identity, signal, () => nativeHost.open(identity, signal))'));
+  assert(entry.indexOf('captureProof.open(identity, signal, () => nativeHost.open(identity, signal))') < entry.indexOf('await registration.ensureConnected();'));
+  const lease = entry.slice(entry.indexOf('const lease = await captureProof.open'), entry.indexOf('  const interactive ='));
   assert(!lease.includes('capture.clear()'), 'lease revoke/close does not clear a native session capture');
   assert(!entry.includes('registerPiHerdr') && !entry.includes('herdrState') && !entry.includes('herdrReporting'));
   const runtime = fs.readFileSync(new URL('../../../Shepherd/Agents/AgentRuntime/runtime.mjs', import.meta.url), 'utf8');
-  assert(runtime.includes("'pi-launch.mjs','pi-api-proxy.mjs','pi-guidance.md'"));
+  assert(runtime.includes("'pi-launch.mjs','pi-api-proxy.mjs','pi-capture-proof.mjs','pi-guidance.md'"));
   assert(!runtime.includes('pi-herdr.mjs'));
 });

@@ -9,7 +9,9 @@ const config=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
 const {control,privateJSON}=await import(pathToFileURL(path.join(config.resources,'pi-control.mjs')));
 if(process.argv[3]==='intruder') {
   const reply=await control(config.bootstrap,'open',crypto.randomUUID(),config.identity);
-  assert.equal(reply.ok,false); process.stdout.write('INTRUDER_DENIED\n');
+  assert.equal(reply.ok,false);
+  const captureReply=await control(config.bootstrap,'captureAck',crypto.randomUUID(),config.identity);
+  assert.equal(captureReply.ok,false); process.stdout.write('INTRUDER_DENIED\n');
 } else {
   const deadline=Date.now()+10000;
   while(!fs.existsSync(config.go)) {
@@ -68,6 +70,8 @@ if(process.argv[3]==='intruder') {
   controller=registerPiLifecycle(api,host);
   const context={cwd:config.cwd,sessionManager:{getSessionId:()=>identity.sessionID,getSessionFile:()=>identity.sessionFile,getLeafId:()=>identity.leafID},
     isIdle:()=>true,hasPendingMessages:()=>false};
+  assert.equal(await host.acknowledgeCapture(identity),true,'the prepared root/session is acknowledged without a lease');
+  assert.equal(await host.acknowledgeCapture({...identity,sessionID:crypto.randomUUID()}),false,'wrong session cannot be acknowledged');
   await handlers.get('session_start')({reason:'startup'},context);
   const retiredStateReport=await control(config.bootstrap,'herdrState',crypto.randomUUID(),identity,{state:'working'});
   assert.equal(retiredStateReport.ok,false);

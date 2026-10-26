@@ -16,7 +16,7 @@ sources=['ShepherdKit/Sources/ShepherdKit/Resources.swift','Shepherd/Agents/Agen
  'ShepherdKit/Sources/ShepherdKit/Agents/AgentKind.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/HerdrClient.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Transport/HerdrTransport.swift',
  'ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/ShellQuoting.swift']+[str(x.relative_to(ROOT)) for x in sorted((ROOT/'ShepherdKit/Sources/ShepherdKit/HerdrKit/Models').glob('*.swift'))]
 tests=['Tests/Agents/SessionNamingTests.swift']
-pi=['Shepherd/Agents/AgentRuntime/pi-session-name.mjs','Shepherd/Agents/AgentRuntime/pi-host.mjs','Shepherd/Agents/AgentRuntime/pi-control.mjs','Shepherd/Agents/AgentRuntime/pi-entry.ts',
+pi=['Shepherd/Agents/AgentRuntime/pi-session-name.mjs','Shepherd/Agents/AgentRuntime/pi-host.mjs','Shepherd/Agents/AgentRuntime/pi-control.mjs','Shepherd/Agents/AgentRuntime/pi-capture-proof.mjs','Shepherd/Agents/AgentRuntime/pi-entry.ts',
  'Shepherd/Agents/AgentRuntime/runtime.mjs','Tests/AgentBrowser/Phase3/PiIntegrationTests.mjs']
 checked=['Shepherd/Hosts/Views/AgentBoardView.swift','Shepherd/Agents/AgentLaunchService.swift','Shepherd/Agents/PiLaunchCoordinator.swift','Shepherd/Agents/PiHostBridge.swift']
 (out/'source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in sorted(set(sources+tests+pi+checked))},indent=2))
@@ -58,7 +58,7 @@ assert 'registrations[launch.id]?.sessionName' in status,'a status reply carries
 entry=read('Shepherd/Agents/AgentRuntime/pi-entry.ts');host=read('Shepherd/Agents/AgentRuntime/pi-host.mjs');runtime=read('Shepherd/Agents/AgentRuntime/runtime.mjs')
 assert "const naming = registerPiSessionNaming(pi);" in entry and 'sessionName: naming.offer,' in entry
 assert 'if(current.sessionName!==undefined){try{sessionName(current.sessionName);}catch{}}' in host
-assert "'pi-mcp-registration.mjs','pi-session-name.mjs','pi-entry.ts'" in runtime,'the version folder hash covers the Pi session naming files'
+assert "'pi-mcp-registration.mjs','pi-session-name.mjs','pi-entry.ts'" in runtime and "'pi-api-proxy.mjs','pi-capture-proof.mjs'" in runtime,'the version folder hash covers the Pi session naming and capture proof files'
 assert 'pi-herdr.mjs' not in runtime,'the version folder does not bundle the retired app-owned Herdr reporter'
 module=read('Shepherd/Agents/AgentRuntime/pi-session-name.mjs')
 assert 'pi.setSessionName(name)' in module and 'sendUserMessage' not in module and 'sendMessage' not in module,'Pi is named, never typed into'
