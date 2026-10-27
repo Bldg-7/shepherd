@@ -159,6 +159,15 @@ public final class ConversationCapture {
         catch { stop(frame.exchange, .malformed) }
     }
 
+    /// Discard the current in-memory capture epoch and in-flight exchanges.
+    /// The caller must separately fence queued tee opens, pending disk writes,
+    /// read clients, and the authenticated administrative clear transaction.
+    /// Keeping the open watermark prevents already-observed IDs from reopening.
+    public func invalidateForClear() {
+        exchanges.removeAll()
+        reconciler = ConversationReconciler(limits: limits.store)
+    }
+
     /// Called if the tee ends without per-exchange End frames. No partial
     /// request is parsed; visible responses are finalized as incomplete.
     public func finishAll() {

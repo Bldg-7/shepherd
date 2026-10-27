@@ -398,6 +398,7 @@ struct PersistenceJournalTests {
             try files.writeIndex(JSONSerialization.data(withJSONObject: object))
             guard try journal.metadata().count == 1 else { throw Failure() }
         }
+        try clearSupportedFixtures(base: base, record: record, clock: clock)
         try ageSweepFixtures(base: base, record: record)
         try duplicateJSONFixtures(base: base, record: record)
         try pressureFixtures(base: base, record: record, clock: clock)
@@ -412,6 +413,94 @@ struct PersistenceJournalTests {
             let before = try names(path + "/Conversations/records")
             try reject({ _ = try journal.upsert(copyRecord(record.id, items: items), updatedAt: clock) }, expected: .invalidRecord)
             guard try files.readIndex() == nil, try names(path + "/Conversations/records") == before else { throw Failure() }
+        }
+    }
+
+    private static func clearSupportedFixtures(base: String, record: ConversationStore.PersistentSnapshot.Record, clock: Date) throws {
+        func root(_ name: String) throws -> String {
+            let path = base + "/clear-supported-" + name
+            guard mkdir(path, 0o700) == 0 else { throw Failure() }
+            return path
+        }
+        // Durable index removal precedes validated referenced and orphan unlink.
+        do {
+            let path = try root("valid")
+            do {
+                let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+                let journal = ConversationPersistenceJournal(files: files, now: { clock })
+                let saved = try journal.upsert(record, updatedAt: clock)
+                _ = try files.writeRecord(files.readRecord(saved.generation))
+                try journal.clearSupported()
+                guard journal.maintenanceTransactions == [.committed(removed: 1, cleanupCompleted: 1, cleanupDurabilityUncertain: false),
+                    .recovered(completed: 1, cleanupDurabilityUncertain: false)], try files.inventoryRecords().isEmpty else { throw Failure() }
+            }
+            do {
+                let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+                let journal = ConversationPersistenceJournal(files: files, now: { clock })
+                guard try journal.metadata().isEmpty, try files.inventoryRecords().isEmpty else { throw Failure() }
+            }
+        }
+        // Every referenced victim is validated before any logical removal.
+        do {
+            let path = try root("protected-reference")
+            let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+            let journal = ConversationPersistenceJournal(files: files, now: { clock })
+            let first = try journal.upsert(record, updatedAt: clock)
+            let secondRecord = ConversationStore.PersistentSnapshot.Record(id: "second", key: record.key, context: record.context,
+                updatedOrder: record.updatedOrder, items: record.items, truncated: record.truncated, status: record.status, subagents: record.subagents)
+            let second = try journal.upsert(secondRecord, updatedAt: clock)
+            let good = try files.readRecord(first.generation)
+            let original = try files.readRecord(second.generation)
+            let corrupt = Data(repeating: 0x78, count: original.count)
+            try corrupt.write(to: URL(fileURLWithPath: path + "/Conversations/records/" + second.generation.value + ".json"))
+            let index = try files.readIndex()!
+            do { try journal.clearSupported(); throw Failure() }
+            catch ConversationPersistenceJournalError.unavailable {}
+            guard journal.maintenanceTransactions.isEmpty, try files.readIndex() == index,
+                  try files.readRecord(first.generation) == good, try files.readRecord(second.generation) == corrupt else { throw Failure() }
+        }
+        // Missing or future index grants no authority over orphan bytes.
+        for future in [false, true] {
+            let path = try root(future ? "future-index" : "missing-index")
+            let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+            let journal = ConversationPersistenceJournal(files: files, now: { clock })
+            let orphan = try files.writeRecord(Data("preserved".utf8))
+            let futureIndex = Data("{\"version\":2,\"records\":[]}".utf8)
+            if future { try files.writeIndex(futureIndex) }
+            do { try journal.clearSupported(); throw Failure() }
+            catch ConversationPersistenceJournalError.unavailable {}
+            guard try files.readRecord(orphan) == Data("preserved".utf8),
+                  try files.readIndex() == (future ? futureIndex : nil), journal.maintenanceTransactions.isEmpty else { throw Failure() }
+        }
+        // Unsupported orphan bytes survive and an already-committed logical
+        // clear is reported as partial rather than as a complete erasure.
+        do {
+            let path = try root("partial")
+            let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+            let journal = ConversationPersistenceJournal(files: files, now: { clock })
+            _ = try journal.upsert(record, updatedAt: clock)
+            let orphan = try files.writeRecord(Data("future".utf8))
+            do { try journal.clearSupported(); throw Failure() }
+            catch ConversationPersistenceJournalError.unavailable {}
+            guard journal.maintenanceTransactions == [.committed(removed: 1, cleanupCompleted: 1, cleanupDurabilityUncertain: false)],
+                  try files.readRecord(orphan) == Data("future".utf8), try journal.metadata().isEmpty else { throw Failure() }
+        }
+        // An uncertain index commit never authorizes physical deletion.
+        do {
+            let path = try root("uncertain")
+            var saved: ConversationPersistenceJournalMetadata!
+            var body = Data()
+            do {
+                let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+                let journal = ConversationPersistenceJournal(files: files, now: { clock })
+                saved = try journal.upsert(record, updatedAt: clock)
+                body = try files.readRecord(saved.generation)
+            }
+            let files = try ConversationPersistenceFiles(verifiedStateRootPath: path, testControl: .init(indexFault: .afterRenameBeforeDirectorySync))
+            let journal = ConversationPersistenceJournal(files: files, now: { clock })
+            do { try journal.clearSupported(); throw Failure() }
+            catch ConversationPersistenceJournalError.indexCommittedButDurabilityUncertain {}
+            guard journal.maintenanceTransactions == [.indexDurabilityUncertain], try files.readRecord(saved.generation) == body else { throw Failure() }
         }
     }
 

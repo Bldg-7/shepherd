@@ -384,6 +384,30 @@ final class ConversationPersistenceJournal {
         _ = try recoverUnreferenced(index: index, inventory: inventory)
     }
 
+    /// Clear only supported, validated owned data. The caller must first fence
+    /// capture/read tickets and queued writes; this synchronous primitive is
+    /// not an authenticated product clear or a global atomic transaction.
+    /// On partial success `maintenanceTransactions` describes durable changes.
+    func clearSupported() throws {
+        resetMaintenance()
+        try requireMaintenanceAllowed()
+        let index = try currentIndex()
+        var inventory = try recordInventory()
+        try validate(index: index, inventory: inventory)
+        if try existingIndexBytes() == 0 {
+            guard inventory.isEmpty, try temporaryCount() == 0 else { throw ConversationPersistenceJournalError.unavailable }
+            return
+        }
+        var remainingIndex = index
+        if !index.records.isEmpty {
+            (remainingIndex, inventory) = try retire(index.records, from: index, inventory: inventory)
+        }
+        inventory = try recoverUnreferenced(index: remainingIndex, inventory: inventory)
+        // Unsupported orphan bytes are deliberately preserved, not reported as
+        // an entirely successful physical clear.
+        guard inventory.isEmpty, try temporaryCount() == 0 else { throw ConversationPersistenceJournalError.unavailable }
+    }
+
     /// Missing storage is distinct from an existing malformed/future index.
     func metadata() throws -> [ConversationPersistenceJournalMetadata] {
         resetMaintenance()

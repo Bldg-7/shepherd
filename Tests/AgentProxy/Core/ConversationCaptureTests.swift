@@ -77,6 +77,22 @@ struct ConversationCaptureTests {
         let eof = Harness(); try eof.open(1); try eof.request(1); try eof.head(1); try eof.answer(1, "partial", complete: false)
         eof.capture.finishAll()
         check(eof.snapshot?.summary.status == .incomplete && eof.capture.activeExchangeCount == 0, "parent EOF finalizes in-flight responses incomplete")
+        // In-memory clear is only one part of the administrative transaction:
+        // old accepted exchange IDs and read epochs cannot recreate state.
+        let clearing = Harness()
+        try clearing.open(1); try clearing.request(1); try clearing.head(1); try clearing.answer(1, "before", complete: false)
+        let oldEpoch = clearing.capture.reconciler.store.epoch
+        let oldID = clearing.snapshot!.summary.id
+        clearing.capture.invalidateForClear()
+        check(clearing.capture.reconciler.store.epoch != oldEpoch && clearing.capture.reconciler.store.count == 0 &&
+              clearing.capture.activeExchangeCount == 0 && clearing.capture.reconciler.store.read(id: oldID) == nil,
+              "capture clear rotates epoch and drops in-flight exchanges")
+        try clearing.answer(1, "late"); try clearing.end(1); try clearing.open(1); try clearing.request(1, "replay")
+        check(clearing.capture.reconciler.store.count == 0 && clearing.capture.activeExchangeCount == 0,
+              "late frames and already-observed open IDs cannot recreate cleared state")
+        try clearing.open(2); try clearing.request(2, "new"); try clearing.head(2); try clearing.answer(2, "allowed"); try clearing.end(2)
+        check(clearing.snapshot?.items.first?.message.blocks.first?.text == "new",
+              "a subsequent newly accepted exchange may create new history")
         let partial = Harness(); try partial.open(1); try partial.send(.requestBody, 1, Data("{\"messages\":".utf8)); try partial.end(1, .dropped)
         check(partial.capture.reconciler.store.count == 0 && partial.capture.bufferedRequestBytes == 0, "partial request is never parsed after drop")
         let badJSON = Harness(); try badJSON.open(1); try badJSON.send(.requestBody, 1, Data("not-json".utf8)); try badJSON.send(.requestEnd, 1)
