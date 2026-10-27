@@ -48,6 +48,13 @@ struct ConversationPersistenceRecordDeletionTicket {
     fileprivate let bytes: Int
 }
 
+struct ConversationPersistenceEmptyTemporaryTicket {
+    fileprivate let name: String
+    fileprivate let directory: ConversationPersistenceFilesDirectory
+    fileprivate let device: dev_t
+    fileprivate let inode: ino_t
+}
+
 /// Narrow deterministic test controls. They only select opaque UUIDs, report
 /// production I/O boundaries, or return a checked-I/O failure at that boundary;
 /// they never skip a production validation step.
@@ -229,8 +236,8 @@ final class ConversationPersistenceFiles {
         guard fsync(recordsFD) == 0 else { throw ConversationPersistenceFilesError.committedButDurabilityUncertain }
     }
 
-    /// Refuse unrecognized root objects, including interrupted index temps and
-    /// newer layouts. No repair or deletion is attempted by B1.
+    /// Refuse unrecognized root objects and newer layouts. Canonical temporary
+    /// names are separately checked for empty owned inodes before journal use.
     func validateConversationsNamespace() throws {
         try verifyLease()
         let scanFD = Darwin.openat(conversationsFD, ".", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
@@ -249,7 +256,8 @@ final class ConversationPersistenceFiles {
             }
             if name == "." || name == ".." { continue }
             count += 1
-            guard count <= 3, name == Self.recordsName || name == Self.lockName || name == Self.indexName else {
+            guard count <= Self.maximumPhysicalRecords + 3,
+                  name == Self.recordsName || name == Self.lockName || name == Self.indexName || Self.isTemporaryName(name) else {
                 throw ConversationPersistenceFilesError.unsafeObject
             }
         }
@@ -260,6 +268,7 @@ final class ConversationPersistenceFiles {
     /// shares a directory offset and can miss entries on repeated scans.
     func inventoryRecords() throws -> [ConversationPersistenceRecordFile] {
         try verifyLease()
+        _ = try emptyTemporaryTickets()
         // A previous unlink may have succeeded without a durable directory
         // sync. Do not budget its absence until this sync succeeds, including
         // after a lease is reacquired by another journal instance.
@@ -279,6 +288,7 @@ final class ConversationPersistenceFiles {
                 $0.withMemoryRebound(to: CChar.self, capacity: Int(NAME_MAX) + 1) { String(cString: $0) }
             }
             if name == "." || name == ".." { continue }
+            if Self.isTemporaryName(name) { continue }
             guard name.hasSuffix(".json"),
                   let generation = ConversationPersistenceGeneration(serialized: String(name.dropLast(5))) else {
                 throw ConversationPersistenceFilesError.unsafeObject
@@ -298,6 +308,66 @@ final class ConversationPersistenceFiles {
             entries.append(.init(generation: generation, bytes: Int(info.st_size)))
         }
         return entries
+    }
+
+    private static func isTemporaryName(_ name: String) -> Bool {
+        guard name.hasPrefix(".tmp-") else { return false }
+        return ConversationPersistenceGeneration(serialized: String(name.dropFirst(5))) != nil
+    }
+
+    /// Empty, strictly owned temporary files are the only temporary files this
+    /// version can classify for recovery. Nonempty and unknown bytes block.
+    func emptyTemporaryTickets() throws -> [ConversationPersistenceEmptyTemporaryTicket] {
+        try verifyLease()
+        var tickets: [ConversationPersistenceEmptyTemporaryTicket] = []
+        for (directory, fd) in [(ConversationPersistenceFilesDirectory.conversations, conversationsFD), (.records, recordsFD)] {
+            let scanFD = Darwin.openat(fd, ".", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            guard scanFD >= 0 else { throw ConversationPersistenceFilesError.ioFailure }
+            guard let stream = fdopendir(scanFD) else { Darwin.close(scanFD); throw ConversationPersistenceFilesError.ioFailure }
+            defer { closedir(stream) }
+            while true {
+                errno = 0
+                guard let entry = readdir(stream) else {
+                    guard errno == 0 else { throw ConversationPersistenceFilesError.ioFailure }
+                    break
+                }
+                let name = withUnsafePointer(to: entry.pointee.d_name) {
+                    $0.withMemoryRebound(to: CChar.self, capacity: Int(NAME_MAX) + 1) { String(cString: $0) }
+                }
+                guard Self.isTemporaryName(name) else { continue }
+                guard tickets.count < Self.maximumPhysicalRecords else { throw ConversationPersistenceFilesError.tooLarge }
+                let descriptor = Darwin.openat(fd, name, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
+                guard descriptor >= 0 else { throw ConversationPersistenceFilesError.unsafeObject }
+                let info: stat
+                do { info = try Self.verifyFileBinding(named: name, in: fd, descriptor: descriptor, maximumBytes: 0, exactSize: 0) }
+                catch { Darwin.close(descriptor); throw error }
+                Darwin.close(descriptor)
+                tickets.append(.init(name: name, directory: directory, device: info.st_dev, inode: info.st_ino))
+            }
+        }
+        return tickets
+    }
+
+    func removeEmptyTemporary(_ ticket: ConversationPersistenceEmptyTemporaryTicket) throws {
+        try verifyLease()
+        let fd = ticket.directory == .records ? recordsFD : conversationsFD
+        let descriptor = Darwin.openat(fd, ticket.name, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
+        guard descriptor >= 0 else { throw ConversationPersistenceFilesError.ioFailure }
+        defer { Darwin.close(descriptor) }
+        let info = try Self.verifyFileBinding(named: ticket.name, in: fd, descriptor: descriptor, maximumBytes: 0, exactSize: 0)
+        guard info.st_dev == ticket.device, info.st_ino == ticket.inode else { throw ConversationPersistenceFilesError.unsafeObject }
+        try verifyLease()
+        _ = try Self.verifyFileBinding(named: ticket.name, in: fd, descriptor: descriptor, maximumBytes: 0, exactSize: 0)
+        guard unlinkat(fd, ticket.name, 0) == 0 else { throw ConversationPersistenceFilesError.ioFailure }
+        guard fsync(fd) == 0 else { throw ConversationPersistenceFilesError.committedButDurabilityUncertain }
+    }
+
+    /// Establish the current visible index as durable before treating any
+    /// generation absent from it as unreferenced, including after a prior
+    /// index-rename durability-uncertain result.
+    func synchronizeIndexDirectory() throws {
+        try verifyLease()
+        guard fsync(conversationsFD) == 0 else { throw ConversationPersistenceFilesError.ioFailure }
     }
 
     /// Revalidates below-root bindings without reopening the external root path.

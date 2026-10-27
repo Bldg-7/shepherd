@@ -437,6 +437,20 @@ struct PersistenceJournalTests {
                   !remaining.contains(where: { $0.generation == b.generation }),
                   !(try files.inventoryRecords()).contains(where: { $0.generation == b.generation }) else { throw Failure() }
         }
+        // A real update changes ordering; loading the other row does not.
+        do {
+            let path = try root("update-order")
+            let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+            let journal = ConversationPersistenceJournal(files: files, now: { clock }, testingRecordLimit: 2)
+            _ = try journal.upsert(copy("first"), updatedAt: clock.addingTimeInterval(-3))
+            let second = try journal.upsert(copy("second"), updatedAt: clock.addingTimeInterval(-2))
+            let firstUpdated = try journal.upsert(copy("first"), updatedAt: clock.addingTimeInterval(-1))
+            _ = try journal.load(second)
+            _ = try journal.upsert(copy("third"), updatedAt: clock)
+            let remaining = try journal.metadata()
+            guard remaining.contains(where: { $0.generation == firstUpdated.generation }),
+                  !remaining.contains(where: { $0.generation == second.generation }) else { throw Failure() }
+        }
         // Independently measure actual encoded inputs in a separate store;
         // place the limit one byte below the complete two-record reservation.
         do {
@@ -461,6 +475,42 @@ struct PersistenceJournalTests {
             _ = try journal.upsert(copy("new"), updatedAt: clock)
             guard journal.lastMaintenance == .committed(removed: 1, cleanupCompleted: 1, cleanupDurabilityUncertain: false),
                   !(try files.inventoryRecords()).contains(where: { $0.generation == old.generation }) else { throw Failure() }
+        }
+        // Pressure recovery only removes supported, validated orphan bodies
+        // and strictly owned empty temporaries. Unknown orphan bytes remain.
+        do {
+            let path = try root("orphan-recovery")
+            let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+            let setup = ConversationPersistenceJournal(files: files, now: { clock })
+            let old = try setup.upsert(record, updatedAt: clock.addingTimeInterval(-1))
+            let body = try files.readRecord(old.generation)
+            let orphan = try files.writeRecord(body)
+            let protected = try files.writeRecord(Data("future".utf8))
+            let temporary = path + "/Conversations/records/.tmp-00000000-0000-0000-0000-000000000001"
+            guard FileManager.default.createFile(atPath: temporary, contents: Data(), attributes: [.posixPermissions: 0o600]) else { throw Failure() }
+            let journal = ConversationPersistenceJournal(files: files, now: { clock }, testingRecordLimit: 1)
+            _ = try journal.upsert(copy("new"), updatedAt: clock)
+            guard journal.maintenanceTransactions == [.recovered(completed: 2, cleanupDurabilityUncertain: false),
+                  .committed(removed: 1, cleanupCompleted: 1, cleanupDurabilityUncertain: false)],
+                  !(try files.inventoryRecords()).contains(where: { $0.generation == orphan }),
+                  try files.readRecord(protected) == Data("future".utf8),
+                  !FileManager.default.fileExists(atPath: temporary) else { throw Failure() }
+        }
+        // Nonempty temporary content blocks all mutation rather than being
+        // treated as an empty reclaimable temporary.
+        do {
+            let path = try root("protected-temp")
+            let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+            let journal = ConversationPersistenceJournal(files: files, now: { clock })
+            let saved = try journal.upsert(record, updatedAt: clock)
+            let index = try files.readIndex()!
+            let temporary = path + "/Conversations/.tmp-00000000-0000-0000-0000-000000000001"
+            let protected = Data("unknown".utf8)
+            guard FileManager.default.createFile(atPath: temporary, contents: protected, attributes: [.posixPermissions: 0o600]) else { throw Failure() }
+            do { _ = try journal.upsert(copy("new"), updatedAt: clock); throw Failure() }
+            catch ConversationPersistenceJournalError.unavailable {}
+            guard try files.readIndex() == index, try files.readRecord(saved.generation).count == saved.encodedBytes,
+                  try Data(contentsOf: URL(fileURLWithPath: temporary)) == protected else { throw Failure() }
         }
         // Pressure index failures must never unlink the old generation; a
         // failed cleanup after a durable index must not resurrect it.
