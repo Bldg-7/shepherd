@@ -40,6 +40,14 @@ struct ConversationPersistenceRecordFile: Equatable {
     let bytes: Int
 }
 
+/// Identifies the inode whose complete bytes were read for journal validation.
+struct ConversationPersistenceRecordDeletionTicket {
+    fileprivate let generation: ConversationPersistenceGeneration
+    fileprivate let device: dev_t
+    fileprivate let inode: ino_t
+    fileprivate let bytes: Int
+}
+
 /// Narrow deterministic test controls. They only select opaque UUIDs, report
 /// production I/O boundaries, or return a checked-I/O failure at that boundary;
 /// they never skip a production validation step.
@@ -50,6 +58,8 @@ enum ConversationPersistenceFilesTestFault: Equatable {
     case beforeRename
     case afterRenameBeforeDirectorySync
     case directoryParentSync(ConversationPersistenceFilesDirectory)
+    case recordUnlink
+    case recordUnlinkDirectorySync
 }
 
 enum ConversationPersistenceFilesDirectory: Equatable {
@@ -62,6 +72,7 @@ enum ConversationPersistenceFilesTestEvent: Equatable {
     case afterTemporaryCreate(String)
     case beforeLateDestinationCheck(String)
     case beforePublish(String)
+    case beforeRecordRemoval(ConversationPersistenceGeneration)
 }
 
 enum ConversationPersistenceIndexTestFault {
@@ -181,6 +192,39 @@ final class ConversationPersistenceFiles {
         return data
     }
 
+    /// Capture identity from the same checked read whose bytes the caller validates.
+    func readRecordForDeletion(_ generation: ConversationPersistenceGeneration) throws -> (Data, ConversationPersistenceRecordDeletionTicket) {
+        try verifyLease()
+        guard let (data, info) = try readFileWithIdentity(named: Self.recordName(for: generation), in: recordsFD,
+                                                          maximumBytes: Self.maximumRecordBytes) else {
+            throw ConversationPersistenceFilesError.ioFailure
+        }
+        return (data, .init(generation: generation, device: info.st_dev, inode: info.st_ino, bytes: data.count))
+    }
+
+    /// Only a validated, durably unreferenced generation may be passed here.
+    /// Binding checks narrow but cannot eliminate a same-UID race before unlink.
+    func removeValidatedRecord(_ ticket: ConversationPersistenceRecordDeletionTicket) throws {
+        try verifyLease()
+        let name = Self.recordName(for: ticket.generation)
+        testControl?.event?(.beforeRecordRemoval(ticket.generation))
+        let descriptor = Darwin.openat(recordsFD, name, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
+        guard descriptor >= 0 else { throw ConversationPersistenceFilesError.ioFailure }
+        defer { Darwin.close(descriptor) }
+        let info = try Self.verifyFileBinding(named: name, in: recordsFD, descriptor: descriptor,
+                                              maximumBytes: Self.maximumRecordBytes, exactSize: off_t(ticket.bytes))
+        guard info.st_dev == ticket.device, info.st_ino == ticket.inode else {
+            throw ConversationPersistenceFilesError.unsafeObject
+        }
+        try verifyLease()
+        _ = try Self.verifyFileBinding(named: name, in: recordsFD, descriptor: descriptor,
+                                       maximumBytes: Self.maximumRecordBytes, exactSize: off_t(ticket.bytes))
+        if testControl?.fault == .recordUnlink { throw ConversationPersistenceFilesError.ioFailure }
+        guard unlinkat(recordsFD, name, 0) == 0 else { throw ConversationPersistenceFilesError.ioFailure }
+        if testControl?.fault == .recordUnlinkDirectorySync { throw ConversationPersistenceFilesError.committedButDurabilityUncertain }
+        guard fsync(recordsFD) == 0 else { throw ConversationPersistenceFilesError.committedButDurabilityUncertain }
+    }
+
     /// Refuse unrecognized root objects, including interrupted index temps and
     /// newer layouts. No repair or deletion is attempted by B1.
     func validateConversationsNamespace() throws {
@@ -212,6 +256,10 @@ final class ConversationPersistenceFiles {
     /// shares a directory offset and can miss entries on repeated scans.
     func inventoryRecords() throws -> [ConversationPersistenceRecordFile] {
         try verifyLease()
+        // A previous unlink may have succeeded without a durable directory
+        // sync. Do not budget its absence until this sync succeeds, including
+        // after a lease is reacquired by another journal instance.
+        guard fsync(recordsFD) == 0 else { throw ConversationPersistenceFilesError.ioFailure }
         let scanFD = Darwin.openat(recordsFD, ".", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard scanFD >= 0 else { throw ConversationPersistenceFilesError.ioFailure }
         guard let stream = fdopendir(scanFD) else { Darwin.close(scanFD); throw ConversationPersistenceFilesError.ioFailure }
@@ -323,6 +371,10 @@ final class ConversationPersistenceFiles {
     }
 
     private func readFile(named name: String, in directoryFD: Int32, maximumBytes: Int) throws -> Data? {
+        try readFileWithIdentity(named: name, in: directoryFD, maximumBytes: maximumBytes)?.0
+    }
+
+    private func readFileWithIdentity(named name: String, in directoryFD: Int32, maximumBytes: Int) throws -> (Data, stat)? {
         try Self.checkFixedName(name)
         try Self.verifyDirectory(directoryFD)
         let descriptor = Darwin.openat(directoryFD, name, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
@@ -348,7 +400,7 @@ final class ConversationPersistenceFiles {
                                                maximumBytes: maximumBytes, exactSize: before.st_size)
         guard after.st_dev == before.st_dev, after.st_ino == before.st_ino,
               data.count == Int(before.st_size) else { throw ConversationPersistenceFilesError.unsafeObject }
-        return data
+        return (data, after)
     }
 
     private static func openVerifiedStateRoot(_ path: String) throws -> Int32 {
