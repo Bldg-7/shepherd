@@ -267,4 +267,183 @@ public nonisolated struct ConversationStore: Sendable {
         entries[key] = entry; keysByID[id] = key; accountedBytes += cost
         return Update(conversationID: id, changed: true, evictedConversationIDs: evicted, discardedItemCount: start)
     }
+
+    /// Exports only already-admitted normalized entries. The envelope contains
+    /// no live epoch, read cursor, reconciliation ticket/owner, parser, or
+    /// compaction/subagent-correlation state.
+    public func persistenceSnapshot() -> PersistentSnapshot {
+        PersistentSnapshot(records: entries.values.sorted { $0.revision < $1.revision }.map { entry in
+            PersistentSnapshot.Record(
+                id: entry.id,
+                key: .init(agent: entry.key.agent, herdrSession: entry.key.herdrSession, nativeSession: entry.key.nativeSession),
+                context: .init(routeID: entry.context.routeID, paneID: entry.context.paneID, terminalID: entry.context.terminalID),
+                updatedOrder: entry.revision,
+                items: entry.items.map(Self.persistentItem),
+                truncated: entry.truncated,
+                status: Self.persistentStatus(entry.status),
+                subagents: .init(observed: entry.subagents.observed, withFinalResult: entry.subagents.withFinalResult,
+                                 limited: entry.subagents.limited, linkAvailable: entry.subagents.linkAvailable,
+                                 ancestryIncomplete: entry.subagents.ancestryIncomplete)
+            )
+        })
+    }
+
+    /// Rebuilds this store as a fresh recorder epoch. Persistent IDs are
+    /// validated but deliberately replaced; `RestoreResult.restoredIDs` is the
+    /// only mapping a filesystem coordinator may retain. Every streaming item
+    /// and summary is downgraded to incomplete before normal store admission.
+    /// Route/session authorization remains the caller's responsibility.
+    @discardableResult
+    public mutating func restore(_ snapshot: PersistentSnapshot) throws -> RestoreResult {
+        try snapshot.validateEnvelope()
+        let ordered = snapshot.records.enumerated().sorted {
+            $0.element.updatedOrder == $1.element.updatedOrder ? $0.offset < $1.offset : $0.element.updatedOrder < $1.element.updatedOrder
+        }
+        var rejected = Set<Int>()
+        var parsed: [(index: Int, record: PersistentSnapshot.Record, value: PersistenceEntry)] = []
+        for pair in ordered {
+            guard let value = Self.persistenceEntry(pair.element) else { rejected.insert(pair.offset); continue }
+            parsed.append((pair.offset, pair.element, value))
+        }
+
+        func rejectDuplicates<Key: Hashable>(_ values: [(Int, Key)]) {
+            var indexes: [Key: [Int]] = [:]
+            for (index, value) in values { indexes[value, default: []].append(index) }
+            for duplicates in indexes.values where duplicates.count > 1 { rejected.formUnion(duplicates) }
+        }
+        rejectDuplicates(parsed.map { ($0.index, Data($0.record.id.utf8)) })
+        rejectDuplicates(parsed.map { ($0.index, $0.record.updatedOrder) })
+        rejectDuplicates(parsed.map { ($0.index, $0.value.key) })
+
+        // Build separately so a rejected record cannot alter the previous live
+        // store or evict a valid candidate halfway through its own admission.
+        var rebuilt = ConversationStore(limits: limits)
+        var persistentByLiveID: [String: String] = [:]
+        var evictedPersistentIDs: [String] = []
+        for candidate in parsed where !rejected.contains(candidate.index) {
+            do {
+                let update = try rebuilt.upsert(key: candidate.value.key, context: candidate.value.context,
+                                                items: candidate.value.items, status: candidate.value.status,
+                                                historyTruncated: candidate.value.truncated,
+                                                subagents: candidate.value.subagents)
+                for id in update.evictedConversationIDs {
+                    if let persistentID = persistentByLiveID.removeValue(forKey: id) { evictedPersistentIDs.append(persistentID) }
+                }
+                persistentByLiveID[update.conversationID] = candidate.record.id
+            } catch {
+                rejected.insert(candidate.index)
+            }
+        }
+        self = rebuilt
+
+        var reportedRejected = Set<Data>()
+        let rejectedIDs = snapshot.records.enumerated().compactMap { index, record -> String? in
+            guard rejected.contains(index), RequestProjection.identifier(record.id) != nil,
+                  reportedRejected.insert(Data(record.id.utf8)).inserted else { return nil }
+            return record.id
+        }
+        let restoredIDs = Dictionary(uniqueKeysWithValues: persistentByLiveID.map { ($0.value, $0.key) })
+        return RestoreResult(restoredIDs: restoredIDs, rejectedPersistentIDs: rejectedIDs,
+                             rejectedRecordCount: rejected.count, evictedPersistentIDs: evictedPersistentIDs)
+    }
+
+    private struct PersistenceEntry {
+        let key: ConversationKey
+        let context: ConversationContext
+        let items: [ConversationItem]
+        let truncated: Bool
+        let status: CapturedResponse.Status
+        let subagents: ConversationSubagents
+    }
+
+    private static func persistenceEntry(_ record: PersistentSnapshot.Record) -> PersistenceEntry? {
+        guard RequestProjection.identifier(record.id) != nil, record.updatedOrder > 0,
+              record.items.count <= 4_096,
+              let key = ConversationKey(agent: record.key.agent, herdrSession: record.key.herdrSession,
+                                        nativeSession: record.key.nativeSession),
+              let context = ConversationContext(routeID: record.context.routeID, paneID: record.context.paneID,
+                                                terminalID: record.context.terminalID),
+              let status = responseStatus(record.status) else { return nil }
+        let subagents = ConversationSubagents(observed: record.subagents.observed,
+                                               withFinalResult: record.subagents.withFinalResult,
+                                               limited: record.subagents.limited,
+                                               linkAvailable: record.subagents.linkAvailable,
+                                               ancestryIncomplete: record.subagents.ancestryIncomplete)
+        guard subagents.valid else { return nil }
+        var items: [ConversationItem] = []
+        items.reserveCapacity(record.items.count)
+        for persisted in record.items {
+            guard RequestProjection.identifier(persisted.id) != nil,
+                  let role = CapturedMessage.Role(rawValue: persisted.message.role),
+                  persisted.message.blocks.count <= 64,
+                  let itemStatus = responseStatus(persisted.status),
+                  let origin = conversationOrigin(persisted.origin) else { return nil }
+            var blocks: [CapturedBlock] = []
+            blocks.reserveCapacity(persisted.message.blocks.count)
+            for block in persisted.message.blocks {
+                guard let kind = CapturedBlock.Kind(rawValue: block.kind) else { return nil }
+                blocks.append(CapturedBlock(kind: kind, text: block.text, callID: block.callID, toolName: block.toolName))
+            }
+            let message = CapturedMessage(role: role, blocks: blocks, truncated: persisted.message.truncated)
+            items.append(ConversationItem(id: persisted.id, message: message, origin: origin,
+                                          status: itemStatus == .streaming ? .incomplete : itemStatus))
+        }
+        return PersistenceEntry(key: key, context: context, items: items, truncated: record.truncated,
+                                status: status == .streaming ? .incomplete : status, subagents: subagents)
+    }
+
+    private static func persistentItem(_ item: ConversationItem) -> PersistentSnapshot.Item {
+        PersistentSnapshot.Item(
+            id: item.id,
+            message: .init(role: item.message.role.rawValue,
+                           blocks: item.message.blocks.map { .init(kind: $0.kind.rawValue, text: $0.text, callID: $0.callID, toolName: $0.toolName) },
+                           truncated: item.message.truncated),
+            origin: persistentOrigin(item.origin), status: persistentStatus(item.status)
+        )
+    }
+
+    private static func persistentOrigin(_ origin: ConversationItem.Origin) -> PersistentSnapshot.Origin {
+        switch origin {
+        case .reconstructed: return .init(kind: "reconstructed")
+        case .observed: return .init(kind: "observed")
+        case .response: return .init(kind: "response")
+        case .summary: return .init(kind: "summary")
+        case .discontinuity: return .init(kind: "discontinuity")
+        case .compaction(let availability): return .init(kind: "compaction", compactionAvailability: compactionAvailabilityName(availability))
+        case .subagent(let id, let depth): return .init(kind: "subagent", subagentID: id, subagentDepth: depth)
+        }
+    }
+
+    private static func conversationOrigin(_ origin: PersistentSnapshot.Origin) -> ConversationItem.Origin? {
+        switch origin.kind {
+        case "reconstructed" where origin.compactionAvailability == nil && origin.subagentID == nil && origin.subagentDepth == nil: return .reconstructed
+        case "observed" where origin.compactionAvailability == nil && origin.subagentID == nil && origin.subagentDepth == nil: return .observed
+        case "response" where origin.compactionAvailability == nil && origin.subagentID == nil && origin.subagentDepth == nil: return .response
+        case "summary" where origin.compactionAvailability == nil && origin.subagentID == nil && origin.subagentDepth == nil: return .summary
+        case "discontinuity" where origin.compactionAvailability == nil && origin.subagentID == nil && origin.subagentDepth == nil: return .discontinuity
+        case "compaction" where origin.subagentID == nil && origin.subagentDepth == nil:
+            guard let value = origin.compactionAvailability, let availability = compactionAvailability(value) else { return nil }
+            return .compaction(availability)
+        case "subagent" where origin.compactionAvailability == nil:
+            guard let id = origin.subagentID else { return nil }
+            return .subagent(id: id, depth: origin.subagentDepth)
+        default: return nil
+        }
+    }
+
+    private static func persistentStatus(_ status: CapturedResponse.Status) -> String {
+        switch status { case .streaming: return "streaming"; case .complete: return "complete"; case .incomplete: return "incomplete" }
+    }
+
+    private static func responseStatus(_ value: String) -> CapturedResponse.Status? {
+        switch value { case "streaming": return .streaming; case "complete": return .complete; case "incomplete": return .incomplete; default: return nil }
+    }
+
+    private static func compactionAvailabilityName(_ value: CapturedCompaction.Availability) -> String {
+        switch value { case .plaintext: return "plaintext"; case .opaque: return "opaque"; case .noText: return "noText"; case .incomplete: return "incomplete" }
+    }
+
+    private static func compactionAvailability(_ value: String) -> CapturedCompaction.Availability? {
+        switch value { case "plaintext": return .plaintext; case "opaque": return .opaque; case "noText": return .noText; case "incomplete": return .incomplete; default: return nil }
+    }
 }

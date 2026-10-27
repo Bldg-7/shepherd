@@ -134,6 +134,7 @@ struct CaptureTests {
         try AnthropicResponseTests.run(check: check)
         try ResponsesAssemblyTests.run(check: check)
         try ConversationStoreTests.run(check: check)
+        try ConversationPersistenceTests.run(check: check)
         try ConversationReconcilerTests.run(check: check)
         try RequestClassificationTests.run(check: check)
         try CompactionProjectionTests.run(check: check)
