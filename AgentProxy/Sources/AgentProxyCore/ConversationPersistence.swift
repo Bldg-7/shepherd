@@ -33,6 +33,7 @@ public extension ConversationStore {
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+            guard schemaVersion == Self.schemaVersion else { throw PersistenceFailure.unsupportedVersion }
             var values = try container.nestedUnkeyedContainer(forKey: .records)
             var decoded: [Record] = []
             decoded.reserveCapacity(256)
@@ -199,18 +200,23 @@ public extension ConversationStore {
 
         func validateEnvelope() throws {
             guard schemaVersion == Self.schemaVersion else { throw PersistenceFailure.unsupportedVersion }
-            guard records.count <= 256 else { throw PersistenceFailure.oversized }
+            guard records.count <= 256,
+                  records.allSatisfy({ $0.items.count <= 4_096 && $0.items.allSatisfy { $0.message.blocks.count <= 64 } }) else {
+                throw PersistenceFailure.oversized
+            }
         }
     }
 
     struct RestoreResult: Equatable, Sendable {
-        /// Mapping from a validated persistent ID to its freshly allocated live
-        /// ID. Callers must not treat a prior epoch/cursor as still valid.
-        public let restoredIDs: [String: String]
+        /// UTF-8-byte-exact mapping from a validated persistent ID to its
+        /// freshly allocated live ID. Callers must not treat a prior
+        /// epoch/cursor as still valid.
+        public let restoredIDs: [Data: String]
         /// Only syntactically safe identifiers are returned; malformed IDs are
-        /// counted without reflecting untrusted bytes back to a caller.
-        public let rejectedPersistentIDs: [String]
+        /// counted without reflecting untrusted bytes back to a caller. Values
+        /// use the same byte-exact identity domain as `restoredIDs`.
+        public let rejectedPersistentIDs: [Data]
         public let rejectedRecordCount: Int
-        public let evictedPersistentIDs: [String]
+        public let evictedPersistentIDs: [Data]
     }
 }

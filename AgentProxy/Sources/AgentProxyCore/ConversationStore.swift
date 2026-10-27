@@ -289,8 +289,9 @@ public nonisolated struct ConversationStore: Sendable {
     }
 
     /// Rebuilds this store as a fresh recorder epoch. Persistent IDs are
-    /// validated but deliberately replaced; `RestoreResult.restoredIDs` is the
-    /// only mapping a filesystem coordinator may retain. Every streaming item
+    /// validated but deliberately replaced; `RestoreResult.restoredIDs` uses
+    /// UTF-8-byte-exact persistent-ID keys and is the only mapping a filesystem
+    /// coordinator may retain. Every streaming item
     /// and summary is downgraded to incomplete before normal store admission.
     /// Route/session authorization remains the caller's responsibility.
     @discardableResult
@@ -318,18 +319,24 @@ public nonisolated struct ConversationStore: Sendable {
         // Build separately so a rejected record cannot alter the previous live
         // store or evict a valid candidate halfway through its own admission.
         var rebuilt = ConversationStore(limits: limits)
-        var persistentByLiveID: [String: String] = [:]
-        var evictedPersistentIDs: [String] = []
+        var persistentByLiveID: [String: Data] = [:]
+        var evictedPersistentIDs: [Data] = []
         for candidate in parsed where !rejected.contains(candidate.index) {
+            var trial = rebuilt
             do {
-                let update = try rebuilt.upsert(key: candidate.value.key, context: candidate.value.context,
-                                                items: candidate.value.items, status: candidate.value.status,
-                                                historyTruncated: candidate.value.truncated,
-                                                subagents: candidate.value.subagents)
+                let update = try trial.upsert(key: candidate.value.key, context: candidate.value.context,
+                                              items: candidate.value.items, status: candidate.value.status,
+                                              historyTruncated: candidate.value.truncated,
+                                              subagents: candidate.value.subagents)
+                // A snapshot record must already fit its per-conversation
+                // bound. Normal live upserts may trim; restore must reject that
+                // source record without committing its trial evictions.
+                guard update.discardedItemCount == 0 else { rejected.insert(candidate.index); continue }
+                rebuilt = trial
                 for id in update.evictedConversationIDs {
                     if let persistentID = persistentByLiveID.removeValue(forKey: id) { evictedPersistentIDs.append(persistentID) }
                 }
-                persistentByLiveID[update.conversationID] = candidate.record.id
+                persistentByLiveID[update.conversationID] = Data(candidate.record.id.utf8)
             } catch {
                 rejected.insert(candidate.index)
             }
@@ -337,10 +344,11 @@ public nonisolated struct ConversationStore: Sendable {
         self = rebuilt
 
         var reportedRejected = Set<Data>()
-        let rejectedIDs = snapshot.records.enumerated().compactMap { index, record -> String? in
+        let rejectedIDs = snapshot.records.enumerated().compactMap { index, record -> Data? in
+            let id = Data(record.id.utf8)
             guard rejected.contains(index), RequestProjection.identifier(record.id) != nil,
-                  reportedRejected.insert(Data(record.id.utf8)).inserted else { return nil }
-            return record.id
+                  reportedRejected.insert(id).inserted else { return nil }
+            return id
         }
         let restoredIDs = Dictionary(uniqueKeysWithValues: persistentByLiveID.map { ($0.value, $0.key) })
         return RestoreResult(restoredIDs: restoredIDs, rejectedPersistentIDs: rejectedIDs,
