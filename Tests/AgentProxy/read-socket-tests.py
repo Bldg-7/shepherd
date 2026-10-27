@@ -175,51 +175,84 @@ reopened_index = json.loads(index.read_bytes())
 check(len(reopened_index['records']) == 1 and reopened_index['records'][0]['recordID'] == retained_index['records'][0]['recordID'],
       'restart saves retain the original persistent ID without duplication')
 
-# Confirmed clear through the inherited supervisor stream fences in-memory
-# tickets and serial journal operations. Only owned synthetic bytes are used.
-clear_root = a.work / 'clear-state'
-clear_root.mkdir(mode=0o700)
-clear_recorder = Recorder(a.work / 'clear-socket', state_directory=clear_root)
+# Two independent producers share one owned root. A refusal cannot be called a
+# successful clear: B's already-captured history is preserved and can later be
+# saved after A releases its lease. This is precisely why clear is blocked.
+shared_root = a.work / 'clear-two-producer-state'
+shared_root.mkdir(mode=0o700)
+producer_a = Recorder(a.work / 'clear-producer-a', state_directory=shared_root)
+producer_b = None
 try:
-    clear_recorder.authority(); clear_recorder.begin(wait_admission=True); clear_recorder.end()
-    clear_recorder.conversation()
-    clear_index = clear_root / 'Conversations' / 'index-v1.json'
+    producer_a.authority(); producer_a.begin(wait_admission=True); producer_a.end(); producer_a.conversation()
+    until = time.monotonic() + 10
+    while producer_a.query('persistence.status')['result']['mode'] != 'healthy':
+        assert time.monotonic() < until, 'producer A journal lease deadline'
+        time.sleep(.02)
+    index_path = shared_root / 'Conversations' / 'index-v1.json'
     until = time.monotonic() + 10
     while True:
         try:
-            if json.loads(clear_index.read_bytes())['records']: break
-        except (OSError, ValueError, KeyError): pass
-        assert time.monotonic() < until, 'pre-clear durable fixture deadline'
+            initial_index = index_path.read_bytes()
+            entries = json.loads(initial_index)['records']
+            body = (shared_root / 'Conversations' / 'records' / (entries[0]['generation'] + '.json')).read_bytes()
+            if json.loads(body)['records'][0]['status'] == 'complete': break
+        except (OSError, ValueError, KeyError, IndexError): pass
+        assert time.monotonic() < until, 'producer A completed durable snapshot deadline'
         time.sleep(.02)
-    # An already-open producer is fenced; its later response is queued behind
-    # the clear and cannot recreate the pre-clear epoch.
-    clear_recorder.frame(1, {'routeID': 'route', 'upstream': 'anthropic', 'method': 'POST', 'path': '/v1/messages',
-                             'routeIdentity': {'kind': 'claude', 'session': 'session', 'paneID': 'pane', 'terminalID': 'terminal', 'cliVersion': '2.1.309'},
-                             'headers': [['x-claude-code-session-id', 'old-open'], ['x-claude-code-request-class', 'main']]}, exchange=2)
-    clear_recorder.frame(2, {'messages': [{'role': 'user', 'content': 'old-before-clear'}]}, exchange=2)
-    clear_recorder.frame(3, exchange=2)
-    clear_recorder.frame(10, exchange=2)
-    clear_recorder.frame(4, {'status': 200, 'headers': [['content-type', 'text/event-stream']]}, exchange=2)
-    clear_recorder.event({'type': 'message_start', 'message': {'id': 'm', 'role': 'assistant', 'content': []}}, exchange=2)
-    clear_recorder.event({'type': 'content_block_start', 'index': 0, 'content_block': {'type': 'text', 'text': 'old-late-response'}}, exchange=2)
-    clear_recorder.frame(6, {'outcome': 'complete'}, exchange=2)
-    clear_recorder.frame(7, {'generation': 3, 'routes': [{'routeID': 'route', 'identity': {'kind': 'claude', 'session': 'session', 'paneID': 'pane', 'terminalID': 'terminal', 'cliVersion': '2.1.309'}}]}, exchange=0)
-    clear_recorder.ack(2); clear_recorder.ack(3)
-    check(not clear_recorder.query('conversations.list')['result']['conversations'], 'clear ACK fences prior capture and late frames')
-    check(not json.loads(clear_index.read_bytes())['records'], 'clear ACK follows index-first durable removal')
-    # New MAIN after the barrier is legitimate future capture.
-    clear_recorder.frame(1, {'routeID': 'route', 'upstream': 'anthropic', 'method': 'POST', 'path': '/v1/messages',
-                             'routeIdentity': {'kind': 'claude', 'session': 'session', 'paneID': 'pane', 'terminalID': 'terminal', 'cliVersion': '2.1.309'},
-                             'headers': [['x-claude-code-session-id', 'new-after-clear'], ['x-claude-code-request-class', 'main']]}, exchange=3)
-    clear_recorder.frame(2, {'messages': [{'role': 'user', 'content': 'new-after-clear'}]}, exchange=3); clear_recorder.frame(3, exchange=3)
-    new_id = clear_recorder.conversation()
-    page = clear_recorder.query('conversation.read', conversationID=new_id)['result']
-    check(any(block.get('text') == 'new-after-clear' for item in page['items'] for block in item['blocks']), 'new post-clear capture remains allowed')
+    producer_b = Recorder(a.work / 'clear-producer-b', state_directory=shared_root)
+    producer_b.authority()
+    producer_b.frame(1, {'routeID': 'route', 'upstream': 'anthropic', 'method': 'POST', 'path': '/v1/messages',
+                         'routeIdentity': {'kind': 'claude', 'session': 'session', 'paneID': 'pane', 'terminalID': 'terminal', 'cliVersion': '2.1.309'},
+                         'headers': [['x-claude-code-session-id', 'producer-b'], ['x-claude-code-request-class', 'main']]})
+    producer_b.frame(2, {'messages': [{'role': 'user', 'content': 'owned-producer-b-before-refusal'}]}); producer_b.frame(3)
+    b_id = producer_b.conversation()
+    until = time.monotonic() + 5
+    while producer_b.query('persistence.status')['result']['mode'] != 'degraded':
+        assert time.monotonic() < until, 'producer B competing lease deadline'
+        time.sleep(.02)
+    producer_a.frame(10, exchange=2)
+    kind, generation, payload = producer_a.reply_frame()
+    check(kind == 11 and generation == 2 and json.loads(payload)['outcome'] == 'unavailable',
+          'clear refuses when global producer exclusion is unproved')
+    check(index_path.read_bytes() == initial_index, 'refused clear leaves A index bytes untouched')
+    page = producer_b.query('conversation.read', conversationID=b_id)['result']
+    check(any(block.get('text') == 'owned-producer-b-before-refusal' for item in page['items'] for block in item['blocks']),
+          'refused clear leaves B preexisting live capture intact')
+    check(producer_a.stop() == 0, 'producer A releases journal lease')
+    until = time.monotonic() + 15
+    while True:
+        try:
+            entries = json.loads(index_path.read_bytes())['records']
+            bodies = [(shared_root / 'Conversations' / 'records' / (entry['generation'] + '.json')).read_bytes() for entry in entries]
+            if any(b'owned-producer-b-before-refusal' in body for body in bodies): break
+        except (OSError, ValueError, KeyError): pass
+        assert time.monotonic() < until, 'producer B retry after lease release'
+        time.sleep(.05)
+    check(True, 'pre-refusal producer B can persist only because no clear success was reported')
 finally:
-    check(clear_recorder.stop() == 0, 'clear fixture recorder exits naturally')
+    if producer_b is not None: check(producer_b.stop() == 0, 'producer B exits naturally')
+    if producer_a.status is None: check(producer_a.stop() == 0, 'producer A exits naturally')
+
+# A second, non-cooperating producer starts against the same root before it
+# opens the journal; clear remains denied without depending on a lease probe.
+startup_root = a.work / 'clear-startup-state'
+startup_root.mkdir(mode=0o700)
+first = Recorder(a.work / 'clear-startup-first', state_directory=startup_root)
+late = Recorder(a.work / 'clear-startup-late', state_directory=startup_root)
+try:
+    first.authority()
+    late.query('conversations.list')  # child exists, no journal open required
+    first.frame(10, exchange=2)
+    kind, generation, payload = first.reply_frame()
+    check(kind == 11 and generation == 2 and json.loads(payload)['outcome'] == 'unavailable',
+          'unproved startup/legacy exclusion cannot produce clear success')
+    check(not (startup_root / 'Conversations').exists(), 'refused clear does not even initialize the journal')
+finally:
+    check(late.stop() == 0, 'simulated noncooperating producer exits')
+    check(first.stop() == 0, 'startup-exclusion recorder exits')
 
 # An unconfigured recorder must return an explicit failed-clear frame, never
-# a success ACK, even though its live epoch was fenced.
+# a success ACK or mutation of its live epoch.
 clear_unavailable = Recorder(a.work / 'clear-unavailable')
 try:
     clear_unavailable.authority(); clear_unavailable.frame(10, exchange=2)
@@ -229,8 +262,8 @@ try:
 finally:
     check(clear_unavailable.stop() == 0, 'unavailable-clear recorder exits naturally')
 
-# A corrupt future/unknown index must be preserved and the clear must report a
-# partial/unknown outcome, never a success ACK.
+# A corrupt future/unknown index is preserved because clear is refused before
+# opening the journal, without claiming success.
 clear_bad_root = a.work / 'clear-corrupt-state'
 clear_bad_root.mkdir(mode=0o700)
 clear_bad_dir = clear_bad_root / 'Conversations'
@@ -243,8 +276,8 @@ clear_bad = Recorder(a.work / 'clear-corrupt-socket', state_directory=clear_bad_
 try:
     clear_bad.authority(); clear_bad.frame(10, exchange=2)
     kind, generation, payload = clear_bad.reply_frame()
-    check(kind == 11 and generation == 2 and json.loads(payload)['outcome'] == 'partial',
-          'unsupported index clear reports incomplete rather than success')
+    check(kind == 11 and generation == 2 and json.loads(payload)['outcome'] == 'unavailable',
+          'unsupported index clear is refused before journal access')
     check(clear_bad_index.read_bytes() == b'{"version":999,"records":[]}', 'unsupported index bytes remain preserved')
 finally:
     check(clear_bad.stop() == 0, 'corrupt-clear recorder exits naturally')

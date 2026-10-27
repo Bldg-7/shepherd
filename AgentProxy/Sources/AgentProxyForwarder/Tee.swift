@@ -32,10 +32,6 @@ final class Tee {
         copies.removeAll()
     }
 
-    /// Forget all pre-barrier copies. Later frames for those exchanges are not
-    /// sent; newly opened exchanges are ordered after the control frame.
-    func fenceExistingCopies() { copies.removeAll() }
-
     /// Whether the exchange is copied at all.
     @discardableResult
     func open(_ exchange: UInt64, _ open: AgentProxyTeeFrame.Open) -> Bool {

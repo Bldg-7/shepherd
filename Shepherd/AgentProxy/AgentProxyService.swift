@@ -61,7 +61,6 @@ final class AgentProxyService: AgentProxyRouting {
     private(set) var rejectedKinds: Set<String>
     /// Why the last launch went without the proxy; nil when it got a route.
     private(set) var lastSkip: AgentProxyInjectionPolicy.Skip?
-    private(set) var clearingSavedHistory = false
     private(set) var savedHistoryMessage: String?
     private(set) var historyStatus: AgentProxyHistoryStatus?
 
@@ -104,22 +103,10 @@ final class AgentProxyService: AgentProxyRouting {
         scheduleChecks()
     }
 
-    /// Called only after the Settings confirmation. A stopped recorder cannot
-    /// be safely cleared through this live control path.
+    /// No current or legacy cross-producer exclusion proof exists. Do not
+    /// dispatch a destructive request, even while this proxy is running.
     func clearSavedHistory() async {
-        guard isOn, phase == .running, !clearingSavedHistory else {
-            savedHistoryMessage = String(localized: "Saved conversations could not be cleared while the proxy is unavailable.")
-            return
-        }
-        clearingSavedHistory = true
-        savedHistoryMessage = nil
-        defer { clearingSavedHistory = false }
-        do {
-            try await environment.control.clearSavedHistory()
-            savedHistoryMessage = String(localized: "Saved conversations were cleared. New captures may include history sent again by the agent.")
-        } catch {
-            savedHistoryMessage = String(localized: "Saved conversations could not be fully cleared. Some data may already have been removed.")
-        }
+        savedHistoryMessage = String(localized: "Clearing saved conversations is currently unavailable because all recording processes cannot be safely fenced.")
     }
 
     func openLoginItems() { environment.launchAgent.openSystemSettings() }

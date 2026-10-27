@@ -976,13 +976,13 @@ final class Suite {
         try check(unsafe["result"] == nil && unsafe["error"] != nil, "unsafe control socket mode rejects destructive clear")
         guard chmod(proxy.socket, 0o600) == 0 else { throw TestFailure(description: "owned socket mode restore") }
         let response = try control.call("conversation.clearSaved", ["confirmed": true])
-        try check((response["result"] as? [String: Any])?["cleared"] as? Bool == true,
-                  "same-UID confirmed clear succeeds only after recorder acknowledgement")
+        try check(response["result"] == nil && (response["error"] as? [String: Any])?["code"] as? String == "unavailable",
+                  "same-UID confirmed clear fails closed before touching history")
         control.sendRaw("{\"id\":\"first\",\"method\":\"conversation.clearSaved\",\"params\":{\"confirmed\":true}}\n" +
                         "{\"id\":\"second\",\"method\":\"proxy.status\",\"params\":{}}\n")
         let first = try control.readLine(), second = try control.readLine()
-        try check(first["id"] as? String == "first" && second["id"] as? String == "second",
-                  "asynchronous clear preserves pipelined control response order")
+        try check(first["id"] as? String == "first" && first["error"] != nil && second["id"] as? String == "second",
+                  "refused clear preserves pipelined control response order")
     }
 
     func authorityTimeout() throws {

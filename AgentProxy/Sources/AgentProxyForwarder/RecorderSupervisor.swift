@@ -25,7 +25,6 @@ final class RecorderSupervisor: @unchecked Sendable {
     private var authorityGeneration: UInt64 = 0
     private var acknowledgedGeneration: UInt64 = 0
     private var acknowledgements: [UInt64: EventLoopPromise<Void>] = [:]
-    private var clearGenerations: Set<UInt64> = []
     private var pid: pid_t?
     private var link: Channel?
     private var delay = RecorderSupervisor.firstDelay
@@ -52,28 +51,12 @@ final class RecorderSupervisor: @unchecked Sendable {
     private struct AuthorityUnavailable: Error {}
     enum ClearError: Error, Equatable { case unavailable, partial }
 
-    /// Clear is ordered on the same stream as all tee opens. The copy table is
-    /// fenced on this loop before publication; old bodies cannot cross it.
+    /// A journal lease does not fence a different recorder's in-memory
+    /// producers, including older forwarders with independent socket paths.
+    /// No global exclusion proof exists yet: reject before any mutation.
     func clearHistory() -> EventLoopFuture<Void> {
         loop.assertInEventLoop()
-        guard let channel = link, channel.isActive, channel.isWritable,
-              authorityGeneration < UInt64.max, acknowledgements.count < 128 else {
-            return loop.makeFailedFuture(ClearError.unavailable)
-        }
-        authorityGeneration += 1
-        let generation = authorityGeneration
-        let promise = loop.makePromise(of: Void.self)
-        acknowledgements[generation] = promise
-        clearGenerations.insert(generation)
-        let timeout = loop.scheduleTask(in: .seconds(2)) { [weak self, weak channel] in
-            guard let self, let channel, self.link === channel, self.acknowledgements[generation] != nil else { return }
-            channel.close(promise: nil)
-        }
-        promise.futureResult.whenComplete { _ in timeout.cancel() }
-        tee.fenceExistingCopies()
-        let header = AgentProxyTeeFrame.header(kind: .clearHistory, exchange: generation, payloadCount: 0)
-        channel.writeAndFlush(ByteBuffer(bytes: header)).whenFailure { _ in channel.close(promise: nil) }
-        return promise.futureResult
+        return loop.makeFailedFuture(ClearError.unavailable)
     }
 
     /// Fails rather than reporting a synchronized mutation when the child is
@@ -131,25 +114,17 @@ final class RecorderSupervisor: @unchecked Sendable {
     }
 
     private func received(_ frame: AgentProxyTeeFrame.Frame, on channel: Channel) -> Bool {
-        guard link === channel, let first = acknowledgements.keys.min(), frame.exchange == first else { return false }
-        let isClear = clearGenerations.contains(first)
-        let failure: ClearError?
-        if frame.kind == .routeAcknowledgement && frame.payload.isEmpty { failure = nil }
-        else if isClear, frame.kind == .clearFailure,
-                let value = try? JSONDecoder().decode(AgentProxyTeeFrame.ClearFailure.self, from: Data(frame.payload)) {
-            failure = value.outcome == .partial ? .partial : .unavailable
-        } else { return false }
-        guard let promise = acknowledgements.removeValue(forKey: first) else { return false }
-        clearGenerations.remove(first)
+        guard link === channel, frame.kind == .routeAcknowledgement, frame.payload.isEmpty,
+              let first = acknowledgements.keys.min(), frame.exchange == first,
+              let promise = acknowledgements.removeValue(forKey: first) else { return false }
         acknowledgedGeneration = first
-        if let failure { promise.fail(failure) } else { promise.succeed(()) }
+        promise.succeed(())
         return true
     }
 
     private func failAcknowledgements() {
         let pending = acknowledgements.values
         acknowledgements.removeAll()
-        clearGenerations.removeAll()
         for promise in pending { promise.fail(AuthorityUnavailable()) }
     }
 

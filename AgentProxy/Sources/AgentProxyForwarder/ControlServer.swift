@@ -207,7 +207,7 @@ private final class ControlHandler: ChannelInboundHandler {
                 case .failure(let error):
                     let message = (error as? RecorderSupervisor.ClearError) == .partial
                         ? "History clear was incomplete; some data may already have been removed."
-                        : "History could not be cleared or synchronized."
+                        : "Clear is unavailable because all history producers cannot be safely fenced."
                     write(encode(id: id, error: AgentProxyControlError(code: .unavailable, message: message)), context: context)
                 }
             }

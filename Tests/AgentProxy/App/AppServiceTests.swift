@@ -155,7 +155,7 @@ nonisolated final class FakeProxy: @unchecked Sendable {
                 guard params["confirmed"] as? Bool == true else {
                     return .failure(AgentProxyControlError(code: .invalidParams, message: "confirmation required"))
                 }
-                return .success(["cleared": true])
+                return .failure(AgentProxyControlError(code: .unavailable, message: "producer exclusion unverified"))
             default:
                 return .failure(AgentProxyControlError(code: .unknownMethod, message: "unknown"))
             }
@@ -346,9 +346,8 @@ func pane(_ id: String, terminal: String, session: String = "default", herdrMach
     check(service.phase == .running && world.proxy.count("proxy.status") == 1 && world.proxy.count("routes.list") == 1,
           "on: the proxy asked how it is and for its routes, and running")
     await service.clearSavedHistory()
-    check(world.proxy.count("conversation.clearSaved") == 1 && world.proxy.calls.last?.params["confirmed"] as? Bool == true,
-          "confirmed local clear is explicitly marked in the control request")
-    check(service.savedHistoryMessage != nil && !service.clearingSavedHistory, "clear completion is visible and retires busy state")
+    check(world.proxy.count("conversation.clearSaved") == 0 && service.savedHistoryMessage != nil,
+          "running proxy still fails clear closed without dispatching a mutation")
     await service.check()
     check(world.agent.registered == 1, "on: registered once")
 
