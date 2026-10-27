@@ -160,6 +160,53 @@ reopened_index = json.loads(index.read_bytes())
 check(len(reopened_index['records']) == 1 and reopened_index['records'][0]['recordID'] == retained_index['records'][0]['recordID'],
       'restart saves retain the original persistent ID without duplication')
 
+# Journal initialization errors are sticky and visible, not silently volatile.
+bad_root = a.work / 'bad-state-root'
+bad_root.write_bytes(b'synthetic-not-a-directory')
+bad = Recorder(a.work / 'bad-state-socket', state_directory=bad_root)
+try:
+    bad.authority(); bad.begin(wait_admission=True)
+    until = time.monotonic() + 5
+    while True:
+        status = bad.query('persistence.status')['result']
+        if status['mode'] == 'degraded': break
+        assert time.monotonic() < until, 'initial journal failure status deadline'
+    check(status['mode'] == 'degraded', 'initial journal open failure reports degraded')
+    bad.end()
+finally:
+    check(bad.stop() == 0, 'failed journal recorder exits naturally')
+
+# A later bad index must degrade an already healthy recorder, and a later
+# successful operation must not clear a previous integrity failure silently.
+health_root = a.work / 'health-state'
+health_root.mkdir(mode=0o700)
+health = Recorder(a.work / 'health-socket', state_directory=health_root)
+try:
+    health.authority(); health.begin(wait_admission=True); health.end(); health.conversation()
+    until = time.monotonic() + 10
+    while health.query('persistence.status')['result']['mode'] != 'healthy':
+        assert time.monotonic() < until, 'successful journal write deadline'
+    health_index = health_root / 'Conversations' / 'index-v1.json'
+    original = health_index.read_bytes()
+    health_index.write_bytes(b'{broken')
+    health.frame(1, {'routeID': 'route', 'upstream': 'anthropic', 'method': 'POST', 'path': '/v1/messages',
+                     'routeIdentity': {'kind': 'claude', 'session': 'session', 'paneID': 'pane', 'terminalID': 'terminal', 'cliVersion': '2.1.309'},
+                     'headers': [['x-claude-code-session-id', 'second-native'], ['x-claude-code-request-class', 'main']]}, exchange=2)
+    health.frame(2, {'messages': [{'role': 'user', 'content': 'synthetic'}]}, exchange=2); health.frame(3, exchange=2)
+    until = time.monotonic() + 5
+    while health.query('persistence.status')['result']['mode'] != 'degraded':
+        assert time.monotonic() < until, 'post-success lookup failure status deadline'
+    health_index.write_bytes(original)
+    until = time.monotonic() + 8
+    while True:
+        status = health.query('persistence.status')['result']
+        if status['blockedConversations'] == 0: break
+        assert time.monotonic() < until, 'successful repaired-journal retry deadline'
+        time.sleep(.05)
+    check(status['mode'] == 'degraded', 'integrity degradation remains sticky after successful retry')
+finally:
+    check(health.stop() == 0, 'post-success failure recorder exits naturally')
+
 # Normalized text can expand substantially when JSON-encoded. Exercise the
 # real capture -> serial journal path with a record larger than the old 8 MiB
 # workspace reservation; frames themselves remain within the tee payload cap.

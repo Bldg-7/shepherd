@@ -64,6 +64,9 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
             loop.execute { [self] in
                 capture.release(workspace)
                 running = false
+                // Degradation is sticky for this recorder lifetime: a later
+                // unrelated success does not prove a failed record is healthy.
+                if case .failure = result { health = .degraded }
                 completion(result)
                 let waiters = fenceWaiters
                 fenceWaiters.removeAll()

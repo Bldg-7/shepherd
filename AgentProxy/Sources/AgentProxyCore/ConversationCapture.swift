@@ -46,6 +46,7 @@ public final class ConversationCapture {
         var codec: (any CaptureDecompressor)?
         var requestEnded = false
         var awaitingMainAdmission = false
+        var pendingMainKey: ConversationKey?
         var pendingMainResume: (() -> Void)?
         var responseStarted = false
         var decodedResponseBytes = 0
@@ -133,6 +134,12 @@ public final class ConversationCapture {
                     let projection = try RequestProjection.project(body, provider: provider)
                     guard let owner = ConversationOwner(classification: classification) else { throw Failure.invalid }
                     let id = frame.exchange
+                    // A later classified MAIN for the same byte-exact key wins
+                    // even while an older exchange is awaiting disk I/O.
+                    for (otherID, other) in exchanges where otherID != id && other.awaitingMainAdmission && other.pendingMainKey == owner.key {
+                        stop(otherID, .admission)
+                    }
+                    exchange.pendingMainKey = owner.key
                     exchange.awaitingMainAdmission = true
                     let current = { [weak self, weak exchange] in
                         guard let self, let exchange else { return false }
@@ -145,6 +152,7 @@ public final class ConversationCapture {
                     let resume = { [weak self, weak exchange] in
                         guard let self, let exchange, self.exchanges[id] === exchange, exchange.awaitingMainAdmission else { return }
                         exchange.awaitingMainAdmission = false
+                        exchange.pendingMainKey = nil
                         exchange.pendingMainResume = nil
                         do {
                             let begin = try self.reconciler.beginMain(classification: classification, request: projection)

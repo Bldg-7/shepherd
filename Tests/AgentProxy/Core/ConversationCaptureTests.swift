@@ -17,9 +17,9 @@ struct ConversationCaptureTests {
         func json<T: Encodable>(_ kind: AgentProxyTeeFrame.Kind, _ id: UInt64, _ value: T) throws {
             try send(kind, id, JSONEncoder().encode(value))
         }
-        func open(_ id: UInt64, kind: String = "main", encoding: String? = nil, native: String = "native", extra: [[String]] = []) throws {
+        func open(_ id: UInt64, kind: String = "main", encoding: String? = nil, native: String = "native", agent: String = "root", extra: [[String]] = []) throws {
             var headers = [["x-claude-code-request-class", kind], ["x-claude-code-session-id", native],
-                           ["x-claude-code-agent-id", "root"], ["content-type", "application/json"]] + extra
+                           ["x-claude-code-agent-id", agent], ["content-type", "application/json"]] + extra
             if let encoding { headers.append(["content-encoding", encoding]) }
             try json(.open, id, RequestClassificationTests.open(.claude, headers: headers))
         }
@@ -82,11 +82,53 @@ struct ConversationCaptureTests {
         check(overlapCurrent?() == false && overlap.snapshot?.summary.status == .complete, "response wins lookup race without buffering or losing live capture")
         overlapResume?()
         check(overlap.snapshot?.items.last?.message.blocks.first?.text == "response while lookup pending", "late lookup cannot replay an admitted MAIN")
+        // An unrelated authority snapshot does not change the capture epoch
+        // or the selected route. A held lookup must still be resumable.
+        let unrelated = Harness()
+        var unrelatedCurrent: (() -> Bool)?
+        var unrelatedResume: (() -> Void)?
+        unrelated.capture.onMainAdmission = { _, current, _, resume, _ in
+            unrelatedCurrent = current; unrelatedResume = resume; return true
+        }
+        try unrelated.open(1); try unrelated.request(1, "still authorized")
+        let unchangedEpoch = unrelated.capture.reconciler.store.epoch
+        var syntheticAuthorityGeneration = 1
+        syntheticAuthorityGeneration += 1 // unrelated route was added
+        check(syntheticAuthorityGeneration == 2 && unrelated.capture.reconciler.store.epoch == unchangedEpoch && unrelatedCurrent?() == true,
+              "unrelated generation change leaves held admission current")
+        unrelatedResume?(); try unrelated.head(1); try unrelated.answer(1, "still captured"); try unrelated.end(1)
+        check(unrelated.snapshot?.items.last?.message.blocks.first?.text == "still captured", "unchanged route MAIN survives held lookup")
         let revoked = Harness()
         var revokedResume: (() -> Void)?
         revoked.capture.onMainAdmission = { _, _, _, resume, _ in revokedResume = resume; return true }
         try revoked.open(1); try revoked.request(1); revoked.capture.invalidateForClear(); revokedResume?()
         check(revoked.snapshot == nil, "revoked admission continuation cannot recreate cleared capture")
+        // The host completion is held deterministically, like pending journal
+        // I/O. A newer same-key MAIN with a different selected owner must win
+        // regardless of whether the old lookup returns a body or no match.
+        for hasHistory in [false, true] {
+            let history = Harness(); try history.open(1); try history.request(1, "historical")
+            let historical = history.snapshot.flatMap { history.capture.reconciler.store.persistenceRecord(id: $0.summary.id) }!
+            let racing = Harness()
+            var heldCurrent: (() -> Bool)?
+            var heldResume: (() -> Void)?
+            var calls = 0
+            racing.capture.onMainAdmission = { _, current, _, resume, _ in
+                calls += 1
+                if calls == 1 { heldCurrent = current; heldResume = resume; return true }
+                return false
+            }
+            try racing.open(1, agent: "old-owner"); try racing.request(1, "old")
+            try racing.open(2, agent: "new-owner"); try racing.request(2, "new")
+            check(heldCurrent?() == false, "new MAIN invalidates older pending admission")
+            if heldCurrent?() == true {
+                if hasHistory { _ = racing.capture.restoreOne(historical) }
+                heldResume?()
+            }
+            heldResume?()
+            try racing.head(2); try racing.answer(2, "new answer"); try racing.end(2)
+            check(racing.snapshot?.items.last?.message.blocks.first?.text == "new answer", "held \(hasHistory ? "history" : "no-record") result cannot supersede newer live MAIN")
+        }
         let stream = Harness()
         try stream.open(1, extra: [["Authorization", "PRIVATE_AUTH"], ["x-claude-code-secret", "PRIVATE_HEADER"]])
         try stream.request(1); try stream.head(1); try stream.answer(1, "안녕🧪", complete: false)

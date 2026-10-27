@@ -173,12 +173,13 @@ private final class ReadState: @unchecked Sendable {
         let key = owner.key
         if persistentIDs[key] != nil || capture.reconciler.store.read(key: key) != nil { return false }
         blockedPersistence.insert(key)
-        let generation = authorityGeneration
+        let captureEpoch = capture.reconciler.store.epoch
         let diskKey = ConversationStore.PersistentSnapshot.Key(agent: key.agent, herdrSession: key.herdrSession, nativeSession: key.nativeSession)
         let admitted = persistence.loadFirst(diskKey) { [weak self] result in
             guard let self else { return }
             let awaiting = current()
-            guard (awaiting || live()), self.authorityGeneration == generation, self.authorized(owner) else { cancel(); return }
+            guard (awaiting || live()), self.capture.reconciler.store.epoch == captureEpoch,
+                  self.authorized(owner) else { cancel(); return }
             switch result {
             case .failure:
                 self.blockedPersistence.insert(key)
@@ -240,13 +241,13 @@ private final class ReadState: @unchecked Sendable {
         guard let summary = candidates.first(where: { retryCursor == nil || $0.id > retryCursor! }) ?? candidates.first else { return }
         retryCursor = summary.id
         guard let owner = capture.reconciler.currentOwner(conversationID: summary.id), authorized(owner) else { return }
-        let key = summary.key, liveID = summary.id, generation = authorityGeneration
+        let key = summary.key, liveID = summary.id, captureEpoch = capture.reconciler.store.epoch
         let diskKey = ConversationStore.PersistentSnapshot.Key(agent: key.agent, herdrSession: key.herdrSession, nativeSession: key.nativeSession)
         retryRunning = true
         let admitted = persistence.loadFirst(diskKey) { [weak self] result in
             guard let self else { return }
             self.retryRunning = false
-            guard self.authorityGeneration == generation, self.authorized(owner),
+            guard self.capture.reconciler.store.epoch == captureEpoch, self.authorized(owner),
                   self.blockedPersistence.contains(key),
                   self.capture.reconciler.ownsConversation(owner, conversationID: liveID),
                   self.capture.reconciler.store.read(key: key)?.summary.id == liveID else { return }
