@@ -23,6 +23,8 @@ final class RecorderSupervisor: @unchecked Sendable {
     private let routes: RouteTable
     private let log: @Sendable (String) -> Void
     private var authorityGeneration: UInt64 = 0
+    private var acknowledgedGeneration: UInt64 = 0
+    private var acknowledgements: [UInt64: EventLoopPromise<Void>] = [:]
     private var pid: pid_t?
     private var link: Channel?
     private var delay = RecorderSupervisor.firstDelay
@@ -46,15 +48,51 @@ final class RecorderSupervisor: @unchecked Sendable {
         guard sendAuthority(on: link) else { link.close(promise: nil); return }
     }
 
+    private struct AuthorityUnavailable: Error {}
+
+    /// Fails rather than reporting a synchronized mutation when the child is
+    /// absent, the link is desynchronized, or its acknowledgement times out.
+    func waitForAuthority() -> EventLoopFuture<Void> {
+        loop.assertInEventLoop()
+        guard let link, link.isActive else { return loop.makeFailedFuture(AuthorityUnavailable()) }
+        if acknowledgedGeneration == authorityGeneration { return loop.makeSucceededFuture(()) }
+        guard let pending = acknowledgements[authorityGeneration] else { return loop.makeFailedFuture(AuthorityUnavailable()) }
+        return pending.futureResult
+    }
+
     private func sendAuthority(on channel: Channel) -> Bool {
-        guard channel.isActive, channel.isWritable, authorityGeneration < UInt64.max else { return false }
+        guard channel.isActive, channel.isWritable, authorityGeneration < UInt64.max,
+              acknowledgements.count < 128 else { return false }
         authorityGeneration += 1
-        let snapshot = AgentProxyTeeFrame.RouteSnapshot(generation: authorityGeneration, routes: routes.recorderAuthority())
+        let generation = authorityGeneration
+        let snapshot = AgentProxyTeeFrame.RouteSnapshot(generation: generation, routes: routes.recorderAuthority())
         guard let payload = try? JSONEncoder().encode(snapshot), payload.count <= AgentProxyTeeFrame.maximumPayloadBytes else { return false }
+        let promise = loop.makePromise(of: Void.self)
+        acknowledgements[generation] = promise
+        let timeout = loop.scheduleTask(in: .seconds(2)) { [weak self, weak channel] in
+            guard let self, let channel, self.link === channel, self.acknowledgements[generation] != nil else { return }
+            channel.close(promise: nil)
+        }
+        promise.futureResult.whenComplete { _ in timeout.cancel() }
         let header = AgentProxyTeeFrame.header(kind: .routeSnapshot, exchange: 0, payloadCount: payload.count)
         channel.write(ByteBuffer(bytes: header), promise: nil)
         channel.writeAndFlush(ByteBuffer(bytes: payload)).whenFailure { _ in channel.close(promise: nil) }
         return true
+    }
+
+    private func received(_ frame: AgentProxyTeeFrame.Frame, on channel: Channel) -> Bool {
+        guard link === channel, frame.kind == .routeAcknowledgement, frame.payload.isEmpty,
+              let first = acknowledgements.keys.min(), frame.exchange == first,
+              let promise = acknowledgements.removeValue(forKey: first) else { return false }
+        acknowledgedGeneration = first
+        promise.succeed(())
+        return true
+    }
+
+    private func failAcknowledgements() {
+        let pending = acknowledgements.values
+        acknowledgements.removeAll()
+        for promise in pending { promise.fail(AuthorityUnavailable()) }
     }
 
     var currentPID: pid_t? { pid }
@@ -112,7 +150,11 @@ final class RecorderSupervisor: @unchecked Sendable {
         ClientBootstrap(group: loop)
             .channelOption(ChannelOptions.writeBufferWaterMark, value: .init(low: 1 << 20, high: 4 << 20))
             .channelInitializer { channel in
-                channel.eventLoop.makeCompletedFuture { try channel.pipeline.syncOperations.addHandler(RecorderLinkHandler()) }
+                channel.eventLoop.makeCompletedFuture {
+                    try channel.pipeline.syncOperations.addHandler(RecorderLinkHandler { [weak self] frame, channel in
+                        self?.received(frame, on: channel) ?? false
+                    })
+                }
             }
             .withConnectedSocket(ours)
             .whenComplete { [self] result in
@@ -121,14 +163,14 @@ final class RecorderSupervisor: @unchecked Sendable {
                     guard pid == child, !stopped else { channel.close(promise: nil); return }
                     link = channel
                     guard sendAuthority(on: channel) else {
-                        link = nil; channel.close(promise: nil)
+                        link = nil; failAcknowledgements(); channel.close(promise: nil)
                         if pid == child { kill(child, SIGKILL) }
                         return
                     }
                     tee.attach(channel)
                     channel.closeFuture.whenComplete { [self] _ in
                         tee.detach(channel)
-                        if link === channel { link = nil }
+                        if link === channel { link = nil; failAcknowledgements() }
                         // During shutdown the child may close the link while
                         // completing its bounded flush.
                         if pid == child && !stopped { kill(child, SIGKILL) }
@@ -161,6 +203,7 @@ final class RecorderSupervisor: @unchecked Sendable {
         pid = nil
         if let link { tee.detach(link); link.close(promise: nil) }
         link = nil
+        failAcknowledgements()
         guard !stopped else { state = .stopped; return }
         restarts += 1
         log("recorder: exited; starting it again")
@@ -209,10 +252,19 @@ final class RecorderSupervisor: @unchecked Sendable {
     }
 }
 
-/// The forwarder's end of the socketpair. The recorder sends nothing back in
-/// this stage; anything it sends is ignored.
+/// Only ordered, generation-correlated ACK frames are accepted from the child.
 private final class RecorderLinkHandler: ChannelInboundHandler, @unchecked Sendable {
     typealias InboundIn = ByteBuffer
-    func channelRead(context: ChannelHandlerContext, data: NIOAny) {}
+    private var decoder = AgentProxyTeeFrame.Decoder()
+    private let accept: (AgentProxyTeeFrame.Frame, Channel) -> Bool
+    init(accept: @escaping (AgentProxyTeeFrame.Frame, Channel) -> Bool) { self.accept = accept }
+    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+        decoder.append(unwrapInboundIn(data).readableBytesView)
+        do {
+            while let frame = try decoder.next() {
+                guard accept(frame, context.channel) else { context.close(promise: nil); return }
+            }
+        } catch { context.close(promise: nil) }
+    }
     func errorCaught(context: ChannelHandlerContext, error: Error) { context.close(promise: nil) }
 }

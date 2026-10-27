@@ -59,6 +59,24 @@ public nonisolated struct ConversationReconciler: Sendable {
     private var childTrees: [String: ConversationSubagentTree] = [:]
     public var trackedSubagentCount: Int { childTrees.values.reduce(0) { $0 + $1.nodes.count } }
 
+    /// A host may use this only to correlate an already admitted MAIN ticket;
+    /// it does not itself authorize disk access or another route.
+    public func isCurrentMain(_ ticket: Ticket) -> Bool {
+        ticket.epoch == store.epoch && states[ticket.conversationID]?.requestID == ticket.requestID
+            && states[ticket.conversationID]?.owner != nil && store.read(id: ticket.conversationID) != nil
+    }
+
+    /// The selected owner comes only from an admitted MAIN, never restored data.
+    public func currentOwner(conversationID: String) -> ConversationOwner? {
+        guard store.read(id: conversationID) != nil else { return nil }
+        return states[conversationID]?.owner
+    }
+
+    public func ownsConversation(_ owner: ConversationOwner, conversationID: String) -> Bool {
+        guard let current = currentOwner(conversationID: conversationID), current.key == owner.key else { return false }
+        return current.matches(owner)
+    }
+
     /// Import only a previously normalized record; this does not create a
     /// reconciler state, live owner, ticket, or child correlation.
     public mutating func restoreOne(_ record: ConversationStore.PersistentSnapshot.Record) -> String? {

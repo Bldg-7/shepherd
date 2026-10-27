@@ -31,6 +31,8 @@ public nonisolated enum AgentProxyTeeFrame {
         case end = 6
         /// Supervisor-owned current route authority, never copied from an exchange.
         case routeSnapshot = 7
+        /// Recorder-to-supervisor acknowledgement; exchange is the applied generation, payload empty.
+        case routeAcknowledgement = 8
     }
 
     public struct RouteSnapshot: Codable, Sendable, Equatable {

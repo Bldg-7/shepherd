@@ -45,6 +45,8 @@ public final class ConversationCapture {
         var body: BoundedCaptureBody
         var codec: (any CaptureDecompressor)?
         var requestEnded = false
+        var awaitingMainAdmission = false
+        var pendingMainResume: (() -> Void)?
         var responseStarted = false
         var decodedResponseBytes = 0
         var wireBytes = 0
@@ -64,6 +66,9 @@ public final class ConversationCapture {
     public let limits: Limits
     public private(set) var reconciler: ConversationReconciler
     public private(set) var drops: [DropReason: Int] = [:]
+    /// Optional host-owned asynchronous lookup before admitting a MAIN request.
+    /// The host must invoke resume or cancel on this capture's owning queue.
+    public var onMainAdmission: ((ConversationOwner, @escaping () -> Bool, @escaping () -> Bool, @escaping () -> Void, @escaping () -> Void) -> Bool)?
     private let makeDecoder: (String) -> (any CaptureDecompressor)?
     private var exchanges: [UInt64: Exchange] = [:]
     private var reservations: [UUID: Int] = [:]
@@ -101,9 +106,16 @@ public final class ConversationCapture {
         guard frame.payload.count <= AgentProxyTeeFrame.maximumPayloadBytes else { stop(frame.exchange, .malformed); return }
         if frame.kind == .open { open(frame); return }
         guard let exchange = exchanges[frame.exchange] else { return }
+        // Never accumulate response bytes while disk I/O is pending. If the
+        // response wins the race, continue live capture without importing over
+        // it; the host keeps persistence blocked until it can safely map IDs.
+        if exchange.awaitingMainAdmission {
+            exchange.pendingMainResume?()
+            guard exchanges[frame.exchange] === exchange else { return }
+        }
         do {
             switch frame.kind {
-            case .open, .routeSnapshot: break
+            case .open, .routeSnapshot, .routeAcknowledgement: break
             case .requestBody:
                 guard !exchange.requestEnded else { throw Failure.invalid }
                 try wire(frame.payload.count, exchange)
@@ -119,9 +131,34 @@ public final class ConversationCapture {
                 case .main:
                     guard let provider = classification.provider else { throw Failure.invalid }
                     let projection = try RequestProjection.project(body, provider: provider)
-                    let begin = try reconciler.beginMain(classification: classification, request: projection)
-                    exchange.main = begin.ticket
-                    evicted(begin.evictedConversationIDs)
+                    guard let owner = ConversationOwner(classification: classification) else { throw Failure.invalid }
+                    let id = frame.exchange
+                    exchange.awaitingMainAdmission = true
+                    let current = { [weak self, weak exchange] in
+                        guard let self, let exchange else { return false }
+                        return self.exchanges[id] === exchange && exchange.awaitingMainAdmission
+                    }
+                    let live = { [weak self, weak exchange] in
+                        guard let self, let exchange, self.exchanges[id] === exchange, let ticket = exchange.main else { return false }
+                        return self.reconciler.isCurrentMain(ticket)
+                    }
+                    let resume = { [weak self, weak exchange] in
+                        guard let self, let exchange, self.exchanges[id] === exchange, exchange.awaitingMainAdmission else { return }
+                        exchange.awaitingMainAdmission = false
+                        exchange.pendingMainResume = nil
+                        do {
+                            let begin = try self.reconciler.beginMain(classification: classification, request: projection)
+                            exchange.main = begin.ticket
+                            self.evicted(begin.evictedConversationIDs)
+                            self.balance()
+                        } catch { self.stop(id, .malformed) }
+                    }
+                    let cancel: () -> Void = { [weak self, weak exchange] in
+                        guard let self, let exchange, self.exchanges[id] === exchange, exchange.awaitingMainAdmission else { return }
+                        self.stop(id, .admission)
+                    }
+                    exchange.pendingMainResume = resume
+                    if onMainAdmission?(owner, current, live, resume, cancel) != true { resume() }
                 case .subagent:
                     guard let ticket = try reconciler.beginSubagent(classification: classification, requestBody: body) else { throw Failure.unsupported }
                     exchange.child = ticket

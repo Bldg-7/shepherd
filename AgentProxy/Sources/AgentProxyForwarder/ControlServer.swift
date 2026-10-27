@@ -108,12 +108,22 @@ private final class ControlHandler: ChannelInboundHandler {
     typealias OutboundOut = ByteBuffer
 
     private let core: ProxyCore
+    private var pendingRemovals = 0
 
     init(core: ProxyCore) { self.core = core }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let line = Data(unwrapInboundIn(data).readableBytesView)
+        if let object = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any],
+           object["method"] as? String == AgentProxyControl.Method.routesRemove.rawValue {
+            removeRoute(object, context: context)
+            return
+        }
         let (reply, afterwards) = answer(line)
+        write(reply, context: context, afterwards: afterwards)
+    }
+
+    private func write(_ reply: Data, context: ChannelHandlerContext, afterwards: (() -> Void)? = nil) {
         var buffer = context.channel.allocator.buffer(capacity: reply.count + 1)
         buffer.writeBytes(reply)
         buffer.writeInteger(UInt8(0x0A))
@@ -122,6 +132,37 @@ private final class ControlHandler: ChannelInboundHandler {
     }
 
     func errorCaught(context: ChannelHandlerContext, error: Error) { context.close(promise: nil) }
+
+    private func removeRoute(_ object: [String: Any], context: ChannelHandlerContext) {
+        guard pendingRemovals < 16 else { context.close(promise: nil); return }
+        guard let id = object["id"] as? String else {
+            write(encode(id: nil, error: AgentProxyControlError(code: .parseError, message: "A request needs a string id and method.")), context: context)
+            return
+        }
+        do {
+            let request = try decode(AgentProxyRouteRemove.self, object["params"] ?? [String: Any]())
+            let removed = try core.routes.remove(routeID: request.routeID)
+            guard let recorder = core.recorder else {
+                write(encode(id: id, result: AgentProxyRouteRemoved(removed: removed)), context: context)
+                return
+            }
+            pendingRemovals += 1
+            recorder.waitForAuthority().whenComplete { [self] result in
+                pendingRemovals -= 1
+                guard context.channel.isActive else { return }
+                switch result {
+                case .success:
+                    write(encode(id: id, result: AgentProxyRouteRemoved(removed: removed)), context: context)
+                case .failure:
+                    write(encode(id: id, error: AgentProxyControlError(code: .unavailable, message: "Recorder authority could not be synchronized.")), context: context)
+                }
+            }
+        } catch let error as AgentProxyControlError {
+            write(encode(id: id, error: error), context: context)
+        } catch {
+            write(encode(id: id, error: AgentProxyControlError(code: .invalidParams, message: "The params don't fit the method.")), context: context)
+        }
+    }
 
     private func answer(_ line: Data) -> (Data, (() -> Void)?) {
         guard let object = try? JSONSerialization.jsonObject(with: line), let request = object as? [String: Any] else {
@@ -148,9 +189,7 @@ private final class ControlHandler: ChannelInboundHandler {
                 core.log("routes: created one (\(core.routes.count) in all)")
                 return (encode(id: id, result: AgentProxyRouteCreated(routeID: entry.routeID, baseURL: "http://127.0.0.1:\(core.port)/p/\(token)")), nil)
             case .routesRemove:
-                let request = try decode(AgentProxyRouteRemove.self, params)
-                let removed = try core.routes.remove(routeID: request.routeID)
-                return (encode(id: id, result: AgentProxyRouteRemoved(removed: removed)), nil)
+                return (encode(id: id, error: AgentProxyControlError(code: .unavailable, message: "Route removal requires synchronization.")), nil)
             case .routesList:
                 return (encode(id: id, result: AgentProxyRouteList(routes: core.routes.list())), nil)
             }

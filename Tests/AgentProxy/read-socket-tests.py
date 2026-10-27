@@ -74,17 +74,25 @@ class Recorder:
     def frame(self, kind, payload=b'', exchange=1):
         if not isinstance(payload, bytes): payload = json.dumps(payload).encode()
         self.tee.sendall(struct.pack('>IBQ', 9 + len(payload), kind, exchange) + payload)
-    def authority(self, generation=1, routes=True):
+    def authority(self, generation=1, routes=True, expect_ack=True):
         identity = {'kind': 'claude', 'session': 'session', 'paneID': 'pane', 'terminalID': 'terminal', 'cliVersion': '2.1.309'}
         self.frame(7, {'generation': generation, 'routes': [{'routeID': 'route', 'identity': identity}] if routes else []}, exchange=0)
+        if expect_ack:
+            ack = bytearray()
+            while len(ack) < 13:
+                part = self.tee.recv(13 - len(ack))
+                assert part, 'recorder closed before authority acknowledgement'
+                ack.extend(part)
+            assert struct.unpack('>IBQ', ack) == (9, 8, generation), 'correlated empty authority ACK'
     def event(self, data, exchange=1): self.frame(5, b'data: ' + json.dumps(data).encode() + b'\n\n', exchange=exchange)
-    def begin(self):
+    def begin(self, wait_admission=False):
         self.frame(1, {'routeID': 'route', 'upstream': 'anthropic', 'method': 'POST', 'path': '/v1/messages',
                       'routeIdentity': {'kind': 'claude', 'session': 'session', 'paneID': 'pane', 'terminalID': 'terminal', 'cliVersion': '2.1.309'},
                       'headers': [['content-type', 'application/json'], ['x-claude-code-session-id', 'native'],
                                   ['x-claude-code-request-class', 'main'], ['x-claude-code-agent-id', 'root'],
                                   ['authorization', 'SYNTHETIC_SOCKET_HEADER_NOT_FOR_HISTORY']]})
         self.frame(2, {'messages': [{'role': 'user', 'content': 'hello'}]}); self.frame(3)
+        if wait_admission: self.conversation()
         self.frame(4, {'status': 200, 'headers': [['content-type', 'text/event-stream']]})
         self.event({'type': 'message_start', 'message': {'id': 'm', 'role': 'assistant', 'content': []}})
         self.event({'type': 'content_block_start', 'index': 0, 'content_block': {'type': 'text', 'text': 'alpha'}})
@@ -108,7 +116,7 @@ store_root.mkdir(mode=0o700)
 persisted = Recorder(a.work / 'persistence-socket', state_directory=store_root)
 try:
     persisted.query('conversations.list')
-    persisted.authority(); persisted.begin(); persisted.end(); persisted.conversation()
+    persisted.authority(); persisted.begin(wait_admission=True); persisted.end(); persisted.conversation()
     index = store_root / 'Conversations' / 'index-v1.json'
     until = time.monotonic() + 10
     while True:
@@ -127,16 +135,30 @@ try:
 finally:
     check(persisted.stop() == 0, 'synthetic persistence recorder exits')
 
-# This checkpoint verifies retained bytes, not restart restoration: restore is
-# deliberately not wired until current native-owner authorization is available.
 retained_index = json.loads(index.read_bytes())
 reopened = Recorder(a.work / 'persistence-reopen', state_directory=store_root)
 try:
     reopened.authority()
-    check(not reopened.query('conversations.list')['result']['conversations'], 'unwired restore exposes no historical record')
+    status = reopened.query('persistence.status')['result']
+    check(status['mode'] in ('volatile', 'healthy', 'degraded') and status['blockedConversations'] == 0,
+          'recorder exposes bounded persistence status without historical content')
+    check(not reopened.query('conversations.list')['result']['conversations'], 'no historical exposure before trusted MAIN')
+    reopened.begin(wait_admission=True)
+    cid = reopened.conversation()
+    page = reopened.query('conversation.read', conversationID=cid)['result']
+    check(any(block.get('text') == 'alpha' for item in page['items'] for block in item['blocks']),
+          'trusted current MAIN restores prior normalized answer')
+    reopened.end()
+    reopened.authority(generation=2, routes=False)
+    check(not reopened.query('conversations.list')['result']['conversations'],
+          'revocation ACK fences previously restored readable state')
+    check(reopened.query('conversation.read', conversationID=cid)['result'].get('reset'),
+          'old restored read ID cannot be reused after revocation ACK')
 finally:
     check(reopened.stop() == 0, 'synthetic reopened recorder exits')
-check(json.loads(index.read_bytes()) == retained_index, 'reopen without capture retains disk history')
+reopened_index = json.loads(index.read_bytes())
+check(len(reopened_index['records']) == 1 and reopened_index['records'][0]['recordID'] == retained_index['records'][0]['recordID'],
+      'restart saves retain the original persistent ID without duplication')
 
 # Normalized text can expand substantially when JSON-encoded. Exercise the
 # real capture -> serial journal path with a record larger than the old 8 MiB
@@ -169,15 +191,25 @@ desync = Recorder(a.work / 'authority-desync')
 try:
     desync.query('conversations.list')
     desync.authority(generation=1)
-    desync.authority(generation=1)
+    desync.authority(generation=1, expect_ack=False)
     check(desync.wait() == 3, 'replayed authority generation terminates recorder fail-closed')
 finally:
     desync.stop()
+
+wrong_direction = Recorder(a.work / 'authority-wrong-direction')
+try:
+    wrong_direction.query('conversations.list')
+    wrong_direction.authority()
+    wrong_direction.frame(8, exchange=1)
+    check(wrong_direction.wait() == 3, 'reverse-direction ACK terminates recorder fail-closed')
+finally:
+    wrong_direction.stop()
 
 r = Recorder(a.work / 'normal')
 try:
     empty = r.query('conversations.list')['result']
     check(not empty['conversations'], 'fresh recorder empty epoch')
+    check(r.query('persistence.status')['result']['mode'] == 'off', 'status reports persistence not configured')
     check(stat.S_IMODE(r.path.stat().st_mode) == 0o600, 'read socket 0600')
     check(stat.S_IMODE(r.path.parent.stat().st_mode) == 0o700, 'private parent 0700')
     r.authority()

@@ -432,6 +432,22 @@ final class ConversationPersistenceJournal {
         return .init(record: record, metadata: try self.metadata(entry))
     }
 
+    /// Scan only referenced records, in index order, with one decoded body at
+    /// a time. A match is not authorization: the caller must recheck current
+    /// owner and route authority after I/O and before exposing the result.
+    func firstRecord(matching key: ConversationStore.PersistentSnapshot.Key) throws -> ConversationPersistenceJournalLoadedRecord? {
+        for entry in try metadata() {
+            let loaded = try load(entry)
+            let candidate = loaded.record.key
+            if Data(candidate.agent.utf8) == Data(key.agent.utf8),
+               Data(candidate.herdrSession.utf8) == Data(key.herdrSession.utf8),
+               Data(candidate.nativeSession.utf8) == Data(key.nativeSession.utf8) {
+                return loaded
+            }
+        }
+        return nil
+    }
+
     /// Writes an immutable opaque generation and then publishes the small index.
     /// Age maintenance and supported orphan recovery run first.
     @discardableResult
@@ -454,7 +470,12 @@ final class ConversationPersistenceJournal {
             do { oldBytes = try files.readRecord(oldGeneration) }
             catch { noteIOFailure(error); throw ConversationPersistenceJournalError.unavailable }
             guard oldBytes.count == old.encodedBytes else { throw ConversationPersistenceJournalError.unavailable }
-            _ = try decodeOneRecord(oldBytes, expectedID: old.recordID)
+            let oldRecord = try decodeOneRecord(oldBytes, expectedID: old.recordID)
+            guard Data(oldRecord.key.agent.utf8) == Data(record.key.agent.utf8),
+                  Data(oldRecord.key.herdrSession.utf8) == Data(record.key.herdrSession.utf8),
+                  Data(oldRecord.key.nativeSession.utf8) == Data(record.key.nativeSession.utf8) else {
+                throw ConversationPersistenceJournalError.invalidRecord
+            }
             do { _ = try JSONDecoder().decode(DeletionSchema.self, from: oldBytes) }
             catch { throw ConversationPersistenceJournalError.unavailable }
         }

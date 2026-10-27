@@ -24,6 +24,7 @@ struct ForwarderTests {
         let arguments = CommandLine.arguments
         if arguments.count == 3 && arguments[1] == "tap-recorder" { exit(tapRecorder(arguments[2])) }
         if arguments.count == 2 && arguments[1] == "stall-recorder" { while true { sleep(60) } }
+        if arguments.count == 2 && arguments[1] == "bad-ack-recorder" { exit(badAckRecorder()) }
         guard arguments.count == 5, arguments[1] == "run" else {
             FileHandle.standardError.write(Data("usage: ForwarderTests run <output> <proxy> <fixture>\n".utf8))
             exit(64)
@@ -40,10 +41,20 @@ struct ForwarderTests {
         }
     }
 
+    static func badAckRecorder() -> Int32 {
+        var chunk = [UInt8](repeating: 0, count: 65536)
+        let count = chunk.withUnsafeMutableBytes { read(3, $0.baseAddress, $0.count) }
+        guard count > 0 else { return 2 }
+        let ack = AgentProxyTeeFrame.header(kind: .routeAcknowledgement, exchange: 0, payloadCount: 0)
+        _ = ack.withUnsafeBytes { write(3, $0.baseAddress, $0.count) }
+        while true { sleep(60) }
+    }
+
     static func tapRecorder(_ path: String) -> Int32 {
         let file = open(path, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0o600)
         guard file >= 0 else { return 2 }
         var chunk = [UInt8](repeating: 0, count: 1 << 16)
+        var decoder = AgentProxyTeeFrame.Decoder()
         while true {
             let count = chunk.withUnsafeMutableBytes { read(3, $0.baseAddress, $0.count) }
             if count < 0 && errno == EINTR { continue }
@@ -54,6 +65,21 @@ struct ForwarderTests {
                 if result <= 0 { return 3 }
                 written += result
             }
+            decoder.append(chunk.prefix(count))
+            do {
+                while let frame = try decoder.next() {
+                    guard frame.kind == .routeSnapshot else { continue }
+                    guard let snapshot = try? JSONDecoder().decode(AgentProxyTeeFrame.RouteSnapshot.self, from: Data(frame.payload)) else { return 4 }
+                    let ack = AgentProxyTeeFrame.header(kind: .routeAcknowledgement, exchange: snapshot.generation, payloadCount: 0)
+                    var offset = 0
+                    while offset < ack.count {
+                        let n = ack[offset...].withUnsafeBytes { write(3, $0.baseAddress, $0.count) }
+                        if n < 0 && errno == EINTR { continue }
+                        guard n > 0 else { return 4 }
+                        offset += n
+                    }
+                }
+            } catch { return 4 }
         }
     }
 }
@@ -93,7 +119,7 @@ struct Route {
 }
 
 enum Recorder {
-    case none, real, tap(String), stall
+    case none, real, tap(String), stall, badAck
 }
 
 let jwt = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0In0.c2lnbmF0dXJlLXRlc3Q"
@@ -172,6 +198,8 @@ final class Suite {
             ("tls-and-connect-failures", tlsFailures),
             ("pool-reuse-and-idle", pool),
             ("tee-frames", teeFrames),
+            ("recorder-authority-timeout-fails-closed", authorityTimeout),
+            ("recorder-invalid-ack-fails-closed", authorityInvalidAck),
             ("tee-limit-and-stalled-recorder", teeLimits),
             ("unknown-token-forwarded-without-copy", unknownToken),
             ("recorder-killed-mid-stream", recorderKilled),
@@ -233,6 +261,7 @@ final class Suite {
         case .real: [proxyBinary, "recorder"]
         case .tap(let file): [harness, "tap-recorder", file]
         case .stall: [harness, "stall-recorder"]
+        case .badAck: [harness, "bad-ack-recorder"]
         }
         let label = current
         let configuration = AgentProxyServer.Configuration(
@@ -929,6 +958,25 @@ final class Suite {
         let opens = try frames.filter { $0.kind == .open }.map { try JSONDecoder().decode(AgentProxyTeeFrame.Open.self, from: Data($0.payload)) }
         try check(opens.count == 1 && opens[0].routeID == claude.routeID, "only the known route's exchange was copied")
         try check(!contains(fileBytes(tap), bytes(unknown)), "the unknown token is nowhere in the copy")
+    }
+
+    func authorityTimeout() throws {
+        let proxy = try self.proxy("authority-timeout", recorder: .stall)
+        let control = try proxy.control()
+        try check(waitUntil(3) { (try? control.result("proxy.status")["recorder"] as? [String: Any])?["state"] as? String == "running" }, "stalled child started")
+        let created = try route(control, "claude")
+        let result = try control.call("routes.remove", ["routeID": created.routeID])
+        try check(result["result"] == nil && result["error"] != nil, "unacknowledged mutation never reports synchronized success")
+        let routes = try control.result("routes.list")["routes"] as? [[String: Any]] ?? []
+        try check(!routes.contains { $0["routeID"] as? String == created.routeID }, "failed synchronization does not roll back committed revocation")
+    }
+
+    func authorityInvalidAck() throws {
+        let proxy = try self.proxy("authority-bad-ack", recorder: .badAck)
+        let control = try proxy.control()
+        let created = try route(control, "claude")
+        let answer = try control.call("routes.remove", ["routeID": created.routeID])
+        try check(answer["result"] == nil && answer["error"] != nil, "wrong-generation ACK never reports success")
     }
 
     func recorderKilled() throws {

@@ -150,12 +150,45 @@ struct PersistenceJournalTests {
                 guard try files.readIndex() == nil, try Data(contentsOf: URL(fileURLWithPath: path)) == Data("future".utf8) else { throw Failure() }
             }
             try safetyFixtures(base: String(cString: resolved), record: record, clock: clock)
+            try firstRecordFixtures(base: String(cString: resolved), record: record, clock: clock)
             print("PASS: bounded persistence journal")
         } catch {
             print("FAIL: journal \(error)")
             exit(1)
         }
     }
+    private static func firstRecordFixtures(base: String, record: ConversationStore.PersistentSnapshot.Record, clock: Date) throws {
+        let path = base + "/first-record"
+        guard mkdir(path, 0o700) == 0 else { throw Failure() }
+        let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+        let journal = ConversationPersistenceJournal(files: files, now: { clock })
+        func copy(_ id: String, native: String) -> ConversationStore.PersistentSnapshot.Record {
+            .init(id: id, key: .init(agent: record.key.agent, herdrSession: record.key.herdrSession, nativeSession: native),
+                  context: record.context, updatedOrder: record.updatedOrder, items: record.items,
+                  truncated: record.truncated, status: record.status, subagents: record.subagents)
+        }
+        let first = copy("first", native: "é")
+        let second = copy("second", native: "é")
+        let distinct = copy("distinct", native: "e\u{301}")
+        _ = try journal.upsert(first, updatedAt: clock)
+        _ = try journal.upsert(second, updatedAt: clock)
+        _ = try journal.upsert(distinct, updatedAt: clock)
+        let beforeCollision = try files.readIndex()
+        do { _ = try journal.upsert(copy("first", native: "different"), updatedAt: clock); throw Failure() }
+        catch ConversationPersistenceJournalError.invalidRecord {}
+        guard try files.readIndex() == beforeCollision else { throw Failure() }
+        guard try journal.firstRecord(matching: first.key)?.record.id == first.id,
+              try journal.firstRecord(matching: distinct.key)?.record.id == distinct.id,
+              try journal.firstRecord(matching: .init(agent: "claude", herdrSession: "session", nativeSession: "missing")) == nil else { throw Failure() }
+        // Corruption before a later matching entry must fail closed, not skip
+        // the damaged referenced body and silently choose a different record.
+        let firstMetadata = try journal.metadata()[0]
+        let bodyPath = path + "/Conversations/records/" + firstMetadata.generation.value + ".json"
+        try Data(repeating: 0x78, count: firstMetadata.encodedBytes).write(to: URL(fileURLWithPath: bodyPath))
+        do { _ = try journal.firstRecord(matching: distinct.key); throw Failure() }
+        catch ConversationPersistenceJournalError.unavailable {}
+    }
+
     private static func safetyFixtures(base: String, record: ConversationStore.PersistentSnapshot.Record, clock: Date) throws {
         func root(_ name: String) throws -> String {
             let path = base + "/" + name

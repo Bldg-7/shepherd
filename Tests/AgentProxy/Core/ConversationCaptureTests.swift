@@ -58,6 +58,35 @@ struct ConversationCaptureTests {
         func finish(emit: (Data) throws -> Void) throws {}
     }
     static func run(check: (Bool, String) -> Void) throws {
+        let delayed = Harness()
+        var resumeAdmission: (() -> Void)?
+        var currentAdmission: (() -> Bool)?
+        delayed.capture.onMainAdmission = { _, current, _, resume, _ in
+            currentAdmission = current; resumeAdmission = resume; return true
+        }
+        try delayed.open(1); try delayed.request(1)
+        check(currentAdmission?() == true && delayed.snapshot == nil, "MAIN waits for asynchronous host lookup")
+        resumeAdmission?()
+        check(currentAdmission?() == false && delayed.snapshot != nil, "host resumes the same admitted MAIN exactly once")
+        try delayed.head(1); try delayed.answer(1, "live"); try delayed.end(1)
+        resumeAdmission?()
+        check(delayed.snapshot?.items.last?.message.blocks.first?.text == "live", "late resume cannot replace live response")
+        let overlap = Harness()
+        var overlapResume: (() -> Void)?
+        var overlapCurrent: (() -> Bool)?
+        overlap.capture.onMainAdmission = { _, current, _, resume, _ in
+            overlapCurrent = current; overlapResume = resume; return true
+        }
+        try overlap.open(1); try overlap.request(1); try overlap.head(1)
+        try overlap.answer(1, "response while lookup pending"); try overlap.end(1)
+        check(overlapCurrent?() == false && overlap.snapshot?.summary.status == .complete, "response wins lookup race without buffering or losing live capture")
+        overlapResume?()
+        check(overlap.snapshot?.items.last?.message.blocks.first?.text == "response while lookup pending", "late lookup cannot replay an admitted MAIN")
+        let revoked = Harness()
+        var revokedResume: (() -> Void)?
+        revoked.capture.onMainAdmission = { _, _, _, resume, _ in revokedResume = resume; return true }
+        try revoked.open(1); try revoked.request(1); revoked.capture.invalidateForClear(); revokedResume?()
+        check(revoked.snapshot == nil, "revoked admission continuation cannot recreate cleared capture")
         let stream = Harness()
         try stream.open(1, extra: [["Authorization", "PRIVATE_AUTH"], ["x-claude-code-secret", "PRIVATE_HEADER"]])
         try stream.request(1); try stream.head(1); try stream.answer(1, "안녕🧪", complete: false)

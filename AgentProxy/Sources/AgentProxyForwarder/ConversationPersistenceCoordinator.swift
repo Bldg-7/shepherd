@@ -24,6 +24,7 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
     private static let workspaceBytes = 64 << 20
     private static let recordBytes = 8 << 20
     private var running = false
+    private var fenceWaiters: [() -> Void] = []
     private var finished: DispatchSemaphore?
     private(set) var health: Health = .volatile
 
@@ -45,6 +46,58 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
         pending[record.id] = Pending(record: record, reservation: reservation, updatedAt: Date())
         drain()
         return true
+    }
+
+    /// One serial, admitted referenced-body scan. Busy or memory pressure is
+    /// reported to the caller, which must not create a duplicate disk record.
+    func loadFirst(_ key: ConversationStore.PersistentSnapshot.Key,
+                   completion: @escaping (Result<ConversationPersistenceJournalLoadedRecord?, Error>) -> Void) -> Bool {
+        loop.assertInEventLoop()
+        guard !running, Self.workspaceBytes <= capture.limits.totalBytes,
+              capture.accountedBytes <= capture.limits.totalBytes - Self.workspaceBytes,
+              let workspace = capture.reserve(bytes: Self.workspaceBytes) else { return false }
+        running = true
+        worker.async { [self] in
+            let result: Result<ConversationPersistenceJournalLoadedRecord?, Error>
+            do { result = .success(try openJournal().firstRecord(matching: key)) }
+            catch { result = .failure(error) }
+            loop.execute { [self] in
+                capture.release(workspace)
+                running = false
+                completion(result)
+                let waiters = fenceWaiters
+                fenceWaiters.removeAll()
+                for waiter in waiters { waiter() }
+                drain()
+            }
+        }
+        return true
+    }
+
+    private func openJournal() throws -> ConversationPersistenceJournal {
+        if let journal { return journal }
+        guard !initializationFailed else { throw ConversationPersistenceJournalError.unavailable }
+        do {
+            let files = try ConversationPersistenceFiles(verifiedStateRootPath: root)
+            let opened = ConversationPersistenceJournal(files: files)
+            try opened.activate()
+            journal = opened
+            return opened
+        } catch {
+            initializationFailed = true
+            throw error
+        }
+    }
+
+    /// Drop queued old-authority snapshots and wait for the one filesystem
+    /// operation already executing. The caller must pause new admissions until
+    /// this completion and invalidate its capture/read/restore tickets first.
+    func fence(_ completion: @escaping () -> Void) {
+        loop.assertInEventLoop()
+        for value in pending.values { capture.release(value.reservation) }
+        pending.removeAll()
+        if running { fenceWaiters.append(completion) }
+        else { loop.execute(completion) }
     }
 
     /// The caller waits outside the event loop and imposes its own deadline.
@@ -75,19 +128,7 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
         worker.async { [self] in
             let success: Bool
             do {
-                if journal == nil {
-                    guard !initializationFailed else { throw ConversationPersistenceJournalError.unavailable }
-                    do {
-                        let files = try ConversationPersistenceFiles(verifiedStateRootPath: root)
-                        let opened = ConversationPersistenceJournal(files: files)
-                        try opened.activate()
-                        journal = opened
-                    } catch {
-                        initializationFailed = true
-                        throw error
-                    }
-                }
-                try journal!.upsert(next.record, updatedAt: next.updatedAt)
+                try openJournal().upsert(next.record, updatedAt: next.updatedAt)
                 success = true
             } catch { success = false }
             loop.execute { [self] in
@@ -96,6 +137,9 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
                 if !success { health = .degraded }
                 else if case .volatile = health { health = .healthy }
                 running = false
+                let waiters = fenceWaiters
+                fenceWaiters.removeAll()
+                for completion in waiters { completion() }
                 drain()
             }
         }
