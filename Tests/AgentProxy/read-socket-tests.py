@@ -244,12 +244,19 @@ try:
                        'routeIdentity': {'kind': 'claude', 'session': 'session', 'paneID': 'pane', 'terminalID': 'terminal', 'cliVersion': '2.1.309'},
                        'headers': [['x-claude-code-session-id', 'native'], ['x-claude-code-request-class', 'main']]})
     pressure.frame(2, {'messages': [{'role': 'user', 'content': 'pressure-input'}]}); pressure.frame(3)
-    pressure.conversation()
+    pressure_id = pressure.conversation()
     until = time.monotonic() + 10
     while pressure.query('persistence.status')['result']['mode'] != 'healthy':
         assert time.monotonic() < until, 'pressure fixture initial save deadline'
         time.sleep(.05)
-    held = [pressure.connect() for _ in range(15)]
+    for n in range(15):
+        reader = pressure.connect()
+        reader.sendall(json.dumps({'id': 'held-%d' % n, 'method': 'conversation.subscribe', 'params': {'conversationID': pressure_id}}).encode() + b'\n')
+        initial = Reader(reader).line()
+        assert initial and not initial['result']['reset'], 'workspace pressure reader handshake'
+        held.append(reader)
+    check(pressure.query('persistence.status')['result']['admittedClients'] == 16,
+          'workspace pressure has fifteen handshaken readers plus status client')
     pressure.frame(4, {'status': 200, 'headers': [['content-type', 'text/event-stream']]})
     pressure.event({'type': 'message_start', 'message': {'id': 'm', 'role': 'assistant', 'content': []}})
     pressure.event({'type': 'content_block_start', 'index': 0, 'content_block': {'type': 'text', 'text': 'pressure-only-answer'}})
@@ -372,7 +379,7 @@ large = Recorder(a.work / 'authority-large', state_directory=large_root)
 try:
     large.authority()
     old = large.query('persistence.status')['result']
-    check(old['authorityRetainedBytes'] == 16 << 20, 'applied authority remains admission-accounted')
+    check(old['authorityRetainedBytes'] == 8 << 20, 'applied authority remains admission-accounted')
     field = 'x' * 256
     big_identity = {'kind': 'claude', 'session': field, 'paneID': field, 'terminalID': field, 'cliVersion': field}
     routes = [{'routeID': 'route', 'identity': identity}] + [
@@ -381,10 +388,10 @@ try:
     until = time.monotonic() + 3
     while True:
         during = large.query('persistence.status')['result']
-        if during['authorityAssemblyBytes'] == 16 << 20: break
+        if during['authorityAssemblyBytes'] == 8 << 20: break
         assert time.monotonic() < until, 'partial assembly reservation barrier deadline'
         time.sleep(.02)
-    check(during['authorityRetainedBytes'] == 16 << 20 and during['captureReservedBytes'] >= 32 << 20,
+    check(during['authorityRetainedBytes'] == 8 << 20 and during['captureReservedBytes'] >= 16 << 20,
           'old authority and partial replacement are simultaneously reserved')
     check(not select.select([large.tee], [], [], 0)[0], 'partial snapshot sends no early ACK')
     for n in range(1, 16):
@@ -396,7 +403,7 @@ try:
         if after['captureReservedBytes'] < 40 << 20: break
         assert time.monotonic() < until, 'old authority reservation release deadline'
         time.sleep(.05)
-    check(after['authorityRetainedBytes'] == 16 << 20, 'replacement retains exactly one authority reservation')
+    check(after['authorityRetainedBytes'] == 8 << 20, 'replacement retains its bounded authority reservation')
     large.begin(wait_admission=True); large.end()
     until = time.monotonic() + 10
     while large.query('persistence.status')['result']['mode'] != 'healthy':
@@ -406,27 +413,37 @@ try:
 finally:
     check(large.stop() == 0, 'near-limit authority recorder exits')
 
-# Replacement defers rather than killing live capture while reservations are
-# held; status provides an event-loop barrier, not a cross-socket timing guess.
+# Replacement uses pre-reserved headroom while reader reservations are held.
+# First drain unrelated clients, then count all 15 held readers plus the status
+# request itself; a byte threshold alone cannot establish client admission.
 replacement_pressure = Recorder(a.work / 'authority-replacement-pressure')
 held_readers = []
 try:
-    replacement_pressure.authority(); replacement_pressure.begin(); replacement_pressure.conversation()
-    held_readers = [replacement_pressure.connect() for _ in range(15)]
+    replacement_pressure.authority(); replacement_pressure.begin(); live_id = replacement_pressure.conversation()
+    until = time.monotonic() + 3
+    while replacement_pressure.query('persistence.status')['result']['admittedClients'] != 1:
+        assert time.monotonic() < until, 'preexisting clients drained before reader barrier'
+        time.sleep(.02)
+    for n in range(15):
+        reader = replacement_pressure.connect()
+        reader.sendall(json.dumps({'id': 'held-%d' % n, 'method': 'conversation.subscribe', 'params': {'conversationID': live_id}}).encode() + b'\n')
+        initial = Reader(reader).line()
+        assert initial and not initial['result']['reset'], 'held reader admission handshake'
+        held_readers.append(reader)
     held_status = replacement_pressure.query('persistence.status')['result']
-    check(held_status['captureReservedBytes'] >= 76 << 20, 'owned reader reservations are installed before replacement')
+    check(held_status['admittedClients'] == 16, 'fifteen handshaken held readers plus status client are admitted')
     replacement_pressure.frame(9, {'generation': 2, 'index': 0, 'count': 2,
                                    'routes': [{'routeID': 'route', 'identity': identity}]}, exchange=0)
     until = time.monotonic() + 3
-    while not replacement_pressure.query('persistence.status')['result']['authorityAwaitingCapacity']:
-        assert time.monotonic() < until, 'deferred authority barrier deadline'
+    while replacement_pressure.query('persistence.status')['result']['authorityAssemblyBytes'] != 8 << 20:
+        assert time.monotonic() < until, 'reader-pressure multipart barrier'
         time.sleep(.02)
-    check(not select.select([replacement_pressure.tee], [], [], 0)[0], 'deferred authority sends no early ACK')
-    for reader in held_readers: reader.close()
-    held_readers = []
+    check(not select.select([replacement_pressure.tee], [], [], 0)[0], 'incomplete authority sends no early ACK')
     replacement_pressure.frame(9, {'generation': 2, 'index': 1, 'count': 2,
                                    'routes': [{'routeID': 'other', 'identity': identity}]}, exchange=0)
     replacement_pressure.ack(2)
+    for reader in held_readers: reader.close()
+    held_readers = []
     replacement_pressure.end()
     cid = replacement_pressure.conversation()
     captured = replacement_pressure.query('conversation.read', conversationID=cid)['result']
@@ -434,29 +451,82 @@ try:
           'unrelated deferred authority preserves the live response')
 finally:
     for reader in held_readers: reader.close()
-    check(replacement_pressure.stop() == 0, 'deferred unrelated authority exits normally')
+    check(replacement_pressure.stop() == 0, 'headroom-protected unrelated authority exits normally')
 
 revocation_pressure = Recorder(a.work / 'authority-revocation-pressure')
 held_readers = []
 try:
     revocation_pressure.authority(); revocation_pressure.begin(); old_id = revocation_pressure.conversation()
-    held_readers = [revocation_pressure.connect() for _ in range(15)]
-    check(revocation_pressure.query('persistence.status')['result']['captureReservedBytes'] >= 76 << 20,
-          'revocation fixture read reservations are installed')
-    revocation_pressure.frame(7, {'generation': 2, 'routes': []}, exchange=0)
     until = time.monotonic() + 3
-    while not revocation_pressure.query('persistence.status')['result']['authorityAwaitingCapacity']:
-        assert time.monotonic() < until, 'deferred revocation barrier deadline'
+    while revocation_pressure.query('persistence.status')['result']['admittedClients'] != 1:
+        assert time.monotonic() < until, 'revocation preexisting clients drained'
         time.sleep(.02)
-    check(not select.select([revocation_pressure.tee], [], [], 0)[0], 'revocation cannot ACK while replacement is deferred')
+    for n in range(15):
+        reader = revocation_pressure.connect()
+        reader.sendall(json.dumps({'id': 'held-%d' % n, 'method': 'conversation.subscribe', 'params': {'conversationID': old_id}}).encode() + b'\n')
+        initial = Reader(reader).line()
+        assert initial and not initial['result']['reset'], 'revocation held reader handshake'
+        held_readers.append(reader)
+    check(revocation_pressure.query('persistence.status')['result']['admittedClients'] == 16,
+          'revocation fixture has fifteen handshaken readers plus status client')
+    revocation_pressure.frame(7, {'generation': 2, 'routes': []}, exchange=0)
+    revocation_pressure.ack(2)
     for reader in held_readers: reader.close()
     held_readers = []
-    revocation_pressure.ack(2)
     check(not revocation_pressure.query('conversations.list')['result']['conversations'], 'revocation ACK fences old live capture')
     check(revocation_pressure.query('conversation.read', conversationID=old_id)['result']['reset'], 'old read ticket fails after deferred revocation ACK')
 finally:
     for reader in held_readers: reader.close()
-    check(revocation_pressure.stop() == 0, 'deferred revocation exits normally')
+    check(revocation_pressure.stop() == 0, 'headroom-protected revocation exits normally')
+
+# Five live exchanges consume 80 MiB. Queue the authority snapshot and then
+# their completion frames on the same tee stream: the reader must not wait on
+# those post-snapshot frames to make replacement capacity available.
+def five_open_snapshot(name, revoke):
+    child = Recorder(a.work / name)
+    try:
+        child.authority()
+        for n in range(1, 6):
+            child.frame(1, {'routeID': 'route', 'upstream': 'anthropic', 'method': 'POST', 'path': '/v1/messages',
+                            'routeIdentity': identity,
+                            'headers': [['x-claude-code-session-id', 'five-%d' % n], ['x-claude-code-request-class', 'main']]}, exchange=n)
+        new_routes = [] if revoke else [{'routeID': 'route', 'identity': identity}, {'routeID': 'other', 'identity': identity}]
+        child.frame(7, {'generation': 2, 'routes': new_routes}, exchange=0)
+        for n in range(1, 6):
+            child.frame(2, {'messages': [{'role': 'user', 'content': 'owned-%d' % n}]}, exchange=n)
+            child.frame(3, exchange=n)
+            child.frame(4, {'status': 200, 'headers': [['content-type', 'text/event-stream']]}, exchange=n)
+            child.event({'type': 'message_start', 'message': {'id': 'm-%d' % n, 'role': 'assistant', 'content': []}}, exchange=n)
+            child.event({'type': 'content_block_start', 'index': 0, 'content_block': {'type': 'text', 'text': 'reply-%d' % n}}, exchange=n)
+            child.event({'type': 'content_block_stop', 'index': 0}, exchange=n)
+            child.event({'type': 'message_stop'}, exchange=n)
+            child.frame(6, {'outcome': 'complete'}, exchange=n)
+        # A subsequent acknowledged snapshot is an ordered tee-stream barrier
+        # proving the five completion sequences were consumed before queries.
+        child.frame(7, {'generation': 3, 'routes': new_routes}, exchange=0)
+        child.ack(2); child.ack(3)
+        until = time.monotonic() + 5
+        while True:
+            entries = child.query('conversations.list')['result']['conversations']
+            if revoke or len(entries) == 5: break
+            assert time.monotonic() < until, 'five queued exchanges completed deadline'
+            time.sleep(.02)
+        if revoke:
+            check(not entries, 'revocation ACK rejects post-snapshot old-exchange completions')
+        else:
+            check(len(entries) == 5, 'unrelated snapshot allows all five queued exchanges to complete')
+            for entry in entries:
+                until = time.monotonic() + 5
+                while True:
+                    page = child.query('conversation.read', conversationID=entry['id'])['result']
+                    if any(block.get('text', '').startswith('reply-') for item in page['items'] for block in item['blocks']): break
+                    assert time.monotonic() < until, 'queued response completion deadline'
+                    time.sleep(.02)
+                check(True, 'each owned post-snapshot response survived')
+    finally:
+        check(child.stop() == 0, 'five-exchange headroom recorder exits')
+five_open_snapshot('authority-five-unrelated', False)
+five_open_snapshot('authority-five-revocation', True)
 
 partial_eof = Recorder(a.work / 'authority-partial-eof')
 try:
@@ -475,6 +545,14 @@ try:
     check(truncated.tee.recv(1) == b'', 'truncated frame sends no ACK')
 finally:
     truncated.stop()
+
+oversized_frame = Recorder(a.work / 'authority-oversized-frame')
+try:
+    oversized_frame.tee.sendall(struct.pack('>I', (1 << 20) + 10))
+    check(oversized_frame.wait() == 3, 'oversized framed payload fails closed before buffering')
+    check(oversized_frame.tee.recv(1) == b'', 'oversized frame sends no ACK')
+finally:
+    oversized_frame.stop()
 
 oversized_field = Recorder(a.work / 'authority-oversized-field')
 try:

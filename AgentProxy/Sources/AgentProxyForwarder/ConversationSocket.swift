@@ -141,10 +141,15 @@ private final class ReadState: @unchecked Sendable {
     private var ticker: RepeatedTask?
     private var authorityGeneration: UInt64 = 0
     private var authority: [Data: AgentProxyRouteCreate] = [:]
-    // Covers retained identities and byte-exact dictionary keys for the whole
-    // snapshot lifetime. This is admission accounting, not an RSS guarantee.
+    // Two tokens cover the retained table and one replacement. They remain
+    // reserved even while no replacement is active, so ordinary work cannot
+    // consume authority headroom. This is accounting, not an RSS guarantee.
     private var authorityReservation: UUID?
-    static let authorityWorkspaceBytes = 16 << 20
+    private var authorityReplacementReservation: UUID?
+    // 1,024 routes with five <=256-byte strings, dictionary keys and one
+    // bounded decoded frame fit the conservative admission workspace; the
+    // independent fixed capture budget covers tee framing and decoder bytes.
+    static let authorityWorkspaceBytes = 8 << 20
     var authorityAwaitingCapacity = false
     var authorityAssemblyBytes = 0
     private var persistence: ConversationPersistenceCoordinator?
@@ -158,6 +163,12 @@ private final class ReadState: @unchecked Sendable {
     private var retryCursor: String?
     init(loop: EventLoop, stateDirectory: String?) {
         self.loop = loop
+        guard let current = capture.reserve(bytes: Self.authorityWorkspaceBytes),
+              let replacement = capture.reserve(bytes: Self.authorityWorkspaceBytes) else {
+            preconditionFailure("recorder authority headroom unavailable at initialization")
+        }
+        authorityReservation = current
+        authorityReplacementReservation = replacement
         if let stateDirectory {
             persistence = ConversationPersistenceCoordinator(root: stateDirectory, loop: loop, capture: capture)
             capture.onMainAdmission = { [weak self] owner, current, live, resume, cancel in
@@ -235,6 +246,7 @@ private final class ReadState: @unchecked Sendable {
         let captureReservedBytes: Int
         let authorityAwaitingCapacity: Bool
         let authorityAssemblyBytes: Int
+        let admittedClients: Int
     }
 
     func persistenceStatus() -> PersistenceStatus {
@@ -251,7 +263,8 @@ private final class ReadState: @unchecked Sendable {
                                  authorityRetainedBytes: authorityReservation == nil ? 0 : Self.authorityWorkspaceBytes,
                                  captureReservedBytes: capture.reservedBytes,
                                  authorityAwaitingCapacity: authorityAwaitingCapacity,
-                                 authorityAssemblyBytes: authorityAssemblyBytes)
+                                 authorityAssemblyBytes: authorityAssemblyBytes,
+                                 admittedClients: clients.count)
     }
 
     /// Retry one blocked live key per interval. Only a no-record result can
@@ -326,9 +339,9 @@ private final class ReadState: @unchecked Sendable {
     /// Authority arrives only on the inherited supervisor stream. The input
     /// stream's order fences old tee frames before each replacement snapshot.
     func reserveAuthority() -> UUID? {
-        let bytes = Self.authorityWorkspaceBytes
-        guard bytes <= capture.limits.totalBytes, capture.accountedBytes <= capture.limits.totalBytes - bytes else { return nil }
-        return capture.reserve(bytes: bytes)
+        let reservation = authorityReplacementReservation
+        authorityReplacementReservation = nil
+        return reservation
     }
 
     func acceptAuthority(_ frame: AgentProxyTeeFrame.Frame, reservation: UUID) -> UInt64? {
@@ -376,7 +389,7 @@ private final class ReadState: @unchecked Sendable {
         authority = next
         let previousReservation = authorityReservation
         authorityReservation = reservation
-        if let previousReservation { capture.release(previousReservation) }
+        authorityReplacementReservation = previousReservation
         authorityGeneration = snapshot.generation
         return snapshot.generation
     }
@@ -436,6 +449,7 @@ private final class ReadState: @unchecked Sendable {
         for client in Array(clients.values) { client.channel.close(promise: nil) }
         authority.removeAll()
         if let reservation = authorityReservation { capture.release(reservation); authorityReservation = nil }
+        if let reservation = authorityReplacementReservation { capture.release(reservation); authorityReplacementReservation = nil }
         persistence?.fence({})
         persistence?.resumeAfterAuthority()
     }
@@ -445,6 +459,7 @@ private final class ReadState: @unchecked Sendable {
         capture.finishAll(); scheduleChangedRecords()
         authority.removeAll()
         if let reservation = authorityReservation { capture.release(reservation); authorityReservation = nil }
+        if let reservation = authorityReplacementReservation { capture.release(reservation); authorityReplacementReservation = nil }
         for client in Array(clients.values) { client.channel.close(promise: nil) }
         return persistence?.finishWhenIdle()
     }
@@ -472,6 +487,11 @@ private final class TeeInput: ChannelInboundHandler {
     init(_ state: ReadState) { self.state = state }
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         decoder.append(unwrapInboundIn(data).readableBytesView)
+        // One maximum frame plus one fixed-size socket read. This covers a
+        // deferred frame and pipelined bytes without unbounded framing storage.
+        guard decoder.bufferedByteCount <= AgentProxyTeeFrame.maximumPayloadBytes + AgentProxyTeeFrame.headerBytes + (64 << 10) else {
+            state.exitCode = 3; context.close(promise: nil); return
+        }
         process(context: context)
     }
     private func deferAuthority(_ frame: AgentProxyTeeFrame.Frame, context: ChannelHandlerContext) {
