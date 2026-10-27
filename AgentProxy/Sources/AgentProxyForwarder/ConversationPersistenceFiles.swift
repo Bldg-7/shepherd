@@ -106,6 +106,7 @@ struct ConversationPersistenceFilesTestControl {
 final class ConversationPersistenceFiles {
     static let maximumRecordBytes = 32 << 20
     static let maximumIndexBytes = 1 << 20
+    static let maximumPhysicalRecords = 1_024
 
     private static let conversationsName = "Conversations"
     private static let recordsName = "records"
@@ -284,10 +285,16 @@ final class ConversationPersistenceFiles {
             }
             let descriptor = Darwin.openat(recordsFD, name, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
             guard descriptor >= 0 else { throw ConversationPersistenceFilesError.unsafeObject }
-            defer { Darwin.close(descriptor) }
-            let info = try Self.verifyFileBinding(named: name, in: recordsFD, descriptor: descriptor,
+            let info: stat
+            do {
+                info = try Self.verifyFileBinding(named: name, in: recordsFD, descriptor: descriptor,
                                                   maximumBytes: Self.maximumRecordBytes, exactSize: nil)
-            guard entries.count < 256 else { throw ConversationPersistenceFilesError.tooLarge }
+            } catch {
+                Darwin.close(descriptor)
+                throw error
+            }
+            Darwin.close(descriptor)
+            guard entries.count < Self.maximumPhysicalRecords else { throw ConversationPersistenceFilesError.tooLarge }
             entries.append(.init(generation: generation, bytes: Int(info.st_size)))
         }
         return entries

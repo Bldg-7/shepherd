@@ -58,6 +58,7 @@ final class ConversationPersistenceJournal {
         }
 
         mutating func check() throws {
+            guard String(bytes: bytes, encoding: .utf8) != nil else { throw ConversationPersistenceJournalError.unavailable }
             try value(depth: 0)
             whitespace()
             guard offset == bytes.count else { throw ConversationPersistenceJournalError.unavailable }
@@ -318,21 +319,39 @@ final class ConversationPersistenceJournal {
     private let files: ConversationPersistenceFiles
     private let now: () -> Date
     private(set) var lastMaintenance: ConversationPersistenceJournalMaintenance = .none
+    private(set) var maintenanceTransactions: [ConversationPersistenceJournalMaintenance] = []
+    private let recordLimit: Int
+    private let diskLimit: Int
 
-    init(files: ConversationPersistenceFiles, now: @escaping () -> Date = Date.init) {
+    init(files: ConversationPersistenceFiles, now: @escaping () -> Date = Date.init,
+         testingRecordLimit: Int = ConversationPersistenceJournal.maximumRecords,
+         testingDiskLimit: Int = ConversationPersistenceJournal.maximumDiskBytes) {
         self.files = files
         self.now = now
+        self.recordLimit = max(1, min(testingRecordLimit, Self.maximumRecords))
+        self.diskLimit = max(1, min(testingDiskLimit, Self.maximumDiskBytes))
+    }
+
+    private func resetMaintenance() {
+        lastMaintenance = .none
+        maintenanceTransactions = []
+    }
+
+    private func updateMaintenance(_ value: ConversationPersistenceJournalMaintenance, transaction: Int) {
+        lastMaintenance = value
+        if transaction == maintenanceTransactions.count { maintenanceTransactions.append(value) }
+        else { maintenanceTransactions[transaction] = value }
     }
 
     /// The unwired owner must call this on activation; use methods also sweep.
     func activate() throws {
-        lastMaintenance = .none
+        resetMaintenance()
         _ = try preparedIndex()
     }
 
     /// Missing storage is distinct from an existing malformed/future index.
     func metadata() throws -> [ConversationPersistenceJournalMetadata] {
-        lastMaintenance = .none
+        resetMaintenance()
         let (index, _) = try preparedIndex()
         return try index.records.map(metadata)
     }
@@ -341,7 +360,7 @@ final class ConversationPersistenceJournal {
     /// the Core admission/restore contract; no route authority, epoch, cursor,
     /// ticket, or owner is manufactured here.
     func load(_ metadata: ConversationPersistenceJournalMetadata) throws -> ConversationPersistenceJournalLoadedRecord {
-        lastMaintenance = .none
+        resetMaintenance()
         let (index, _) = try preparedIndex()
         guard let entry = index.records.first(where: { entry in
             entry.generation == metadata.generation.value && entry.recordID == metadata.recordID && entry.encodedBytes == metadata.encodedBytes
@@ -355,17 +374,23 @@ final class ConversationPersistenceJournal {
     }
 
     /// Writes an immutable opaque generation and then publishes the small index.
-    /// Age maintenance runs first; capacity/orphan reclamation still refuses.
+    /// Age maintenance runs first; unreferenced orphan reclamation still refuses.
     @discardableResult
     func upsert(_ record: ConversationStore.PersistentSnapshot.Record, updatedAt: Date) throws -> ConversationPersistenceJournalMetadata {
-        lastMaintenance = .none
+        resetMaintenance()
         let milliseconds = try checkedMilliseconds(updatedAt)
         guard !isExpired(milliseconds, at: try currentMilliseconds()) else { throw ConversationPersistenceJournalError.unavailable }
         let bytes = try encodeOneRecord(record)
-        let (existingIndex, inventory) = try preparedIndex()
-
         let recordID = Data(record.id.utf8)
         guard !recordID.isEmpty, recordID.count <= 1_024 else { throw ConversationPersistenceJournalError.invalidRecord }
+        let generation = ConversationPersistenceGeneration.make()
+        let incoming = Index.Entry(generation: generation.value, recordID: recordID, updatedMilliseconds: milliseconds, encodedBytes: bytes.count)
+        // Measure the incoming proposal before age maintenance can write.
+        let beforeMaintenance = try currentIndex()
+        let preliminary = Index(records: beforeMaintenance.records.filter { $0.recordID != recordID } + [incoming])
+        do { _ = try JSONEncoder().encode(preliminary) }
+        catch { throw ConversationPersistenceJournalError.unavailable }
+        var (existingIndex, inventory) = try preparedIndex()
         if let old = existingIndex.records.first(where: { $0.recordID == recordID }) {
             guard let generation = ConversationPersistenceGeneration(serialized: old.generation) else { throw ConversationPersistenceJournalError.unavailable }
             let oldBytes: Data
@@ -374,12 +399,30 @@ final class ConversationPersistenceJournal {
             guard oldBytes.count == old.encodedBytes else { throw ConversationPersistenceJournalError.unavailable }
             _ = try decodeOneRecord(oldBytes, expectedID: old.recordID)
         }
-        var next = existingIndex.records.filter { $0.recordID != recordID }
-        guard next.count < Self.maximumRecords, inventory.count < Self.maximumRecords else {
-            throw ConversationPersistenceJournalError.capacity
+        var selected: [Index.Entry] = []
+        let candidates = existingIndex.records.filter { $0.recordID != recordID }.sorted(by: older)
+        var next: [Index.Entry] = []
+        while true {
+            let removed = Set(selected.map(\.generation))
+            next = existingIndex.records.filter { $0.recordID != recordID && !removed.contains($0.generation) }
+            next.append(incoming)
+            let proposed: Data
+            do { proposed = try JSONEncoder().encode(Index(records: next)) }
+            catch { throw ConversationPersistenceJournalError.unavailable }
+            let remainingFiles = inventory.filter { !removed.contains($0.generation.value) }
+            let currentBytes = try existingIndexBytes()
+            let feasible = next.count <= recordLimit && remainingFiles.count < ConversationPersistenceFiles.maximumPhysicalRecords &&
+                proposed.count <= ConversationPersistenceFiles.maximumIndexBytes &&
+                (try? checkedSum(remainingFiles.map(\.bytes) + [currentBytes, bytes.count, proposed.count, ConversationPersistenceFiles.maximumIndexBytes])) != nil
+            if feasible { break }
+            guard selected.count < candidates.count else { throw ConversationPersistenceJournalError.capacity }
+            let victim = candidates[selected.count]
+            guard !older(incoming, victim) else { throw ConversationPersistenceJournalError.capacity }
+            selected.append(victim)
         }
-        let generation = ConversationPersistenceGeneration.make()
-        next.append(.init(generation: generation.value, recordID: recordID, updatedMilliseconds: milliseconds, encodedBytes: bytes.count))
+        if !selected.isEmpty {
+            (existingIndex, inventory) = try retire(selected, from: existingIndex, inventory: inventory)
+        }
         let result = try metadata(next.last!)
         let nextIndex = Index(records: next)
         let nextIndexBytes: Data
@@ -395,7 +438,7 @@ final class ConversationPersistenceJournal {
         let currentIndexBytes = try existingIndexBytes()
         let used = try checkedSum(inventory.map(\.bytes) + [currentIndexBytes, bytes.count, nextIndexBytes.count,
                                                            ConversationPersistenceFiles.maximumIndexBytes])
-        guard used <= Self.maximumDiskBytes else { throw ConversationPersistenceJournalError.capacity }
+        guard used <= diskLimit else { throw ConversationPersistenceJournalError.capacity }
         // A record failure, including uncertain record durability, cannot mean
         // the index commit point was crossed. An orphan may remain.
         do { _ = try files.writeRecord(bytes, generation: generation) }
@@ -413,13 +456,25 @@ final class ConversationPersistenceJournal {
     private func preparedIndex() throws -> (Index, [ConversationPersistenceRecordFile]) {
         let present = try currentMilliseconds()
         let index = try currentIndex()
-        var inventory = try recordInventory()
+        let inventory = try recordInventory()
         try validate(index: index, inventory: inventory)
         let expired = index.records.filter { isExpired($0.updatedMilliseconds, at: present) }
         guard !expired.isEmpty else { return (index, inventory) }
+        return try retire(expired, from: index, inventory: inventory)
+    }
 
+    private func older(_ lhs: Index.Entry, _ rhs: Index.Entry) -> Bool {
+        if lhs.updatedMilliseconds != rhs.updatedMilliseconds { return lhs.updatedMilliseconds < rhs.updatedMilliseconds }
+        if lhs.recordID != rhs.recordID { return lhs.recordID.lexicographicallyPrecedes(rhs.recordID) }
+        return lhs.generation.utf8.lexicographicallyPrecedes(rhs.generation.utf8)
+    }
+
+    private func retire(_ victims: [Index.Entry], from index: Index,
+                        inventory initialInventory: [ConversationPersistenceRecordFile]) throws -> (Index, [ConversationPersistenceRecordFile]) {
+        var inventory = initialInventory
+        let transaction = maintenanceTransactions.count
         var tickets: [ConversationPersistenceRecordDeletionTicket] = []
-        for entry in expired {
+        for entry in victims {
             guard let generation = ConversationPersistenceGeneration(serialized: entry.generation) else {
                 throw ConversationPersistenceJournalError.unavailable
             }
@@ -433,8 +488,8 @@ final class ConversationPersistenceJournal {
             catch { throw ConversationPersistenceJournalError.unavailable }
             tickets.append(ticket)
         }
-        let expiredGenerations = Set(expired.map(\.generation))
-        let next = Index(records: index.records.filter { !expiredGenerations.contains($0.generation) })
+        let victimGenerations = Set(victims.map(\.generation))
+        let next = Index(records: index.records.filter { !victimGenerations.contains($0.generation) })
         let nextBytes: Data
         do { nextBytes = try JSONEncoder().encode(next) }
         catch { throw ConversationPersistenceJournalError.unavailable }
@@ -443,22 +498,22 @@ final class ConversationPersistenceJournal {
         _ = try checkedSum(inventory.map(\.bytes) + [currentBytes, nextBytes.count, ConversationPersistenceFiles.maximumIndexBytes])
         do { try files.writeIndex(nextBytes) }
         catch ConversationPersistenceFilesError.committedButDurabilityUncertain {
-            lastMaintenance = .indexDurabilityUncertain
+            updateMaintenance(.indexDurabilityUncertain, transaction: transaction)
             throw ConversationPersistenceJournalError.indexCommittedButDurabilityUncertain
         } catch { throw ConversationPersistenceJournalError.unavailable }
 
         var completed = 0
-        lastMaintenance = .committed(removed: tickets.count, cleanupCompleted: completed, cleanupDurabilityUncertain: false)
+        updateMaintenance(.committed(removed: tickets.count, cleanupCompleted: completed, cleanupDurabilityUncertain: false), transaction: transaction)
         for ticket in tickets {
             do { try files.removeValidatedRecord(ticket) }
             catch ConversationPersistenceFilesError.committedButDurabilityUncertain {
-                lastMaintenance = .committed(removed: tickets.count, cleanupCompleted: completed, cleanupDurabilityUncertain: true)
+                updateMaintenance(.committed(removed: tickets.count, cleanupCompleted: completed, cleanupDurabilityUncertain: true), transaction: transaction)
                 throw ConversationPersistenceJournalError.retentionCommittedCleanupFailed
             } catch {
                 throw ConversationPersistenceJournalError.retentionCommittedCleanupFailed
             }
             completed += 1
-            lastMaintenance = .committed(removed: tickets.count, cleanupCompleted: completed, cleanupDurabilityUncertain: false)
+            updateMaintenance(.committed(removed: tickets.count, cleanupCompleted: completed, cleanupDurabilityUncertain: false), transaction: transaction)
         }
         // Fresh inventory ensures retained orphan bytes remain in write budgets.
         do {
@@ -584,7 +639,7 @@ final class ConversationPersistenceJournal {
     private func checkedSum(_ values: [Int]) throws -> Int {
         var total = 0
         for value in values {
-            guard value >= 0, total <= Self.maximumDiskBytes - value else { throw ConversationPersistenceJournalError.capacity }
+            guard value >= 0, value <= diskLimit, total <= diskLimit - value else { throw ConversationPersistenceJournalError.capacity }
             total += value
         }
         return total
