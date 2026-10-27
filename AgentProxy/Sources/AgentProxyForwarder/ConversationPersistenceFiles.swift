@@ -11,6 +11,8 @@ enum ConversationPersistenceFilesError: Error, Equatable {
     case lockUnavailable
     case tooLarge
     case ioFailure
+    /// No temporary inode was created and no publication was attempted.
+    case retryableBeforeTemporaryCreation(Int32)
     /// The rename completed but syncing its parent directory did not. The new
     /// bytes may be visible, but their durability across a crash is unknown.
     case committedButDurabilityUncertain
@@ -94,16 +96,19 @@ struct ConversationPersistenceFilesTestControl {
     let fault: ConversationPersistenceFilesTestFault?
     let indexFault: ConversationPersistenceIndexTestFault?
     let event: ((ConversationPersistenceFilesTestEvent) -> Void)?
+    let temporaryCreateError: (() -> Int32?)?
 
     init(temporaryUUID: UUID? = nil, recordUUID: UUID? = nil,
          fault: ConversationPersistenceFilesTestFault? = nil,
          indexFault: ConversationPersistenceIndexTestFault? = nil,
-         event: ((ConversationPersistenceFilesTestEvent) -> Void)? = nil) {
+         event: ((ConversationPersistenceFilesTestEvent) -> Void)? = nil,
+         temporaryCreateError: (() -> Int32?)? = nil) {
         self.temporaryUUID = temporaryUUID
         self.recordUUID = recordUUID
         self.fault = fault
         self.indexFault = indexFault
         self.event = event
+        self.temporaryCreateError = temporaryCreateError
     }
 }
 
@@ -399,9 +404,12 @@ final class ConversationPersistenceFiles {
             if temporaryFD >= 0 { Darwin.close(temporaryFD) }
         }
 
+        if let injected = testControl?.temporaryCreateError?() {
+            throw Self.temporaryCreateFailure(injected)
+        }
         temporaryFD = Darwin.openat(directoryFD, temporaryName,
                                     O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
-        guard temporaryFD >= 0 else { throw ConversationPersistenceFilesError.ioFailure }
+        guard temporaryFD >= 0 else { throw Self.temporaryCreateFailure(errno) }
         // Arm identity-matched cleanup immediately after exclusive creation.
         // fchmod may fail, and a later pathname substitution must still never
         // be unlinked merely because this operation created an earlier inode.
@@ -448,6 +456,11 @@ final class ConversationPersistenceFiles {
         guard fsync(directoryFD) == 0 else {
             throw ConversationPersistenceFilesError.committedButDurabilityUncertain
         }
+    }
+
+    private static func temporaryCreateFailure(_ code: Int32) -> ConversationPersistenceFilesError {
+        if code == ENOSPC || code == EDQUOT || code == EIO { return .retryableBeforeTemporaryCreation(code) }
+        return .ioFailure
     }
 
     private func readFile(named name: String, in directoryFD: Int32, maximumBytes: Int) throws -> Data? {

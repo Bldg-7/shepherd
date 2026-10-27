@@ -9,6 +9,7 @@ enum ConversationPersistenceJournalError: Error, Equatable {
     case capacity
     case invalidRecord
     /// Index rename crossed the commit point, but its durability is uncertain.
+    case recordCommittedButDurabilityUncertain
     case indexCommittedButDurabilityUncertain
     /// A retention index was durable, but one or more physical removals failed.
     case retentionCommittedCleanupFailed
@@ -19,6 +20,12 @@ enum ConversationPersistenceJournalMaintenance: Equatable {
     case indexDurabilityUncertain
     case committed(removed: Int, cleanupCompleted: Int, cleanupDurabilityUncertain: Bool)
     case recovered(completed: Int, cleanupDurabilityUncertain: Bool)
+}
+
+enum ConversationPersistenceJournalHealth: Equatable {
+    case healthy
+    /// Uptime-based deadline; process-local, never persisted.
+    case degraded(retryAfter: TimeInterval)
 }
 
 struct ConversationPersistenceJournalMetadata: Equatable {
@@ -323,14 +330,18 @@ final class ConversationPersistenceJournal {
     private(set) var maintenanceTransactions: [ConversationPersistenceJournalMaintenance] = []
     private let recordLimit: Int
     private let diskLimit: Int
+    private let monotonicNow: () -> TimeInterval
+    private(set) var health: ConversationPersistenceJournalHealth = .healthy
 
     init(files: ConversationPersistenceFiles, now: @escaping () -> Date = Date.init,
          testingRecordLimit: Int = ConversationPersistenceJournal.maximumRecords,
-         testingDiskLimit: Int = ConversationPersistenceJournal.maximumDiskBytes) {
+         testingDiskLimit: Int = ConversationPersistenceJournal.maximumDiskBytes,
+         monotonicNow: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
         self.files = files
         self.now = now
         self.recordLimit = max(1, min(testingRecordLimit, Self.maximumRecords))
         self.diskLimit = max(1, min(testingDiskLimit, Self.maximumDiskBytes))
+        self.monotonicNow = monotonicNow
     }
 
     private func resetMaintenance() {
@@ -347,7 +358,8 @@ final class ConversationPersistenceJournal {
     /// The unwired owner must call this on activation; use methods also sweep.
     func activate() throws {
         resetMaintenance()
-        _ = try preparedIndex()
+        let (index, inventory) = try preparedIndex()
+        _ = try recoverUnreferenced(index: index, inventory: inventory)
     }
 
     /// Missing storage is distinct from an existing malformed/future index.
@@ -375,10 +387,16 @@ final class ConversationPersistenceJournal {
     }
 
     /// Writes an immutable opaque generation and then publishes the small index.
-    /// Age maintenance runs first; unreferenced orphan reclamation still refuses.
+    /// Age maintenance and supported orphan recovery run first.
     @discardableResult
     func upsert(_ record: ConversationStore.PersistentSnapshot.Record, updatedAt: Date) throws -> ConversationPersistenceJournalMetadata {
         resetMaintenance()
+        let uptime = monotonicNow()
+        guard uptime.isFinite, uptime >= 0 else { throw ConversationPersistenceJournalError.unavailable }
+        if case .degraded(let retryAfter) = health {
+            guard uptime >= retryAfter else { throw ConversationPersistenceJournalError.unavailable }
+            health = .healthy
+        }
         let milliseconds = try checkedMilliseconds(updatedAt)
         guard !isExpired(milliseconds, at: try currentMilliseconds()) else { throw ConversationPersistenceJournalError.unavailable }
         let bytes = try encodeOneRecord(record)
@@ -392,6 +410,7 @@ final class ConversationPersistenceJournal {
         do { _ = try JSONEncoder().encode(preliminary) }
         catch { throw ConversationPersistenceJournalError.unavailable }
         var (existingIndex, inventory) = try preparedIndex()
+        inventory = try recoverUnreferenced(index: existingIndex, inventory: inventory)
         if let old = existingIndex.records.first(where: { $0.recordID == recordID }) {
             guard let generation = ConversationPersistenceGeneration(serialized: old.generation) else { throw ConversationPersistenceJournalError.unavailable }
             let oldBytes: Data
@@ -399,6 +418,8 @@ final class ConversationPersistenceJournal {
             catch { throw ConversationPersistenceJournalError.unavailable }
             guard oldBytes.count == old.encodedBytes else { throw ConversationPersistenceJournalError.unavailable }
             _ = try decodeOneRecord(oldBytes, expectedID: old.recordID)
+            do { _ = try JSONDecoder().decode(DeletionSchema.self, from: oldBytes) }
+            catch { throw ConversationPersistenceJournalError.unavailable }
         }
         var selected: [Index.Entry] = []
         var attemptedRecovery = false
@@ -446,15 +467,54 @@ final class ConversationPersistenceJournal {
         let used = try checkedSum(inventory.map(\.bytes) + [currentIndexBytes, bytes.count, nextIndexBytes.count,
                                                            ConversationPersistenceFiles.maximumIndexBytes])
         guard used <= diskLimit else { throw ConversationPersistenceJournalError.capacity }
-        // A record failure, including uncertain record durability, cannot mean
-        // the index commit point was crossed. An orphan may remain.
-        do { _ = try files.writeRecord(bytes, generation: generation) }
+        do {
+            try publishWithOneRetry(pending: nil, recordBytes: bytes.count, indexBytes: nextIndexBytes.count) {
+                _ = try files.writeRecord(bytes, generation: generation)
+            }
+        } catch ConversationPersistenceFilesError.committedButDurabilityUncertain {
+            throw ConversationPersistenceJournalError.recordCommittedButDurabilityUncertain
+        } catch let error as ConversationPersistenceJournalError { throw error }
         catch { throw ConversationPersistenceJournalError.unavailable }
-        do { try files.writeIndex(nextIndexBytes) }
-        catch ConversationPersistenceFilesError.committedButDurabilityUncertain {
+        do {
+            try publishWithOneRetry(pending: generation, recordBytes: 0, indexBytes: nextIndexBytes.count) {
+                try files.writeIndex(nextIndexBytes)
+            }
+        } catch ConversationPersistenceFilesError.committedButDurabilityUncertain {
             throw ConversationPersistenceJournalError.indexCommittedButDurabilityUncertain
-        } catch { throw ConversationPersistenceJournalError.unavailable }
+        } catch let error as ConversationPersistenceJournalError { throw error }
+        catch { throw ConversationPersistenceJournalError.unavailable }
         return result
+    }
+
+    /// Only failure before exclusive temporary creation is retryable. A fresh
+    /// validated index/inventory and budget precede the one additional attempt.
+    /// The already-published pending record is never classified as an orphan.
+    private func publishWithOneRetry(pending: ConversationPersistenceGeneration?, recordBytes: Int,
+                                     indexBytes: Int, publish: () throws -> Void) throws {
+        do { try publish(); return }
+        catch ConversationPersistenceFilesError.retryableBeforeTemporaryCreation(_) { }
+        let index = try currentIndex()
+        var inventory = try recordInventory()
+        try validate(index: index, inventory: inventory)
+        if let pending, !inventory.contains(where: { $0.generation == pending }) {
+            throw ConversationPersistenceJournalError.unavailable
+        }
+        inventory = try recoverUnreferenced(index: index, inventory: inventory, protected: pending)
+        let currentBytes = try existingIndexBytes()
+        _ = try checkedSum(inventory.map(\.bytes) + [currentBytes, recordBytes, indexBytes, ConversationPersistenceFiles.maximumIndexBytes])
+        if pending == nil && inventory.count >= ConversationPersistenceFiles.maximumPhysicalRecords {
+            throw ConversationPersistenceJournalError.capacity
+        }
+        do { try publish() }
+        catch ConversationPersistenceFilesError.retryableBeforeTemporaryCreation(_) {
+            let time = monotonicNow()
+            if time.isFinite && time >= 0 && time <= TimeInterval.greatestFiniteMagnitude - 5 {
+                health = .degraded(retryAfter: time + 5)
+            } else {
+                health = .degraded(retryAfter: TimeInterval.greatestFiniteMagnitude)
+            }
+            throw ConversationPersistenceJournalError.unavailable
+        }
     }
 
     /// All candidate bodies are validated before the single index transaction.
@@ -536,14 +596,15 @@ final class ConversationPersistenceJournal {
 
     /// Recovery is conservative: only an existing supported index authorizes
     /// orphan decisions. Unsupported bodies are preserved and remain budgeted.
-    private func recoverUnreferenced(index: Index, inventory: [ConversationPersistenceRecordFile]) throws -> [ConversationPersistenceRecordFile] {
+    private func recoverUnreferenced(index: Index, inventory: [ConversationPersistenceRecordFile],
+                                     protected: ConversationPersistenceGeneration? = nil) throws -> [ConversationPersistenceRecordFile] {
         guard try existingIndexBytes() > 0 else { return inventory }
         let temporary: [ConversationPersistenceEmptyTemporaryTicket]
         do { temporary = try files.emptyTemporaryTickets() }
         catch { throw ConversationPersistenceJournalError.unavailable }
         let referenced = Set(index.records.map(\.generation))
         var tickets: [ConversationPersistenceRecordDeletionTicket] = []
-        for file in inventory where !referenced.contains(file.generation.value) {
+        for file in inventory where !referenced.contains(file.generation.value) && file.generation != protected {
             let checked: (Data, ConversationPersistenceRecordDeletionTicket)
             do { checked = try files.readRecordForDeletion(file.generation) }
             catch { throw ConversationPersistenceJournalError.unavailable }
