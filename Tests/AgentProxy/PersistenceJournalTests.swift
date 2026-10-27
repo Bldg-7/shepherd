@@ -362,6 +362,13 @@ struct PersistenceJournalTests {
                 guard persisted.int64Value == millis else { throw Failure() }
             }
             dateClock = clock
+            // Reset the synthetic index before testing increasing rounded times;
+            // the preceding 999ms sample is now correctly newer than 123ms.
+            var reset = try JSONSerialization.jsonObject(with: files.readIndex()!) as! [String: Any]
+            var resetEntries = reset["records"] as! [[String: Any]]
+            resetEntries[0]["updatedMilliseconds"] = Int64(1_700_000_000_000)
+            reset["records"] = resetEntries
+            try files.writeIndex(JSONSerialization.data(withJSONObject: reset))
             for (seconds, expected) in [(1_700_000_000.1234, Int64(1_700_000_000_123)), (1_700_000_000.1238, Int64(1_700_000_000_124))] {
                 _ = try journal.upsert(record, updatedAt: Date(timeIntervalSince1970: seconds))
                 let object = try JSONSerialization.jsonObject(with: files.readIndex()!) as! [String: Any]
@@ -436,6 +443,54 @@ struct PersistenceJournalTests {
             guard remaining.count == 2, remaining.contains(where: { $0.generation == a.generation }),
                   !remaining.contains(where: { $0.generation == b.generation }),
                   !(try files.inventoryRecords()).contains(where: { $0.generation == b.generation }) else { throw Failure() }
+        }
+        // A stale byte-exact same-ID replacement must not even recover a
+        // supported orphan before refusing; a newer update still succeeds.
+        do {
+            let path = try root("same-id-freshness")
+            let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+            let journal = ConversationPersistenceJournal(files: files, now: { clock })
+            let saved = try journal.upsert(record, updatedAt: clock.addingTimeInterval(-1))
+            let body = try files.readRecord(saved.generation)
+            let orphan = try files.writeRecord(body)
+            let index = try files.readIndex()!
+            do { _ = try journal.upsert(record, updatedAt: clock.addingTimeInterval(-2)); throw Failure() }
+            catch ConversationPersistenceJournalError.capacity {}
+            guard try files.readIndex() == index, try files.readRecord(saved.generation) == body,
+                  try files.readRecord(orphan) == body, journal.maintenanceTransactions.isEmpty else { throw Failure() }
+            let newer = try journal.upsert(record, updatedAt: clock)
+            guard newer.generation != saved.generation, try journal.load(newer).record == record else { throw Failure() }
+        }
+        // Count generations plus owned empty temps in both directories. With
+        // no supported index, the limit cannot authorize orphan deletion.
+        for supported in [false, true] {
+            let path = try root(supported ? "physical-supported" : "physical-missing")
+            let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+            let setup = ConversationPersistenceJournal(files: files, now: { clock })
+            let generation: ConversationPersistenceGeneration
+            if supported { generation = try setup.upsert(record, updatedAt: clock.addingTimeInterval(-1)).generation }
+            else {
+                let body = try ConversationStore.PersistentSnapshot(records: [record]).encoded(maximumBytes: ConversationPersistenceFiles.maximumRecordBytes)
+                generation = try files.writeRecord(body)
+            }
+            let original = try files.readRecord(generation)
+            let paths = [path + "/Conversations/.tmp-00000000-0000-0000-0000-000000000001",
+                         path + "/Conversations/records/.tmp-00000000-0000-0000-0000-000000000002",
+                         path + "/Conversations/records/.tmp-00000000-0000-0000-0000-000000000003"]
+            for name in paths {
+                guard FileManager.default.createFile(atPath: name, contents: Data(), attributes: [.posixPermissions: 0o600]) else { throw Failure() }
+            }
+            let journal = ConversationPersistenceJournal(files: files, now: { clock }, testingPhysicalLimit: 4)
+            if supported {
+                _ = try journal.upsert(copy("new"), updatedAt: clock)
+                guard paths.allSatisfy({ !FileManager.default.fileExists(atPath: $0) }),
+                      try files.readRecord(generation) == original else { throw Failure() }
+            } else {
+                do { _ = try journal.upsert(copy("new"), updatedAt: clock); throw Failure() }
+                catch ConversationPersistenceJournalError.capacity {}
+                guard try files.readIndex() == nil, try files.readRecord(generation) == original,
+                      paths.allSatisfy({ FileManager.default.fileExists(atPath: $0) }) else { throw Failure() }
+            }
         }
         // Exercise the production logical limit using 256 real referenced
         // supported records, independently of the physical namespace limit.
@@ -634,6 +689,27 @@ struct PersistenceJournalTests {
                     guard attempts == 3, journal.health == .healthy, try journal.metadata().count == 1 else { throw Failure() }
                 }
             }
+        }
+        // An unclassified pre-rename I/O failure is not retried but still
+        // establishes monotonic backoff; a later caller may try again.
+        do {
+            let path = try root("nonretry-io-backoff")
+            var creates = 0
+            var uptime: TimeInterval = 40
+            let files = try ConversationPersistenceFiles(verifiedStateRootPath: path, testControl: .init(fault: .beforeRename, event: { event in
+                if case .afterTemporaryCreate = event { creates += 1 }
+            }))
+            let journal = ConversationPersistenceJournal(files: files, now: { clock }, monotonicNow: { uptime })
+            do { _ = try journal.upsert(record, updatedAt: clock); throw Failure() }
+            catch ConversationPersistenceJournalError.unavailable {}
+            guard creates == 1, journal.health == .degraded(retryAfter: 45) else { throw Failure() }
+            do { _ = try journal.upsert(record, updatedAt: clock); throw Failure() }
+            catch ConversationPersistenceJournalError.unavailable {}
+            guard creates == 1 else { throw Failure() }
+            uptime = 45
+            do { _ = try journal.upsert(record, updatedAt: clock); throw Failure() }
+            catch ConversationPersistenceJournalError.unavailable {}
+            guard creates == 2, journal.health == .degraded(retryAfter: 50) else { throw Failure() }
         }
         // A record rename that crossed its commit point never retries.
         do {
@@ -984,6 +1060,37 @@ struct PersistenceJournalTests {
             now = start.addingTimeInterval(lifetime)
             try reject(.unavailable) { try journal.activate() }
             guard try files.readIndex() == future, try files.readRecord(saved.generation) == body else { throw Failure() }
+        }
+        // Measure the actual retirement index in a separate store. A valid
+        // orphan alone exceeds the trusted budget; without it retirement fits.
+        do {
+            let probePath = try root("recover-headroom-probe")
+            let probeFiles = try ConversationPersistenceFiles(verifiedStateRootPath: probePath)
+            var probeNow = start
+            let probe = ConversationPersistenceJournal(files: probeFiles, now: { probeNow })
+            _ = try probe.upsert(record, updatedAt: start)
+            let probeOld = try probeFiles.readIndex()!.count
+            probeNow = start.addingTimeInterval(lifetime)
+            try probe.activate()
+            let retirementBytes = try probeFiles.readIndex()!.count
+            let path = try root("recover-headroom")
+            let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+            let setup = ConversationPersistenceJournal(files: files, now: { start })
+            let saved = try setup.upsert(record, updatedAt: start)
+            let body = try files.readRecord(saved.generation)
+            let orphan = try files.writeRecord(body)
+            let oldBytes = try files.readIndex()!.count
+            let actual = try files.inventoryRecords().reduce(0) { $0 + $1.bytes }
+            let budget = body.count + oldBytes + retirementBytes + ConversationPersistenceFiles.maximumIndexBytes
+            guard probeOld == oldBytes, actual == body.count * 2, retirementBytes > 0,
+                  actual + oldBytes + retirementBytes + ConversationPersistenceFiles.maximumIndexBytes > budget,
+                  budget < ConversationPersistenceJournal.maximumDiskBytes else { throw Failure() }
+            let journal = ConversationPersistenceJournal(files: files, now: { start.addingTimeInterval(lifetime) }, testingDiskLimit: budget)
+            try journal.activate()
+            guard journal.maintenanceTransactions == [.recovered(completed: 1, cleanupDurabilityUncertain: false),
+                    .committed(removed: 1, cleanupCompleted: 1, cleanupDurabilityUncertain: false)],
+                  !(try files.inventoryRecords()).contains(where: { $0.generation == orphan }),
+                  try journal.metadata().isEmpty else { throw Failure() }
         }
         // Reserve the new index before publishing: sparse, measured orphan
         // bytes leave less than the conservative index headroom available.

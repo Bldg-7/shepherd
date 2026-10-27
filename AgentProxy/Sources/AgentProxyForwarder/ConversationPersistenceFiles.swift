@@ -273,7 +273,7 @@ final class ConversationPersistenceFiles {
     /// shares a directory offset and can miss entries on repeated scans.
     func inventoryRecords() throws -> [ConversationPersistenceRecordFile] {
         try verifyLease()
-        _ = try emptyTemporaryTickets()
+        let temporaryCount = try emptyTemporaryTickets().count
         // A previous unlink may have succeeded without a durable directory
         // sync. Do not budget its absence until this sync succeeds, including
         // after a lease is reacquired by another journal instance.
@@ -309,7 +309,7 @@ final class ConversationPersistenceFiles {
                 throw error
             }
             Darwin.close(descriptor)
-            guard entries.count < Self.maximumPhysicalRecords else { throw ConversationPersistenceFilesError.tooLarge }
+            guard entries.count < Self.maximumPhysicalRecords - temporaryCount else { throw ConversationPersistenceFilesError.tooLarge }
             entries.append(.init(generation: generation, bytes: Int(info.st_size)))
         }
         return entries

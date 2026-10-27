@@ -330,18 +330,40 @@ final class ConversationPersistenceJournal {
     private(set) var maintenanceTransactions: [ConversationPersistenceJournalMaintenance] = []
     private let recordLimit: Int
     private let diskLimit: Int
+    private let physicalLimit: Int
     private let monotonicNow: () -> TimeInterval
     private(set) var health: ConversationPersistenceJournalHealth = .healthy
 
     init(files: ConversationPersistenceFiles, now: @escaping () -> Date = Date.init,
          testingRecordLimit: Int = ConversationPersistenceJournal.maximumRecords,
          testingDiskLimit: Int = ConversationPersistenceJournal.maximumDiskBytes,
+         testingPhysicalLimit: Int = ConversationPersistenceFiles.maximumPhysicalRecords,
          monotonicNow: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
         self.files = files
         self.now = now
         self.recordLimit = max(1, min(testingRecordLimit, Self.maximumRecords))
         self.diskLimit = max(1, min(testingDiskLimit, Self.maximumDiskBytes))
+        self.physicalLimit = max(1, min(testingPhysicalLimit, ConversationPersistenceFiles.maximumPhysicalRecords))
         self.monotonicNow = monotonicNow
+    }
+
+    private func noteIOFailure(_ error: Error) {
+        guard let failure = error as? ConversationPersistenceFilesError else { return }
+        switch failure {
+        case .ioFailure, .retryableBeforeTemporaryCreation:
+            let time = monotonicNow()
+            health = .degraded(retryAfter: time.isFinite && time >= 0 && time <= TimeInterval.greatestFiniteMagnitude - 5 ? time + 5 : TimeInterval.greatestFiniteMagnitude)
+        default: break
+        }
+    }
+
+    private func requireMaintenanceAllowed() throws {
+        let uptime = monotonicNow()
+        guard uptime.isFinite, uptime >= 0 else { throw ConversationPersistenceJournalError.unavailable }
+        if case .degraded(let retryAfter) = health {
+            guard uptime >= retryAfter else { throw ConversationPersistenceJournalError.unavailable }
+            health = .healthy
+        }
     }
 
     private func resetMaintenance() {
@@ -380,7 +402,7 @@ final class ConversationPersistenceJournal {
         }) else { throw ConversationPersistenceJournalError.unavailable }
         let bytes: Data
         do { bytes = try files.readRecord(metadata.generation) }
-        catch { throw ConversationPersistenceJournalError.unavailable }
+        catch { noteIOFailure(error); throw ConversationPersistenceJournalError.unavailable }
         guard bytes.count == entry.encodedBytes else { throw ConversationPersistenceJournalError.unavailable }
         let record = try decodeOneRecord(bytes, expectedID: entry.recordID)
         return .init(record: record, metadata: try self.metadata(entry))
@@ -391,12 +413,7 @@ final class ConversationPersistenceJournal {
     @discardableResult
     func upsert(_ record: ConversationStore.PersistentSnapshot.Record, updatedAt: Date) throws -> ConversationPersistenceJournalMetadata {
         resetMaintenance()
-        let uptime = monotonicNow()
-        guard uptime.isFinite, uptime >= 0 else { throw ConversationPersistenceJournalError.unavailable }
-        if case .degraded(let retryAfter) = health {
-            guard uptime >= retryAfter else { throw ConversationPersistenceJournalError.unavailable }
-            health = .healthy
-        }
+        try requireMaintenanceAllowed()
         let milliseconds = try checkedMilliseconds(updatedAt)
         guard !isExpired(milliseconds, at: try currentMilliseconds()) else { throw ConversationPersistenceJournalError.unavailable }
         let bytes = try encodeOneRecord(record)
@@ -406,21 +423,22 @@ final class ConversationPersistenceJournal {
         let incoming = Index.Entry(generation: generation.value, recordID: recordID, updatedMilliseconds: milliseconds, encodedBytes: bytes.count)
         // Measure the incoming proposal before age maintenance can write.
         let beforeMaintenance = try currentIndex()
-        let preliminary = Index(records: beforeMaintenance.records.filter { $0.recordID != recordID } + [incoming])
-        do { _ = try JSONEncoder().encode(preliminary) }
-        catch { throw ConversationPersistenceJournalError.unavailable }
-        var (existingIndex, inventory) = try preparedIndex()
-        inventory = try recoverUnreferenced(index: existingIndex, inventory: inventory)
-        if let old = existingIndex.records.first(where: { $0.recordID == recordID }) {
-            guard let generation = ConversationPersistenceGeneration(serialized: old.generation) else { throw ConversationPersistenceJournalError.unavailable }
+        if let old = beforeMaintenance.records.first(where: { $0.recordID == recordID }) {
+            guard milliseconds >= old.updatedMilliseconds else { throw ConversationPersistenceJournalError.capacity }
+            guard let oldGeneration = ConversationPersistenceGeneration(serialized: old.generation) else { throw ConversationPersistenceJournalError.unavailable }
             let oldBytes: Data
-            do { oldBytes = try files.readRecord(generation) }
-            catch { throw ConversationPersistenceJournalError.unavailable }
+            do { oldBytes = try files.readRecord(oldGeneration) }
+            catch { noteIOFailure(error); throw ConversationPersistenceJournalError.unavailable }
             guard oldBytes.count == old.encodedBytes else { throw ConversationPersistenceJournalError.unavailable }
             _ = try decodeOneRecord(oldBytes, expectedID: old.recordID)
             do { _ = try JSONDecoder().decode(DeletionSchema.self, from: oldBytes) }
             catch { throw ConversationPersistenceJournalError.unavailable }
         }
+        let preliminary = Index(records: beforeMaintenance.records.filter { $0.recordID != recordID } + [incoming])
+        do { _ = try JSONEncoder().encode(preliminary) }
+        catch { throw ConversationPersistenceJournalError.unavailable }
+        var (existingIndex, inventory) = try preparedIndex()
+        inventory = try recoverUnreferenced(index: existingIndex, inventory: inventory)
         var selected: [Index.Entry] = []
         var attemptedRecovery = false
         let candidates = existingIndex.records.filter { $0.recordID != recordID }.sorted(by: older)
@@ -434,7 +452,10 @@ final class ConversationPersistenceJournal {
             catch { throw ConversationPersistenceJournalError.unavailable }
             let remainingFiles = inventory.filter { !removed.contains($0.generation.value) }
             let currentBytes = try existingIndexBytes()
-            let feasible = next.count <= recordLimit && remainingFiles.count < ConversationPersistenceFiles.maximumPhysicalRecords &&
+            let temporaryCount = try temporaryCount()
+            // Record rename preserves object count; the following index temp
+            // coexists with that record until its own rename.
+            let feasible = next.count <= recordLimit && remainingFiles.count + temporaryCount + 2 <= physicalLimit &&
                 proposed.count <= ConversationPersistenceFiles.maximumIndexBytes &&
                 (try? checkedSum(remainingFiles.map(\.bytes) + [currentBytes, bytes.count, proposed.count, ConversationPersistenceFiles.maximumIndexBytes])) != nil
             if feasible { break }
@@ -474,7 +495,7 @@ final class ConversationPersistenceJournal {
         } catch ConversationPersistenceFilesError.committedButDurabilityUncertain {
             throw ConversationPersistenceJournalError.recordCommittedButDurabilityUncertain
         } catch let error as ConversationPersistenceJournalError { throw error }
-        catch { throw ConversationPersistenceJournalError.unavailable }
+        catch { noteIOFailure(error); throw ConversationPersistenceJournalError.unavailable }
         do {
             try publishWithOneRetry(pending: generation, recordBytes: 0, indexBytes: nextIndexBytes.count) {
                 try files.writeIndex(nextIndexBytes)
@@ -482,7 +503,7 @@ final class ConversationPersistenceJournal {
         } catch ConversationPersistenceFilesError.committedButDurabilityUncertain {
             throw ConversationPersistenceJournalError.indexCommittedButDurabilityUncertain
         } catch let error as ConversationPersistenceJournalError { throw error }
-        catch { throw ConversationPersistenceJournalError.unavailable }
+        catch { noteIOFailure(error); throw ConversationPersistenceJournalError.unavailable }
         return result
     }
 
@@ -502,7 +523,8 @@ final class ConversationPersistenceJournal {
         inventory = try recoverUnreferenced(index: index, inventory: inventory, protected: pending)
         let currentBytes = try existingIndexBytes()
         _ = try checkedSum(inventory.map(\.bytes) + [currentBytes, recordBytes, indexBytes, ConversationPersistenceFiles.maximumIndexBytes])
-        if pending == nil && inventory.count >= ConversationPersistenceFiles.maximumPhysicalRecords {
+        let extra = pending == nil ? 2 : 1
+        guard inventory.count + (try temporaryCount()) + extra <= physicalLimit else {
             throw ConversationPersistenceJournalError.capacity
         }
         do { try publish() }
@@ -526,12 +548,17 @@ final class ConversationPersistenceJournal {
         // Scan before ignoring temporary names in the record inventory. A
         // nonempty temporary is protected and blocks rather than being free.
         do { _ = try files.emptyTemporaryTickets() }
-        catch { throw ConversationPersistenceJournalError.unavailable }
-        let inventory = try recordInventory()
+        catch { noteIOFailure(error); throw ConversationPersistenceJournalError.unavailable }
+        var inventory = try recordInventory()
         try validate(index: index, inventory: inventory)
         let expired = index.records.filter { isExpired($0.updatedMilliseconds, at: present) }
         guard !expired.isEmpty else { return (index, inventory) }
-        return try retire(expired, from: index, inventory: inventory)
+        try requireMaintenanceAllowed()
+        do { return try retire(expired, from: index, inventory: inventory) }
+        catch ConversationPersistenceJournalError.capacity {
+            inventory = try recoverUnreferenced(index: index, inventory: inventory)
+            return try retire(expired, from: index, inventory: inventory)
+        }
     }
 
     private func older(_ lhs: Index.Entry, _ rhs: Index.Entry) -> Bool {
@@ -551,7 +578,7 @@ final class ConversationPersistenceJournal {
             }
             let checked: (Data, ConversationPersistenceRecordDeletionTicket)
             do { checked = try files.readRecordForDeletion(generation) }
-            catch { throw ConversationPersistenceJournalError.unavailable }
+            catch { noteIOFailure(error); throw ConversationPersistenceJournalError.unavailable }
             let (data, ticket) = checked
             guard data.count == entry.encodedBytes else { throw ConversationPersistenceJournalError.unavailable }
             _ = try decodeOneRecord(data, expectedID: entry.recordID)
@@ -566,12 +593,15 @@ final class ConversationPersistenceJournal {
         catch { throw ConversationPersistenceJournalError.unavailable }
         guard nextBytes.count <= ConversationPersistenceFiles.maximumIndexBytes else { throw ConversationPersistenceJournalError.capacity }
         let currentBytes = try existingIndexBytes()
+        guard inventory.count + (try temporaryCount()) + 1 <= physicalLimit else {
+            throw ConversationPersistenceJournalError.capacity
+        }
         _ = try checkedSum(inventory.map(\.bytes) + [currentBytes, nextBytes.count, ConversationPersistenceFiles.maximumIndexBytes])
         do { try files.writeIndex(nextBytes) }
         catch ConversationPersistenceFilesError.committedButDurabilityUncertain {
             updateMaintenance(.indexDurabilityUncertain, transaction: transaction)
             throw ConversationPersistenceJournalError.indexCommittedButDurabilityUncertain
-        } catch { throw ConversationPersistenceJournalError.unavailable }
+        } catch { noteIOFailure(error); throw ConversationPersistenceJournalError.unavailable }
 
         var completed = 0
         updateMaintenance(.committed(removed: tickets.count, cleanupCompleted: completed, cleanupDurabilityUncertain: false), transaction: transaction)
@@ -581,6 +611,7 @@ final class ConversationPersistenceJournal {
                 updateMaintenance(.committed(removed: tickets.count, cleanupCompleted: completed, cleanupDurabilityUncertain: true), transaction: transaction)
                 throw ConversationPersistenceJournalError.retentionCommittedCleanupFailed
             } catch {
+                noteIOFailure(error)
                 throw ConversationPersistenceJournalError.retentionCommittedCleanupFailed
             }
             completed += 1
@@ -601,13 +632,13 @@ final class ConversationPersistenceJournal {
         guard try existingIndexBytes() > 0 else { return inventory }
         let temporary: [ConversationPersistenceEmptyTemporaryTicket]
         do { temporary = try files.emptyTemporaryTickets() }
-        catch { throw ConversationPersistenceJournalError.unavailable }
+        catch { noteIOFailure(error); throw ConversationPersistenceJournalError.unavailable }
         let referenced = Set(index.records.map(\.generation))
         var tickets: [ConversationPersistenceRecordDeletionTicket] = []
         for file in inventory where !referenced.contains(file.generation.value) && file.generation != protected {
             let checked: (Data, ConversationPersistenceRecordDeletionTicket)
             do { checked = try files.readRecordForDeletion(file.generation) }
-            catch { throw ConversationPersistenceJournalError.unavailable }
+            catch { noteIOFailure(error); throw ConversationPersistenceJournalError.unavailable }
             do {
                 var raw = try RawJSON(checked.0, maximumBytes: ConversationPersistenceFiles.maximumRecordBytes)
                 try raw.check()
@@ -620,8 +651,9 @@ final class ConversationPersistenceJournal {
             }
         }
         guard !tickets.isEmpty || !temporary.isEmpty else { return inventory }
+        try requireMaintenanceAllowed()
         do { try files.synchronizeIndexDirectory() }
-        catch { throw ConversationPersistenceJournalError.unavailable }
+        catch { noteIOFailure(error); throw ConversationPersistenceJournalError.unavailable }
         let transaction = maintenanceTransactions.count
         var completed = 0
         updateMaintenance(.recovered(completed: completed, cleanupDurabilityUncertain: false), transaction: transaction)
@@ -630,7 +662,7 @@ final class ConversationPersistenceJournal {
             catch ConversationPersistenceFilesError.committedButDurabilityUncertain {
                 updateMaintenance(.recovered(completed: completed, cleanupDurabilityUncertain: true), transaction: transaction)
                 throw ConversationPersistenceJournalError.retentionCommittedCleanupFailed
-            } catch { throw ConversationPersistenceJournalError.retentionCommittedCleanupFailed }
+            } catch { noteIOFailure(error); throw ConversationPersistenceJournalError.retentionCommittedCleanupFailed }
             completed += 1
             updateMaintenance(.recovered(completed: completed, cleanupDurabilityUncertain: false), transaction: transaction)
         }
@@ -639,22 +671,27 @@ final class ConversationPersistenceJournal {
             catch ConversationPersistenceFilesError.committedButDurabilityUncertain {
                 updateMaintenance(.recovered(completed: completed, cleanupDurabilityUncertain: true), transaction: transaction)
                 throw ConversationPersistenceJournalError.retentionCommittedCleanupFailed
-            } catch { throw ConversationPersistenceJournalError.retentionCommittedCleanupFailed }
+            } catch { noteIOFailure(error); throw ConversationPersistenceJournalError.retentionCommittedCleanupFailed }
             completed += 1
             updateMaintenance(.recovered(completed: completed, cleanupDurabilityUncertain: false), transaction: transaction)
         }
         return try recordInventory()
     }
 
+    private func temporaryCount() throws -> Int {
+        do { return try files.emptyTemporaryTickets().count }
+        catch { noteIOFailure(error); throw ConversationPersistenceJournalError.unavailable }
+    }
+
     private func recordInventory() throws -> [ConversationPersistenceRecordFile] {
         do { return try files.inventoryRecords() }
-        catch { throw ConversationPersistenceJournalError.unavailable }
+        catch { noteIOFailure(error); throw ConversationPersistenceJournalError.unavailable }
     }
 
     private func currentIndex() throws -> Index {
         let data: Data?
         do { try files.validateConversationsNamespace(); data = try files.readIndex() }
-        catch { throw ConversationPersistenceJournalError.unavailable }
+        catch { noteIOFailure(error); throw ConversationPersistenceJournalError.unavailable }
         guard let data else { return Index(records: []) }
         guard data.count <= ConversationPersistenceFiles.maximumIndexBytes else { throw ConversationPersistenceJournalError.unavailable }
         do {
@@ -667,7 +704,7 @@ final class ConversationPersistenceJournal {
 
     private func existingIndexBytes() throws -> Int {
         do { return try files.readIndex()?.count ?? 0 }
-        catch { throw ConversationPersistenceJournalError.unavailable }
+        catch { noteIOFailure(error); throw ConversationPersistenceJournalError.unavailable }
     }
 
     private func validate(index: Index, inventory: [ConversationPersistenceRecordFile]) throws {
