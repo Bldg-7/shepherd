@@ -201,6 +201,7 @@ final class Suite {
             ("recorder-authority-timeout-fails-closed", authorityTimeout),
             ("recorder-invalid-ack-fails-closed", authorityInvalidAck),
             ("recorder-authority-capacity", authorityCapacity),
+            ("recorder-legacy-oversized-authority", authorityLegacyOversized),
             ("tee-limit-and-stalled-recorder", teeLimits),
             ("unknown-token-forwarded-without-copy", unknownToken),
             ("recorder-killed-mid-stream", recorderKilled),
@@ -259,7 +260,7 @@ final class Suite {
         let exits = Box<[Int32]>([])
         let command: [String]? = switch recorder {
         case .none: nil
-        case .real: [proxyBinary, "recorder"]
+        case .real: [proxyBinary, "recorder", "--socket", folder + "/rec.sock", "--state-dir", folder + "/state"]
         case .tap(let file): [harness, "tap-recorder", file]
         case .stall: [harness, "stall-recorder"]
         case .badAck: [harness, "bad-ack-recorder"]
@@ -1003,6 +1004,34 @@ final class Suite {
         }, "restart sends the largest committed authority snapshot")
         try check(try restarted.control().result("routes.remove", ["routeID": ids[1]])["removed"] as? Bool == true,
                   "removal remains synchronized after recorder restart")
+    }
+
+    func authorityLegacyOversized() throws {
+        let folder = out + "/c/legacy-authority/state"
+        try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let escaped = String(repeating: "\\", count: 256)
+        let records: [[String: Any]] = (0..<700).map { index in
+            ["routeID": String(format: "00000000-0000-0000-0000-%012x", index),
+             "tokenSHA256": String(format: "%064x", index), "kind": "claude", "session": escaped,
+             "paneID": escaped, "terminalID": escaped, "cliVersion": escaped,
+             "createdAt": "2026-01-01T00:00:00Z", "oauthRejected": false]
+        }
+        let bytes = try JSONSerialization.data(withJSONObject: ["version": 1, "routes": records])
+        try check(bytes.count > AgentProxyTeeFrame.maximumPayloadBytes && bytes.count < 4 << 20, "owned legacy table exceeds one authority frame")
+        try bytes.write(to: URL(fileURLWithPath: folder + "/routes.json"))
+        chmod(folder + "/routes.json", 0o600)
+        let proxy = try self.proxy("legacy-authority", recorder: .real)
+        let control = try proxy.control()
+        let listed = try control.result("routes.list")["routes"] as? [[String: Any]] ?? []
+        try check(listed.count == records.count, "legacy routes remain intact on startup")
+        try check(waitUntil(5) { (try? control.result("proxy.status")["recorder"] as? [String: Any])?["state"] as? String == "running" }, "legacy recorder starts")
+        let firstID = records[0]["routeID"] as! String
+        try check(try control.result("routes.remove", ["routeID": firstID])["removed"] as? Bool == true, "oversized legacy removal waits for full snapshot ACK")
+        proxy.server.shutdown()
+        let restarted = try self.proxy("legacy-authority", recorder: .real)
+        let after = try restarted.control().result("routes.list")["routes"] as? [[String: Any]] ?? []
+        try check(after.count == records.count - 1 && !after.contains { $0["routeID"] as? String == firstID }, "restart preserves all other legacy routes")
+        try check(try restarted.control().result("routes.remove", ["routeID": records[1]["routeID"] as! String])["removed"] as? Bool == true, "restarted oversized recorder synchronizes removal")
     }
 
     func authorityInvalidAck() throws {

@@ -74,16 +74,17 @@ class Recorder:
     def frame(self, kind, payload=b'', exchange=1):
         if not isinstance(payload, bytes): payload = json.dumps(payload).encode()
         self.tee.sendall(struct.pack('>IBQ', 9 + len(payload), kind, exchange) + payload)
+    def ack(self, generation):
+        ack = bytearray()
+        while len(ack) < 13:
+            part = self.tee.recv(13 - len(ack))
+            assert part, 'recorder closed before authority acknowledgement'
+            ack.extend(part)
+        assert struct.unpack('>IBQ', ack) == (9, 8, generation), 'correlated empty authority ACK'
     def authority(self, generation=1, routes=True, expect_ack=True):
         identity = {'kind': 'claude', 'session': 'session', 'paneID': 'pane', 'terminalID': 'terminal', 'cliVersion': '2.1.309'}
         self.frame(7, {'generation': generation, 'routes': [{'routeID': 'route', 'identity': identity}] if routes else []}, exchange=0)
-        if expect_ack:
-            ack = bytearray()
-            while len(ack) < 13:
-                part = self.tee.recv(13 - len(ack))
-                assert part, 'recorder closed before authority acknowledgement'
-                ack.extend(part)
-            assert struct.unpack('>IBQ', ack) == (9, 8, generation), 'correlated empty authority ACK'
+        if expect_ack: self.ack(generation)
     def event(self, data, exchange=1): self.frame(5, b'data: ' + json.dumps(data).encode() + b'\n\n', exchange=exchange)
     def begin(self, wait_admission=False):
         self.frame(1, {'routeID': 'route', 'upstream': 'anthropic', 'method': 'POST', 'path': '/v1/messages',
@@ -347,6 +348,28 @@ try:
     check(records[0]['encodedBytes'] <= 32 << 20, 'expanded normalized record stays within journal cap')
 finally:
     check(expanded.stop() == 0, 'expanded synthetic recorder exits')
+
+# Multipart authority does not acknowledge or apply a partial legacy table.
+chunked = Recorder(a.work / 'authority-chunked')
+try:
+    chunked.query('conversations.list')
+    identity = {'kind': 'claude', 'session': 'session', 'paneID': 'pane', 'terminalID': 'terminal', 'cliVersion': '2.1.309'}
+    chunked.frame(9, {'generation': 1, 'index': 0, 'count': 2, 'routes': [{'routeID': 'route', 'identity': identity}]}, exchange=0)
+    check(not select.select([chunked.tee], [], [], .1)[0], 'partial authority is not acknowledged')
+    check(not chunked.query('conversations.list')['result']['conversations'], 'partial authority exposes no conversation')
+    chunked.frame(9, {'generation': 1, 'index': 1, 'count': 2, 'routes': [{'routeID': 'other', 'identity': identity}]}, exchange=0)
+    chunked.ack(1)
+    chunked.begin(); chunked.end(); chunked.conversation()
+    check(True, 'completed multipart authority admits an authorized current route')
+finally:
+    check(chunked.stop() == 0, 'multipart authority recorder exits')
+
+chunk_desync = Recorder(a.work / 'authority-chunk-desync')
+try:
+    chunk_desync.frame(9, {'generation': 1, 'index': 1, 'count': 2, 'routes': [{'routeID': 'route', 'identity': identity}]}, exchange=0)
+    check(chunk_desync.wait() == 3, 'out-of-order authority part fails closed')
+finally:
+    chunk_desync.stop()
 
 desync = Recorder(a.work / 'authority-desync')
 try:

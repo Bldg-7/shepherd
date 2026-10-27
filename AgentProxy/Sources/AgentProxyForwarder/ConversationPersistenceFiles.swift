@@ -11,6 +11,8 @@ enum ConversationPersistenceFilesError: Error, Equatable {
     case lockUnavailable
     case tooLarge
     case ioFailure
+    /// A checked pre-open transient error, before acquiring that descriptor.
+    case retryableOpen(Int32)
     /// No temporary inode was created and no publication was attempted.
     case retryableBeforeTemporaryCreation(Int32)
     /// The rename completed but syncing its parent directory did not. The new
@@ -72,6 +74,12 @@ enum ConversationPersistenceFilesTestFault: Equatable {
     case recordUnlinkDirectorySync
 }
 
+enum ConversationPersistenceOpenSite: Equatable {
+    case stateRootComponent
+    case childDirectory(ConversationPersistenceFilesDirectory)
+    case lockFile
+}
+
 enum ConversationPersistenceFilesDirectory: Equatable {
     case conversations
     case records
@@ -99,13 +107,15 @@ struct ConversationPersistenceFilesTestControl {
     let event: ((ConversationPersistenceFilesTestEvent) -> Void)?
     let temporaryCreateError: (() -> Int32?)?
     let temporaryScanLimit: Int?
+    let openError: ((ConversationPersistenceOpenSite) -> Int32?)?
 
     init(temporaryUUID: UUID? = nil, recordUUID: UUID? = nil,
          fault: ConversationPersistenceFilesTestFault? = nil,
          indexFault: ConversationPersistenceIndexTestFault? = nil,
          event: ((ConversationPersistenceFilesTestEvent) -> Void)? = nil,
          temporaryCreateError: (() -> Int32?)? = nil,
-         temporaryScanLimit: Int? = nil) {
+         temporaryScanLimit: Int? = nil,
+         openError: ((ConversationPersistenceOpenSite) -> Int32?)? = nil) {
         self.temporaryUUID = temporaryUUID
         self.recordUUID = recordUUID
         self.fault = fault
@@ -113,6 +123,7 @@ struct ConversationPersistenceFilesTestControl {
         self.event = event
         self.temporaryCreateError = temporaryCreateError
         self.temporaryScanLimit = temporaryScanLimit
+        self.openError = openError
     }
 }
 
@@ -151,7 +162,7 @@ final class ConversationPersistenceFiles {
     /// no component below that root is subsequently addressed by path.
     init(verifiedStateRootPath stateRootPath: String,
          testControl: ConversationPersistenceFilesTestControl? = nil) throws {
-        let root = try Self.openVerifiedStateRoot(stateRootPath)
+        let root = try Self.openVerifiedStateRoot(stateRootPath, testControl: testControl)
         var conversations: Int32 = -1
         var records: Int32 = -1
         do {
@@ -159,7 +170,7 @@ final class ConversationPersistenceFiles {
                                                             link: .conversations, testControl: testControl)
             records = try Self.openOrCreateDirectory(named: Self.recordsName, in: conversations,
                                                       link: .records, testControl: testControl)
-            let lock = try Self.openAndLock(named: Self.lockName, in: conversations)
+            let lock = try Self.openAndLock(named: Self.lockName, in: conversations, testControl: testControl)
             stateRootFD = root
             conversationsFD = conversations
             recordsFD = records
@@ -514,20 +525,29 @@ final class ConversationPersistenceFiles {
         return (data, after)
     }
 
-    private static func openVerifiedStateRoot(_ path: String) throws -> Int32 {
+    private static func openError(_ code: Int32, unsafe: ConversationPersistenceFilesError) -> ConversationPersistenceFilesError {
+        switch code {
+        case EIO, EINTR, EMFILE, ENFILE, ENOMEM, EAGAIN, ENOSPC, EDQUOT: return .retryableOpen(code)
+        default: return unsafe
+        }
+    }
+
+    private static func openVerifiedStateRoot(_ path: String, testControl: ConversationPersistenceFilesTestControl?) throws -> Int32 {
         guard path.hasPrefix("/"), !path.utf8.contains(0) else { throw ConversationPersistenceFilesError.unsafeStateRoot }
         let parts = path.split(separator: "/", omittingEmptySubsequences: true)
         guard !parts.isEmpty, parts.allSatisfy({ $0 != "." && $0 != ".." }) else {
             throw ConversationPersistenceFilesError.unsafeStateRoot
         }
         var descriptor = Darwin.open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC)
-        guard descriptor >= 0 else { throw ConversationPersistenceFilesError.ioFailure }
+        guard descriptor >= 0 else { throw openError(errno, unsafe: .unsafeStateRoot) }
         for component in parts {
-            let next = component.withCString {
+            let injected = testControl?.openError?(.stateRootComponent)
+            let next = injected == nil ? component.withCString {
                 Darwin.openat(descriptor, $0, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
-            }
+            } : -1
+            let failure = injected ?? errno
             Darwin.close(descriptor)
-            guard next >= 0 else { throw ConversationPersistenceFilesError.unsafeStateRoot }
+            guard next >= 0 else { throw openError(failure, unsafe: .unsafeStateRoot) }
             descriptor = next
         }
         do {
@@ -547,8 +567,10 @@ final class ConversationPersistenceFiles {
         if mkdirat(parentFD, name, 0o700) != 0 && errno != EEXIST {
             throw ConversationPersistenceFilesError.ioFailure
         }
-        let descriptor = Darwin.openat(parentFD, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
-        guard descriptor >= 0 else { throw ConversationPersistenceFilesError.unsafeObject }
+        let injected = testControl?.openError?(.childDirectory(link))
+        let descriptor = injected == nil ? Darwin.openat(parentFD, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC) : -1
+        let failure = injected ?? errno
+        guard descriptor >= 0 else { throw openError(failure, unsafe: .unsafeObject) }
         do {
             // mkdirat requests 0700 and the strict post-create check rejects
             // any umask-narrowed result rather than chmodding a pre-existing or
@@ -565,9 +587,10 @@ final class ConversationPersistenceFiles {
         }
     }
 
-    private static func openAndLock(named name: String, in directoryFD: Int32) throws -> Int32 {
+    private static func openAndLock(named name: String, in directoryFD: Int32, testControl: ConversationPersistenceFilesTestControl?) throws -> Int32 {
         try checkFixedName(name)
         try verifyDirectory(directoryFD)
+        if let code = testControl?.openError?(.lockFile) { throw openError(code, unsafe: .unsafeObject) }
         var descriptor = Darwin.openat(directoryFD, name,
                                        O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
         if descriptor >= 0 {
@@ -578,7 +601,7 @@ final class ConversationPersistenceFiles {
         } else if errno == EEXIST {
             descriptor = Darwin.openat(directoryFD, name, O_RDWR | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
         }
-        guard descriptor >= 0 else { throw ConversationPersistenceFilesError.unsafeObject }
+        guard descriptor >= 0 else { throw openError(errno, unsafe: .unsafeObject) }
         do {
             _ = try verifyFileBinding(named: name, in: directoryFD, descriptor: descriptor,
                                       maximumBytes: 0, exactSize: 0)

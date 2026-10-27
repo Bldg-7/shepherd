@@ -89,7 +89,7 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
         catch {
             if let reason = error as? ConversationPersistenceFilesError {
                 switch reason {
-                case .lockUnavailable, .ioFailure, .retryableBeforeTemporaryCreation(_):
+                case .lockUnavailable, .ioFailure, .retryableBeforeTemporaryCreation(_), .retryableOpen(_):
                     initializationRetryAfter = now + 5
                 default: initializationFailed = true
                 }

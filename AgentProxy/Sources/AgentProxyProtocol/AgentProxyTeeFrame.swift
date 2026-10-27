@@ -33,6 +33,8 @@ public nonisolated enum AgentProxyTeeFrame {
         case routeSnapshot = 7
         /// Recorder-to-supervisor acknowledgement; exchange is the applied generation, payload empty.
         case routeAcknowledgement = 8
+        /// One ordered part of an oversized legacy authority snapshot.
+        case routeSnapshotPart = 9
     }
 
     public struct RouteSnapshot: Codable, Sendable, Equatable {
@@ -47,6 +49,16 @@ public nonisolated enum AgentProxyTeeFrame {
         public let routes: [Route]
         public init(generation: UInt64, routes: [Route]) {
             self.generation = generation; self.routes = routes
+        }
+    }
+
+    public struct RouteSnapshotPart: Codable, Sendable, Equatable {
+        public let generation: UInt64
+        public let index: Int
+        public let count: Int
+        public let routes: [RouteSnapshot.Route]
+        public init(generation: UInt64, index: Int, count: Int, routes: [RouteSnapshot.Route]) {
+            self.generation = generation; self.index = index; self.count = count; self.routes = routes
         }
     }
 

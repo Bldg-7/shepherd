@@ -66,7 +66,26 @@ final class RecorderSupervisor: @unchecked Sendable {
         authorityGeneration += 1
         let generation = authorityGeneration
         let snapshot = AgentProxyTeeFrame.RouteSnapshot(generation: generation, routes: routes.recorderAuthority())
-        guard let payload = try? JSONEncoder().encode(snapshot), payload.count <= AgentProxyTeeFrame.maximumPayloadBytes else { return false }
+        guard snapshot.routes.count <= RouteTable.maximumRoutes, let payload = try? JSONEncoder().encode(snapshot) else { return false }
+        let frames: [(AgentProxyTeeFrame.Kind, Data)]
+        if payload.count <= AgentProxyTeeFrame.maximumPayloadBytes {
+            frames = [(.routeSnapshot, payload)]
+        } else {
+            // Older versions could persist valid route tables larger than one
+            // frame. Publish all parts atomically at the receiver; never omit a
+            // route or grant partial authority during upgrade recovery.
+            let chunkSize = 64
+            let count = (snapshot.routes.count + chunkSize - 1) / chunkSize
+            guard count > 0, count <= 16 else { return false }
+            var parts: [(AgentProxyTeeFrame.Kind, Data)] = []
+            for index in 0..<count {
+                let range = (index * chunkSize)..<min((index + 1) * chunkSize, snapshot.routes.count)
+                let part = AgentProxyTeeFrame.RouteSnapshotPart(generation: generation, index: index, count: count, routes: Array(snapshot.routes[range]))
+                guard let bytes = try? JSONEncoder().encode(part), bytes.count <= AgentProxyTeeFrame.maximumPayloadBytes else { return false }
+                parts.append((.routeSnapshotPart, bytes))
+            }
+            frames = parts
+        }
         let promise = loop.makePromise(of: Void.self)
         acknowledgements[generation] = promise
         let timeout = loop.scheduleTask(in: .seconds(2)) { [weak self, weak channel] in
@@ -74,9 +93,14 @@ final class RecorderSupervisor: @unchecked Sendable {
             channel.close(promise: nil)
         }
         promise.futureResult.whenComplete { _ in timeout.cancel() }
-        let header = AgentProxyTeeFrame.header(kind: .routeSnapshot, exchange: 0, payloadCount: payload.count)
-        channel.write(ByteBuffer(bytes: header), promise: nil)
-        channel.writeAndFlush(ByteBuffer(bytes: payload)).whenFailure { _ in channel.close(promise: nil) }
+        for (index, frame) in frames.enumerated() {
+            let (kind, bytes) = frame
+            let header = AgentProxyTeeFrame.header(kind: kind, exchange: 0, payloadCount: bytes.count)
+            channel.write(ByteBuffer(bytes: header), promise: nil)
+            if index == frames.count - 1 {
+                channel.writeAndFlush(ByteBuffer(bytes: bytes)).whenFailure { _ in channel.close(promise: nil) }
+            } else { channel.write(ByteBuffer(bytes: bytes), promise: nil) }
+        }
         return true
     }
 

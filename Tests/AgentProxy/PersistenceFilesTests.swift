@@ -72,6 +72,26 @@ struct PersistenceFilesTests {
         try runChild("--lock-child", root: valid, expected: 0)
         holder = nil
 
+        // Every opening boundary classifies only explicit transient errno as
+        // retryable. Clearing the injected failure re-runs all real checks.
+        for (index, site) in [ConversationPersistenceOpenSite.stateRootComponent,
+                              .childDirectory(.conversations), .childDirectory(.records), .lockFile].enumerated() {
+            let path = try root("open-injection-\(index)", under: work)
+            for code: Int32 in [EIO, EINTR, EMFILE, ENFILE, ENOMEM, EAGAIN, ENOSPC, EDQUOT] {
+                try expect(.retryableOpen(code), "transient checked open") {
+                    _ = try ConversationPersistenceFiles(verifiedStateRootPath: path, testControl: .init(openError: { $0 == site ? code : nil }))
+                }
+            }
+            for code: Int32 in [EACCES, EPERM, ELOOP, ENOTDIR, ENOENT] {
+                let expected: ConversationPersistenceFilesError = site == .stateRootComponent ? .unsafeStateRoot : .unsafeObject
+                try expect(expected, "unsafe checked open") {
+                    _ = try ConversationPersistenceFiles(verifiedStateRootPath: path, testControl: .init(openError: { $0 == site ? code : nil }))
+                }
+            }
+            let reopened = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+            check(try reopened.readIndex() == nil, "open fault release permits a checked fresh lease")
+        }
+
         // Discovery must stop on the fourth non-temp name, before a later
         // inventory scan; both valid-looking generations and unknown names
         // consume the same combined bound. The owned files remain untouched.

@@ -313,8 +313,12 @@ private final class ReadState: @unchecked Sendable {
     /// stream's order fences old tee frames before each replacement snapshot.
     func acceptAuthority(_ frame: AgentProxyTeeFrame.Frame) -> UInt64? {
         guard frame.exchange == 0,
-              let snapshot = try? JSONDecoder().decode(AgentProxyTeeFrame.RouteSnapshot.self, from: Data(frame.payload)),
-              snapshot.generation > authorityGeneration, snapshot.routes.count <= 1024 else { return nil }
+              let snapshot = try? JSONDecoder().decode(AgentProxyTeeFrame.RouteSnapshot.self, from: Data(frame.payload)) else { return nil }
+        return acceptAuthority(snapshot)
+    }
+
+    func acceptAuthority(_ snapshot: AgentProxyTeeFrame.RouteSnapshot) -> UInt64? {
+        guard snapshot.generation > authorityGeneration, snapshot.routes.count <= 1024 else { return nil }
         var next: [Data: AgentProxyRouteCreate] = [:]
         for route in snapshot.routes {
             let key = Data(route.routeID.utf8)
@@ -393,6 +397,15 @@ private final class TeeInput: ChannelInboundHandler {
     typealias InboundIn = ByteBuffer
     let state: ReadState
     var decoder = AgentProxyTeeFrame.Decoder()
+    private struct PartialAuthority {
+        let generation: UInt64
+        let count: Int
+        var routes: [AgentProxyTeeFrame.RouteSnapshot.Route]
+        var nextIndex: Int
+        var encodedBytes: Int
+        let reservation: UUID
+    }
+    private var partialAuthority: PartialAuthority?
     private var fencing = false
     init(_ state: ReadState) { self.state = state }
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
@@ -405,8 +418,35 @@ private final class TeeInput: ChannelInboundHandler {
             while let frame = try decoder.next() {
                 // ACKs are only valid in the recorder-to-supervisor direction.
                 guard frame.kind != .routeAcknowledgement else { state.exitCode = 3; context.close(promise: nil); return }
-                if frame.kind == .routeSnapshot {
-                    guard let generation = state.acceptAuthority(frame) else { state.exitCode = 3; context.close(promise: nil); return }
+                if partialAuthority != nil && frame.kind != .routeSnapshotPart {
+                    state.exitCode = 3; context.close(promise: nil); return
+                }
+                if frame.kind == .routeSnapshot || frame.kind == .routeSnapshotPart {
+                    let generation: UInt64?
+                    if frame.kind == .routeSnapshot {
+                        generation = state.acceptAuthority(frame)
+                    } else {
+                        guard frame.exchange == 0,
+                              let part = try? JSONDecoder().decode(AgentProxyTeeFrame.RouteSnapshotPart.self, from: Data(frame.payload)),
+                              part.count > 0, part.count <= 16, part.index >= 0, part.index < part.count,
+                              !part.routes.isEmpty, part.routes.count <= 64 else { state.exitCode = 3; context.close(promise: nil); return }
+                        if partialAuthority == nil {
+                            let workspace = 16 << 20
+                            guard part.index == 0, workspace <= state.capture.limits.totalBytes,
+                                  state.capture.accountedBytes <= state.capture.limits.totalBytes - workspace,
+                                  let reservation = state.capture.reserve(bytes: workspace) else { state.exitCode = 3; context.close(promise: nil); return }
+                            partialAuthority = PartialAuthority(generation: part.generation, count: part.count, routes: [], nextIndex: 0, encodedBytes: 0, reservation: reservation)
+                        }
+                        guard var partial = partialAuthority, partial.generation == part.generation, partial.count == part.count,
+                              partial.nextIndex == part.index, partial.routes.count <= 1024 - part.routes.count,
+                              partial.encodedBytes <= (16 << 20) - frame.payload.count else { state.exitCode = 3; context.close(promise: nil); return }
+                        partial.routes.append(contentsOf: part.routes); partial.nextIndex += 1; partial.encodedBytes += frame.payload.count
+                        if partial.nextIndex < partial.count { partialAuthority = partial; continue }
+                        partialAuthority = nil
+                        state.capture.release(partial.reservation)
+                        generation = state.acceptAuthority(.init(generation: partial.generation, routes: partial.routes))
+                    }
+                    guard let generation else { state.exitCode = 3; context.close(promise: nil); return }
                     fencing = true
                     guard let options = context.channel.syncOptions else { state.exitCode = 3; context.close(promise: nil); return }
                     do { try options.setOption(ChannelOptions.autoRead, value: false) }
@@ -436,6 +476,7 @@ private final class TeeInput: ChannelInboundHandler {
         } catch { state.exitCode = 3; context.close(promise: nil) }
     }
     func channelInactive(context: ChannelHandlerContext) {
+        if let partialAuthority { state.capture.release(partialAuthority.reservation); self.partialAuthority = nil }
         state.capture.finishAll(); state.scheduleChangedRecords(); context.fireChannelInactive()
     }
     func errorCaught(context: ChannelHandlerContext, error: Error) { state.exitCode = 3; context.close(promise: nil) }
