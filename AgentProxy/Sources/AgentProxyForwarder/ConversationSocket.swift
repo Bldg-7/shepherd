@@ -331,6 +331,15 @@ private final class ReadState: @unchecked Sendable {
         return acceptAuthority(snapshot, reservation: reservation)
     }
 
+    static func validAuthorityRoute(_ route: AgentProxyTeeFrame.RouteSnapshot.Route) -> Bool {
+        let fields = [route.routeID, route.identity.session, route.identity.paneID,
+                      route.identity.terminalID, route.identity.cliVersion]
+        return !route.routeID.isEmpty && fields.allSatisfy {
+            $0.utf8.count <= AgentProxyControl.maximumFieldBytes &&
+            !$0.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })
+        }
+    }
+
     /// The caller owns the new reservation until this returns a generation;
     /// then the state owns it, replacing the old reservation only after all
     /// validation and construction succeed.
@@ -338,12 +347,7 @@ private final class ReadState: @unchecked Sendable {
         guard snapshot.generation > authorityGeneration, snapshot.routes.count <= 1024 else { return nil }
         var next: [Data: AgentProxyRouteCreate] = [:]
         for route in snapshot.routes {
-            let fields = [route.routeID, route.identity.session, route.identity.paneID,
-                          route.identity.terminalID, route.identity.cliVersion]
-            guard !route.routeID.isEmpty, fields.allSatisfy({
-                $0.utf8.count <= AgentProxyControl.maximumFieldBytes &&
-                !$0.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })
-            }) else { return nil }
+            guard Self.validAuthorityRoute(route) else { return nil }
             let key = Data(route.routeID.utf8)
             guard next[key] == nil else { return nil }
             next[key] = route.identity
@@ -475,7 +479,8 @@ private final class TeeInput: ChannelInboundHandler {
                         guard frame.exchange == 0,
                               let part = try? JSONDecoder().decode(AgentProxyTeeFrame.RouteSnapshotPart.self, from: Data(frame.payload)),
                               part.count > 0, part.count <= 16, part.index >= 0, part.index < part.count,
-                              !part.routes.isEmpty, part.routes.count <= 64 else {
+                              !part.routes.isEmpty, part.routes.count <= 64,
+                              part.routes.allSatisfy(ReadState.validAuthorityRoute) else {
                             if let acquired { state.capture.release(acquired) }
                             state.exitCode = 3; context.close(promise: nil); return
                         }
