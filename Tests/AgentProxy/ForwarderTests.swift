@@ -820,7 +820,13 @@ final class Suite {
         try check(waitUntil(3) { (try? proxy.control().result("proxy.status")["recorder"] as? [String: Any])?["state"] as? String == "running" }, "recorder up")
         let response = try send(proxy.port, request("POST", "/p/\(claude.token)/v1/messages?beta=true", headers, body: body))
         try check(response.status == 200 && response.complete, "exchange")
-        let frames = try waitForFrames(tap, ends: 1)
+        let allFrames = try waitForFrames(tap, ends: 1)
+        let snapshots = try allFrames.filter { $0.kind == .routeSnapshot }.map {
+            try JSONDecoder().decode(AgentProxyTeeFrame.RouteSnapshot.self, from: Data($0.payload))
+        }
+        try check(!snapshots.isEmpty && snapshots.last?.routes.contains(where: { $0.routeID == claude.routeID }) == true,
+                  "supervisor sends current route authority before exchange")
+        let frames = allFrames.filter { $0.kind != .routeSnapshot }
         try check(frames.map(\.kind) == [.open, .requestBody, .requestEnd, .responseHead, .responseBody, .end],
                   "frame kinds in order: \(frames.map(\.kind.rawValue))")
         try check(Set(frames.map(\.exchange)).count == 1, "one exchange number")
@@ -851,6 +857,14 @@ final class Suite {
         try check(frames[4].payload == bytes(events), "response body copied")
         let end = try JSONDecoder().decode(AgentProxyTeeFrame.End.self, from: Data(frames[5].payload))
         try check(end.outcome == .complete, "end complete")
+        try check(try proxy.control().result("routes.remove", ["routeID": claude.routeID])["removed"] as? Bool == true,
+                  "route removed")
+        let previousGeneration = snapshots.last!.generation
+        try check(waitUntil(3) {
+            guard let last = (try? self.frames(tap))?.last(where: { $0.kind == .routeSnapshot }),
+                  let next = try? JSONDecoder().decode(AgentProxyTeeFrame.RouteSnapshot.self, from: Data(last.payload)) else { return false }
+            return next.generation > previousGeneration && !next.routes.contains(where: { $0.routeID == claude.routeID })
+        }, "route removal reaches recorder authority stream")
     }
 
     func teeLimits() throws {

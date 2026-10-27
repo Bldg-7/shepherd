@@ -29,6 +29,23 @@ public nonisolated enum AgentProxyTeeFrame {
         case responseHead = 4
         case responseBody = 5
         case end = 6
+        /// Supervisor-owned current route authority, never copied from an exchange.
+        case routeSnapshot = 7
+    }
+
+    public struct RouteSnapshot: Codable, Sendable, Equatable {
+        public struct Route: Codable, Sendable, Equatable {
+            public let routeID: String
+            public let identity: AgentProxyRouteCreate
+            public init(routeID: String, identity: AgentProxyRouteCreate) {
+                self.routeID = routeID; self.identity = identity
+            }
+        }
+        public let generation: UInt64
+        public let routes: [Route]
+        public init(generation: UInt64, routes: [Route]) {
+            self.generation = generation; self.routes = routes
+        }
     }
 
     /// Length, kind and exchange.

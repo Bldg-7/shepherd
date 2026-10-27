@@ -138,7 +138,50 @@ private final class ReadState: @unchecked Sendable {
     var exitCode: Int32 = 0
     var clients: [ObjectIdentifier: ReadClient] = [:]
     private var ticker: RepeatedTask?
+    private var authorityGeneration: UInt64 = 0
+    private var authority: [Data: AgentProxyRouteCreate] = [:]
     init(loop: EventLoop) { self.loop = loop }
+
+    private func same(_ a: AgentProxyRouteCreate, _ b: AgentProxyRouteCreate) -> Bool {
+        a.kind == b.kind && zip([a.session, a.paneID, a.terminalID, a.cliVersion],
+                                [b.session, b.paneID, b.terminalID, b.cliVersion])
+            .allSatisfy { Data($0.0.utf8) == Data($0.1.utf8) }
+    }
+
+    /// Authority arrives only on the inherited supervisor stream. The input
+    /// stream's order fences old tee frames before each replacement snapshot.
+    func acceptAuthority(_ frame: AgentProxyTeeFrame.Frame) -> Bool {
+        guard frame.exchange == 0,
+              let snapshot = try? JSONDecoder().decode(AgentProxyTeeFrame.RouteSnapshot.self, from: Data(frame.payload)),
+              snapshot.generation > authorityGeneration, snapshot.routes.count <= 1024 else { return false }
+        var next: [Data: AgentProxyRouteCreate] = [:]
+        for route in snapshot.routes {
+            let key = Data(route.routeID.utf8)
+            guard !key.isEmpty, next[key] == nil else { return false }
+            next[key] = route.identity
+        }
+        let revoked = authority.contains { key, old in
+            guard let current = next[key] else { return true }
+            return !same(old, current)
+        }
+        if revoked {
+            // Coarse but fail-closed: no in-flight ticket or read subscriber
+            // survives an authority change that removes or rotates a route.
+            capture.invalidateForClear()
+            for client in Array(clients.values) { client.channel.close(promise: nil) }
+        }
+        authority = next
+        authorityGeneration = snapshot.generation
+        return true
+    }
+
+    func acceptOpen(_ frame: AgentProxyTeeFrame.Frame) -> Bool {
+        guard authorityGeneration != 0,
+              let open = try? JSONDecoder().decode(AgentProxyTeeFrame.Open.self, from: Data(frame.payload)),
+              let identity = open.routeIdentity,
+              let current = authority[Data(open.routeID.utf8)] else { return false }
+        return same(identity, current)
+    }
     func start() {
         loop.assertInEventLoop()
         ticker = loop.scheduleRepeatedTask(initialDelay: .milliseconds(100), delay: .milliseconds(100)) { [weak self] _ in
@@ -175,8 +218,15 @@ private final class TeeInput: ChannelInboundHandler {
     init(_ state: ReadState) { self.state = state }
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         decoder.append(unwrapInboundIn(data).readableBytesView)
-        do { while let frame = try decoder.next() { state.capture.consume(frame) } }
-        catch { state.exitCode = 3; context.close(promise: nil) }
+        do {
+            while let frame = try decoder.next() {
+                if frame.kind == .routeSnapshot {
+                    guard state.acceptAuthority(frame) else { state.exitCode = 3; context.close(promise: nil); return }
+                } else if frame.kind != .open || state.acceptOpen(frame) {
+                    state.capture.consume(frame)
+                }
+            }
+        } catch { state.exitCode = 3; context.close(promise: nil) }
     }
     func channelInactive(context: ChannelHandlerContext) { state.capture.finishAll(); context.fireChannelInactive() }
     func errorCaught(context: ChannelHandlerContext, error: Error) { state.exitCode = 3; context.close(promise: nil) }

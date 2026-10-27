@@ -118,10 +118,11 @@ public final class AgentProxyServer: @unchecked Sendable {
         }
 
         if let command = configuration.recorderCommand, !command.isEmpty {
-            let recorder = RecorderSupervisor(command: command, loop: loop, tee: core.tee, log: log)
+            let recorder = RecorderSupervisor(command: command, loop: loop, tee: core.tee, routes: core.routes, log: log)
             self.recorder = recorder
             try loop.submit {
                 core.recorder = recorder
+                core.routes.onAuthorityChanged = { [weak recorder] in recorder?.authorityChanged() }
                 recorder.start()
             }.wait()
         }

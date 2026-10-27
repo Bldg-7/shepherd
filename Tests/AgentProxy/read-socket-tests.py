@@ -72,6 +72,9 @@ class Recorder:
     def frame(self, kind, payload=b'', exchange=1):
         if not isinstance(payload, bytes): payload = json.dumps(payload).encode()
         self.tee.sendall(struct.pack('>IBQ', 9 + len(payload), kind, exchange) + payload)
+    def authority(self, generation=1, routes=True):
+        identity = {'kind': 'claude', 'session': 'session', 'paneID': 'pane', 'terminalID': 'terminal', 'cliVersion': '2.1.309'}
+        self.frame(7, {'generation': generation, 'routes': [{'routeID': 'route', 'identity': identity}] if routes else []}, exchange=0)
     def event(self, data, exchange=1): self.frame(5, b'data: ' + json.dumps(data).encode() + b'\n\n', exchange=exchange)
     def begin(self):
         self.frame(1, {'routeID': 'route', 'upstream': 'anthropic', 'method': 'POST', 'path': '/v1/messages',
@@ -98,12 +101,22 @@ class Recorder:
         self.tee.shutdown(socket.SHUT_WR)
         code = self.wait(); self.tee.close(); return code
 
+desync = Recorder(a.work / 'authority-desync')
+try:
+    desync.query('conversations.list')
+    desync.authority(generation=1)
+    desync.authority(generation=1)
+    check(desync.wait() == 3, 'replayed authority generation terminates recorder fail-closed')
+finally:
+    desync.stop()
+
 r = Recorder(a.work / 'normal')
 try:
     empty = r.query('conversations.list')['result']
     check(not empty['conversations'], 'fresh recorder empty epoch')
     check(stat.S_IMODE(r.path.stat().st_mode) == 0o600, 'read socket 0600')
     check(stat.S_IMODE(r.path.parent.stat().st_mode) == 0o700, 'private parent 0700')
+    r.authority()
     r.begin(); cid = r.conversation()
     snapshot = r.query('conversation.read', conversationID=cid)['result']
     check(snapshot['items'][0]['blocks'][0]['text'] == 'hello', 'tee request reaches read socket')
@@ -161,7 +174,20 @@ try:
         try: closed = oversized.recv(1) == b''
         except ConnectionResetError: closed = True
         check(closed, 'oversized NDJSON closes only offending client')
-    check(bool(r.query('conversations.list')['result']['conversations']), 'bad read client does not kill recorder')
+    before_revocation = r.query('conversations.list')['result']['epoch']
+    r.authority(generation=2, routes=False)
+    until = time.monotonic() + 3
+    while True:
+        revoked = r.query('conversations.list')['result']
+        if revoked['epoch'] != before_revocation: break
+        assert time.monotonic() < until, 'authority revocation deadline'
+        select.select([r.tee], [], [], .02)
+    check(not revoked['conversations'], 'route revocation rotates epoch and drops readable capture')
+    r.frame(1, {'routeID':'route','upstream':'anthropic','method':'POST','path':'/v1/messages',
+                'routeIdentity':{'kind':'claude','session':'session','paneID':'pane','terminalID':'terminal','cliVersion':'2.1.309'},
+                'headers':[['x-claude-code-session-id','native'],['x-claude-code-request-class','main']]}, exchange=3)
+    r.frame(2, {'messages':[{'role':'user','content':'stale'}]}, exchange=3); r.frame(3, exchange=3)
+    check(not r.query('conversations.list')['result']['conversations'], 'removed route cannot reopen via historical identity')
     inode = r.path.stat().st_ino
     duplicate = Recorder(a.work/'normal')
     check(duplicate.wait() == 4 and r.path.stat().st_ino == inode, 'duplicate recorder cannot steal active listener')
@@ -189,7 +215,7 @@ finally: check(bounded.stop() == 0, 'connection cap test leaves no active client
 
 slow = Recorder(a.work/'slow')
 try:
-    slow.query('conversations.list'); slow.begin()
+    slow.query('conversations.list'); slow.authority(); slow.begin()
     for _ in range(25): slow.event({'type':'content_block_delta','index':0,'delta':{'type':'text_delta','text':'\x01'*4000}})
     slow.end(); cid = slow.conversation()
     # Wait for completion through actual replies, not a fixed sleep.

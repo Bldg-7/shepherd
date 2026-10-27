@@ -46,6 +46,8 @@ final class RouteTable {
     private var byHash: [String: Entry] = [:]
     private var order: [String] = []
     private(set) var inFlight: [String: Int] = [:]
+    /// Invoked on the owning proxy loop only, after a committed mutation.
+    var onAuthorityChanged: (() -> Void)?
 
     init(directory: StateDirectory, log: (String) -> Void) {
         self.directory = directory
@@ -96,6 +98,7 @@ final class RouteTable {
             order.removeLast()
             throw AgentProxyControlError(code: .unavailable, message: "The route could not be saved.")
         }
+        onAuthorityChanged?()
         return (entry, token)
     }
 
@@ -108,6 +111,7 @@ final class RouteTable {
             order.append(hash)
             throw AgentProxyControlError(code: .unavailable, message: "The routes could not be saved.")
         }
+        onAuthorityChanged?()
         return true
     }
 
@@ -116,6 +120,17 @@ final class RouteTable {
         guard let hash = order.first(where: { byHash[$0]?.routeID == routeID }), byHash[hash]?.oauthRejected == false else { return }
         byHash[hash]?.oauthRejected = true
         do { try save() } catch { log("routes: \(Self.fileName) could not be written") }
+        onAuthorityChanged?()
+    }
+
+    /// Non-secret current identities only. Rejecting an OAuth route also
+    /// revokes its authority, even if recording the rejection failed.
+    func recorderAuthority() -> [AgentProxyTeeFrame.RouteSnapshot.Route] {
+        order.compactMap { byHash[$0] }.filter { !$0.oauthRejected }.map {
+            .init(routeID: $0.routeID,
+                  identity: .init(kind: $0.kind, session: $0.session, paneID: $0.paneID,
+                                  terminalID: $0.terminalID, cliVersion: $0.cliVersion))
+        }
     }
 
     func began(routeID: String) { inFlight[routeID, default: 0] += 1 }

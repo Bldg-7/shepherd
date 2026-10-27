@@ -20,7 +20,9 @@ final class RecorderSupervisor: @unchecked Sendable {
     private let command: [String]
     private let loop: EventLoop
     private let tee: Tee
+    private let routes: RouteTable
     private let log: @Sendable (String) -> Void
+    private var authorityGeneration: UInt64 = 0
     private var pid: pid_t?
     private var link: Channel?
     private var delay = RecorderSupervisor.firstDelay
@@ -32,8 +34,27 @@ final class RecorderSupervisor: @unchecked Sendable {
     private let exits = NSCondition()
     private var waiting = 0
 
-    init(command: [String], loop: EventLoop, tee: Tee, log: @escaping @Sendable (String) -> Void) {
-        self.command = command; self.loop = loop; self.tee = tee; self.log = log
+    init(command: [String], loop: EventLoop, tee: Tee, routes: RouteTable, log: @escaping @Sendable (String) -> Void) {
+        self.command = command; self.loop = loop; self.tee = tee; self.routes = routes; self.log = log
+    }
+
+    /// A snapshot and all subsequent tee frames share the same ordered stream.
+    /// If it cannot be sent, close the link rather than retain stale authority.
+    func authorityChanged() {
+        loop.assertInEventLoop()
+        guard let link else { return }
+        guard sendAuthority(on: link) else { link.close(promise: nil); return }
+    }
+
+    private func sendAuthority(on channel: Channel) -> Bool {
+        guard channel.isActive, channel.isWritable, authorityGeneration < UInt64.max else { return false }
+        authorityGeneration += 1
+        let snapshot = AgentProxyTeeFrame.RouteSnapshot(generation: authorityGeneration, routes: routes.recorderAuthority())
+        guard let payload = try? JSONEncoder().encode(snapshot), payload.count <= AgentProxyTeeFrame.maximumPayloadBytes else { return false }
+        let header = AgentProxyTeeFrame.header(kind: .routeSnapshot, exchange: 0, payloadCount: payload.count)
+        channel.write(ByteBuffer(bytes: header), promise: nil)
+        channel.writeAndFlush(ByteBuffer(bytes: payload)).whenFailure { _ in channel.close(promise: nil) }
+        return true
     }
 
     var currentPID: pid_t? { pid }
@@ -99,6 +120,11 @@ final class RecorderSupervisor: @unchecked Sendable {
                 case .success(let channel):
                     guard pid == child, !stopped else { channel.close(promise: nil); return }
                     link = channel
+                    guard sendAuthority(on: channel) else {
+                        link = nil; channel.close(promise: nil)
+                        if pid == child { kill(child, SIGKILL) }
+                        return
+                    }
                     tee.attach(channel)
                     channel.closeFuture.whenComplete { [self] _ in
                         tee.detach(channel)

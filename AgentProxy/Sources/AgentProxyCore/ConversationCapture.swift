@@ -96,7 +96,7 @@ public final class ConversationCapture {
         guard let exchange = exchanges[frame.exchange] else { return }
         do {
             switch frame.kind {
-            case .open: break
+            case .open, .routeSnapshot: break
             case .requestBody:
                 guard !exchange.requestEnded else { throw Failure.invalid }
                 try wire(frame.payload.count, exchange)
