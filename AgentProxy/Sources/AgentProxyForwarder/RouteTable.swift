@@ -93,6 +93,14 @@ final class RouteTable {
                           cliVersion: request.cliVersion, createdAt: formatter.string(from: Date()), oauthRejected: false)
         byHash[entry.tokenHash] = entry
         order.append(entry.tokenHash)
+        // Use the widest possible generation encoding: every committed route
+        // table must fit a single recorder authority frame even after restart.
+        let proposed = AgentProxyTeeFrame.RouteSnapshot(generation: UInt64.max, routes: recorderAuthority())
+        guard let encoded = try? JSONEncoder().encode(proposed), encoded.count <= AgentProxyTeeFrame.maximumPayloadBytes else {
+            byHash[entry.tokenHash] = nil
+            order.removeLast()
+            throw AgentProxyControlError(code: .unavailable, message: "Recorder authority capacity reached; remove old routes.")
+        }
         do { try save() } catch {
             byHash[entry.tokenHash] = nil
             order.removeLast()

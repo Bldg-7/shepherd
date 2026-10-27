@@ -2,7 +2,7 @@
 """Synthetic fd3 tee -> real recorder -> private NDJSON socket. No app/agents,
 credentials, transcript files or external network. All sockets under --work.
 """
-import argparse, json, os, select, socket, stat, struct, subprocess, time
+import argparse, fcntl, json, os, select, socket, stat, struct, subprocess, time
 from pathlib import Path
 
 p = argparse.ArgumentParser()
@@ -159,6 +159,120 @@ finally:
 reopened_index = json.loads(index.read_bytes())
 check(len(reopened_index['records']) == 1 and reopened_index['records'][0]['recordID'] == retained_index['records'][0]['recordID'],
       'restart saves retain the original persistent ID without duplication')
+
+# Hold the owned journal lease before the recorder opens it, then release it.
+# The existing live MAIN must become persistable without another mutation.
+locked_root = a.work / 'locked-state'
+locked_root.mkdir(mode=0o700)
+locked_conversations = locked_root / 'Conversations'
+locked_conversations.mkdir(mode=0o700)
+(locked_conversations / 'records').mkdir(mode=0o700)
+lock_fd = os.open(locked_conversations / 'lock', os.O_CREAT | os.O_RDWR, 0o600)
+fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+locked = Recorder(a.work / 'locked-socket', state_directory=locked_root)
+try:
+    locked.authority(); locked.begin(wait_admission=True); locked.end(); locked.conversation()
+    until = time.monotonic() + 5
+    while locked.query('persistence.status')['result']['mode'] != 'degraded':
+        assert time.monotonic() < until, 'competing journal lease observed'
+    fcntl.flock(lock_fd, fcntl.LOCK_UN)
+    index_path = locked_conversations / 'index-v1.json'
+    until = time.monotonic() + 15
+    while True:
+        try:
+            entries = json.loads(index_path.read_bytes())['records']
+            if entries: break
+        except (OSError, ValueError, KeyError): pass
+        assert time.monotonic() < until, 'released journal lease retry deadline'
+        time.sleep(.05)
+    check(len(entries) == 1, 'released lease retries and persists without another MAIN')
+finally:
+    fcntl.flock(lock_fd, fcntl.LOCK_UN); os.close(lock_fd)
+    check(locked.stop() == 0, 'lease recovery recorder exits naturally')
+
+# A failed upsert must leave its latest revision dirty. Corrupt no body: make
+# the owned records directory temporarily unsafe, then restore its mode.
+dirty_root = a.work / 'dirty-state'
+dirty_root.mkdir(mode=0o700)
+dirty = Recorder(a.work / 'dirty-socket', state_directory=dirty_root)
+try:
+    dirty.authority()
+    dirty.frame(1, {'routeID': 'route', 'upstream': 'anthropic', 'method': 'POST', 'path': '/v1/messages',
+                    'routeIdentity': {'kind': 'claude', 'session': 'session', 'paneID': 'pane', 'terminalID': 'terminal', 'cliVersion': '2.1.309'},
+                    'headers': [['x-claude-code-session-id', 'native'], ['x-claude-code-request-class', 'main']]})
+    dirty.frame(2, {'messages': [{'role': 'user', 'content': 'dirty-input'}]}); dirty.frame(3)
+    dirty.conversation()
+    until = time.monotonic() + 10
+    while dirty.query('persistence.status')['result']['mode'] != 'healthy':
+        assert time.monotonic() < until, 'initial dirty fixture save deadline'
+        time.sleep(.05)
+    records_dir = dirty_root / 'Conversations' / 'records'
+    records_dir.chmod(0o755)
+    dirty.frame(4, {'status': 200, 'headers': [['content-type', 'text/event-stream']]})
+    dirty.event({'type': 'message_start', 'message': {'id': 'm', 'role': 'assistant', 'content': []}})
+    dirty.event({'type': 'content_block_start', 'index': 0, 'content_block': {'type': 'text', 'text': 'retry-only-answer'}})
+    dirty.end()
+    until = time.monotonic() + 8
+    while dirty.query('persistence.status')['result']['mode'] != 'degraded':
+        assert time.monotonic() < until, 'failed write observed before permission repair'
+        time.sleep(.05)
+    records_dir.chmod(0o700)
+    until = time.monotonic() + 15
+    while True:
+        try:
+            entries = json.loads((dirty_root / 'Conversations' / 'index-v1.json').read_bytes())['records']
+            body = (records_dir / (entries[0]['generation'] + '.json')).read_bytes()
+            if b'retry-only-answer' in body: break
+        except (OSError, ValueError, KeyError, IndexError): pass
+        assert time.monotonic() < until, 'dirty revision retry deadline'
+        time.sleep(.05)
+    check(b'retry-only-answer' in body, 'failed latest revision retries without another capture mutation')
+finally:
+    if (dirty_root / 'Conversations' / 'records').exists(): (dirty_root / 'Conversations' / 'records').chmod(0o700)
+    check(dirty.stop() == 0, 'dirty-retry recorder exits naturally')
+
+# Hold owned read-client reservations so the 64 MiB journal workspace cannot
+# be admitted, then release them without any further conversation mutation.
+pressure_root = a.work / 'pressure-state'
+pressure_root.mkdir(mode=0o700)
+pressure = Recorder(a.work / 'pressure-socket', state_directory=pressure_root)
+held = []
+try:
+    pressure.authority()
+    pressure.frame(1, {'routeID': 'route', 'upstream': 'anthropic', 'method': 'POST', 'path': '/v1/messages',
+                       'routeIdentity': {'kind': 'claude', 'session': 'session', 'paneID': 'pane', 'terminalID': 'terminal', 'cliVersion': '2.1.309'},
+                       'headers': [['x-claude-code-session-id', 'native'], ['x-claude-code-request-class', 'main']]})
+    pressure.frame(2, {'messages': [{'role': 'user', 'content': 'pressure-input'}]}); pressure.frame(3)
+    pressure.conversation()
+    until = time.monotonic() + 10
+    while pressure.query('persistence.status')['result']['mode'] != 'healthy':
+        assert time.monotonic() < until, 'pressure fixture initial save deadline'
+        time.sleep(.05)
+    held = [pressure.connect() for _ in range(15)]
+    pressure.frame(4, {'status': 200, 'headers': [['content-type', 'text/event-stream']]})
+    pressure.event({'type': 'message_start', 'message': {'id': 'm', 'role': 'assistant', 'content': []}})
+    pressure.event({'type': 'content_block_start', 'index': 0, 'content_block': {'type': 'text', 'text': 'pressure-only-answer'}})
+    pressure.end()
+    until = time.monotonic() + 8
+    while pressure.query('persistence.status')['result']['mode'] != 'degraded':
+        assert time.monotonic() < until, 'workspace pressure drop observed'
+        time.sleep(.05)
+    for client in held: client.close()
+    held = []
+    records = pressure_root / 'Conversations' / 'records'
+    until = time.monotonic() + 15
+    while True:
+        try:
+            entries = json.loads((pressure_root / 'Conversations' / 'index-v1.json').read_bytes())['records']
+            body = (records / (entries[0]['generation'] + '.json')).read_bytes()
+            if b'pressure-only-answer' in body: break
+        except (OSError, ValueError, KeyError, IndexError): pass
+        assert time.monotonic() < until, 'pressure-dropped revision retry deadline'
+        time.sleep(.05)
+    check(b'pressure-only-answer' in body, 'workspace pressure release retries latest revision')
+finally:
+    for client in held: client.close()
+    check(pressure.stop() == 0, 'pressure retry recorder exits naturally')
 
 # Journal initialization errors are sticky and visible, not silently volatile.
 bad_root = a.work / 'bad-state-root'

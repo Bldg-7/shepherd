@@ -10,13 +10,15 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
         let record: ConversationStore.PersistentSnapshot.Record
         let reservation: UUID
         let updatedAt: Date
+        let completion: (Bool) -> Void
     }
     private let loop: EventLoop
     private let worker = DispatchQueue(label: "conversation-persistence")
     private let root: String
     private let capture: ConversationCapture
     private var journal: ConversationPersistenceJournal? // worker queue only
-    private var initializationFailed = false // worker queue only; no unsafe repeated open
+    private var initializationFailed = false // worker queue only; unsafe/unsupported data stays closed
+    private var initializationRetryAfter: TimeInterval = 0 // worker queue only
     private var pending: [String: Pending] = [:] // recorder loop only
     // JSON encoding, checked reads and validation can transiently exceed the
     // normalized 4 MiB record (escaping alone can expand text sixfold).
@@ -34,16 +36,17 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
 
     /// Pressure skips a snapshot instead of delaying forwarding. Replacing a
     /// pending record reuses its reservation, rather than briefly doubling it.
-    func schedule(_ record: ConversationStore.PersistentSnapshot.Record) -> Bool {
+    func schedule(_ record: ConversationStore.PersistentSnapshot.Record, completion: @escaping (Bool) -> Void) -> Bool {
         loop.assertInEventLoop()
         if let old = pending[record.id] {
-            pending[record.id] = Pending(record: record, reservation: old.reservation, updatedAt: Date())
+            pending[record.id] = Pending(record: record, reservation: old.reservation, updatedAt: Date(), completion: completion)
+            loop.execute { old.completion(false) }
             return true
         }
         guard pending.count < 8, Self.recordBytes <= capture.limits.totalBytes,
               capture.accountedBytes <= capture.limits.totalBytes - Self.recordBytes,
               let reservation = capture.reserve(bytes: Self.recordBytes) else { health = .degraded; return false }
-        pending[record.id] = Pending(record: record, reservation: reservation, updatedAt: Date())
+        pending[record.id] = Pending(record: record, reservation: reservation, updatedAt: Date(), completion: completion)
         drain()
         return true
     }
@@ -79,15 +82,32 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
 
     private func openJournal() throws -> ConversationPersistenceJournal {
         if let journal { return journal }
-        guard !initializationFailed else { throw ConversationPersistenceJournalError.unavailable }
+        let now = ProcessInfo.processInfo.systemUptime
+        guard !initializationFailed, now.isFinite, now >= initializationRetryAfter else { throw ConversationPersistenceJournalError.unavailable }
+        let files: ConversationPersistenceFiles
+        do { files = try ConversationPersistenceFiles(verifiedStateRootPath: root) }
+        catch {
+            if let reason = error as? ConversationPersistenceFilesError {
+                switch reason {
+                case .lockUnavailable, .ioFailure, .retryableBeforeTemporaryCreation(_):
+                    initializationRetryAfter = now + 5
+                default: initializationFailed = true
+                }
+            } else { initializationFailed = true }
+            throw error
+        }
+        let opened = ConversationPersistenceJournal(files: files)
         do {
-            let files = try ConversationPersistenceFiles(verifiedStateRootPath: root)
-            let opened = ConversationPersistenceJournal(files: files)
             try opened.activate()
             journal = opened
             return opened
         } catch {
-            initializationFailed = true
+            // The journal exposes a degraded deadline only for checked I/O
+            // failures; malformed/future data remains permanently untouched.
+            if let journalError = error as? ConversationPersistenceJournalError,
+               journalError == .unavailable, case .degraded(let deadline) = opened.health {
+                initializationRetryAfter = max(now + 5, deadline)
+            } else { initializationFailed = true }
             throw error
         }
     }
@@ -97,7 +117,10 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
     /// this completion and invalidate its capture/read/restore tickets first.
     func fence(_ completion: @escaping () -> Void) {
         loop.assertInEventLoop()
-        for value in pending.values { capture.release(value.reservation) }
+        for value in pending.values {
+            capture.release(value.reservation)
+            loop.execute { value.completion(false) }
+        }
         pending.removeAll()
         if running { fenceWaiters.append(completion) }
         else { loop.execute(completion) }
@@ -124,6 +147,7 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
               let workspace = capture.reserve(bytes: Self.workspaceBytes) else {
             capture.release(next.reservation)
             health = .degraded
+            loop.execute { next.completion(false) }
             drain()
             return
         }
@@ -139,6 +163,7 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
                 capture.release(next.reservation)
                 if !success { health = .degraded }
                 else if case .volatile = health { health = .healthy }
+                loop.execute { next.completion(success) }
                 running = false
                 let waiters = fenceWaiters
                 fenceWaiters.removeAll()

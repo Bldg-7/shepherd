@@ -129,6 +129,25 @@ struct ConversationCaptureTests {
             try racing.head(2); try racing.answer(2, "new answer"); try racing.end(2)
             check(racing.snapshot?.items.last?.message.blocks.first?.text == "new answer", "held \(hasHistory ? "history" : "no-record") result cannot supersede newer live MAIN")
         }
+        // A bounded live store rejects historical import without evicting the
+        // prior live entry; the host can still resume and capture the new MAIN.
+        let saved = Harness(); try saved.open(1, native: "historical-key"); try saved.request(1, "history")
+        let savedRecord = saved.snapshot.flatMap { saved.capture.reconciler.store.persistenceRecord(id: $0.summary.id) }!
+        let fullStore = Harness(ConversationCapture(limits: .init(store: .init(conversations: 1))))
+        try fullStore.open(1, native: "existing-live"); try fullStore.request(1, "existing")
+        var refusedImport = false
+        fullStore.capture.onMainAdmission = { owner, _, _, resume, _ in
+            if owner.key.nativeSession == "historical-key" {
+                refusedImport = fullStore.capture.restoreOne(savedRecord) == nil
+            }
+            resume()
+            return true
+        }
+        try fullStore.open(2, native: "historical-key"); try fullStore.request(2, "new live")
+        try fullStore.head(2); try fullStore.answer(2, "captured despite history pressure"); try fullStore.end(2)
+        check(refusedImport, "full store refuses import without evicting prior live entry")
+        check(fullStore.snapshot?.items.last?.message.blocks.first?.text == "captured despite history pressure", "failed import resumes new live response")
+        check(saved.snapshot?.items.first?.message.blocks.first?.text == "history", "historical source remains unchanged")
         let stream = Harness()
         try stream.open(1, extra: [["Authorization", "PRIVATE_AUTH"], ["x-claude-code-secret", "PRIVATE_HEADER"]])
         try stream.request(1); try stream.head(1); try stream.answer(1, "안녕🧪", complete: false)

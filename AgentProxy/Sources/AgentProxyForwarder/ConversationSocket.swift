@@ -142,7 +142,8 @@ private final class ReadState: @unchecked Sendable {
     private var authorityGeneration: UInt64 = 0
     private var authority: [Data: AgentProxyRouteCreate] = [:]
     private var persistence: ConversationPersistenceCoordinator?
-    private var scheduledRevisions: [String: UInt64] = [:]
+    private struct ScheduledRevision { let revision: UInt64; let token: UUID }
+    private var scheduledRevisions: [String: ScheduledRevision] = [:]
     private var persistentIDs: [ConversationKey: String] = [:]
     private var blockedPersistence: Set<ConversationKey> = []
     private var historicalConflicts: Set<ConversationKey> = []
@@ -197,7 +198,15 @@ private final class ReadState: @unchecked Sendable {
                     let adjusted = ConversationStore.PersistentSnapshot.Record(id: r.id, key: r.key,
                         context: .init(routeID: owner.context.routeID, paneID: owner.context.paneID, terminalID: owner.context.terminalID),
                         updatedOrder: r.updatedOrder, items: r.items, truncated: r.truncated, status: r.status, subagents: r.subagents)
-                    guard self.capture.restoreOne(adjusted) != nil else { self.blockedPersistence.insert(key); cancel(); return }
+                    guard self.capture.restoreOne(adjusted) != nil else {
+                        // Preserve the historical body and the newly admitted
+                        // live exchange when import cannot fit without eviction.
+                        self.blockedPersistence.insert(key)
+                        self.historicalConflicts.insert(key)
+                        resume()
+                        self.scheduleChangedRecords()
+                        return
+                    }
                     self.persistentIDs[key] = diskID
                 }
                 resume()
@@ -275,7 +284,7 @@ private final class ReadState: @unchecked Sendable {
         blockedPersistence = blockedPersistence.filter { liveKeys.contains($0) }
         historicalConflicts = historicalConflicts.filter { liveKeys.contains($0) }
         for summary in summaries where persistentIDs[summary.key] == nil { blockedPersistence.insert(summary.key) }
-        for summary in summaries where scheduledRevisions[summary.id] != summary.revision {
+        for summary in summaries where scheduledRevisions[summary.id]?.revision != summary.revision {
             guard !blockedPersistence.contains(summary.key), let persistentID = persistentIDs[summary.key], let route = authority[Data(summary.context.routeID.utf8)],
                   Data(route.session.utf8) == Data(summary.key.herdrSession.utf8),
                   route.kind.rawValue == summary.key.agent,
@@ -284,7 +293,13 @@ private final class ReadState: @unchecked Sendable {
                   let record = capture.reconciler.store.persistenceRecord(id: summary.id) else { continue }
             let mapped = ConversationStore.PersistentSnapshot.Record(id: persistentID, key: record.key, context: record.context,
                 updatedOrder: record.updatedOrder, items: record.items, truncated: record.truncated, status: record.status, subagents: record.subagents)
-            if persistence.schedule(mapped) { scheduledRevisions[summary.id] = summary.revision }
+            let token = UUID()
+            if persistence.schedule(mapped, completion: { [weak self] success in
+                guard let self, !success, self.scheduledRevisions[summary.id]?.token == token else { return }
+                self.scheduledRevisions.removeValue(forKey: summary.id)
+            }) {
+                scheduledRevisions[summary.id] = ScheduledRevision(revision: summary.revision, token: token)
+            }
         }
     }
 
@@ -344,7 +359,11 @@ private final class ReadState: @unchecked Sendable {
             guard let self else { return }
             for client in Array(self.clients.values) { client.tick() }
             self.retryTicks += 1
-            if self.retryTicks >= 20 { self.retryTicks = 0; self.retryBlockedPersistence() }
+            if self.retryTicks >= 20 {
+                self.retryTicks = 0
+                self.retryBlockedPersistence()
+                self.scheduleChangedRecords()
+            }
         }
     }
     func add(_ channel: Channel) -> EventLoopFuture<Void> {

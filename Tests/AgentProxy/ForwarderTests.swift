@@ -200,6 +200,7 @@ final class Suite {
             ("tee-frames", teeFrames),
             ("recorder-authority-timeout-fails-closed", authorityTimeout),
             ("recorder-invalid-ack-fails-closed", authorityInvalidAck),
+            ("recorder-authority-capacity", authorityCapacity),
             ("tee-limit-and-stalled-recorder", teeLimits),
             ("unknown-token-forwarded-without-copy", unknownToken),
             ("recorder-killed-mid-stream", recorderKilled),
@@ -969,6 +970,39 @@ final class Suite {
         try check(result["result"] == nil && result["error"] != nil, "unacknowledged mutation never reports synchronized success")
         let routes = try control.result("routes.list")["routes"] as? [[String: Any]] ?? []
         try check(!routes.contains { $0["routeID"] as? String == created.routeID }, "failed synchronization does not roll back committed revocation")
+    }
+
+    func authorityCapacity() throws {
+        let tap = out + "/authority-capacity.tap"
+        let proxy = try self.proxy("authority-capacity", recorder: .tap(tap))
+        let control = try proxy.control()
+        try check(waitUntil(3) { (try? control.result("proxy.status")["recorder"] as? [String: Any])?["state"] as? String == "running" }, "synthetic recorder started")
+        let escaped = String(repeating: "\\", count: 256)
+        var ids: [String] = []
+        var rejected = false
+        for _ in 0..<1024 {
+            let answer = try control.call("routes.create", ["kind": "claude", "session": escaped, "paneID": escaped,
+                                                            "terminalID": escaped, "cliVersion": escaped])
+            if let route = answer["result"] as? [String: Any], let id = route["routeID"] as? String { ids.append(id) }
+            else { rejected = true; break }
+        }
+        try check(rejected && ids.count > 1, "escape-heavy valid route is rejected before oversize snapshot commits")
+        let listed = try control.result("routes.list")["routes"] as? [[String: Any]] ?? []
+        try check(listed.count == ids.count, "rejected route leaves table unchanged")
+        try check(try control.result("routes.remove", ["routeID": ids[0]])["removed"] as? Bool == true, "removal recovers authority capacity")
+        let next = try control.call("routes.create", ["kind": "claude", "session": escaped, "paneID": escaped,
+                                                      "terminalID": escaped, "cliVersion": escaped])
+        try check(next["result"] != nil, "creation succeeds again after removing one route")
+        proxy.server.shutdown()
+        let restartedTap = out + "/authority-capacity-restart.tap"
+        let restarted = try self.proxy("authority-capacity", recorder: .tap(restartedTap))
+        try check(waitUntil(10) {
+            guard let last = (try? self.frames(restartedTap))?.last(where: { $0.kind == .routeSnapshot }),
+                  let snapshot = try? JSONDecoder().decode(AgentProxyTeeFrame.RouteSnapshot.self, from: Data(last.payload)) else { return false }
+            return snapshot.routes.count == ids.count
+        }, "restart sends the largest committed authority snapshot")
+        try check(try restarted.control().result("routes.remove", ["routeID": ids[1]])["removed"] as? Bool == true,
+                  "removal remains synchronized after recorder restart")
     }
 
     func authorityInvalidAck() throws {
