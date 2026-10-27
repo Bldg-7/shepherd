@@ -27,6 +27,10 @@ struct FilePreviewPanel: View {
     #if os(macOS)
     @State private var keyboard = PreviewKeyboard()
     @FocusState private var panelFocused: Bool
+    /// Kept in this view rather than the pane model: a table-of-contents
+    /// reveal must not reappear after a pane or document changes.
+    @FocusState private var outlineFocused: Bool
+    @State private var outlineExplicitlyRevealed = false
     #endif
     // Both raw text and Markdown have a bounded render budget independent
     // of the transport limit. The source file is never modified.
@@ -51,7 +55,7 @@ struct FilePreviewPanel: View {
                 Image(systemName: "doc.text")
                 Text(verbatim: title).font(.headline).lineLimit(1)
                 Spacer(minLength: 8)
-                if case .loaded(let document) = model.state, case .text(let text, let markdown) = document.content, markdown {
+                if case .loaded(let document) = model.state, case .text(_, let markdown) = document.content, markdown {
                     // The other view of the file starts at its top, as it
                     // always did, not at the place the one left was at.
                     Toggle("Source", isOn: Binding(get: { model.showsSource }, set: { shows in
@@ -64,8 +68,6 @@ struct FilePreviewPanel: View {
                     }))
                     .toggleStyle(.button)
                     .accessibilityIdentifier("preview.source")
-                    let headings = shownText.shown(text, markdown: true, limit: renderCharacters).markdown?.headings ?? []
-                    outlineToggle(hasHeadings: !headings.isEmpty)
                 }
                 reloadButton
                 #if os(macOS)
@@ -126,7 +128,25 @@ struct FilePreviewPanel: View {
             if !expanded { keyboard.giveBack() }
         }
         .onExitCommand {
-            if model.find.isShown { closeFind() } else if isExpanded { onToggleExpanded?() } else { onClose() }
+            if outlineFocused || outlineExplicitlyRevealed {
+                outlineFocused = false
+                outlineExplicitlyRevealed = false
+                keyboard.focusPreview()
+            } else if model.find.isShown {
+                closeFind()
+            } else if isExpanded {
+                onToggleExpanded?()
+            } else {
+                onClose()
+            }
+        }
+        #endif
+        #if os(macOS)
+        .onChange(of: request.id) { _, _ in
+            // A different request can have identical text, but it is still a
+            // new document/pane identity and cannot retain an accessible reveal.
+            outlineFocused = false
+            outlineExplicitlyRevealed = false
         }
         #endif
         // A preview shown again with its pane has been read already; only
@@ -203,9 +223,13 @@ struct FilePreviewPanel: View {
                     }
                 }
                 .overlay(alignment: .topTrailing) {
-                    if let markdown = shown.markdown, model.showsOutline, !markdown.headings.isEmpty {
-                        PreviewOutlineOverlay(model: model, headings: markdown.headings)
+                    #if os(macOS)
+                    if let markdown = shown.markdown, !markdown.headings.isEmpty {
+                        PreviewOutlineOverlay(model: model, headings: markdown.headings, document: shown.text,
+                                              documentID: request.id, outlineFocus: $outlineFocused,
+                                              explicitReveal: $outlineExplicitlyRevealed)
                     }
+                    #endif
                 }
             }
         case .image(let data):
@@ -369,19 +393,6 @@ struct FilePreviewPanel: View {
     }
     #endif
 
-    /// Shows or hides the table of contents of this preview. With no
-    /// headings to list, it is off and can't be turned on.
-    private func outlineToggle(hasHeadings: Bool) -> some View {
-        Toggle(isOn: Binding(get: { hasHeadings && model.showsOutline }, set: { model.showsOutline = $0 })) {
-            Label("Table of Contents", systemImage: "list.bullet.indent")
-        }
-        .toggleStyle(.button)
-        .labelStyle(.iconOnly)
-        .disabled(!hasHeadings)
-        .help(!hasHeadings ? "No Headings" : model.showsOutline ? "Hide Table of Contents" : "Show Table of Contents")
-        .accessibilityIdentifier("preview.outline.toggle")
-    }
-
     private func thumbnail(_ data: Data) -> CGImage? {
         guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
@@ -399,28 +410,106 @@ struct FilePreviewPanel: View {
     }
 }
 
-/// The table of contents over the top right of a Markdown preview, at most
-/// as tall as the preview less 24 points. It marks the heading at the top of
-/// what the preview shows, and a heading chosen in it is brought to the top.
-/// It, not the panel, follows what is shown, so scrolling redraws only it.
+/// The table of contents lives in the preview viewport rather than the
+/// header. Its hover region contains only the visible trigger, panel, and
+/// their small bridge gap, so it does not cover the preview body.
+#if os(macOS)
 private struct PreviewOutlineOverlay: View {
     let model: FilePreviewModel
     let headings: [PreviewMarkdownHeading]
+    /// A changed read must not retain a previous document's hover/focus state.
+    let document: String
+    /// Request identity also changes for a pane/document replacement whose
+    /// visible text happens to be the same.
+    let documentID: UUID
+    let outlineFocus: FocusState<Bool>.Binding
+    let explicitReveal: Binding<Bool>
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var pointerInside = false
+
+    private var isPresented: Bool {
+        PreviewOutlineHover.isPresented(pointerInside: pointerInside, hasKeyboardFocus: outlineFocus.wrappedValue,
+                                        hasExplicitReveal: explicitReveal.wrappedValue)
+    }
+
+    private func dismissExplicitReveal() {
+        explicitReveal.wrappedValue = false
+        outlineFocus.wrappedValue = false
+    }
 
     var body: some View {
         let inSource = model.showsSource
         let current = PreviewOutline.current(in: headings, firstVisible: (inSource ? model.visibleLines : model.visibleBlocks).first,
                                              inSource: inSource)
         GeometryReader { geometry in
-            PreviewOutlinePanel(headings: headings, current: current, maxHeight: max(0, geometry.size.height - 24)) { heading in
-                model.reveal(inSource ? .line(heading.line) : .block(heading.id))
+            let triggerSize: CGFloat = 32
+            let panelWidth = PreviewOutline.width(for: geometry.size.width)
+            let panelHeight = max(0, geometry.size.height - triggerSize - 16)
+            ZStack(alignment: .topTrailing) {
+                if isPresented {
+                    PreviewOutlinePanel(headings: headings, current: current, maxHeight: panelHeight) { heading in
+                        model.reveal(inSource ? .line(heading.line) : .block(heading.id))
+                        // Selecting a heading dismisses an explicit accessible
+                        // reveal; pointer hover can still keep it visible.
+                        dismissExplicitReveal()
+                    }
+                    .frame(width: panelWidth)
+                    .padding(.top, triggerSize + 4)
+                    .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
+                }
+                Button(action: {}) {
+                    Label("Table of Contents", systemImage: "list.bullet.indent")
+                        .labelStyle(.iconOnly)
+                        .frame(width: triggerSize, height: triggerSize)
+                }
+                .buttonStyle(.borderless)
+                // The control itself, not just its icon label, is the
+                // 32-point trigger. The surrounding ZStack remains the
+                // separate trigger/panel hover region.
+                .frame(width: triggerSize, height: triggerSize)
+                .contentShape(Rectangle())
+                .help("Show Table of Contents")
+                .accessibilityIdentifier("preview.outline.trigger")
+                .accessibilityAction {
+                    // Accessibility activation has an explicit, view-local
+                    // reveal intent. Focus is requested too for keyboard use,
+                    // but AppKit can decline that request for an AX action.
+                    explicitReveal.wrappedValue = true
+                    outlineFocus.wrappedValue = true
+                }
+                .focused(outlineFocus)
+                .onChange(of: outlineFocus.wrappedValue) { wasFocused, isFocused in
+                    // A real keyboard-focus transfer dismisses the explicit
+                    // reveal. Do not clear it merely because AX declined the
+                    // best-effort focus request while it was already false.
+                    if wasFocused && !isFocused { explicitReveal.wrappedValue = false }
+                }
             }
-            .frame(width: PreviewOutline.width(for: geometry.size.width))
-            .padding(12)
+            // This is deliberately intrinsically tall: a short panel must
+            // not turn the hover region into a full-height transparent strip.
+            .frame(width: isPresented ? panelWidth : triggerSize, alignment: .topTrailing)
+            .fixedSize(horizontal: false, vertical: true)
+            .contentShape(Rectangle())
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("preview.outline.region")
+            .onHover { pointerInside = $0 }
+            .onChange(of: document) { _, _ in
+                pointerInside = false
+                dismissExplicitReveal()
+            }
+            .onChange(of: documentID) { _, _ in
+                pointerInside = false
+                dismissExplicitReveal()
+            }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: isPresented)
+            // The GeometryReader itself fills the overlay proposal; this
+            // wrapper, rather than its leading origin, anchors the actual
+            // trigger/panel region to the viewport's trailing edge.
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         }
     }
 }
+#endif
 
 /// What the panel shows of a text file, worked out once for each file read
 /// rather than each time the panel is drawn: the part rendered, whether that

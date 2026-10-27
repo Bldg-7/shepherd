@@ -82,10 +82,6 @@ nonisolated struct PreviewFindState: Equatable, Sendable {
     @ObservationIgnored var scrollOffset: CGPoint?
     /// First visible text row and the distance into it, not lazy-stack estimates.
     @ObservationIgnored var scrollAnchor: PreviewScrollAnchor?
-    /// Whether a Markdown file shows its table of contents. Each new read
-    /// starts with it shown; turned off, it stays off for this preview only,
-    /// read again or not.
-    var showsOutline = true
     /// The last place the preview was asked to scroll to (see `reveal`).
     private(set) var scrollRequest: PreviewScrollRequest?
     /// The blocks the Markdown rendering shows now, by `id`, in order, as
@@ -143,7 +139,7 @@ nonisolated struct PreviewFindState: Equatable, Sendable {
         generation = epoch
         state = .loading; link = nil; isReloading = false
         finishedRequestID = nil; showsSource = false; scrollOffset = nil; scrollAnchor = nil
-        showsOutline = true; scrollRequest = nil; visibleBlocks = []; visibleLines = []
+        scrollRequest = nil; visibleBlocks = []; visibleLines = []
         // What the find bar looks for starts over with each read.
         find = PreviewFindState()
         cancelledReload = nil; hasShownFile = false
@@ -152,8 +148,8 @@ nonisolated struct PreviewFindState: Equatable, Sendable {
 
     /// Reads the file again, as the header's Reload button, ⌘R and Retry
     /// do, keeping how it is looked at: source or rendering, where it is
-    /// scrolled to, the line linked to, the table of contents and the find
-    /// bar. What was read stays shown while it is read again; a preview that
+    /// scrolled to, the line linked to and the find bar. What was read stays
+    /// shown while it is read again; a preview that
     /// failed shows that it is reading. A read that fails shows why, and
     /// how the file was looked at comes back with the next that doesn't.
     func reload(_ request: FilePreviewRequest, store: MachineStore) async {

@@ -41,16 +41,46 @@ Coverage:
   shows it on, also after a BOM, CRLF line ends, frontmatter, a lone CR or
   U+2028, and which heading is highlighted for a given scroll place. The actual
   panel is checked in an owned never-shown window. The test reads the list and
-  presses headings and buttons through the accessibility API, which it turns on
-  for its own process only. A heading pressed comes to the top of the rendering
-  and of the source, expanded or not, and is highlighted. The header button
-  hides the table of contents for one preview only, and a Markdown file opened
-  anew starts with it shown. With no headings the button is disabled; a file
-  that isn't Markdown has no button. Showing the table of contents doesn't
-  change where a pane's scroll place comes back when the pane is selected
-  again. The row-anchor checks below also cover mixed-height headings, code
-  blocks and tables rather than only paragraphs of one height. Its strings
-  have Korean and Japanese, and nothing of it is written to UserDefaults.
+  presses its accessible viewport trigger and headings through the accessibility
+  API, which it turns on for its own process only. It separately checks the
+  eight-state view-local presentation policy (pointer state, keyboard focus
+  and explicit accessible reveal) and, after an accessibility press opens the production panel, its native AX
+  trigger/panel/region frames for trailing placement and visible-region bounds.
+  The trigger's public AX contract is one named `AXButton` with a working
+  accessible press path; in this containment hierarchy its AX semantic frame
+  is region-sized, not a proxy for control pixels. A narrow source contract
+  preserves the distinct 32-point child control declaration and separate
+  panel/bridge region declaration, while the accepted one-off geometry probe
+  recorded the actual post-modifier control layout as 32×32. Those evidence
+  layers do not prove a physical hit frame or real VoiceOver behavior. The
+  geometry checks disable animations only in their owned root transaction, so
+  they measure the nonanimated end state rather than visible-window insertion
+  animation timing. This is policy/state and AX/native-geometry coverage, not system-pointer integration: physical
+  visible-window hover, trigger-to-panel transfer, leave, and normal-motion
+  animation remain manual release checks and are not run here. A long outline
+  uses the production `LazyVStack`: the test checks a meaningful initial
+  realized subset, then publicly scrolls only the owned outline scroll view to
+  verify its last heading is reachable rather than requiring all rows to exist
+  in AX simultaneously. Exact top
+  navigation uses a scrollable fixture with body below its target heading, so a
+  bottom-clamped short document cannot mask a navigation regression. A heading
+  pressed comes to the top of the rendering and of the source, and is
+  highlighted. A headed Markdown preview starts with its TOC closed; a no-heading Markdown or
+  non-Markdown preview has no affordance. Pane and changed-document reload
+  checks confirm that reveal state does not stick. The reload scroll fixture
+  has an explicitly named derived completion-panel stage that compiles
+  inverse-verified copies of the panel, source preview, and panel test with a
+  per-panel completion callback. The callback fires only after existing
+  semantic-anchor restoration has finished and published its offset; it then
+  tests the restored source/rendered anchor before issuing a direct owned
+  1500-point clip move. The named derived receipt is not an ordinary full-panel
+  product pass. Normal ScrollRestore stages separately compile and hash the
+  tracked production panel/source files. The callback and token are test
+  infrastructure, not production API or proof of physical wheel/gesture
+  behavior. The row-anchor checks below also cover
+  mixed-height headings, code blocks and tables rather than only paragraphs of
+  one height. Its strings have Korean and Japanese, and nothing of it is written
+  to UserDefaults.
 - Find (⌘F), in two parts.
   - `FindTests.swift`, a stage of this runner, checks the search without a
     window. Matching ignores case, and a Korean syllable stored as one composed
@@ -117,15 +147,12 @@ Coverage:
   - The actual panel in an owned never-shown window, beside a view that stands
     in for the terminal, read and pressed through the accessibility API. The
     button is named Reload, its help is Reload (⌘R), and it is enabled after
-    a read ends, whether the read worked or failed. On a Markdown file it is between the
-    table of contents button and Expand; on another file and on an image it is
-    left of Expand. Reloaded at 900 points, the new text is in the same scroll
+    a read ends, whether the read worked or failed. It remains left of Expand on Markdown, other text files and images. Reloaded at 900 points, the new text is in the same scroll
     view at 900 points, and a new heading is listed in the table of contents.
     A preview brought back to 900 points by selecting its pane again, then
     scrolled to 1,500 points and reloaded, stays at 1,500. A source view opened from a link to
     line 40 and scrolled away stays where it was, the line still highlighted;
-    read again shorter, it stops at its end. A table of contents turned off
-    stays off. The find bar stays open with its search and the keyboard in its
+    read again shorter, it stops at its end. A changed Markdown document starts with its TOC closed. The find bar stays open with its search and the keyboard in its
     field, and its count goes from five matches to 0 / 6 (no current match,
     six matches). With the file
     deleted, Reload shows Cannot Preview File with Retry; with the file back,
@@ -202,24 +229,7 @@ preview: it opens in a browser, as an HTTP(S) link does (see
 machines, links to HTML files clicked inside a preview, and `.xhtml`/`.svg`
 files still open in the preview as inert source.
 
-A Markdown file has a table of contents of its headings on a Liquid Glass panel
-at the top right of the preview, in rendered and source modes, expanded or not.
-It lists headings H1–H6, both `#` headings and underlined ones, by their text
-without Markdown (bold, code and links become plain text), and none from fenced
-code. Closing `#` characters, as in `## Title ##`, are not taken off: the
-rendering shows them in the heading, and the table of contents shows them too.
-The panel is half the preview's width, from 160 to 260 points, and at most the
-preview's height less 24 points; a longer list scrolls inside it. Clicking a
-heading brings it to the top: its block in the rendering, its line in the
-source. The heading you are reading is highlighted. That is the last heading at
-or above the first block or line visible at the top of the preview; above the
-first heading, none is highlighted. The list scrolls to keep the highlighted
-heading in view. The list button beside Source hides or shows the table of
-contents for that preview only. Whether it is shown is kept with the pane's
-preview, like its file and scroll place: in memory while the window is open, not
-saved. Opening a Markdown file starts with it shown; reading it again with
-Reload, ⌘R or Retry keeps it shown or hidden. With no headings the button is
-disabled. Esc and `#anchor` links in the preview behave as they did before.
+A Markdown file with headings has a table-of-contents affordance inside the upper-right of its preview viewport, in rendered and Source modes and whether expanded or not. Hovering the affordance reveals a bounded Liquid Glass panel that slides in from the right unless Reduce Motion is on. Its hover region includes both the affordance and panel, so the pointer can move between them without a gap; leaving that combined region closes it. The affordance is also named for VoiceOver and can reveal the panel with keyboard focus; Esc leaves the TOC only while it has that focus. A changed document or pane change starts closed. A Markdown file with no headings, and non-Markdown previews, have no TOC affordance. The panel is half the preview width, from 160 to 260 points, and no taller than the viewport below the affordance; a longer list scrolls inside it without resizing the preview or changing its scroll place. Clicking a heading brings its block in rendering, or its line in Source, to the top. The current heading remains highlighted and the list follows it.
 
 Find. ⌘F belongs to the preview only while the preview has the keyboard. A click
 anywhere in the preview gives it the keyboard, beside the terminal as well as
@@ -256,9 +266,9 @@ find text shared with other apps, replace, regular expressions, and find in the
 In-app Browser.
 
 Reload. The preview's header has a Reload button (`arrow.clockwise`), a plain
-borderless icon like Expand and the In-app Browser's Reload. On a Markdown file
-it is between the table of contents button and Expand; on any other file, an
-image or a failed preview, it is left of Expand. Its help is Reload (⌘R). The
+borderless icon like Expand and the In-app Browser's Reload. It stays left of
+Expand for Markdown, other files, images and failed previews. Its help is
+Reload (⌘R). The
 button, ⌘R and Retry read the same file again from the same machine and path:
 a remote file over a new SFTP connection with the saved credential (one
 Keychain read) and the pinned host key; a pane on a herdr machine gets the same
@@ -272,9 +282,10 @@ file is being read, so pressing it or ⌘R again starts no second read. If the
 file's contents haven't changed, nothing on screen changes. Otherwise the new text replaces the old in the
 same scroll view, which keeps its place, or stops at the end when the text is
 now shorter. The rendering or Source stays chosen. A link's line stays
-highlighted with its Line N, but the preview doesn't scroll back to it. The
-table of contents stays shown or hidden and lists the new headings. The find
-bar stays open with its search, its matches counted in the new text, with no
+highlighted with its Line N, but the preview doesn't scroll back to it. A
+changed Markdown document starts with its TOC closed and can reveal its new
+headings. The find bar stays open with its search, its matches counted in the
+new text, with no
 current match until the next ⌘G or Return. A text selection in the preview may
 be cleared when the text changes. An image keeps its horizontal and vertical
 scroll place and is drawn again. A

@@ -91,18 +91,17 @@ final class OwnedSecrets: MachineSecretStore {
         let plain = FilePreviewModel()
         await plain.load(request, store: store)
         check(!plain.showsSource)
-        // The table of contents: on for each read, off for this preview
-        // only, kept while shown again; where it scrolls the preview to.
-        check(plain.showsOutline && plain.scrollRequest == nil && plain.visibleBlocks.isEmpty && plain.visibleLines.isEmpty)
-        plain.showsOutline = false; plain.visibleBlocks = [3, 4]; plain.visibleLines = [7]
+        // The model only keeps document navigation state. Hover visibility is
+        // view-local, so it cannot follow this model between pane views.
+        check(plain.scrollRequest == nil && plain.visibleBlocks.isEmpty && plain.visibleLines.isEmpty)
+        plain.visibleBlocks = [3, 4]; plain.visibleLines = [7]
         plain.reveal(.block(4))
         let first = plain.scrollRequest
         plain.reveal(.block(4))
         check(first?.target == .block(4) && plain.scrollRequest?.target == .block(4) && plain.scrollRequest != first)
         await plain.loadIfNeeded(request, store: store)
-        check(!plain.showsOutline && model.showsOutline && lined.showsOutline)
         await plain.load(request, store: store)
-        check(plain.showsOutline && plain.scrollRequest == nil && plain.visibleBlocks.isEmpty && plain.visibleLines.isEmpty)
+        check(plain.scrollRequest == nil && plain.visibleBlocks.isEmpty && plain.visibleLines.isEmpty)
         let remote = Machine(displayName: "Owned Remote", hostname: "owned.invalid", username: "owned", authMethod: .password)
         try store.addMachine(remote, password: "synthetic-only")
         let remoteRequest = FilePreviewRequest(machine: remote, pane: pane, link: "/remote/a.md")
@@ -167,7 +166,7 @@ final class OwnedSecrets: MachineSecretStore {
         check(timeoutClosed >= 1)
         // Reload (SHPHRD-98): the same request read again, keeping how the
         // file is looked at: source or rendering, scroll place, the line
-        // linked to, the table of contents and the find bar.
+        // linked to and the find bar.
         let localLoads = secrets.loads
         let reloadPath = directory + "/reload.md"
         try Data("# Reload one\n\nfirst".utf8).write(to: URL(fileURLWithPath: reloadPath))
@@ -176,7 +175,7 @@ final class OwnedSecrets: MachineSecretStore {
         await viewed.load(reloadRequest, store: store)
         check(text(viewed) == "# Reload one\n\nfirst" && !viewed.isReloading && !viewed.isReading && !viewed.showsSource)
         let linked = viewed.link
-        viewed.showsSource = true; viewed.scrollOffset = CGPoint(x: 0, y: 120); viewed.showsOutline = false
+        viewed.showsSource = true; viewed.scrollOffset = CGPoint(x: 0, y: 120)
         let keptAnchor = PreviewScrollAnchor(inSource: true, row: 3, offset: 8, height: 40)
         viewed.scrollAnchor = keptAnchor
         viewed.find = PreviewFindState(isShown: true, query: "one", current: 0)
@@ -186,7 +185,7 @@ final class OwnedSecrets: MachineSecretStore {
         await viewed.reload(reloadRequest, store: store)
         check(text(viewed) == "# Reload two\n\nsecond one" && !viewed.isReloading && !viewed.isReading)
         check(viewed.link == linked && viewed.link?.path == reloadPath && viewed.finishedRequestID == reloadRequest.id)
-        check(viewed.showsSource && viewed.scrollOffset == CGPoint(x: 0, y: 120) && !viewed.showsOutline)
+        check(viewed.showsSource && viewed.scrollOffset == CGPoint(x: 0, y: 120))
         check(viewed.scrollRequest == revealed && viewed.visibleLines == [2, 3])
         check(viewed.scrollAnchor == keptAnchor)
         // What the find bar looks for is kept; it counts its matches in the
@@ -208,14 +207,14 @@ final class OwnedSecrets: MachineSecretStore {
         try FileManager.default.removeItem(atPath: reloadPath)
         await viewed.reload(reloadRequest, store: store)
         check(failure(viewed) != nil && !viewed.isReloading && !viewed.isReading)
-        check(viewed.link == linked && viewed.showsSource && viewed.scrollOffset == CGPoint(x: 0, y: 120) && !viewed.showsOutline)
+        check(viewed.link == linked && viewed.showsSource && viewed.scrollOffset == CGPoint(x: 0, y: 120))
         check(viewed.find.isShown && viewed.find.query == "one")
         check(viewed.scrollAnchor == keptAnchor)
         await viewed.loadIfNeeded(reloadRequest, store: store)
         check(failure(viewed) != nil)
         try Data("# Reload back".utf8).write(to: URL(fileURLWithPath: reloadPath))
         await viewed.reload(reloadRequest, store: store)
-        check(text(viewed) == "# Reload back" && viewed.showsSource && viewed.scrollOffset == CGPoint(x: 0, y: 120) && !viewed.showsOutline)
+        check(text(viewed) == "# Reload back" && viewed.showsSource && viewed.scrollOffset == CGPoint(x: 0, y: 120))
         check(viewed.find.isShown && viewed.find.query == "one" && viewed.link == linked)
         check(viewed.scrollAnchor == keptAnchor)
         // Past 4 MiB: too large, as for a first read.
@@ -242,9 +241,8 @@ final class OwnedSecrets: MachineSecretStore {
         await later.reload(laterRequest, store: store)
         check(text(later) == "# Later" && later.showsSource && later.link?.line == 1)
         // A new read still starts everything over.
-        viewed.showsOutline = false
         await viewed.load(reloadRequest, store: store)
-        check(!viewed.showsSource && viewed.scrollOffset == nil && viewed.scrollAnchor == nil && viewed.showsOutline && viewed.find == PreviewFindState())
+        check(!viewed.showsSource && viewed.scrollOffset == nil && viewed.scrollAnchor == nil && viewed.find == PreviewFindState())
         check(secrets.loads == localLoads)
 
         // Remote: what was read stays shown while it is read again; each
