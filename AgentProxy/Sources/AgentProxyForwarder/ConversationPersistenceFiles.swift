@@ -173,6 +173,32 @@ final class ConversationPersistenceFiles {
         return data
     }
 
+    /// Refuse unrecognized root objects, including interrupted index temps and
+    /// newer layouts. No repair or deletion is attempted by B1.
+    func validateConversationsNamespace() throws {
+        try verifyLease()
+        let scanFD = Darwin.openat(conversationsFD, ".", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard scanFD >= 0 else { throw ConversationPersistenceFilesError.ioFailure }
+        guard let stream = fdopendir(scanFD) else { Darwin.close(scanFD); throw ConversationPersistenceFilesError.ioFailure }
+        defer { closedir(stream) }
+        var count = 0
+        while true {
+            errno = 0
+            guard let entry = readdir(stream) else {
+                guard errno == 0 else { throw ConversationPersistenceFilesError.ioFailure }
+                break
+            }
+            let name = withUnsafePointer(to: entry.pointee.d_name) {
+                $0.withMemoryRebound(to: CChar.self, capacity: Int(NAME_MAX) + 1) { String(cString: $0) }
+            }
+            if name == "." || name == ".." { continue }
+            count += 1
+            guard count <= 3, name == Self.recordsName || name == Self.lockName || name == Self.indexName else {
+                throw ConversationPersistenceFilesError.unsafeObject
+            }
+        }
+    }
+
     /// Bounded actual-file inventory for journal capacity checks. It opens a
     /// fresh directory descriptor instead of dup'ing the retained FD: dup
     /// shares a directory offset and can miss entries on repeated scans.
@@ -183,8 +209,12 @@ final class ConversationPersistenceFiles {
         guard let stream = fdopendir(scanFD) else { Darwin.close(scanFD); throw ConversationPersistenceFilesError.ioFailure }
         defer { closedir(stream) }
         var entries: [ConversationPersistenceRecordFile] = []
-        errno = 0
-        while let entry = readdir(stream) {
+        while true {
+            errno = 0
+            guard let entry = readdir(stream) else {
+                guard errno == 0 else { throw ConversationPersistenceFilesError.ioFailure }
+                break
+            }
             let name = withUnsafePointer(to: entry.pointee.d_name) {
                 $0.withMemoryRebound(to: CChar.self, capacity: Int(NAME_MAX) + 1) { String(cString: $0) }
             }
@@ -201,7 +231,6 @@ final class ConversationPersistenceFiles {
             guard entries.count < 256 else { throw ConversationPersistenceFilesError.tooLarge }
             entries.append(.init(generation: generation, bytes: Int(info.st_size)))
         }
-        guard errno == 0 else { throw ConversationPersistenceFilesError.ioFailure }
         return entries
     }
 
