@@ -364,6 +364,85 @@ try:
 finally:
     check(chunked.stop() == 0, 'multipart authority recorder exits')
 
+# Exercise maximum route count and field bounds while the old snapshot remains
+# resident. Status exposes admission accounting, not allocator RSS.
+large_root = a.work / 'authority-large-state'
+large_root.mkdir(mode=0o700)
+large = Recorder(a.work / 'authority-large', state_directory=large_root)
+try:
+    large.authority()
+    old = large.query('persistence.status')['result']
+    check(old['authorityRetainedBytes'] == 16 << 20, 'applied authority remains admission-accounted')
+    field = 'x' * 256
+    big_identity = {'kind': 'claude', 'session': field, 'paneID': field, 'terminalID': field, 'cliVersion': field}
+    routes = [{'routeID': 'route', 'identity': identity}] + [
+        {'routeID': 'owned-%04d' % i, 'identity': big_identity} for i in range(1, 1024)]
+    large.frame(9, {'generation': 2, 'index': 0, 'count': 16, 'routes': routes[:64]}, exchange=0)
+    during = large.query('persistence.status')['result']
+    check(during['authorityRetainedBytes'] == 16 << 20 and during['captureReservedBytes'] >= 32 << 20,
+          'old authority and partial replacement are simultaneously reserved')
+    for n in range(1, 16):
+        large.frame(9, {'generation': 2, 'index': n, 'count': 16, 'routes': routes[n*64:(n+1)*64]}, exchange=0)
+    large.ack(2)
+    until = time.monotonic() + 3
+    while True:
+        after = large.query('persistence.status')['result']
+        if after['captureReservedBytes'] < 40 << 20: break
+        assert time.monotonic() < until, 'old authority reservation release deadline'
+        time.sleep(.05)
+    check(after['authorityRetainedBytes'] == 16 << 20, 'replacement retains exactly one authority reservation')
+    large.begin(wait_admission=True); large.end()
+    until = time.monotonic() + 10
+    while large.query('persistence.status')['result']['mode'] != 'healthy':
+        assert time.monotonic() < until, 'journal admission with retained near-limit authority deadline'
+        time.sleep(.05)
+    check(True, 'journal and read clients can be admitted with retained near-limit authority')
+finally:
+    check(large.stop() == 0, 'near-limit authority recorder exits')
+
+# Replacement admission must fail closed rather than release the old
+# authority reservation or overcommit while live/read reservations are held.
+replacement_pressure = Recorder(a.work / 'authority-replacement-pressure')
+held_readers = []
+try:
+    replacement_pressure.authority(); replacement_pressure.begin(); replacement_pressure.conversation()
+    held_readers = [replacement_pressure.connect() for _ in range(15)]
+    held_status = replacement_pressure.query('persistence.status')['result']
+    check(held_status['captureReservedBytes'] >= 76 << 20, 'owned reader reservations are installed before replacement')
+    replacement_pressure.frame(9, {'generation': 2, 'index': 0, 'count': 2,
+                                   'routes': [{'routeID': 'route', 'identity': identity}]}, exchange=0)
+    check(replacement_pressure.wait() == 3, 'replacement fails closed when old and new authority cannot both be admitted')
+    check(replacement_pressure.tee.recv(1) == b'', 'failed replacement sends no ACK')
+finally:
+    for reader in held_readers: reader.close()
+    replacement_pressure.stop()
+
+partial_eof = Recorder(a.work / 'authority-partial-eof')
+try:
+    partial_eof.frame(9, {'generation': 1, 'index': 0, 'count': 2, 'routes': [{'routeID': 'route', 'identity': identity}]}, exchange=0)
+    partial_eof.tee.shutdown(socket.SHUT_WR)
+    check(partial_eof.wait() == 3, 'EOF during multipart authority is protocol failure')
+    check(partial_eof.tee.recv(1) == b'', 'incomplete authority sends no ACK')
+finally:
+    partial_eof.stop()
+
+truncated = Recorder(a.work / 'authority-truncated-frame')
+try:
+    truncated.tee.sendall(struct.pack('>IBQ', 12, 7, 0) + b'{')
+    truncated.tee.shutdown(socket.SHUT_WR)
+    check(truncated.wait() == 3, 'EOF within an individual frame is protocol failure')
+    check(truncated.tee.recv(1) == b'', 'truncated frame sends no ACK')
+finally:
+    truncated.stop()
+
+oversized_field = Recorder(a.work / 'authority-oversized-field')
+try:
+    invalid = dict(identity); invalid['session'] = 'x' * 257
+    oversized_field.frame(7, {'generation': 1, 'routes': [{'routeID': 'route', 'identity': invalid}]}, exchange=0)
+    check(oversized_field.wait() == 3, 'oversized authority identity fails closed')
+finally:
+    oversized_field.stop()
+
 chunk_desync = Recorder(a.work / 'authority-chunk-desync')
 try:
     chunk_desync.frame(9, {'generation': 1, 'index': 1, 'count': 2, 'routes': [{'routeID': 'route', 'identity': identity}]}, exchange=0)

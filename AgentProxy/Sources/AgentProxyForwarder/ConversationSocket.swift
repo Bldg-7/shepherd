@@ -141,6 +141,10 @@ private final class ReadState: @unchecked Sendable {
     private var ticker: RepeatedTask?
     private var authorityGeneration: UInt64 = 0
     private var authority: [Data: AgentProxyRouteCreate] = [:]
+    // Covers retained identities and byte-exact dictionary keys for the whole
+    // snapshot lifetime. This is admission accounting, not an RSS guarantee.
+    private var authorityReservation: UUID?
+    static let authorityWorkspaceBytes = 16 << 20
     private var persistence: ConversationPersistenceCoordinator?
     private struct ScheduledRevision { let revision: UInt64; let token: UUID }
     private var scheduledRevisions: [String: ScheduledRevision] = [:]
@@ -225,6 +229,8 @@ private final class ReadState: @unchecked Sendable {
         let mode: String
         let blockedConversations: Int
         let historicalConflicts: Int
+        let authorityRetainedBytes: Int
+        let captureReservedBytes: Int
     }
 
     func persistenceStatus() -> PersistenceStatus {
@@ -237,7 +243,9 @@ private final class ReadState: @unchecked Sendable {
             }
         } else { mode = "off" }
         return PersistenceStatus(mode: mode, blockedConversations: blockedPersistence.count,
-                                 historicalConflicts: historicalConflicts.count)
+                                 historicalConflicts: historicalConflicts.count,
+                                 authorityRetainedBytes: authorityReservation == nil ? 0 : Self.authorityWorkspaceBytes,
+                                 captureReservedBytes: capture.reservedBytes)
     }
 
     /// Retry one blocked live key per interval. Only a no-record result can
@@ -311,18 +319,33 @@ private final class ReadState: @unchecked Sendable {
 
     /// Authority arrives only on the inherited supervisor stream. The input
     /// stream's order fences old tee frames before each replacement snapshot.
-    func acceptAuthority(_ frame: AgentProxyTeeFrame.Frame) -> UInt64? {
-        guard frame.exchange == 0,
-              let snapshot = try? JSONDecoder().decode(AgentProxyTeeFrame.RouteSnapshot.self, from: Data(frame.payload)) else { return nil }
-        return acceptAuthority(snapshot)
+    func reserveAuthority() -> UUID? {
+        let bytes = Self.authorityWorkspaceBytes
+        guard bytes <= capture.limits.totalBytes, capture.accountedBytes <= capture.limits.totalBytes - bytes else { return nil }
+        return capture.reserve(bytes: bytes)
     }
 
-    func acceptAuthority(_ snapshot: AgentProxyTeeFrame.RouteSnapshot) -> UInt64? {
+    func acceptAuthority(_ frame: AgentProxyTeeFrame.Frame, reservation: UUID) -> UInt64? {
+        guard frame.exchange == 0,
+              let snapshot = try? JSONDecoder().decode(AgentProxyTeeFrame.RouteSnapshot.self, from: Data(frame.payload)) else { return nil }
+        return acceptAuthority(snapshot, reservation: reservation)
+    }
+
+    /// The caller owns the new reservation until this returns a generation;
+    /// then the state owns it, replacing the old reservation only after all
+    /// validation and construction succeed.
+    func acceptAuthority(_ snapshot: AgentProxyTeeFrame.RouteSnapshot, reservation: UUID) -> UInt64? {
         guard snapshot.generation > authorityGeneration, snapshot.routes.count <= 1024 else { return nil }
         var next: [Data: AgentProxyRouteCreate] = [:]
         for route in snapshot.routes {
+            let fields = [route.routeID, route.identity.session, route.identity.paneID,
+                          route.identity.terminalID, route.identity.cliVersion]
+            guard !route.routeID.isEmpty, fields.allSatisfy({
+                $0.utf8.count <= AgentProxyControl.maximumFieldBytes &&
+                !$0.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })
+            }) else { return nil }
             let key = Data(route.routeID.utf8)
-            guard !key.isEmpty, next[key] == nil else { return nil }
+            guard next[key] == nil else { return nil }
             next[key] = route.identity
         }
         let revoked = authority.contains { key, old in
@@ -341,6 +364,9 @@ private final class ReadState: @unchecked Sendable {
         // The persistence fence discards queued snapshots for every generation.
         scheduledRevisions.removeAll()
         authority = next
+        let previousReservation = authorityReservation
+        authorityReservation = reservation
+        if let previousReservation { capture.release(previousReservation) }
         authorityGeneration = snapshot.generation
         return snapshot.generation
     }
@@ -385,9 +411,22 @@ private final class ReadState: @unchecked Sendable {
             try channel.pipeline.syncOperations.addHandler(client)
         }
     }
+    func protocolFailure() {
+        loop.assertInEventLoop()
+        exitCode = 3
+        capture.invalidateForClear()
+        scheduledRevisions.removeAll()
+        for client in Array(clients.values) { client.channel.close(promise: nil) }
+        authority.removeAll()
+        if let reservation = authorityReservation { capture.release(reservation); authorityReservation = nil }
+        persistence?.fence({})
+    }
+
     func stop() -> DispatchSemaphore? {
         loop.assertInEventLoop(); ticker?.cancel(); ticker = nil
         capture.finishAll(); scheduleChangedRecords()
+        authority.removeAll()
+        if let reservation = authorityReservation { capture.release(reservation); authorityReservation = nil }
         for client in Array(clients.values) { client.channel.close(promise: nil) }
         return persistence?.finishWhenIdle()
     }
@@ -424,18 +463,25 @@ private final class TeeInput: ChannelInboundHandler {
                 if frame.kind == .routeSnapshot || frame.kind == .routeSnapshotPart {
                     let generation: UInt64?
                     if frame.kind == .routeSnapshot {
-                        generation = state.acceptAuthority(frame)
+                        guard let reservation = state.reserveAuthority() else { state.exitCode = 3; context.close(promise: nil); return }
+                        generation = state.acceptAuthority(frame, reservation: reservation)
+                        if generation == nil { state.capture.release(reservation) }
                     } else {
+                        var acquired: UUID?
+                        if partialAuthority == nil {
+                            guard let reservation = state.reserveAuthority() else { state.exitCode = 3; context.close(promise: nil); return }
+                            acquired = reservation
+                        }
                         guard frame.exchange == 0,
                               let part = try? JSONDecoder().decode(AgentProxyTeeFrame.RouteSnapshotPart.self, from: Data(frame.payload)),
                               part.count > 0, part.count <= 16, part.index >= 0, part.index < part.count,
-                              !part.routes.isEmpty, part.routes.count <= 64 else { state.exitCode = 3; context.close(promise: nil); return }
-                        if partialAuthority == nil {
-                            let workspace = 16 << 20
-                            guard part.index == 0, workspace <= state.capture.limits.totalBytes,
-                                  state.capture.accountedBytes <= state.capture.limits.totalBytes - workspace,
-                                  let reservation = state.capture.reserve(bytes: workspace) else { state.exitCode = 3; context.close(promise: nil); return }
-                            partialAuthority = PartialAuthority(generation: part.generation, count: part.count, routes: [], nextIndex: 0, encodedBytes: 0, reservation: reservation)
+                              !part.routes.isEmpty, part.routes.count <= 64 else {
+                            if let acquired { state.capture.release(acquired) }
+                            state.exitCode = 3; context.close(promise: nil); return
+                        }
+                        if let acquired {
+                            guard part.index == 0 else { state.capture.release(acquired); state.exitCode = 3; context.close(promise: nil); return }
+                            partialAuthority = PartialAuthority(generation: part.generation, count: part.count, routes: [], nextIndex: 0, encodedBytes: 0, reservation: acquired)
                         }
                         guard var partial = partialAuthority, partial.generation == part.generation, partial.count == part.count,
                               partial.nextIndex == part.index, partial.routes.count <= 1024 - part.routes.count,
@@ -443,8 +489,8 @@ private final class TeeInput: ChannelInboundHandler {
                         partial.routes.append(contentsOf: part.routes); partial.nextIndex += 1; partial.encodedBytes += frame.payload.count
                         if partial.nextIndex < partial.count { partialAuthority = partial; continue }
                         partialAuthority = nil
-                        state.capture.release(partial.reservation)
-                        generation = state.acceptAuthority(.init(generation: partial.generation, routes: partial.routes))
+                        generation = state.acceptAuthority(.init(generation: partial.generation, routes: partial.routes), reservation: partial.reservation)
+                        if generation == nil { state.capture.release(partial.reservation) }
                     }
                     guard let generation else { state.exitCode = 3; context.close(promise: nil); return }
                     fencing = true
@@ -476,8 +522,11 @@ private final class TeeInput: ChannelInboundHandler {
         } catch { state.exitCode = 3; context.close(promise: nil) }
     }
     func channelInactive(context: ChannelHandlerContext) {
+        let malformed = state.exitCode != 0 || partialAuthority != nil || decoder.bufferedByteCount != 0 || fencing
         if let partialAuthority { state.capture.release(partialAuthority.reservation); self.partialAuthority = nil }
-        state.capture.finishAll(); state.scheduleChangedRecords(); context.fireChannelInactive()
+        if malformed { state.protocolFailure() }
+        else { state.capture.finishAll(); state.scheduleChangedRecords() }
+        context.fireChannelInactive()
     }
     func errorCaught(context: ChannelHandlerContext, error: Error) { state.exitCode = 3; context.close(promise: nil) }
 }

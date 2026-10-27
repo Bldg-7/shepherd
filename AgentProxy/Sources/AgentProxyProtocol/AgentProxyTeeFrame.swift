@@ -172,6 +172,9 @@ public nonisolated enum AgentProxyTeeFrame {
 
         public init() {}
 
+        /// Unconsumed bytes at EOF indicate a truncated frame.
+        public var bufferedByteCount: Int { buffer.count - start }
+
         public mutating func append<Bytes: Sequence>(_ bytes: Bytes) where Bytes.Element == UInt8 {
             if start > 0 && start == buffer.count { buffer.removeAll(keepingCapacity: true); start = 0 }
             buffer.append(contentsOf: bytes)
