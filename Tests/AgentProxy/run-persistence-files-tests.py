@@ -67,9 +67,9 @@ for mode, optimization in [('debug', '-Onone'), ('optimized', '-O')]:
     binary.parent.mkdir(mode=0o700)
     work = out / 'work' / mode
     work.mkdir(mode=0o700)
-    stage(mode + '-build', ['/usr/bin/xcrun', 'swiftc', '-swift-version', '5', optimization,
-                            '-module-cache-path', str(out / 'cache'), '-o', str(binary),
-                            str(source), str(tests)])
+    stage(mode + '-build', ['/usr/bin/sandbox-exec', '-f', str(profile), '/usr/bin/xcrun', 'swiftc',
+                            '-swift-version', '5', optimization, '-module-cache-path', str(out / 'cache'),
+                            '-o', str(binary), str(source), str(tests)])
     stage(mode + '-run', ['/usr/bin/sandbox-exec', '-f', str(profile), str(binary), str(work)])
 
 print('PASS: Foundation/Darwin filesystem foundation Debug and optimized synthetic tests; network denied')

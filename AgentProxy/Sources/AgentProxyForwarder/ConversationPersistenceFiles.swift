@@ -21,16 +21,46 @@ struct ConversationPersistenceGeneration: Hashable {
 
     /// An opaque store-controlled name, never derived from a session, content,
     /// persistent ID, route, or other captured value.
-    static func make() -> ConversationPersistenceGeneration {
-        ConversationPersistenceGeneration(value: UUID().uuidString.lowercased())
+    static func make(uuid: UUID = UUID()) -> ConversationPersistenceGeneration {
+        ConversationPersistenceGeneration(value: uuid.uuidString.lowercased())
     }
 }
 
-/// Test-only fault points still execute all production validation and I/O before
-/// returning an error. They avoid environment switches and never skip checks.
-enum ConversationPersistenceFilesTestFault {
+/// Narrow deterministic test controls. They only select opaque UUIDs, report
+/// production I/O boundaries, or return a checked-I/O failure at that boundary;
+/// they never skip a production validation step.
+enum ConversationPersistenceFilesTestFault: Equatable {
     case beforeRename
     case afterRenameBeforeDirectorySync
+    case directoryParentSync(ConversationPersistenceFilesDirectory)
+}
+
+enum ConversationPersistenceFilesDirectory: Equatable {
+    case conversations
+    case records
+}
+
+enum ConversationPersistenceFilesTestEvent: Equatable {
+    case beforeDirectoryParentSync(ConversationPersistenceFilesDirectory)
+    case afterTemporaryCreate(String)
+    case beforeLateDestinationCheck(String)
+    case beforePublish(String)
+}
+
+struct ConversationPersistenceFilesTestControl {
+    let temporaryUUID: UUID?
+    let recordUUID: UUID?
+    let fault: ConversationPersistenceFilesTestFault?
+    let event: ((ConversationPersistenceFilesTestEvent) -> Void)?
+
+    init(temporaryUUID: UUID? = nil, recordUUID: UUID? = nil,
+         fault: ConversationPersistenceFilesTestFault? = nil,
+         event: ((ConversationPersistenceFilesTestEvent) -> Void)? = nil) {
+        self.temporaryUUID = temporaryUUID
+        self.recordUUID = recordUUID
+        self.fault = fault
+        self.event = event
+    }
 }
 
 /// A single synchronous, single-writer lease. Keep one instance alive on the
@@ -45,29 +75,42 @@ final class ConversationPersistenceFiles {
     private static let lockName = "lock"
     private static let indexName = "index-v1.json"
 
+    private struct FileIdentity: Equatable {
+        let device: dev_t
+        let inode: ino_t
+        init(_ info: stat) { device = info.st_dev; inode = info.st_ino }
+    }
+
+    private enum DestinationObservation: Equatable {
+        case absent
+        case present(FileIdentity)
+    }
+
     private let stateRootFD: Int32
     private let conversationsFD: Int32
     private let recordsFD: Int32
     private let lockFD: Int32
-    private let testFault: ConversationPersistenceFilesTestFault?
+    private let testControl: ConversationPersistenceFilesTestControl?
 
     /// `stateRootPath` must identify the state root selected by the forwarder,
     /// not a user/content-derived location. It is walked from `/` using FDs so
     /// no component below that root is subsequently addressed by path.
     init(verifiedStateRootPath stateRootPath: String,
-         testFault: ConversationPersistenceFilesTestFault? = nil) throws {
+         testControl: ConversationPersistenceFilesTestControl? = nil) throws {
         let root = try Self.openVerifiedStateRoot(stateRootPath)
         var conversations: Int32 = -1
         var records: Int32 = -1
         do {
-            conversations = try Self.openOrCreateDirectory(named: Self.conversationsName, in: root)
-            records = try Self.openOrCreateDirectory(named: Self.recordsName, in: conversations)
+            conversations = try Self.openOrCreateDirectory(named: Self.conversationsName, in: root,
+                                                            link: .conversations, testControl: testControl)
+            records = try Self.openOrCreateDirectory(named: Self.recordsName, in: conversations,
+                                                      link: .records, testControl: testControl)
             let lock = try Self.openAndLock(named: Self.lockName, in: conversations)
             stateRootFD = root
             conversationsFD = conversations
             recordsFD = records
             lockFD = lock
-            self.testFault = testFault
+            self.testControl = testControl
         } catch {
             if records >= 0 { Darwin.close(records) }
             if conversations >= 0 { Darwin.close(conversations) }
@@ -85,23 +128,27 @@ final class ConversationPersistenceFiles {
 
     func writeIndex(_ bytes: Data) throws {
         try Self.require(bytes.count <= Self.maximumIndexBytes)
+        try verifyLease()
         try writeAtomically(bytes, named: Self.indexName, in: conversationsFD, replacing: true)
     }
 
     /// `nil` means that the bounded, verified index does not exist yet.
     func readIndex() throws -> Data? {
-        try readFile(named: Self.indexName, in: conversationsFD, maximumBytes: Self.maximumIndexBytes)
+        try verifyLease()
+        return try readFile(named: Self.indexName, in: conversationsFD, maximumBytes: Self.maximumIndexBytes)
     }
 
     @discardableResult
     func writeRecord(_ bytes: Data) throws -> ConversationPersistenceGeneration {
         try Self.require(bytes.count <= Self.maximumRecordBytes)
-        let generation = ConversationPersistenceGeneration.make()
+        try verifyLease()
+        let generation = ConversationPersistenceGeneration.make(uuid: testControl?.recordUUID ?? UUID())
         try writeAtomically(bytes, named: Self.recordName(for: generation), in: recordsFD, replacing: false)
         return generation
     }
 
     func readRecord(_ generation: ConversationPersistenceGeneration) throws -> Data {
+        try verifyLease()
         guard let data = try readFile(named: Self.recordName(for: generation), in: recordsFD,
                                       maximumBytes: Self.maximumRecordBytes) else {
             throw ConversationPersistenceFilesError.ioFailure
@@ -109,33 +156,65 @@ final class ConversationPersistenceFiles {
         return data
     }
 
+    /// Revalidates below-root bindings without reopening the external root path.
+    /// This deliberately preserves the retained-root capability if an ancestor is
+    /// renamed, while rejecting a replaced child directory or lock entry.
+    private func verifyLease() throws {
+        try Self.verifyDirectoryBinding(named: Self.conversationsName, in: stateRootFD, descriptor: conversationsFD)
+        try Self.verifyDirectoryBinding(named: Self.recordsName, in: conversationsFD, descriptor: recordsFD)
+        _ = try Self.verifyFileBinding(named: Self.lockName, in: conversationsFD, descriptor: lockFD,
+                                       maximumBytes: 0, exactSize: 0)
+    }
+
     private func writeAtomically(_ bytes: Data, named name: String, in directoryFD: Int32,
                                  replacing: Bool) throws {
         try Self.checkFixedName(name)
         try Self.verifyDirectory(directoryFD)
-        try Self.checkDestination(named: name, in: directoryFD, replacing: replacing)
-        let temporaryName = ".tmp-" + UUID().uuidString.lowercased()
+        let earlyDestination = try Self.observeDestination(named: name, in: directoryFD, replacing: replacing)
+        let temporaryName = ".tmp-" + (testControl?.temporaryUUID ?? UUID()).uuidString.lowercased()
         var temporaryFD: Int32 = -1
+        var createdIdentity: FileIdentity?
         var renamed = false
         defer {
+            // Validate the owned inode while it is still open. A failed O_EXCL
+            // create has no identity and cannot trigger cleanup; a substituted
+            // pathname does not match and is deliberately preserved.
+            if !renamed, temporaryFD >= 0, let createdIdentity {
+                Self.unlinkOwnedTemporary(named: temporaryName, in: directoryFD, matching: createdIdentity)
+            }
             if temporaryFD >= 0 { Darwin.close(temporaryFD) }
-            if !renamed { Self.unlinkOwnedTemporary(named: temporaryName, in: directoryFD) }
         }
 
         temporaryFD = Darwin.openat(directoryFD, temporaryName,
                                     O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
         guard temporaryFD >= 0 else { throw ConversationPersistenceFilesError.ioFailure }
         guard fchmod(temporaryFD, 0o600) == 0 else { throw ConversationPersistenceFilesError.ioFailure }
+        let createdInfo = try Self.verifyRegularFile(temporaryFD, maximumBytes: bytes.count, exactSize: 0)
+        createdIdentity = FileIdentity(createdInfo)
+        testControl?.event?(.afterTemporaryCreate(temporaryName))
         try Self.verifyRegularFile(temporaryFD, maximumBytes: bytes.count, exactSize: 0)
         try Self.writeAll(bytes, to: temporaryFD)
         guard fsync(temporaryFD) == 0 else { throw ConversationPersistenceFilesError.ioFailure }
         try Self.verifyRegularFile(temporaryFD, maximumBytes: bytes.count, exactSize: off_t(bytes.count))
         try Self.verifyFileBinding(named: temporaryName, in: directoryFD, descriptor: temporaryFD,
                                    maximumBytes: bytes.count, exactSize: off_t(bytes.count))
-        if testFault == .beforeRename { throw ConversationPersistenceFilesError.ioFailure }
-        guard renameat(directoryFD, temporaryName, directoryFD, name) == 0 else {
-            throw ConversationPersistenceFilesError.ioFailure
+        if testControl?.fault == .beforeRename { throw ConversationPersistenceFilesError.ioFailure }
+
+        // This late lease and destination check narrows stale observations but
+        // is not an atomic compare-and-replace guarantee against a same-UID
+        // adversary after the check. Immutable records additionally use EXCL.
+        try verifyLease()
+        testControl?.event?(.beforeLateDestinationCheck(name))
+        let lateDestination = try Self.observeDestination(named: name, in: directoryFD, replacing: replacing)
+        guard lateDestination == earlyDestination else { throw ConversationPersistenceFilesError.unsafeObject }
+        testControl?.event?(.beforePublish(name))
+        let renamedOK: Bool
+        if replacing {
+            renamedOK = renameat(directoryFD, temporaryName, directoryFD, name) == 0
+        } else {
+            renamedOK = Self.renameExclusive(from: temporaryName, to: name, in: directoryFD)
         }
+        guard renamedOK else { throw ConversationPersistenceFilesError.ioFailure }
         renamed = true
         do {
             _ = try Self.verifyFileBinding(named: name, in: directoryFD, descriptor: temporaryFD,
@@ -145,7 +224,7 @@ final class ConversationPersistenceFiles {
             // crash durability can no longer be asserted.
             throw ConversationPersistenceFilesError.committedButDurabilityUncertain
         }
-        if testFault == .afterRenameBeforeDirectorySync {
+        if testControl?.fault == .afterRenameBeforeDirectorySync {
             throw ConversationPersistenceFilesError.committedButDurabilityUncertain
         }
         guard fsync(directoryFD) == 0 else {
@@ -207,7 +286,9 @@ final class ConversationPersistenceFiles {
         }
     }
 
-    private static func openOrCreateDirectory(named name: String, in parentFD: Int32) throws -> Int32 {
+    private static func openOrCreateDirectory(named name: String, in parentFD: Int32,
+                                              link: ConversationPersistenceFilesDirectory,
+                                              testControl: ConversationPersistenceFilesTestControl?) throws -> Int32 {
         try checkFixedName(name)
         try verifyDirectory(parentFD)
         if mkdirat(parentFD, name, 0o700) != 0 && errno != EEXIST {
@@ -218,8 +299,12 @@ final class ConversationPersistenceFiles {
         do {
             // mkdirat requests 0700 and the strict post-create check rejects
             // any umask-narrowed result rather than chmodding a pre-existing or
-            // replacement directory.
+            // replacement directory. Every verified link is synced, even if it
+            // already existed, so a prior mkdir+failed-fsync is retried safely.
             try verifyDirectoryBinding(named: name, in: parentFD, descriptor: descriptor)
+            testControl?.event?(.beforeDirectoryParentSync(link))
+            if testControl?.fault == .directoryParentSync(link) { throw ConversationPersistenceFilesError.ioFailure }
+            guard fsync(parentFD) == 0 else { throw ConversationPersistenceFilesError.ioFailure }
             return descriptor
         } catch {
             Darwin.close(descriptor)
@@ -257,14 +342,24 @@ final class ConversationPersistenceFiles {
         }
     }
 
-    private static func checkDestination(named name: String, in directoryFD: Int32, replacing: Bool) throws {
+    private static func observeDestination(named name: String, in directoryFD: Int32,
+                                           replacing: Bool) throws -> DestinationObservation {
         var info = stat()
         if fstatat(directoryFD, name, &info, AT_SYMLINK_NOFOLLOW) == 0 {
             guard replacing else { throw ConversationPersistenceFilesError.unsafeObject }
             try verifyStatRegular(info, maximumBytes: Self.maximumIndexBytes, exactSize: nil)
-            return
+            return .present(FileIdentity(info))
         }
         guard errno == ENOENT else { throw ConversationPersistenceFilesError.ioFailure }
+        return .absent
+    }
+
+    private static func renameExclusive(from source: String, to destination: String, in directoryFD: Int32) -> Bool {
+        source.withCString { sourcePointer in
+            destination.withCString { destinationPointer in
+                Darwin.renameatx_np(directoryFD, sourcePointer, directoryFD, destinationPointer, UInt32(RENAME_EXCL)) == 0
+            }
+        }
     }
 
     private static func verifyDirectory(_ descriptor: Int32) throws {
@@ -329,9 +424,10 @@ final class ConversationPersistenceFiles {
         }
     }
 
-    private static func unlinkOwnedTemporary(named name: String, in directoryFD: Int32) {
+    private static func unlinkOwnedTemporary(named name: String, in directoryFD: Int32, matching identity: FileIdentity) {
         var info = stat()
         guard fstatat(directoryFD, name, &info, AT_SYMLINK_NOFOLLOW) == 0,
+              FileIdentity(info) == identity,
               info.st_mode & S_IFMT == S_IFREG, info.st_uid == getuid(), info.st_mode & 0o777 == 0o600,
               info.st_nlink == 1 else { return }
         _ = unlinkat(directoryFD, name, 0)
