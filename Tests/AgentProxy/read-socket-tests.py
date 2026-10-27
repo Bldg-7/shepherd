@@ -138,6 +138,33 @@ finally:
     check(reopened.stop() == 0, 'synthetic reopened recorder exits')
 check(json.loads(index.read_bytes()) == retained_index, 'reopen without capture retains disk history')
 
+# Normalized text can expand substantially when JSON-encoded. Exercise the
+# real capture -> serial journal path with a record larger than the old 8 MiB
+# workspace reservation; frames themselves remain within the tee payload cap.
+expanded_root = a.work / 'expanded-state'
+expanded_root.mkdir(mode=0o700)
+expanded = Recorder(a.work / 'expanded-socket', state_directory=expanded_root)
+try:
+    expanded.query('conversations.list'); expanded.authority()
+    expanded.frame(1, {'routeID':'route','upstream':'anthropic','method':'POST','path':'/v1/messages',
+                       'routeIdentity':{'kind':'claude','session':'session','paneID':'pane','terminalID':'terminal','cliVersion':'2.1.309'},
+                       'headers':[['x-claude-code-session-id','native'],['x-claude-code-request-class','main']]})
+    request = json.dumps({'messages':[{'role':'user','content':'\x01' * 65536} for _ in range(40)]}).encode()
+    for offset in range(0, len(request), 512 << 10): expanded.frame(2, request[offset:offset + (512 << 10)])
+    expanded.frame(3)
+    index = expanded_root / 'Conversations' / 'index-v1.json'
+    until = time.monotonic() + 30
+    while True:
+        try:
+            records = json.loads(index.read_bytes())['records']
+            if records and records[0]['encodedBytes'] > 8 << 20: break
+        except (OSError, ValueError, KeyError): pass
+        assert time.monotonic() < until, 'expanded record persistence deadline'
+        select.select([expanded.tee], [], [], .02)
+    check(records[0]['encodedBytes'] <= 32 << 20, 'expanded normalized record stays within journal cap')
+finally:
+    check(expanded.stop() == 0, 'expanded synthetic recorder exits')
+
 desync = Recorder(a.work / 'authority-desync')
 try:
     desync.query('conversations.list')

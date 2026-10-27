@@ -18,6 +18,11 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
     private var journal: ConversationPersistenceJournal? // worker queue only
     private var initializationFailed = false // worker queue only; no unsafe repeated open
     private var pending: [String: Pending] = [:] // recorder loop only
+    // JSON encoding, checked reads and validation can transiently exceed the
+    // normalized 4 MiB record (escaping alone can expand text sixfold).
+    // This is admission accounting, not a process RSS guarantee.
+    private static let workspaceBytes = 64 << 20
+    private static let recordBytes = 8 << 20
     private var running = false
     private var finished: DispatchSemaphore?
     private(set) var health: Health = .volatile
@@ -26,16 +31,18 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
         self.root = root; self.loop = loop; self.capture = capture
     }
 
-    /// The fixed reservation covers the normalized record and transient
-    /// encoding; pressure skips a snapshot instead of delaying forwarding.
+    /// Pressure skips a snapshot instead of delaying forwarding. Replacing a
+    /// pending record reuses its reservation, rather than briefly doubling it.
     func schedule(_ record: ConversationStore.PersistentSnapshot.Record) -> Bool {
         loop.assertInEventLoop()
-        guard pending[record.id] != nil || pending.count < 8,
-              capture.accountedBytes <= capture.limits.totalBytes - min(capture.limits.totalBytes, 8 << 20),
-              let reservation = capture.reserve(bytes: 8 << 20) else { health = .degraded; return false }
-        if let old = pending.updateValue(Pending(record: record, reservation: reservation, updatedAt: Date()), forKey: record.id) {
-            capture.release(old.reservation)
+        if let old = pending[record.id] {
+            pending[record.id] = Pending(record: record, reservation: old.reservation, updatedAt: Date())
+            return true
         }
+        guard pending.count < 8, Self.recordBytes <= capture.limits.totalBytes,
+              capture.accountedBytes <= capture.limits.totalBytes - Self.recordBytes,
+              let reservation = capture.reserve(bytes: Self.recordBytes) else { health = .degraded; return false }
+        pending[record.id] = Pending(record: record, reservation: reservation, updatedAt: Date())
         drain()
         return true
     }
@@ -54,6 +61,14 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
         guard !running else { return }
         guard let key = pending.keys.sorted().first, let next = pending.removeValue(forKey: key) else {
             finished?.signal(); finished = nil
+            return
+        }
+        guard Self.workspaceBytes <= capture.limits.totalBytes,
+              capture.accountedBytes <= capture.limits.totalBytes - Self.workspaceBytes,
+              let workspace = capture.reserve(bytes: Self.workspaceBytes) else {
+            capture.release(next.reservation)
+            health = .degraded
+            drain()
             return
         }
         running = true
@@ -76,6 +91,7 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
                 success = true
             } catch { success = false }
             loop.execute { [self] in
+                capture.release(workspace)
                 capture.release(next.reservation)
                 if !success { health = .degraded }
                 else if case .volatile = health { health = .healthy }
