@@ -39,6 +39,174 @@ final class ConversationPersistenceJournal {
     private static let maximumFutureMilliseconds: Int64 = 5 * 60 * 1_000
     private static let retentionMilliseconds: Int64 = 30 * 24 * 60 * 60 * 1_000
 
+    /// A bounded raw structural pass, before Codable can collapse duplicate keys.
+    /// Decoded key bytes are compared within each object, not across objects.
+    private struct RawJSON {
+        private let bytes: [UInt8]
+        private var offset = 0
+        private var values = 0
+        private static let maxDepth = 64
+        private static let maxMembers = 512
+        private static let maxArrayElements = 4_096
+        private static let maxValues = 2_000_000
+        private static let maxKeyTokenBytes = 4_096
+        private static let maxKeyBytes = 1_024
+
+        init(_ data: Data, maximumBytes: Int) throws {
+            guard data.count <= maximumBytes else { throw ConversationPersistenceJournalError.unavailable }
+            bytes = Array(data)
+        }
+
+        mutating func check() throws {
+            try value(depth: 0)
+            whitespace()
+            guard offset == bytes.count else { throw ConversationPersistenceJournalError.unavailable }
+        }
+
+        private mutating func whitespace() {
+            while offset < bytes.count && (bytes[offset] == 0x20 || bytes[offset] == 0x09 || bytes[offset] == 0x0a || bytes[offset] == 0x0d) { offset += 1 }
+        }
+
+        private mutating func consume(_ byte: UInt8) -> Bool {
+            if offset < bytes.count && bytes[offset] == byte { offset += 1; return true }
+            return false
+        }
+
+        private mutating func value(depth: Int) throws {
+            whitespace()
+            values += 1
+            guard depth <= Self.maxDepth, values <= Self.maxValues, offset < bytes.count else { throw ConversationPersistenceJournalError.unavailable }
+            switch bytes[offset] {
+            case 0x7b: try object(depth: depth)
+            case 0x5b: try array(depth: depth)
+            case 0x22: _ = try stringToken(isKey: false)
+            case 0x74: try literal([0x74, 0x72, 0x75, 0x65])
+            case 0x66: try literal([0x66, 0x61, 0x6c, 0x73, 0x65])
+            case 0x6e: try literal([0x6e, 0x75, 0x6c, 0x6c])
+            case 0x2d, 0x30...0x39: try number()
+            default: throw ConversationPersistenceJournalError.unavailable
+            }
+        }
+
+        private mutating func object(depth: Int) throws {
+            offset += 1
+            whitespace()
+            if consume(0x7d) { return }
+            var keys = Set<Data>()
+            while true {
+                guard keys.count < Self.maxMembers else { throw ConversationPersistenceJournalError.unavailable }
+                whitespace()
+                let token = try stringToken(isKey: true)
+                let decoded: String
+                do { decoded = try JSONDecoder().decode(String.self, from: Data(bytes[token])) }
+                catch { throw ConversationPersistenceJournalError.unavailable }
+                guard decoded.utf8.count <= Self.maxKeyBytes else { throw ConversationPersistenceJournalError.unavailable }
+                let key = Data(decoded.utf8)
+                guard keys.insert(key).inserted else { throw ConversationPersistenceJournalError.unavailable }
+                whitespace()
+                guard consume(0x3a) else { throw ConversationPersistenceJournalError.unavailable }
+                try value(depth: depth + 1)
+                whitespace()
+                if consume(0x7d) { return }
+                guard consume(0x2c) else { throw ConversationPersistenceJournalError.unavailable }
+            }
+        }
+
+        private mutating func array(depth: Int) throws {
+            offset += 1
+            whitespace()
+            if consume(0x5d) { return }
+            var count = 0
+            while true {
+                guard count < Self.maxArrayElements else { throw ConversationPersistenceJournalError.unavailable }
+                count += 1
+                try value(depth: depth + 1)
+                whitespace()
+                if consume(0x5d) { return }
+                guard consume(0x2c) else { throw ConversationPersistenceJournalError.unavailable }
+            }
+        }
+
+        private mutating func stringToken(isKey: Bool) throws -> Range<Int> {
+            let start = offset
+            guard consume(0x22) else { throw ConversationPersistenceJournalError.unavailable }
+            while offset < bytes.count {
+                if isKey && offset - start > Self.maxKeyTokenBytes { throw ConversationPersistenceJournalError.unavailable }
+                let byte = bytes[offset]; offset += 1
+                if byte == 0x22 {
+                    guard !isKey || offset - start <= Self.maxKeyTokenBytes else { throw ConversationPersistenceJournalError.unavailable }
+                    return start..<offset
+                }
+                guard byte >= 0x20 else { throw ConversationPersistenceJournalError.unavailable }
+                if byte == 0x5c {
+                    guard offset < bytes.count else { throw ConversationPersistenceJournalError.unavailable }
+                    let escape = bytes[offset]; offset += 1
+                    if escape == 0x75 {
+                        let scalar = try unicodeEscape()
+                        if (0xd800...0xdbff).contains(scalar) {
+                            guard consume(0x5c), consume(0x75) else { throw ConversationPersistenceJournalError.unavailable }
+                            let low = try unicodeEscape()
+                            guard (0xdc00...0xdfff).contains(low) else { throw ConversationPersistenceJournalError.unavailable }
+                        } else if (0xdc00...0xdfff).contains(scalar) {
+                            throw ConversationPersistenceJournalError.unavailable
+                        }
+                    } else if ![0x22, 0x5c, 0x2f, 0x62, 0x66, 0x6e, 0x72, 0x74].contains(escape) {
+                        throw ConversationPersistenceJournalError.unavailable
+                    }
+                }
+            }
+            throw ConversationPersistenceJournalError.unavailable
+        }
+
+        private mutating func unicodeEscape() throws -> Int {
+            var value = 0
+            for _ in 0..<4 {
+                guard offset < bytes.count else { throw ConversationPersistenceJournalError.unavailable }
+                let byte = bytes[offset]; offset += 1
+                let digit: Int
+                switch byte {
+                case 0x30...0x39: digit = Int(byte - 0x30)
+                case 0x41...0x46: digit = Int(byte - 0x41) + 10
+                case 0x61...0x66: digit = Int(byte - 0x61) + 10
+                default: throw ConversationPersistenceJournalError.unavailable
+                }
+                value = value * 16 + digit
+            }
+            return value
+        }
+
+        private mutating func literal(_ expected: [UInt8]) throws {
+            for byte in expected {
+                guard consume(byte) else { throw ConversationPersistenceJournalError.unavailable }
+            }
+        }
+
+        private mutating func digits() -> Int {
+            let start = offset
+            while offset < bytes.count && (0x30...0x39).contains(bytes[offset]) { offset += 1 }
+            return offset - start
+        }
+
+        private mutating func number() throws {
+            _ = consume(0x2d)
+            if !consume(0x30) {
+                guard offset < bytes.count, (0x31...0x39).contains(bytes[offset]) else { throw ConversationPersistenceJournalError.unavailable }
+                _ = digits()
+            }
+            if consume(0x2e) { guard digits() > 0 else { throw ConversationPersistenceJournalError.unavailable } }
+            if consume(0x65) || consume(0x45) {
+                if !consume(0x2b) { _ = consume(0x2d) }
+                guard digits() > 0 else { throw ConversationPersistenceJournalError.unavailable }
+            }
+        }
+    }
+
+    // Exposes the same bounded parser to deterministic synthetic fixtures.
+    static func validateRawJSONForTesting(_ data: Data) throws {
+        var raw = try RawJSON(data, maximumBytes: ConversationPersistenceFiles.maximumRecordBytes)
+        try raw.check()
+    }
+
     private struct AnyKey: CodingKey {
         let stringValue: String
         let intValue: Int? = nil
@@ -311,7 +479,11 @@ final class ConversationPersistenceJournal {
         catch { throw ConversationPersistenceJournalError.unavailable }
         guard let data else { return Index(records: []) }
         guard data.count <= ConversationPersistenceFiles.maximumIndexBytes else { throw ConversationPersistenceJournalError.unavailable }
-        do { return try JSONDecoder().decode(Index.self, from: data) }
+        do {
+            var raw = try RawJSON(data, maximumBytes: ConversationPersistenceFiles.maximumIndexBytes)
+            try raw.check()
+            return try JSONDecoder().decode(Index.self, from: data)
+        }
         catch { throw ConversationPersistenceJournalError.unavailable }
     }
 
@@ -398,7 +570,11 @@ final class ConversationPersistenceJournal {
     private func decodeOneRecord(_ bytes: Data, expectedID: Data) throws -> ConversationStore.PersistentSnapshot.Record {
         guard bytes.count <= ConversationPersistenceFiles.maximumRecordBytes else { throw ConversationPersistenceJournalError.unavailable }
         let envelope: SingleRecordEnvelope
-        do { envelope = try JSONDecoder().decode(SingleRecordEnvelope.self, from: bytes) }
+        do {
+            var raw = try RawJSON(bytes, maximumBytes: ConversationPersistenceFiles.maximumRecordBytes)
+            try raw.check()
+            envelope = try JSONDecoder().decode(SingleRecordEnvelope.self, from: bytes)
+        }
         catch { throw ConversationPersistenceJournalError.unavailable }
         let record = envelope.record
         guard Data(record.id.utf8) == expectedID, admitted(record) else { throw ConversationPersistenceJournalError.unavailable }

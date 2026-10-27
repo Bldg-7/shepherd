@@ -59,6 +59,7 @@ enum ConversationPersistenceFilesTestFault: Equatable {
     case afterRenameBeforeDirectorySync
     case directoryParentSync(ConversationPersistenceFilesDirectory)
     case recordUnlink
+    case recordUnlinkForGeneration(ConversationPersistenceGeneration)
     case recordUnlinkDirectorySync
 }
 
@@ -219,7 +220,9 @@ final class ConversationPersistenceFiles {
         try verifyLease()
         _ = try Self.verifyFileBinding(named: name, in: recordsFD, descriptor: descriptor,
                                        maximumBytes: Self.maximumRecordBytes, exactSize: off_t(ticket.bytes))
-        if testControl?.fault == .recordUnlink { throw ConversationPersistenceFilesError.ioFailure }
+        if testControl?.fault == .recordUnlink || testControl?.fault == .recordUnlinkForGeneration(ticket.generation) {
+            throw ConversationPersistenceFilesError.ioFailure
+        }
         guard unlinkat(recordsFD, name, 0) == 0 else { throw ConversationPersistenceFilesError.ioFailure }
         if testControl?.fault == .recordUnlinkDirectorySync { throw ConversationPersistenceFilesError.committedButDurabilityUncertain }
         guard fsync(recordsFD) == 0 else { throw ConversationPersistenceFilesError.committedButDurabilityUncertain }

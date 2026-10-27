@@ -392,6 +392,7 @@ struct PersistenceJournalTests {
             guard try journal.metadata().count == 1 else { throw Failure() }
         }
         try ageSweepFixtures(base: base, record: record)
+        try duplicateJSONFixtures(base: base, record: record)
         // Individually small valid messages, aggregate exceeds 4 MiB.
         do {
             let path = try root("aggregate")
@@ -403,6 +404,122 @@ struct PersistenceJournalTests {
             let before = try names(path + "/Conversations/records")
             try reject({ _ = try journal.upsert(copyRecord(record.id, items: items), updatedAt: clock) }, expected: .invalidRecord)
             guard try files.readIndex() == nil, try names(path + "/Conversations/records") == before else { throw Failure() }
+        }
+    }
+
+    private static func duplicateJSONFixtures(base: String, record: ConversationStore.PersistentSnapshot.Record) throws {
+        func check(_ source: String, valid: Bool) throws {
+            do {
+                try ConversationPersistenceJournal.validateRawJSONForTesting(Data(source.utf8))
+                if !valid { throw Failure() }
+            } catch is Failure { throw Failure() }
+            catch { if valid { throw Failure() } }
+        }
+        try check(#"{"outer":{"k":1},"other":{"k":2},"text":"{\"a\":1,\"a\":2} \\ \" \uD83D\uDE00"}"#, valid: true)
+        try check(#"{"version":1,"\u0076ersion":2}"#, valid: false)
+        try check(#"{"\uD83D\uDE00":1,"😀":2}"#, valid: false)
+        try check(#"{"a\"b":1,"a\u0022b":2}"#, valid: false)
+        try check(#"{"a\\b":1,"a\u005cb":2}"#, valid: false)
+        try check(#"{"a":1,"nested":{"a":1,"a":2}}"#, valid: false)
+        try check(#"{"a":1,}"#, valid: false)
+        try check(#"{"a":"\uD800"}"#, valid: false)
+        try check("[01]", valid: false)
+        try check(String(repeating: "[", count: 66) + "0" + String(repeating: "]", count: 66), valid: false)
+        try check("{\"" + String(repeating: "x", count: 4097) + "\":1}", valid: false)
+        try check("{" + (0..<513).map { "\"k\($0)\":0" }.joined(separator: ",") + "}", valid: false)
+        try check("[" + Array(repeating: "0", count: 4097).joined(separator: ",") + "]", valid: false)
+
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let expired = start.addingTimeInterval(30 * 24 * 60 * 60)
+        func root(_ name: String) throws -> String {
+            let path = base + "/duplicate-" + name
+            guard mkdir(path, 0o700) == 0 else { throw Failure() }
+            return path
+        }
+        func copy(_ id: String) -> ConversationStore.PersistentSnapshot.Record {
+            .init(id: id, key: record.key, context: record.context, updatedOrder: record.updatedOrder,
+                  items: record.items, truncated: record.truncated, status: record.status, subagents: record.subagents)
+        }
+        func reject(_ operation: () throws -> Void) throws {
+            do { try operation(); throw Failure() }
+            catch ConversationPersistenceJournalError.unavailable {}
+        }
+        func injected(_ text: String, member: String, before: Bool) -> String {
+            if before { return "{" + member + "," + String(text.dropFirst()) }
+            return String(text.dropLast()) + "," + member + "}"
+        }
+        // Raw insertion, not JSONSerialization: conflicting members in both
+        // orders, including an escape-equivalent spelling of a known key.
+        for (number, member) in [#""\u0076ersion":2"#, #""records":[]"#].enumerated() {
+            for before in [false, true] {
+                let path = try root("index-\(number)-\(before)")
+                var saved: ConversationPersistenceJournalMetadata!
+                var body = Data(); var bad = Data()
+                do {
+                    let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+                    let journal = ConversationPersistenceJournal(files: files, now: { start })
+                    saved = try journal.upsert(record, updatedAt: start)
+                    body = try files.readRecord(saved.generation)
+                    let original = try files.readIndex()!
+                    bad = Data(injected(String(decoding: original, as: UTF8.self), member: member, before: before).utf8)
+                    try files.writeIndex(bad)
+                    let later = ConversationPersistenceJournal(files: files, now: { expired })
+                    try reject { _ = try later.metadata() }
+                    try reject { _ = try later.upsert(record, updatedAt: expired) }
+                    guard try files.readIndex() == bad, try files.readRecord(saved.generation) == body else { throw Failure() }
+                }
+                do {
+                    let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+                    let journal = ConversationPersistenceJournal(files: files, now: { expired })
+                    try reject { try journal.activate() }
+                    guard try files.readIndex() == bad, try files.readRecord(saved.generation) == body else { throw Failure() }
+                }
+            }
+        }
+        // A valid first expired victim must remain protected when a later raw
+        // victim has conflicting duplicate envelope or nested message members.
+        for number in 0..<3 {
+            for before in [false, true] {
+                let path = try root("record-\(number)-\(before)")
+                var good: ConversationPersistenceJournalMetadata!; var bad: ConversationPersistenceJournalMetadata!
+                var goodBody = Data(); var badBody = Data(); var indexBytes = Data()
+                do {
+                    let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+                    let journal = ConversationPersistenceJournal(files: files, now: { start })
+                    good = try journal.upsert(record, updatedAt: start)
+                    bad = try journal.upsert(copy("duplicate-bad"), updatedAt: start)
+                    goodBody = try files.readRecord(good.generation)
+                    let original = String(decoding: try files.readRecord(bad.generation), as: UTF8.self)
+                    let modified: String
+                    if number == 0 { modified = injected(original, member: #""\u0073chemaVersion":2"#, before: before) }
+                    else if number == 1 { modified = injected(original, member: #""records":[]"#, before: before) }
+                    else {
+                        let role = #""role":"user""#
+                        let extra = #""\u0072ole":"future""#
+                        modified = original.replacingOccurrences(of: role, with: before ? extra + "," + role : role + "," + extra)
+                    }
+                    guard modified != original else { throw Failure() }
+                    badBody = Data(modified.utf8)
+                    try badBody.write(to: URL(fileURLWithPath: path + "/Conversations/records/" + bad.generation.value + ".json"))
+                    var index = try JSONSerialization.jsonObject(with: files.readIndex()!) as! [String: Any]
+                    var entries = index["records"] as! [[String: Any]]
+                    entries[1]["encodedBytes"] = badBody.count; index["records"] = entries
+                    indexBytes = try JSONSerialization.data(withJSONObject: index)
+                    try files.writeIndex(indexBytes)
+                    try reject { _ = try journal.upsert(copy("duplicate-bad"), updatedAt: start) }
+                    let later = ConversationPersistenceJournal(files: files, now: { expired })
+                    try reject { try later.activate() }
+                    guard later.lastMaintenance == .none, try files.readIndex() == indexBytes,
+                          try files.readRecord(good.generation) == goodBody, try files.readRecord(bad.generation) == badBody else { throw Failure() }
+                }
+                do {
+                    let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+                    let journal = ConversationPersistenceJournal(files: files, now: { expired })
+                    try reject { _ = try journal.metadata() }
+                    guard try files.readIndex() == indexBytes, try files.readRecord(good.generation) == goodBody,
+                          try files.readRecord(bad.generation) == badBody else { throw Failure() }
+                }
+            }
         }
     }
 
@@ -442,6 +559,27 @@ struct PersistenceJournalTests {
                   try journal.metadata() == [fresh], try journal.load(fresh).record == copy("fresh") else { throw Failure() }
             try reject(.unavailable) { _ = try journal.load(old) }
             try reject(.unavailable) { _ = try journal.upsert(record, updatedAt: start) }
+        }
+        // Persisted milliseconds and clock quantization at the exact 30-day boundary.
+        do {
+            let path = try root("millisecond-boundary")
+            let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+            let stored: Int64 = 1_700_000_000_123
+            let lifeMillis: Int64 = 30 * 24 * 60 * 60 * 1_000
+            var now = Date(timeIntervalSince1970: Double(stored) / 1_000)
+            let journal = ConversationPersistenceJournal(files: files, now: { now })
+            let saved = try journal.upsert(record, updatedAt: now)
+            let index = try JSONSerialization.jsonObject(with: files.readIndex()!) as! [String: Any]
+            let persisted = ((index["records"] as! [[String: Any]])[0]["updatedMilliseconds"] as! NSNumber).int64Value
+            guard persisted == stored else { throw Failure() }
+            now = Date(timeIntervalSince1970: Double(stored + lifeMillis - 1) / 1_000 + 0.0002)
+            guard Int64((now.timeIntervalSince1970 * 1_000).rounded(.down)) == stored + lifeMillis - 1,
+                  try journal.metadata() == [saved] else { throw Failure() }
+            now = Date(timeIntervalSince1970: Double(stored + lifeMillis) / 1_000 + 0.0002)
+            guard Int64((now.timeIntervalSince1970 * 1_000).rounded(.down)) == stored + lifeMillis else { throw Failure() }
+            try journal.activate()
+            guard journal.lastMaintenance == .committed(removed: 1, cleanupCompleted: 1, cleanupDurabilityUncertain: false),
+                  try files.inventoryRecords().isEmpty else { throw Failure() }
         }
         // Both metadata and a write independently invoke the sweep without activation.
         for writing in [false, true] {
@@ -545,6 +683,18 @@ struct PersistenceJournalTests {
         // Reserve the new index before publishing: sparse, measured orphan
         // bytes leave less than the conservative index headroom available.
         do {
+            let probePath = try root("index-headroom-probe")
+            var oldIndexSize = 0; var nextIndexSize = 0
+            do {
+                let probeFiles = try ConversationPersistenceFiles(verifiedStateRootPath: probePath)
+                var probeNow = start
+                let probe = ConversationPersistenceJournal(files: probeFiles, now: { probeNow })
+                _ = try probe.upsert(record, updatedAt: start)
+                oldIndexSize = try probeFiles.readIndex()!.count
+                probeNow = start.addingTimeInterval(lifetime)
+                try probe.activate()
+                nextIndexSize = try probeFiles.readIndex()!.count
+            }
             let path = try root("index-headroom")
             let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
             var now = start
@@ -561,10 +711,18 @@ struct PersistenceJournalTests {
                 guard fchmod(fd, 0o600) == 0, ftruncate(fd, off_t(size)) == 0 else { close(fd); throw Failure() }
                 close(fd)
             }
+            let before = try files.inventoryRecords().sorted { $0.generation.value < $1.generation.value }
+            let inventoryBytes = before.reduce(0) { $0 + $1.bytes }
+            let withoutReserve = inventoryBytes + index.count + nextIndexSize
+            guard oldIndexSize == index.count, nextIndexSize > 0, before.count == 9,
+                  before.count < ConversationPersistenceJournal.maximumRecords,
+                  withoutReserve < ConversationPersistenceJournal.maximumDiskBytes,
+                  withoutReserve + ConversationPersistenceFiles.maximumIndexBytes > ConversationPersistenceJournal.maximumDiskBytes else { throw Failure() }
             now = start.addingTimeInterval(lifetime)
             try reject(.capacity) { _ = try journal.metadata() }
+            let after = try files.inventoryRecords().sorted { $0.generation.value < $1.generation.value }
             guard journal.lastMaintenance == .none, try files.readIndex() == index,
-                  try files.readRecord(saved.generation) == body, try files.inventoryRecords().count == 9 else { throw Failure() }
+                  try files.readRecord(saved.generation) == body, after == before else { throw Failure() }
         }
         // No removal after a precommit or durability-uncertain index result.
         for post in [false, true] {
@@ -616,17 +774,50 @@ struct PersistenceJournalTests {
                 } else { guard inventory.isEmpty else { throw Failure() } }
             }
         }
+        // Second deletion fails after the first was unlinked and directory-synced.
+        do {
+            let path = try root("partial-cleanup")
+            var first: ConversationPersistenceJournalMetadata!
+            var second: ConversationPersistenceJournalMetadata!
+            var secondBody = Data()
+            do {
+                let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+                let journal = ConversationPersistenceJournal(files: files, now: { start })
+                first = try journal.upsert(record, updatedAt: start)
+                second = try journal.upsert(copy("second"), updatedAt: start)
+                secondBody = try files.readRecord(second.generation)
+            }
+            do {
+                let files = try ConversationPersistenceFiles(verifiedStateRootPath: path, testControl: .init(fault: .recordUnlinkForGeneration(second.generation)))
+                let journal = ConversationPersistenceJournal(files: files, now: { start.addingTimeInterval(lifetime) })
+                try reject(.retentionCommittedCleanupFailed) { try journal.activate() }
+                guard journal.lastMaintenance == .committed(removed: 2, cleanupCompleted: 1, cleanupDurabilityUncertain: false) else { throw Failure() }
+                let remaining = try files.inventoryRecords()
+                guard remaining.count == 1, remaining[0].generation == second.generation,
+                      remaining[0].bytes == secondBody.count, try files.readRecord(second.generation) == secondBody else { throw Failure() }
+            }
+            do {
+                let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+                let journal = ConversationPersistenceJournal(files: files, now: { start.addingTimeInterval(lifetime) })
+                guard try journal.metadata().isEmpty else { throw Failure() }
+                let remaining = try files.inventoryRecords()
+                guard remaining.count == 1, remaining[0].generation == second.generation,
+                      remaining[0].generation != first.generation, remaining[0].bytes == secondBody.count else { throw Failure() }
+            }
+        }
         // Replacement after validation cannot be deleted using the old ticket.
         do {
             let path = try root("replacement")
             var saved: ConversationPersistenceJournalMetadata!
+            var original = Data()
             do {
                 let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
                 let journal = ConversationPersistenceJournal(files: files, now: { start })
                 saved = try journal.upsert(record, updatedAt: start)
+                original = try files.readRecord(saved.generation)
             }
             let destination = path + "/Conversations/records/" + saved.generation.value + ".json"
-            let replacement = Data("replacement".utf8)
+            let replacement = Data(repeating: 0x78, count: original.count)
             var substituted = false
             let files = try ConversationPersistenceFiles(verifiedStateRootPath: path, testControl: .init(event: { event in
                 if case .beforeRecordRemoval = event {
@@ -637,8 +828,13 @@ struct PersistenceJournalTests {
             }))
             let journal = ConversationPersistenceJournal(files: files, now: { start.addingTimeInterval(lifetime) })
             try reject(.retentionCommittedCleanupFailed) { _ = try journal.metadata() }
-            guard substituted, try Data(contentsOf: URL(fileURLWithPath: destination)) == replacement,
-                  journal.lastMaintenance == .committed(removed: 1, cleanupCompleted: 0, cleanupDurabilityUncertain: false) else { throw Failure() }
+            var oldInfo = stat(); var newInfo = stat()
+            guard substituted, lstat(path + "/displaced", &oldInfo) == 0, lstat(destination, &newInfo) == 0,
+                  oldInfo.st_ino != newInfo.st_ino, oldInfo.st_size == newInfo.st_size,
+                  try Data(contentsOf: URL(fileURLWithPath: path + "/displaced")) == original,
+                  try Data(contentsOf: URL(fileURLWithPath: destination)) == replacement,
+                  journal.lastMaintenance == .committed(removed: 1, cleanupCompleted: 0, cleanupDurabilityUncertain: false),
+                  try journal.metadata().isEmpty else { throw Failure() }
         }
     }
 
