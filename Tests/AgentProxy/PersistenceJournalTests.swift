@@ -717,10 +717,10 @@ struct PersistenceJournalTests {
             var attempts = 0
             let files = try ConversationPersistenceFiles(verifiedStateRootPath: path, testControl: .init(
                 fault: .afterRenameBeforeDirectorySync, temporaryCreateError: { attempts += 1; return nil }))
-            let journal = ConversationPersistenceJournal(files: files, now: { clock })
+            let journal = ConversationPersistenceJournal(files: files, now: { clock }, monotonicNow: { 30 })
             do { _ = try journal.upsert(record, updatedAt: clock); throw Failure() }
             catch ConversationPersistenceJournalError.recordCommittedButDurabilityUncertain {}
-            guard attempts == 1, journal.health == .healthy, try files.readIndex() == nil else { throw Failure() }
+            guard attempts == 1, journal.health == .degraded(retryAfter: 35), try files.readIndex() == nil else { throw Failure() }
         }
         // Age and recovery and pressure commits remain individually visible
         // if both publication attempts then fail before temporary creation.

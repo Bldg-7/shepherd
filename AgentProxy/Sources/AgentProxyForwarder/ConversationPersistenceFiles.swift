@@ -299,7 +299,7 @@ final class ConversationPersistenceFiles {
                 throw ConversationPersistenceFilesError.unsafeObject
             }
             let descriptor = Darwin.openat(recordsFD, name, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
-            guard descriptor >= 0 else { throw ConversationPersistenceFilesError.unsafeObject }
+            guard descriptor >= 0 else { throw Self.inventoryOpenFailure(errno) }
             let info: stat
             do {
                 info = try Self.verifyFileBinding(named: name, in: recordsFD, descriptor: descriptor,
@@ -313,6 +313,11 @@ final class ConversationPersistenceFiles {
             entries.append(.init(generation: generation, bytes: Int(info.st_size)))
         }
         return entries
+    }
+
+    private static func inventoryOpenFailure(_ code: Int32) -> ConversationPersistenceFilesError {
+        if code == EIO || code == ENOSPC || code == EDQUOT { return .ioFailure }
+        return .unsafeObject
     }
 
     private static func isTemporaryName(_ name: String) -> Bool {
@@ -342,7 +347,7 @@ final class ConversationPersistenceFiles {
                 guard Self.isTemporaryName(name) else { continue }
                 guard tickets.count < Self.maximumPhysicalRecords else { throw ConversationPersistenceFilesError.tooLarge }
                 let descriptor = Darwin.openat(fd, name, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
-                guard descriptor >= 0 else { throw ConversationPersistenceFilesError.unsafeObject }
+                guard descriptor >= 0 else { throw Self.inventoryOpenFailure(errno) }
                 let info: stat
                 do { info = try Self.verifyFileBinding(named: name, in: fd, descriptor: descriptor, maximumBytes: 0, exactSize: 0) }
                 catch { Darwin.close(descriptor); throw error }

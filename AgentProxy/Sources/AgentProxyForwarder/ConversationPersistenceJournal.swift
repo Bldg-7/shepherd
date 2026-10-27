@@ -350,7 +350,7 @@ final class ConversationPersistenceJournal {
     private func noteIOFailure(_ error: Error) {
         guard let failure = error as? ConversationPersistenceFilesError else { return }
         switch failure {
-        case .ioFailure, .retryableBeforeTemporaryCreation:
+        case .ioFailure, .retryableBeforeTemporaryCreation, .committedButDurabilityUncertain:
             let time = monotonicNow()
             health = .degraded(retryAfter: time.isFinite && time >= 0 && time <= TimeInterval.greatestFiniteMagnitude - 5 ? time + 5 : TimeInterval.greatestFiniteMagnitude)
         default: break
@@ -493,6 +493,7 @@ final class ConversationPersistenceJournal {
                 _ = try files.writeRecord(bytes, generation: generation)
             }
         } catch ConversationPersistenceFilesError.committedButDurabilityUncertain {
+            noteIOFailure(ConversationPersistenceFilesError.committedButDurabilityUncertain)
             throw ConversationPersistenceJournalError.recordCommittedButDurabilityUncertain
         } catch let error as ConversationPersistenceJournalError { throw error }
         catch { noteIOFailure(error); throw ConversationPersistenceJournalError.unavailable }
@@ -501,6 +502,7 @@ final class ConversationPersistenceJournal {
                 try files.writeIndex(nextIndexBytes)
             }
         } catch ConversationPersistenceFilesError.committedButDurabilityUncertain {
+            noteIOFailure(ConversationPersistenceFilesError.committedButDurabilityUncertain)
             throw ConversationPersistenceJournalError.indexCommittedButDurabilityUncertain
         } catch let error as ConversationPersistenceJournalError { throw error }
         catch { noteIOFailure(error); throw ConversationPersistenceJournalError.unavailable }
@@ -599,6 +601,7 @@ final class ConversationPersistenceJournal {
         _ = try checkedSum(inventory.map(\.bytes) + [currentBytes, nextBytes.count, ConversationPersistenceFiles.maximumIndexBytes])
         do { try files.writeIndex(nextBytes) }
         catch ConversationPersistenceFilesError.committedButDurabilityUncertain {
+            noteIOFailure(ConversationPersistenceFilesError.committedButDurabilityUncertain)
             updateMaintenance(.indexDurabilityUncertain, transaction: transaction)
             throw ConversationPersistenceJournalError.indexCommittedButDurabilityUncertain
         } catch { noteIOFailure(error); throw ConversationPersistenceJournalError.unavailable }
@@ -608,6 +611,7 @@ final class ConversationPersistenceJournal {
         for ticket in tickets {
             do { try files.removeValidatedRecord(ticket) }
             catch ConversationPersistenceFilesError.committedButDurabilityUncertain {
+                noteIOFailure(ConversationPersistenceFilesError.committedButDurabilityUncertain)
                 updateMaintenance(.committed(removed: tickets.count, cleanupCompleted: completed, cleanupDurabilityUncertain: true), transaction: transaction)
                 throw ConversationPersistenceJournalError.retentionCommittedCleanupFailed
             } catch {
@@ -660,6 +664,7 @@ final class ConversationPersistenceJournal {
         for ticket in tickets {
             do { try files.removeValidatedRecord(ticket) }
             catch ConversationPersistenceFilesError.committedButDurabilityUncertain {
+                noteIOFailure(ConversationPersistenceFilesError.committedButDurabilityUncertain)
                 updateMaintenance(.recovered(completed: completed, cleanupDurabilityUncertain: true), transaction: transaction)
                 throw ConversationPersistenceJournalError.retentionCommittedCleanupFailed
             } catch { noteIOFailure(error); throw ConversationPersistenceJournalError.retentionCommittedCleanupFailed }
@@ -669,6 +674,7 @@ final class ConversationPersistenceJournal {
         for ticket in temporary {
             do { try files.removeEmptyTemporary(ticket) }
             catch ConversationPersistenceFilesError.committedButDurabilityUncertain {
+                noteIOFailure(ConversationPersistenceFilesError.committedButDurabilityUncertain)
                 updateMaintenance(.recovered(completed: completed, cleanupDurabilityUncertain: true), transaction: transaction)
                 throw ConversationPersistenceJournalError.retentionCommittedCleanupFailed
             } catch { noteIOFailure(error); throw ConversationPersistenceJournalError.retentionCommittedCleanupFailed }
