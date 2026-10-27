@@ -149,11 +149,218 @@ struct PersistenceJournalTests {
                 catch ConversationPersistenceJournalError.unavailable {}
                 guard try files.readIndex() == nil, try Data(contentsOf: URL(fileURLWithPath: path)) == Data("future".utf8) else { throw Failure() }
             }
+            try safetyFixtures(base: String(cString: resolved), record: record, clock: clock)
             print("PASS: bounded persistence journal")
         } catch {
             print("FAIL: journal \(error)")
             exit(1)
         }
     }
+    private static func safetyFixtures(base: String, record: ConversationStore.PersistentSnapshot.Record, clock: Date) throws {
+        func root(_ name: String) throws -> String {
+            let path = base + "/" + name
+            guard mkdir(path, 0o700) == 0 else { throw Failure() }
+            return path
+        }
+        func reject(_ operation: () throws -> Void, expected: ConversationPersistenceJournalError = .unavailable) throws {
+            do { try operation(); throw Failure() }
+            catch let error as ConversationPersistenceJournalError { guard error == expected else { throw Failure() } }
+        }
+        func names(_ path: String) throws -> [String] {
+            try FileManager.default.contentsOfDirectory(atPath: path).sorted()
+        }
+        func copyRecord(_ id: String, items: [ConversationStore.PersistentSnapshot.Item]? = nil) -> ConversationStore.PersistentSnapshot.Record {
+            .init(id: id, key: record.key, context: record.context, updatedOrder: record.updatedOrder,
+                  items: items ?? record.items, truncated: record.truncated, status: record.status, subagents: record.subagents)
+        }
+        // No opposing FIFO endpoints exist: the runner's original deadline
+        // bounds any regression to a blocking open.
+        for indexFIFO in [true, false] {
+            let path = try root(indexFIFO ? "fifo-index" : "fifo-record")
+            let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+            let journal = ConversationPersistenceJournal(files: files, now: { clock })
+            let object = indexFIFO ? path + "/Conversations/index-v1.json" :
+                path + "/Conversations/records/00000000-0000-0000-0000-000000000001.json"
+            guard mkfifo(object, 0o600) == 0 else { throw Failure() }
+            try reject { _ = try journal.metadata() }
+            try reject { _ = try journal.upsert(record, updatedAt: clock) }
+            var info = stat()
+            guard lstat(object, &info) == 0, info.st_mode & S_IFMT == S_IFIFO else { throw Failure() }
+        }
+        // Index-specific faults occur only after successful record publication.
+        for post in [false, true] {
+            let path = try root(post ? "index-post" : "index-pre")
+            var oldIndex = Data()
+            var oldMetadata: ConversationPersistenceJournalMetadata!
+            do {
+                let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+                let journal = ConversationPersistenceJournal(files: files, now: { clock })
+                oldMetadata = try journal.upsert(record, updatedAt: clock)
+                oldIndex = try files.readIndex()!
+            }
+            do {
+                let files = try ConversationPersistenceFiles(verifiedStateRootPath: path, testControl: .init(indexFault: post ? .afterRenameBeforeDirectorySync : .beforeRename))
+                let journal = ConversationPersistenceJournal(files: files, now: { clock })
+                try reject({ _ = try journal.upsert(record, updatedAt: clock) }, expected: post ? .indexCommittedButDurabilityUncertain : .unavailable)
+                let index = try files.readIndex()!
+                let entries = try journal.metadata()
+                guard entries.count == 1, try journal.load(entries[0]).record == record else { throw Failure() }
+                if post { guard index != oldIndex, entries[0].generation != oldMetadata.generation else { throw Failure() } }
+                else { guard index == oldIndex, entries[0] == oldMetadata else { throw Failure() } }
+                guard try files.readRecord(oldMetadata.generation).count == oldMetadata.encodedBytes else { throw Failure() }
+            }
+        }
+        // Record rename uncertainty does not imply the index commit occurred.
+        do {
+            let path = try root("record-uncertain")
+            let files = try ConversationPersistenceFiles(verifiedStateRootPath: path, testControl: .init(fault: .afterRenameBeforeDirectorySync))
+            let journal = ConversationPersistenceJournal(files: files, now: { clock })
+            try reject { _ = try journal.upsert(record, updatedAt: clock) }
+            guard try files.readIndex() == nil, try files.inventoryRecords().count == 1 else { throw Failure() }
+        }
+        // Count ceiling and byte ceiling use real verified stat sizes. Sparse
+        // files require no physical 256 MiB allocation.
+        for countLimit in [true, false] {
+            let path = try root(countLimit ? "count-cap" : "byte-cap")
+            let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+            let journal = ConversationPersistenceJournal(files: files, now: { clock })
+            let recordsPath = path + "/Conversations/records"
+            for n in 0..<(countLimit ? 256 : 8) {
+                let name = String(format: "00000000-0000-0000-0000-%012x.json", n + 1)
+                let fd = open(recordsPath + "/" + name, O_WRONLY | O_CREAT | O_EXCL, 0o600)
+                guard fd >= 0 else { throw Failure() }
+                guard fchmod(fd, 0o600) == 0, ftruncate(fd, countLimit ? 0 : off_t(32 << 20)) == 0 else { close(fd); throw Failure() }
+                close(fd)
+            }
+            let before = try names(recordsPath)
+            try reject({ _ = try journal.upsert(record, updatedAt: clock) }, expected: .capacity)
+            guard try files.readIndex() == nil, try names(recordsPath) == before else { throw Failure() }
+        }
+        // Duplicate IDs, duplicate generations, and the 257th entry preserve
+        // the exact index and referenced file across the failed upsert.
+        do {
+            let path = try root("invalid-index")
+            let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+            let journal = ConversationPersistenceJournal(files: files, now: { clock })
+            let saved = try journal.upsert(record, updatedAt: clock)
+            let original = try files.readIndex()!
+            let body = try files.readRecord(saved.generation)
+            let index = try JSONSerialization.jsonObject(with: original) as! [String: Any]
+            let entry = (index["records"] as! [[String: Any]])[0]
+            let other = ConversationPersistenceGeneration.make()
+            _ = try files.writeRecord(body, generation: other)
+            for mode in 0..<3 {
+                var second = entry
+                if mode == 0 { second["generation"] = other.value }
+                if mode == 1 { second["recordID"] = Data("different".utf8).base64EncodedString() }
+                let entries = mode == 2 ? Array(repeating: entry, count: 257) : [entry, second]
+                let bytes = try JSONSerialization.data(withJSONObject: ["version": 1, "records": entries])
+                try files.writeIndex(bytes)
+                try reject { _ = try journal.upsert(record, updatedAt: clock) }
+                guard try files.readIndex() == bytes, try files.readRecord(saved.generation) == body else { throw Failure() }
+            }
+        }
+        // A corrupt body remains protected after a real lease release/reopen.
+        do {
+            let path = try root("corrupt-reopen")
+            var saved: ConversationPersistenceJournalMetadata!
+            var index = Data(); var corrupt = Data()
+            do {
+                let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+                let journal = ConversationPersistenceJournal(files: files, now: { clock })
+                saved = try journal.upsert(record, updatedAt: clock)
+                index = try files.readIndex()!
+                let original = try files.readRecord(saved.generation)
+                corrupt = Data(repeating: 0x78, count: original.count)
+                try corrupt.write(to: URL(fileURLWithPath: path + "/Conversations/records/" + saved.generation.value + ".json"))
+                try reject { _ = try journal.load(saved) }
+                try reject { _ = try journal.upsert(record, updatedAt: clock) }
+            }
+            do {
+                let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+                let journal = ConversationPersistenceJournal(files: files, now: { clock })
+                try reject { _ = try journal.load(saved) }
+                try reject { _ = try journal.upsert(record, updatedAt: clock) }
+                guard try files.readIndex() == index, try files.readRecord(saved.generation) == corrupt else { throw Failure() }
+            }
+        }
+        // Distinct UTF-8 spellings remain distinct even though Swift String
+        // compares their Unicode-normalized forms as equal.
+        do {
+            let path = try root("unicode-ids")
+            let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+            let journal = ConversationPersistenceJournal(files: files, now: { clock })
+            let a = copyRecord("\u{e9}"); let b = copyRecord("e\u{301}")
+            guard a.id == b.id, Data(a.id.utf8) != Data(b.id.utf8) else { throw Failure() }
+            let ma = try journal.upsert(a, updatedAt: clock)
+            let mb = try journal.upsert(b, updatedAt: clock)
+            guard try journal.metadata().count == 2, Data(try journal.load(ma).record.id.utf8) == Data(a.id.utf8), Data(try journal.load(mb).record.id.utf8) == Data(b.id.utf8) else { throw Failure() }
+            let replacement = try journal.upsert(a, updatedAt: clock)
+            guard try journal.metadata().count == 2, replacement.generation != ma.generation, Data(try journal.load(mb).record.id.utf8) == Data(b.id.utf8) else { throw Failure() }
+        }
+        // Read known stored milliseconds, independently compare the returned
+        // Date to the expected instant, then feed it back into an upsert and
+        // inspect the persisted integer (including the 999 ms precision case).
+        do {
+            let path = try root("date-matrix")
+            let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+            let journal = ConversationPersistenceJournal(files: files, now: { clock })
+            _ = try journal.upsert(record, updatedAt: clock)
+            for millis: Int64 in [0, 1, 999, 1000, 1_700_000_000_001, 1_700_000_000_123, 1_700_000_000_999] {
+                var object = try JSONSerialization.jsonObject(with: files.readIndex()!) as! [String: Any]
+                var entries = object["records"] as! [[String: Any]]
+                entries[0]["updatedMilliseconds"] = millis
+                object["records"] = entries
+                try files.writeIndex(JSONSerialization.data(withJSONObject: object))
+                let metadata = try journal.metadata()[0]
+                guard abs(metadata.updatedAt.timeIntervalSince1970 - Double(millis) / 1000) < 0.000001 else { throw Failure() }
+                _ = try journal.upsert(record, updatedAt: metadata.updatedAt)
+                let result = try JSONSerialization.jsonObject(with: files.readIndex()!) as! [String: Any]
+                let persisted = (result["records"] as! [[String: Any]])[0]["updatedMilliseconds"] as! NSNumber
+                guard persisted.int64Value == millis else { throw Failure() }
+            }
+            for (seconds, expected) in [(1_700_000_000.1234, Int64(1_700_000_000_123)), (1_700_000_000.1238, Int64(1_700_000_000_124))] {
+                _ = try journal.upsert(record, updatedAt: Date(timeIntervalSince1970: seconds))
+                let object = try JSONSerialization.jsonObject(with: files.readIndex()!) as! [String: Any]
+                let stored = ((object["records"] as! [[String: Any]])[0]["updatedMilliseconds"] as! NSNumber).int64Value
+                guard stored == expected else { throw Failure() }
+            }
+        }
+        do {
+            let path = try root("date-boundary")
+            let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+            let boundary = 9_223_372_036_854_775.808
+            let below = boundary.nextDown
+            let highClock = Date(timeIntervalSince1970: below)
+            let journal = ConversationPersistenceJournal(files: files, now: { highClock })
+            _ = try journal.upsert(record, updatedAt: highClock)
+            let oldIndex = try files.readIndex()!
+            for seconds in [boundary, boundary.nextUp] {
+                try reject { _ = try journal.upsert(record, updatedAt: Date(timeIntervalSince1970: seconds)) }
+                guard try files.readIndex() == oldIndex else { throw Failure() }
+            }
+            // Int64.max is in the saturated future window; validate persisted
+            // integer directly, without a lossy Date -> integer conversion.
+            var object = try JSONSerialization.jsonObject(with: oldIndex) as! [String: Any]
+            var entries = object["records"] as! [[String: Any]]
+            entries[0]["updatedMilliseconds"] = Int64.max
+            object["records"] = entries
+            try files.writeIndex(JSONSerialization.data(withJSONObject: object))
+            guard try journal.metadata().count == 1 else { throw Failure() }
+        }
+        // Individually small valid messages, aggregate exceeds 4 MiB.
+        do {
+            let path = try root("aggregate")
+            let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+            let journal = ConversationPersistenceJournal(files: files, now: { clock })
+            let items = (0..<4096).map { n in
+                ConversationStore.PersistentSnapshot.Item(id: "item-\(n)", message: .init(role: "user", blocks: [.init(kind: "text", text: String(repeating: "x", count: 1024), callID: nil, toolName: nil)], truncated: false), origin: .init(kind: "observed"), status: "complete")
+            }
+            let before = try names(path + "/Conversations/records")
+            try reject({ _ = try journal.upsert(copyRecord(record.id, items: items), updatedAt: clock) }, expected: .invalidRecord)
+            guard try files.readIndex() == nil, try names(path + "/Conversations/records") == before else { throw Failure() }
+        }
+    }
+
     private struct Failure: Error {}
 }

@@ -8,6 +8,8 @@ enum ConversationPersistenceJournalError: Error, Equatable {
     case unavailable
     case capacity
     case invalidRecord
+    /// Index rename crossed the commit point, but its durability is uncertain.
+    case indexCommittedButDurabilityUncertain
 }
 
 struct ConversationPersistenceJournalMetadata: Equatable {
@@ -111,7 +113,7 @@ final class ConversationPersistenceJournal {
     /// the latter returns unavailable and is never overwritten by this API.
     func metadata() throws -> [ConversationPersistenceJournalMetadata] {
         let index = try currentIndex()
-        let inventory = try files.inventoryRecords()
+        let inventory = try recordInventory()
         try validate(index: index, inventory: inventory)
         return try index.records.map(metadata)
     }
@@ -121,7 +123,7 @@ final class ConversationPersistenceJournal {
     /// ticket, or owner is manufactured here.
     func load(_ metadata: ConversationPersistenceJournalMetadata) throws -> ConversationPersistenceJournalLoadedRecord {
         let index = try currentIndex()
-        let inventory = try files.inventoryRecords()
+        let inventory = try recordInventory()
         try validate(index: index, inventory: inventory)
         guard let entry = index.records.first(where: { entry in
             entry.generation == metadata.generation.value && entry.recordID == metadata.recordID && entry.encodedBytes == metadata.encodedBytes
@@ -141,7 +143,7 @@ final class ConversationPersistenceJournal {
         let milliseconds = try checkedMilliseconds(updatedAt)
         let bytes = try encodeOneRecord(record)
         let existingIndex = try currentIndex()
-        let inventory = try files.inventoryRecords()
+        let inventory = try recordInventory()
         try validate(index: existingIndex, inventory: inventory)
 
         let recordID = Data(record.id.utf8)
@@ -160,6 +162,7 @@ final class ConversationPersistenceJournal {
         }
         let generation = ConversationPersistenceGeneration.make()
         next.append(.init(generation: generation.value, recordID: recordID, updatedMilliseconds: milliseconds, encodedBytes: bytes.count))
+        let result = try metadata(next.last!)
         let nextIndex = Index(records: next)
         let nextIndexBytes: Data
         do { nextIndexBytes = try JSONEncoder().encode(nextIndex) }
@@ -175,15 +178,20 @@ final class ConversationPersistenceJournal {
         let used = try checkedSum(inventory.map(\.bytes) + [currentIndexBytes, bytes.count, nextIndexBytes.count,
                                                            ConversationPersistenceFiles.maximumIndexBytes])
         guard used <= Self.maximumDiskBytes else { throw ConversationPersistenceJournalError.capacity }
-        do {
-            _ = try files.writeRecord(bytes, generation: generation)
-            try files.writeIndex(nextIndexBytes)
-        } catch {
-            // A record may now be an ignored orphan; B2 owns verified orphan
-            // reclamation. Do not overwrite a failed/corrupt commit point.
-            throw ConversationPersistenceJournalError.unavailable
-        }
-        return try metadata(next.last!)
+        // A record failure, including uncertain record durability, cannot mean
+        // the index commit point was crossed. An orphan may remain.
+        do { _ = try files.writeRecord(bytes, generation: generation) }
+        catch { throw ConversationPersistenceJournalError.unavailable }
+        do { try files.writeIndex(nextIndexBytes) }
+        catch ConversationPersistenceFilesError.committedButDurabilityUncertain {
+            throw ConversationPersistenceJournalError.indexCommittedButDurabilityUncertain
+        } catch { throw ConversationPersistenceJournalError.unavailable }
+        return result
+    }
+
+    private func recordInventory() throws -> [ConversationPersistenceRecordFile] {
+        do { return try files.inventoryRecords() }
+        catch { throw ConversationPersistenceJournalError.unavailable }
     }
 
     private func currentIndex() throws -> Index {
@@ -229,14 +237,16 @@ final class ConversationPersistenceJournal {
         return .init(generation: generation, recordID: entry.recordID, updatedAt: date, encodedBytes: entry.encodedBytes)
     }
 
-    // Floor nonnegative caller timestamps to milliseconds; persisted integers
+    // Round nonnegative caller timestamps to the nearest millisecond; persisted integers
     // are checked directly, avoiding lossy integer -> Date -> integer validation.
     private func checkedMilliseconds(_ date: Date) throws -> Int64 {
         let value = date.timeIntervalSince1970 * 1_000
         guard value.isFinite, value >= 0, value < 9_223_372_036_854_775_808.0 else {
             throw ConversationPersistenceJournalError.unavailable
         }
-        let milliseconds = Int64(value.rounded(.down))
+        let rounded = value.rounded(.toNearestOrAwayFromZero)
+        guard rounded < 9_223_372_036_854_775_808.0 else { throw ConversationPersistenceJournalError.unavailable }
+        let milliseconds = Int64(rounded)
         try validateMilliseconds(milliseconds)
         return milliseconds
     }

@@ -64,18 +64,26 @@ enum ConversationPersistenceFilesTestEvent: Equatable {
     case beforePublish(String)
 }
 
+enum ConversationPersistenceIndexTestFault {
+    case beforeRename
+    case afterRenameBeforeDirectorySync
+}
+
 struct ConversationPersistenceFilesTestControl {
     let temporaryUUID: UUID?
     let recordUUID: UUID?
     let fault: ConversationPersistenceFilesTestFault?
+    let indexFault: ConversationPersistenceIndexTestFault?
     let event: ((ConversationPersistenceFilesTestEvent) -> Void)?
 
     init(temporaryUUID: UUID? = nil, recordUUID: UUID? = nil,
          fault: ConversationPersistenceFilesTestFault? = nil,
+         indexFault: ConversationPersistenceIndexTestFault? = nil,
          event: ((ConversationPersistenceFilesTestEvent) -> Void)? = nil) {
         self.temporaryUUID = temporaryUUID
         self.recordUUID = recordUUID
         self.fault = fault
+        self.indexFault = indexFault
         self.event = event
     }
 }
@@ -223,7 +231,7 @@ final class ConversationPersistenceFiles {
                   let generation = ConversationPersistenceGeneration(serialized: String(name.dropLast(5))) else {
                 throw ConversationPersistenceFilesError.unsafeObject
             }
-            let descriptor = Darwin.openat(recordsFD, name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+            let descriptor = Darwin.openat(recordsFD, name, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
             guard descriptor >= 0 else { throw ConversationPersistenceFilesError.unsafeObject }
             defer { Darwin.close(descriptor) }
             let info = try Self.verifyFileBinding(named: name, in: recordsFD, descriptor: descriptor,
@@ -280,7 +288,7 @@ final class ConversationPersistenceFiles {
         try Self.verifyRegularFile(temporaryFD, maximumBytes: bytes.count, exactSize: off_t(bytes.count))
         try Self.verifyFileBinding(named: temporaryName, in: directoryFD, descriptor: temporaryFD,
                                    maximumBytes: bytes.count, exactSize: off_t(bytes.count))
-        if testControl?.fault == .beforeRename { throw ConversationPersistenceFilesError.ioFailure }
+        if testControl?.fault == .beforeRename || (name == Self.indexName && testControl?.indexFault == .beforeRename) { throw ConversationPersistenceFilesError.ioFailure }
 
         // This late lease and destination check narrows stale observations but
         // is not an atomic compare-and-replace guarantee against a same-UID
@@ -306,7 +314,7 @@ final class ConversationPersistenceFiles {
             // crash durability can no longer be asserted.
             throw ConversationPersistenceFilesError.committedButDurabilityUncertain
         }
-        if testControl?.fault == .afterRenameBeforeDirectorySync {
+        if testControl?.fault == .afterRenameBeforeDirectorySync || (name == Self.indexName && testControl?.indexFault == .afterRenameBeforeDirectorySync) {
             throw ConversationPersistenceFilesError.committedButDurabilityUncertain
         }
         guard fsync(directoryFD) == 0 else {
@@ -317,7 +325,7 @@ final class ConversationPersistenceFiles {
     private func readFile(named name: String, in directoryFD: Int32, maximumBytes: Int) throws -> Data? {
         try Self.checkFixedName(name)
         try Self.verifyDirectory(directoryFD)
-        let descriptor = Darwin.openat(directoryFD, name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+        let descriptor = Darwin.openat(directoryFD, name, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
         if descriptor < 0 {
             if errno == ENOENT { return nil }
             throw ConversationPersistenceFilesError.ioFailure
@@ -405,7 +413,7 @@ final class ConversationPersistenceFiles {
                 throw ConversationPersistenceFilesError.ioFailure
             }
         } else if errno == EEXIST {
-            descriptor = Darwin.openat(directoryFD, name, O_RDWR | O_NOFOLLOW | O_CLOEXEC)
+            descriptor = Darwin.openat(directoryFD, name, O_RDWR | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
         }
         guard descriptor >= 0 else { throw ConversationPersistenceFilesError.unsafeObject }
         do {
