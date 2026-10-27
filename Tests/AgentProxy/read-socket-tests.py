@@ -378,9 +378,15 @@ try:
     routes = [{'routeID': 'route', 'identity': identity}] + [
         {'routeID': 'owned-%04d' % i, 'identity': big_identity} for i in range(1, 1024)]
     large.frame(9, {'generation': 2, 'index': 0, 'count': 16, 'routes': routes[:64]}, exchange=0)
-    during = large.query('persistence.status')['result']
+    until = time.monotonic() + 3
+    while True:
+        during = large.query('persistence.status')['result']
+        if during['authorityAssemblyBytes'] == 16 << 20: break
+        assert time.monotonic() < until, 'partial assembly reservation barrier deadline'
+        time.sleep(.02)
     check(during['authorityRetainedBytes'] == 16 << 20 and during['captureReservedBytes'] >= 32 << 20,
           'old authority and partial replacement are simultaneously reserved')
+    check(not select.select([large.tee], [], [], 0)[0], 'partial snapshot sends no early ACK')
     for n in range(1, 16):
         large.frame(9, {'generation': 2, 'index': n, 'count': 16, 'routes': routes[n*64:(n+1)*64]}, exchange=0)
     large.ack(2)
@@ -400,8 +406,8 @@ try:
 finally:
     check(large.stop() == 0, 'near-limit authority recorder exits')
 
-# Replacement admission must fail closed rather than release the old
-# authority reservation or overcommit while live/read reservations are held.
+# Replacement defers rather than killing live capture while reservations are
+# held; status provides an event-loop barrier, not a cross-socket timing guess.
 replacement_pressure = Recorder(a.work / 'authority-replacement-pressure')
 held_readers = []
 try:
@@ -411,11 +417,46 @@ try:
     check(held_status['captureReservedBytes'] >= 76 << 20, 'owned reader reservations are installed before replacement')
     replacement_pressure.frame(9, {'generation': 2, 'index': 0, 'count': 2,
                                    'routes': [{'routeID': 'route', 'identity': identity}]}, exchange=0)
-    check(replacement_pressure.wait() == 3, 'replacement fails closed when old and new authority cannot both be admitted')
-    check(replacement_pressure.tee.recv(1) == b'', 'failed replacement sends no ACK')
+    until = time.monotonic() + 3
+    while not replacement_pressure.query('persistence.status')['result']['authorityAwaitingCapacity']:
+        assert time.monotonic() < until, 'deferred authority barrier deadline'
+        time.sleep(.02)
+    check(not select.select([replacement_pressure.tee], [], [], 0)[0], 'deferred authority sends no early ACK')
+    for reader in held_readers: reader.close()
+    held_readers = []
+    replacement_pressure.frame(9, {'generation': 2, 'index': 1, 'count': 2,
+                                   'routes': [{'routeID': 'other', 'identity': identity}]}, exchange=0)
+    replacement_pressure.ack(2)
+    replacement_pressure.end()
+    cid = replacement_pressure.conversation()
+    captured = replacement_pressure.query('conversation.read', conversationID=cid)['result']
+    check(any(block.get('text') == 'alpha' for item in captured['items'] for block in item['blocks']),
+          'unrelated deferred authority preserves the live response')
 finally:
     for reader in held_readers: reader.close()
-    replacement_pressure.stop()
+    check(replacement_pressure.stop() == 0, 'deferred unrelated authority exits normally')
+
+revocation_pressure = Recorder(a.work / 'authority-revocation-pressure')
+held_readers = []
+try:
+    revocation_pressure.authority(); revocation_pressure.begin(); old_id = revocation_pressure.conversation()
+    held_readers = [revocation_pressure.connect() for _ in range(15)]
+    check(revocation_pressure.query('persistence.status')['result']['captureReservedBytes'] >= 76 << 20,
+          'revocation fixture read reservations are installed')
+    revocation_pressure.frame(7, {'generation': 2, 'routes': []}, exchange=0)
+    until = time.monotonic() + 3
+    while not revocation_pressure.query('persistence.status')['result']['authorityAwaitingCapacity']:
+        assert time.monotonic() < until, 'deferred revocation barrier deadline'
+        time.sleep(.02)
+    check(not select.select([revocation_pressure.tee], [], [], 0)[0], 'revocation cannot ACK while replacement is deferred')
+    for reader in held_readers: reader.close()
+    held_readers = []
+    revocation_pressure.ack(2)
+    check(not revocation_pressure.query('conversations.list')['result']['conversations'], 'revocation ACK fences old live capture')
+    check(revocation_pressure.query('conversation.read', conversationID=old_id)['result']['reset'], 'old read ticket fails after deferred revocation ACK')
+finally:
+    for reader in held_readers: reader.close()
+    check(revocation_pressure.stop() == 0, 'deferred revocation exits normally')
 
 partial_eof = Recorder(a.work / 'authority-partial-eof')
 try:

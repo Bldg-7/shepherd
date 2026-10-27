@@ -26,6 +26,7 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
     private static let workspaceBytes = 64 << 20
     private static let recordBytes = 8 << 20
     private var running = false
+    private var authorityPaused = false
     private var fenceWaiters: [() -> Void] = []
     private var finished: DispatchSemaphore?
     private(set) var health: Health = .volatile
@@ -38,6 +39,7 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
     /// pending record reuses its reservation, rather than briefly doubling it.
     func schedule(_ record: ConversationStore.PersistentSnapshot.Record, completion: @escaping (Bool) -> Void) -> Bool {
         loop.assertInEventLoop()
+        guard !authorityPaused else { return false }
         if let old = pending[record.id] {
             pending[record.id] = Pending(record: record, reservation: old.reservation, updatedAt: Date(), completion: completion)
             loop.execute { old.completion(false) }
@@ -56,7 +58,7 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
     func loadFirst(_ key: ConversationStore.PersistentSnapshot.Key,
                    completion: @escaping (Result<ConversationPersistenceJournalLoadedRecord?, Error>) -> Void) -> Bool {
         loop.assertInEventLoop()
-        guard !running, Self.workspaceBytes <= capture.limits.totalBytes,
+        guard !authorityPaused, !running, Self.workspaceBytes <= capture.limits.totalBytes,
               capture.accountedBytes <= capture.limits.totalBytes - Self.workspaceBytes,
               let workspace = capture.reserve(bytes: Self.workspaceBytes) else { return false }
         running = true
@@ -112,6 +114,20 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
         }
     }
 
+    /// Pause new filesystem admissions while authority replacement is waiting
+    /// for workspace. Queued old work is discarded and active I/O is fenced.
+    func pauseForAuthority(_ completion: @escaping () -> Void) {
+        loop.assertInEventLoop()
+        authorityPaused = true
+        fence(completion)
+    }
+
+    func resumeAfterAuthority() {
+        loop.assertInEventLoop()
+        authorityPaused = false
+        drain()
+    }
+
     /// Drop queued old-authority snapshots and wait for the one filesystem
     /// operation already executing. The caller must pause new admissions until
     /// this completion and invalidate its capture/read/restore tickets first.
@@ -137,7 +153,7 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
 
     private func drain() {
         loop.assertInEventLoop()
-        guard !running else { return }
+        guard !running, !authorityPaused else { return }
         guard let key = pending.keys.sorted().first, let next = pending.removeValue(forKey: key) else {
             finished?.signal(); finished = nil
             return

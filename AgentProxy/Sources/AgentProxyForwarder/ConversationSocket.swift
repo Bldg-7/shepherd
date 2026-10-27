@@ -145,6 +145,8 @@ private final class ReadState: @unchecked Sendable {
     // snapshot lifetime. This is admission accounting, not an RSS guarantee.
     private var authorityReservation: UUID?
     static let authorityWorkspaceBytes = 16 << 20
+    var authorityAwaitingCapacity = false
+    var authorityAssemblyBytes = 0
     private var persistence: ConversationPersistenceCoordinator?
     private struct ScheduledRevision { let revision: UInt64; let token: UUID }
     private var scheduledRevisions: [String: ScheduledRevision] = [:]
@@ -231,6 +233,8 @@ private final class ReadState: @unchecked Sendable {
         let historicalConflicts: Int
         let authorityRetainedBytes: Int
         let captureReservedBytes: Int
+        let authorityAwaitingCapacity: Bool
+        let authorityAssemblyBytes: Int
     }
 
     func persistenceStatus() -> PersistenceStatus {
@@ -245,7 +249,9 @@ private final class ReadState: @unchecked Sendable {
         return PersistenceStatus(mode: mode, blockedConversations: blockedPersistence.count,
                                  historicalConflicts: historicalConflicts.count,
                                  authorityRetainedBytes: authorityReservation == nil ? 0 : Self.authorityWorkspaceBytes,
-                                 captureReservedBytes: capture.reservedBytes)
+                                 captureReservedBytes: capture.reservedBytes,
+                                 authorityAwaitingCapacity: authorityAwaitingCapacity,
+                                 authorityAssemblyBytes: authorityAssemblyBytes)
     }
 
     /// Retry one blocked live key per interval. Only a no-record result can
@@ -380,6 +386,13 @@ private final class ReadState: @unchecked Sendable {
         else { loop.execute(completion) }
     }
 
+    func pausePersistenceForAuthority(_ completion: @escaping () -> Void) {
+        if let persistence { persistence.pauseForAuthority(completion) }
+        else { loop.execute(completion) }
+    }
+
+    func resumePersistenceAfterAuthority() { persistence?.resumeAfterAuthority() }
+
     func acceptOpen(_ frame: AgentProxyTeeFrame.Frame) -> Bool {
         guard authorityGeneration != 0,
               let open = try? JSONDecoder().decode(AgentProxyTeeFrame.Open.self, from: Data(frame.payload)),
@@ -424,6 +437,7 @@ private final class ReadState: @unchecked Sendable {
         authority.removeAll()
         if let reservation = authorityReservation { capture.release(reservation); authorityReservation = nil }
         persistence?.fence({})
+        persistence?.resumeAfterAuthority()
     }
 
     func stop() -> DispatchSemaphore? {
@@ -449,16 +463,57 @@ private final class TeeInput: ChannelInboundHandler {
         let reservation: UUID
     }
     private var partialAuthority: PartialAuthority?
+    // At most one already-framed snapshot waits for replacement workspace;
+    // frame/decoder bytes are covered by capture's fixed framing budget.
+    private var deferredFrame: AgentProxyTeeFrame.Frame?
+    private var deferredReservation: UUID?
+    private var deferredRetry: Scheduled<Void>?
     private var fencing = false
     init(_ state: ReadState) { self.state = state }
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         decoder.append(unwrapInboundIn(data).readableBytesView)
         process(context: context)
     }
+    private func deferAuthority(_ frame: AgentProxyTeeFrame.Frame, context: ChannelHandlerContext) {
+        guard deferredFrame == nil, let options = context.channel.syncOptions else {
+            state.exitCode = 3; context.close(promise: nil); return
+        }
+        do { try options.setOption(ChannelOptions.autoRead, value: false) }
+        catch { state.exitCode = 3; context.close(promise: nil); return }
+        deferredFrame = frame
+        state.authorityAwaitingCapacity = true
+        fencing = true
+        state.pausePersistenceForAuthority { [self] in retryDeferred(context: context) }
+    }
+
+    private func retryDeferred(context: ChannelHandlerContext) {
+        guard context.channel.isActive, deferredFrame != nil else { return }
+        if let reservation = state.reserveAuthority() {
+            deferredReservation = reservation
+            state.authorityAwaitingCapacity = false
+            fencing = false
+            process(context: context)
+            if !fencing {
+                guard let options = context.channel.syncOptions else { state.exitCode = 3; context.close(promise: nil); return }
+                do { try options.setOption(ChannelOptions.autoRead, value: true) }
+                catch { state.exitCode = 3; context.close(promise: nil) }
+            }
+        } else {
+            deferredRetry = context.eventLoop.scheduleTask(in: .milliseconds(100)) { [self] in
+                deferredRetry = nil
+                retryDeferred(context: context)
+            }
+        }
+    }
+
     private func process(context: ChannelHandlerContext) {
         guard !fencing else { return }
         do {
-            while let frame = try decoder.next() {
+            while true {
+                let frame: AgentProxyTeeFrame.Frame
+                if let deferredFrame { frame = deferredFrame; self.deferredFrame = nil }
+                else if let next = try decoder.next() { frame = next }
+                else { break }
                 // ACKs are only valid in the recorder-to-supervisor direction.
                 guard frame.kind != .routeAcknowledgement else { state.exitCode = 3; context.close(promise: nil); return }
                 if partialAuthority != nil && frame.kind != .routeSnapshotPart {
@@ -467,13 +522,15 @@ private final class TeeInput: ChannelInboundHandler {
                 if frame.kind == .routeSnapshot || frame.kind == .routeSnapshotPart {
                     let generation: UInt64?
                     if frame.kind == .routeSnapshot {
-                        guard let reservation = state.reserveAuthority() else { state.exitCode = 3; context.close(promise: nil); return }
+                        guard let reservation = deferredReservation ?? state.reserveAuthority() else { deferAuthority(frame, context: context); return }
+                        deferredReservation = nil
                         generation = state.acceptAuthority(frame, reservation: reservation)
                         if generation == nil { state.capture.release(reservation) }
                     } else {
                         var acquired: UUID?
                         if partialAuthority == nil {
-                            guard let reservation = state.reserveAuthority() else { state.exitCode = 3; context.close(promise: nil); return }
+                            guard let reservation = deferredReservation ?? state.reserveAuthority() else { deferAuthority(frame, context: context); return }
+                            deferredReservation = nil
                             acquired = reservation
                         }
                         guard frame.exchange == 0,
@@ -487,6 +544,7 @@ private final class TeeInput: ChannelInboundHandler {
                         if let acquired {
                             guard part.index == 0 else { state.capture.release(acquired); state.exitCode = 3; context.close(promise: nil); return }
                             partialAuthority = PartialAuthority(generation: part.generation, count: part.count, routes: [], nextIndex: 0, encodedBytes: 0, reservation: acquired)
+                            state.authorityAssemblyBytes = ReadState.authorityWorkspaceBytes
                         }
                         guard var partial = partialAuthority, partial.generation == part.generation, partial.count == part.count,
                               partial.nextIndex == part.index, partial.routes.count <= 1024 - part.routes.count,
@@ -494,6 +552,7 @@ private final class TeeInput: ChannelInboundHandler {
                         partial.routes.append(contentsOf: part.routes); partial.nextIndex += 1; partial.encodedBytes += frame.payload.count
                         if partial.nextIndex < partial.count { partialAuthority = partial; continue }
                         partialAuthority = nil
+                        state.authorityAssemblyBytes = 0
                         generation = state.acceptAuthority(.init(generation: partial.generation, routes: partial.routes), reservation: partial.reservation)
                         if generation == nil { state.capture.release(partial.reservation) }
                     }
@@ -506,6 +565,7 @@ private final class TeeInput: ChannelInboundHandler {
                         guard context.channel.isActive else { return }
                         let ack = AgentProxyTeeFrame.header(kind: .routeAcknowledgement, exchange: generation, payloadCount: 0)
                         context.channel.writeAndFlush(ByteBuffer(bytes: ack)).whenFailure { _ in context.close(promise: nil) }
+                        state.resumePersistenceAfterAuthority()
                         // Previously queued saves were discarded by the fence;
                         // re-admit only records still authorized by this snapshot.
                         state.scheduleChangedRecords()
@@ -527,8 +587,12 @@ private final class TeeInput: ChannelInboundHandler {
         } catch { state.exitCode = 3; context.close(promise: nil) }
     }
     func channelInactive(context: ChannelHandlerContext) {
-        let malformed = state.exitCode != 0 || partialAuthority != nil || decoder.bufferedByteCount != 0 || fencing
+        let malformed = state.exitCode != 0 || partialAuthority != nil || deferredFrame != nil || decoder.bufferedByteCount != 0 || fencing
+        deferredRetry?.cancel(); deferredRetry = nil
+        state.authorityAwaitingCapacity = false
+        if let deferredReservation { state.capture.release(deferredReservation); self.deferredReservation = nil }
         if let partialAuthority { state.capture.release(partialAuthority.reservation); self.partialAuthority = nil }
+        state.authorityAssemblyBytes = 0
         if malformed { state.protocolFailure() }
         else { state.capture.finishAll(); state.scheduleChangedRecords() }
         context.fireChannelInactive()
