@@ -236,6 +236,46 @@ struct PersistenceJournalTests {
             try reject({ _ = try journal.upsert(record, updatedAt: clock) }, expected: .capacity)
             guard try files.readIndex() == nil, try names(recordsPath) == before else { throw Failure() }
         }
+        // Isolate reserved index headroom: a separate empty-store probe
+        // measures the actual record and index encoding for this input. UUID
+        // generations have fixed-length canonical spellings in both stores.
+        do {
+            let probePath = try root("headroom-probe")
+            let probeFiles = try ConversationPersistenceFiles(verifiedStateRootPath: probePath)
+            let probe = ConversationPersistenceJournal(files: probeFiles, now: { clock })
+            let saved = try probe.upsert(record, updatedAt: clock)
+            let proposedRecordBytes = try probeFiles.readRecord(saved.generation).count
+            guard let probeIndex = try probeFiles.readIndex() else { throw Failure() }
+            let proposedIndexBytes = probeIndex.count
+
+            let path = try root("headroom-cap")
+            let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+            let journal = ConversationPersistenceJournal(files: files, now: { clock })
+            let recordsPath = path + "/Conversations/records"
+            for n in 0..<8 {
+                let name = String(format: "00000000-0000-0000-0000-%012x.json", n + 1)
+                let fd = open(recordsPath + "/" + name, O_WRONLY | O_CREAT | O_EXCL, 0o600)
+                guard fd >= 0 else { throw Failure() }
+                let size = (32 << 20) - (n == 0 ? (512 << 10) : 0)
+                guard fchmod(fd, 0o600) == 0, ftruncate(fd, off_t(size)) == 0 else { close(fd); throw Failure() }
+                close(fd)
+            }
+            let beforeNames = try names(recordsPath)
+            let beforeInventory = try files.inventoryRecords().sorted { $0.generation.value < $1.generation.value }
+            let existingBytes = beforeInventory.reduce(0) { $0 + $1.bytes }
+            let withoutHeadroom = existingBytes + proposedRecordBytes + proposedIndexBytes
+            guard try files.readIndex() == nil,
+                  beforeInventory.count == 8, beforeInventory.count < ConversationPersistenceJournal.maximumRecords,
+                  existingBytes == ConversationPersistenceJournal.maximumDiskBytes - (512 << 10),
+                  beforeInventory.allSatisfy({ $0.bytes >= 0 && $0.bytes <= ConversationPersistenceFiles.maximumRecordBytes }),
+                  proposedRecordBytes > 0, proposedIndexBytes > 0,
+                  withoutHeadroom < ConversationPersistenceJournal.maximumDiskBytes,
+                  withoutHeadroom + ConversationPersistenceFiles.maximumIndexBytes > ConversationPersistenceJournal.maximumDiskBytes else { throw Failure() }
+            try reject({ _ = try journal.upsert(record, updatedAt: clock) }, expected: .capacity)
+            let afterInventory = try files.inventoryRecords().sorted { $0.generation.value < $1.generation.value }
+            guard try files.readIndex() == nil, try names(recordsPath) == beforeNames,
+                  afterInventory == beforeInventory else { throw Failure() }
+        }
         // Duplicate IDs, duplicate generations, and the 257th entry preserve
         // the exact index and referenced file across the failed upsert.
         do {
