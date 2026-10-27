@@ -25,10 +25,12 @@ func fail(_ message: String, code: Int32 = 1) -> Never {
 
 var arguments = Array(CommandLine.arguments.dropFirst())
 if arguments.first == "recorder" {
-    guard arguments.count == 1 || (arguments.count == 3 && arguments[1] == "--socket" && AgentProxyPaths.socketPathFits(arguments[2])) else {
-        fail("usage: recorder [--socket PATH]", code: 64)
+    guard arguments.count == 1 || (arguments.count == 3 && arguments[1] == "--socket" && AgentProxyPaths.socketPathFits(arguments[2])) ||
+          (arguments.count == 5 && arguments[1] == "--socket" && AgentProxyPaths.socketPathFits(arguments[2]) && arguments[3] == "--state-dir" && arguments[4].hasPrefix("/")) else {
+        fail("usage: recorder [--socket PATH [--state-dir DIR]]", code: 64)
     }
-    exit(AgentProxyRecorder.run(socketPath: arguments.count == 3 ? arguments[2] : nil))
+    exit(AgentProxyRecorder.run(socketPath: arguments.count >= 3 ? arguments[2] : nil,
+                                stateDirectory: arguments.count == 5 ? arguments[4] : nil))
 }
 
 let home = FileManager.default.homeDirectoryForCurrentUser.path
@@ -77,7 +79,7 @@ let build = AgentProxyServer.build(ofExecutableAt: executable)
 
 nonisolated(unsafe) var server: AgentProxyServer?
 let configuration = AgentProxyServer.Configuration(
-    stateDirectory: stateDirectory, controlSocketPath: controlSocket, recorderCommand: [executable, "recorder", "--socket", AgentProxyPaths.recorderSocket(forControlSocket: controlSocket)], build: build,
+    stateDirectory: stateDirectory, controlSocketPath: controlSocket, recorderCommand: [executable, "recorder", "--socket", AgentProxyPaths.recorderSocket(forControlSocket: controlSocket), "--state-dir", stateDirectory], build: build,
     log: { log($0) },
     onExitRequest: { code in
         // Off the event loop: shutting down waits for it.

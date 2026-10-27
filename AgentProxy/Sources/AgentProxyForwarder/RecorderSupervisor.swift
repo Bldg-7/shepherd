@@ -129,9 +129,9 @@ final class RecorderSupervisor: @unchecked Sendable {
                     channel.closeFuture.whenComplete { [self] _ in
                         tee.detach(channel)
                         if link === channel { link = nil }
-                        // A recorder that closed its end but lives on is
-                        // stopped, so a new one is started.
-                        if pid == child { kill(child, SIGKILL) }
+                        // During shutdown the child may close the link while
+                        // completing its bounded flush.
+                        if pid == child && !stopped { kill(child, SIGKILL) }
                     }
                 case .failure:
                     if pid == child { kill(child, SIGKILL) }
@@ -176,14 +176,14 @@ final class RecorderSupervisor: @unchecked Sendable {
         restartTask = loop.scheduleTask(in: wait) { [self] in spawn() }
     }
 
-    /// Stops the recorder and waits (up to two seconds) until it has exited.
+    /// Allows two seconds for EOF/flush, then uses bounded signal fallbacks.
     /// Called off the loop.
     func stop() {
         let child: pid_t? = try? loop.submit { [self] () -> pid_t? in
             stopped = true
             restartTask?.cancel()
-            if let link { link.close(promise: nil) }
-            if let pid { kill(pid, SIGTERM) }
+            // EOF lets the child flush without blocking the forwarding loop.
+            if let link { link.close(mode: .output, promise: nil) }
             state = .stopped
             return pid
         }.wait()
@@ -191,6 +191,13 @@ final class RecorderSupervisor: @unchecked Sendable {
         let deadline = Date().addingTimeInterval(2)
         exits.withLock {
             while waiting > 0 && Date() < deadline { _ = exits.wait(until: deadline) }
+        }
+        if let child, exits.withLock({ waiting > 0 }) {
+            try? loop.submit { [self] in if pid == child { kill(child, SIGTERM) } }.wait()
+            exits.withLock {
+                let deadline = Date().addingTimeInterval(1)
+                while waiting > 0 && Date() < deadline { _ = exits.wait(until: deadline) }
+            }
         }
         if let child, exits.withLock({ waiting > 0 }) {
             try? loop.submit { [self] in if pid == child { kill(child, SIGKILL) } }.wait()

@@ -8,15 +8,16 @@ import AgentProxyProtocol
 /// One event loop owns tee ingestion, history and all read clients. The parent
 /// forwarder never waits for this process. No raw request/error/transcript logs.
 enum ConversationSocket {
-    static func run(descriptor: Int32, path: String) -> Int32 {
+    static func run(descriptor: Int32, path: String, stateDirectory: String? = nil) -> Int32 {
         let lease: SocketLease
         do { lease = try SocketLease(path) } catch { return 4 }
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        let state = ReadState(loop: group.next())
+        let state = ReadState(loop: group.next(), stateDirectory: stateDirectory)
         var listener: Channel?
         var tee: Channel?
         defer {
-            try? state.loop.submit { state.stop() }.wait()
+            let flush = try? state.loop.submit { state.stop() }.wait()
+            if let flush { _ = flush.wait(timeout: .now() + .seconds(1)) }
             try? listener?.close().wait()
             try? tee?.close().wait()
             try? group.syncShutdownGracefully()
@@ -140,7 +141,30 @@ private final class ReadState: @unchecked Sendable {
     private var ticker: RepeatedTask?
     private var authorityGeneration: UInt64 = 0
     private var authority: [Data: AgentProxyRouteCreate] = [:]
-    init(loop: EventLoop) { self.loop = loop }
+    private var persistence: ConversationPersistenceCoordinator?
+    private var scheduledRevisions: [String: UInt64] = [:]
+    init(loop: EventLoop, stateDirectory: String?) {
+        self.loop = loop
+        if let stateDirectory { persistence = ConversationPersistenceCoordinator(root: stateDirectory, loop: loop, capture: capture) }
+    }
+
+    /// Called after an accepted frame changes the normalized store. Never
+    /// passes wire bytes or request metadata to the filesystem worker.
+    func scheduleChangedRecords() {
+        guard let persistence, authorityGeneration != 0 else { return }
+        let summaries = capture.reconciler.store.list()
+        let live = Set(summaries.map(\.id))
+        scheduledRevisions = scheduledRevisions.filter { live.contains($0.key) }
+        for summary in summaries where scheduledRevisions[summary.id] != summary.revision {
+            guard let route = authority[Data(summary.context.routeID.utf8)],
+                  Data(route.session.utf8) == Data(summary.key.herdrSession.utf8),
+                  route.kind.rawValue == summary.key.agent,
+                  Data(route.paneID.utf8) == Data(summary.context.paneID.utf8),
+                  Data(route.terminalID.utf8) == Data(summary.context.terminalID.utf8),
+                  let record = capture.reconciler.store.persistenceRecord(id: summary.id) else { continue }
+            if persistence.schedule(record) { scheduledRevisions[summary.id] = summary.revision }
+        }
+    }
 
     private func same(_ a: AgentProxyRouteCreate, _ b: AgentProxyRouteCreate) -> Bool {
         a.kind == b.kind && zip([a.session, a.paneID, a.terminalID, a.cliVersion],
@@ -168,6 +192,7 @@ private final class ReadState: @unchecked Sendable {
             // Coarse but fail-closed: no in-flight ticket or read subscriber
             // survives an authority change that removes or rotates a route.
             capture.invalidateForClear()
+            scheduledRevisions.removeAll()
             for client in Array(clients.values) { client.channel.close(promise: nil) }
         }
         authority = next
@@ -204,10 +229,11 @@ private final class ReadState: @unchecked Sendable {
             try channel.pipeline.syncOperations.addHandler(client)
         }
     }
-    func stop() {
+    func stop() -> DispatchSemaphore? {
         loop.assertInEventLoop(); ticker?.cancel(); ticker = nil
-        capture.finishAll()
+        capture.finishAll(); scheduleChangedRecords()
         for client in Array(clients.values) { client.channel.close(promise: nil) }
+        return persistence?.finishWhenIdle()
     }
 }
 
@@ -223,12 +249,16 @@ private final class TeeInput: ChannelInboundHandler {
                 if frame.kind == .routeSnapshot {
                     guard state.acceptAuthority(frame) else { state.exitCode = 3; context.close(promise: nil); return }
                 } else if frame.kind != .open || state.acceptOpen(frame) {
+                    let sequence = state.capture.reconciler.store.sequence
                     state.capture.consume(frame)
+                    if state.capture.reconciler.store.sequence != sequence { state.scheduleChangedRecords() }
                 }
             }
         } catch { state.exitCode = 3; context.close(promise: nil) }
     }
-    func channelInactive(context: ChannelHandlerContext) { state.capture.finishAll(); context.fireChannelInactive() }
+    func channelInactive(context: ChannelHandlerContext) {
+        state.capture.finishAll(); state.scheduleChangedRecords(); context.fireChannelInactive()
+    }
     func errorCaught(context: ChannelHandlerContext, error: Error) { state.exitCode = 3; context.close(promise: nil) }
 }
 

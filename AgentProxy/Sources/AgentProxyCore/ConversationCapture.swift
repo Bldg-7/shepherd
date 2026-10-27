@@ -84,6 +84,13 @@ public final class ConversationCapture {
         self.limits = limits; self.makeDecoder = makeDecoder
         reconciler = ConversationReconciler(limits: limits.store)
     }
+    /// Host must authorize the record against current route authority before
+    /// calling. Reserve worst-case normalized import room without evicting live
+    /// captures; low-memory imports are skipped rather than replacing them.
+    public func restoreOne(_ record: ConversationStore.PersistentSnapshot.Record) -> String? {
+        guard accountedBytes <= limits.totalBytes - min(limits.totalBytes, 8 << 20) else { return nil }
+        return reconciler.restoreOne(record)
+    }
     public var activeExchangeCount: Int { exchanges.count }
     public var bufferedRequestBytes: Int { exchanges.values.reduce(0) { $0 + $1.body.bufferedByteCount } }
     public var accountedBytes: Int {

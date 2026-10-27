@@ -62,6 +62,14 @@ struct ConversationPersistenceTests {
                               items: [ConversationItem(id: "second-item", message: assistant, origin: .response, status: .complete)],
                               status: .complete)
         let snapshot = source.persistenceSnapshot()
+        check(source.persistenceRecord(id: first.conversationID) == snapshot.records.first,
+              "single-record export matches normalized snapshot")
+        var incremental = ConversationStore()
+        let imported = incremental.restoreOne(snapshot.records[0])
+        check(imported != nil && imported != first.conversationID && incremental.read(id: imported!)?.summary.status == .incomplete,
+              "incremental restore creates a fresh ID and downgrades streaming")
+        check(incremental.restoreOne(snapshot.records[0]) == nil && incremental.count == 1,
+              "incremental restore never replaces an existing live key")
         let wire = try snapshot.encoded()
         let decodedSnapshot = try decoded(wire)
         check(decodedSnapshot.schemaVersion == 1 && decodedSnapshot.records.count == 2, "v1 schema exports and decodes bounded resident records")

@@ -59,6 +59,12 @@ public nonisolated struct ConversationReconciler: Sendable {
     private var childTrees: [String: ConversationSubagentTree] = [:]
     public var trackedSubagentCount: Int { childTrees.values.reduce(0) { $0 + $1.nodes.count } }
 
+    /// Import only a previously normalized record; this does not create a
+    /// reconciler state, live owner, ticket, or child correlation.
+    public mutating func restoreOne(_ record: ConversationStore.PersistentSnapshot.Record) -> String? {
+        store.restoreOne(record)
+    }
+
     public init(limits: ConversationStore.Limits = .init()) { store = ConversationStore(limits: limits) }
     public var trackedConversationCount: Int { states.count }
     public var retainedFingerprintCount: Int { states.values.reduce(0) { $0 + $1.fingerprints.count } }

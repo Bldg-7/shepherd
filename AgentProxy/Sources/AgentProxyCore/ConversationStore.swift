@@ -272,7 +272,16 @@ public nonisolated struct ConversationStore: Sendable {
     /// no live epoch, read cursor, reconciliation ticket/owner, parser, or
     /// compaction/subagent-correlation state.
     public func persistenceSnapshot() -> PersistentSnapshot {
-        PersistentSnapshot(records: entries.values.sorted { $0.revision < $1.revision }.map { entry in
+        PersistentSnapshot(records: entries.values.sorted { $0.revision < $1.revision }.map(Self.persistentRecord))
+    }
+
+    /// Export one admitted record without materializing other bodies.
+    public func persistenceRecord(id: String) -> PersistentSnapshot.Record? {
+        guard let key = keysByID[id], let entry = entries[key] else { return nil }
+        return Self.persistentRecord(entry)
+    }
+
+    private static func persistentRecord(_ entry: Entry) -> PersistentSnapshot.Record {
             PersistentSnapshot.Record(
                 id: entry.id,
                 key: .init(agent: entry.key.agent, herdrSession: entry.key.herdrSession, nativeSession: entry.key.nativeSession),
@@ -285,7 +294,20 @@ public nonisolated struct ConversationStore: Sendable {
                                  limited: entry.subagents.limited, linkAvailable: entry.subagents.linkAvailable,
                                  ancestryIncomplete: entry.subagents.ancestryIncomplete)
             )
-        })
+    }
+
+    /// The host rechecks current authority. Existing live entries and their
+    /// owners must never be replaced or evicted by an asynchronous import.
+    @discardableResult
+    public mutating func restoreOne(_ record: PersistentSnapshot.Record) -> String? {
+        guard let value = Self.persistenceEntry(record), entries[value.key] == nil else { return nil }
+        var trial = self
+        guard let update = try? trial.upsert(key: value.key, context: value.context, items: value.items,
+                                             status: value.status, historyTruncated: value.truncated,
+                                             subagents: value.subagents),
+              update.discardedItemCount == 0, update.evictedConversationIDs.isEmpty else { return nil }
+        self = trial
+        return update.conversationID
     }
 
     /// Rebuilds this store as a fresh recorder epoch. Persistent IDs are

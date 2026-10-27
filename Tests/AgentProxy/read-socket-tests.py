@@ -35,14 +35,16 @@ class Reader:
             self.buffer.extend(chunk)
 
 class Recorder:
-    def __init__(self, directory, path=None):
+    def __init__(self, directory, path=None, state_directory=None):
         directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.path = path or directory / 'ac.sock'
         self.tee, child = socket.socketpair()
         actions = [(os.POSIX_SPAWN_DUP2, child.fileno(), 3)]
         if child.fileno() != 3: actions.append((os.POSIX_SPAWN_CLOSE, child.fileno()))
         for fd in [1, 2]: actions.append((os.POSIX_SPAWN_OPEN, fd, '/dev/null', os.O_WRONLY, 0o600))
-        self.pid = os.posix_spawn(str(a.binary), [str(a.binary), 'recorder', '--socket', str(self.path)], {}, file_actions=actions)
+        command = [str(a.binary), 'recorder', '--socket', str(self.path)]
+        if state_directory is not None: command += ['--state-dir', str(state_directory)]
+        self.pid = os.posix_spawn(str(a.binary), command, {}, file_actions=actions)
         child.close(); self.tee.settimeout(5); self.status = None
     def wait(self, timeout=5):
         until = time.monotonic() + timeout
@@ -100,6 +102,41 @@ class Recorder:
         if self.status is not None: self.tee.close(); return self.status
         self.tee.shutdown(socket.SHUT_WR)
         code = self.wait(); self.tee.close(); return code
+
+store_root = a.work / 'persistence-state'
+store_root.mkdir(mode=0o700)
+persisted = Recorder(a.work / 'persistence-socket', state_directory=store_root)
+try:
+    persisted.query('conversations.list')
+    persisted.authority(); persisted.begin(); persisted.end(); persisted.conversation()
+    index = store_root / 'Conversations' / 'index-v1.json'
+    until = time.monotonic() + 10
+    while True:
+        try:
+            entries = json.loads(index.read_bytes())['records']
+            if len(entries) == 1:
+                payload = (store_root / 'Conversations' / 'records' / (entries[0]['generation'] + '.json')).read_bytes()
+                break
+        except (OSError, ValueError, KeyError): pass
+        assert time.monotonic() < until, 'normalized journal write deadline'
+        select.select([persisted.tee], [], [], .02)
+    check(len(entries) == 1, 'accepted capture reaches the journal index')
+    check(bool(payload), 'index references an owned record')
+    check(b'hello' in payload and b'SYNTHETIC_SOCKET_HEADER_NOT_FOR_HISTORY' not in payload,
+          'journal contains normalized text, not raw authorization header')
+finally:
+    check(persisted.stop() == 0, 'synthetic persistence recorder exits')
+
+# This checkpoint verifies retained bytes, not restart restoration: restore is
+# deliberately not wired until current native-owner authorization is available.
+retained_index = json.loads(index.read_bytes())
+reopened = Recorder(a.work / 'persistence-reopen', state_directory=store_root)
+try:
+    reopened.authority()
+    check(not reopened.query('conversations.list')['result']['conversations'], 'unwired restore exposes no historical record')
+finally:
+    check(reopened.stop() == 0, 'synthetic reopened recorder exits')
+check(json.loads(index.read_bytes()) == retained_index, 'reopen without capture retains disk history')
 
 desync = Recorder(a.work / 'authority-desync')
 try:
