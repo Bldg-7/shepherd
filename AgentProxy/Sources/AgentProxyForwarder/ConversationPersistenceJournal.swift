@@ -29,6 +29,7 @@ final class ConversationPersistenceJournal {
     static let maximumDiskBytes = 256 << 20
     static let maximumRecords = 256
     private static let maximumFutureMilliseconds: Int64 = 5 * 60 * 1_000
+    private static let retentionSeconds: TimeInterval = 30 * 24 * 60 * 60
 
     private struct AnyKey: CodingKey {
         let stringValue: String
@@ -115,6 +116,7 @@ final class ConversationPersistenceJournal {
         let index = try currentIndex()
         let inventory = try recordInventory()
         try validate(index: index, inventory: inventory)
+        try refuseExpired(index)
         return try index.records.map(metadata)
     }
 
@@ -125,6 +127,7 @@ final class ConversationPersistenceJournal {
         let index = try currentIndex()
         let inventory = try recordInventory()
         try validate(index: index, inventory: inventory)
+        try refuseExpired(index)
         guard let entry = index.records.first(where: { entry in
             entry.generation == metadata.generation.value && entry.recordID == metadata.recordID && entry.encodedBytes == metadata.encodedBytes
         }) else { throw ConversationPersistenceJournalError.unavailable }
@@ -141,10 +144,12 @@ final class ConversationPersistenceJournal {
     @discardableResult
     func upsert(_ record: ConversationStore.PersistentSnapshot.Record, updatedAt: Date) throws -> ConversationPersistenceJournalMetadata {
         let milliseconds = try checkedMilliseconds(updatedAt)
+        try refuseExpired(milliseconds)
         let bytes = try encodeOneRecord(record)
         let existingIndex = try currentIndex()
         let inventory = try recordInventory()
         try validate(index: existingIndex, inventory: inventory)
+        try refuseExpired(existingIndex)
 
         let recordID = Data(record.id.utf8)
         guard !recordID.isEmpty, recordID.count <= 1_024 else { throw ConversationPersistenceJournalError.invalidRecord }
@@ -259,6 +264,20 @@ final class ConversationPersistenceJournal {
         let current = Int64(present.rounded(.down))
         let (limit, overflow) = current.addingReportingOverflow(Self.maximumFutureMilliseconds)
         guard milliseconds >= 0, milliseconds <= (overflow ? Int64.max : limit) else {
+            throw ConversationPersistenceJournalError.unavailable
+        }
+    }
+
+    // Until a durable index-first sweep is implemented, refuse the entire
+    // operation rather than expose expired history or discard protected data.
+    private func refuseExpired(_ index: Index) throws {
+        for entry in index.records { try refuseExpired(entry.updatedMilliseconds) }
+    }
+
+    private func refuseExpired(_ milliseconds: Int64) throws {
+        try validateMilliseconds(milliseconds)
+        let age = now().timeIntervalSince1970 - Double(milliseconds) / 1_000
+        guard age.isFinite, age < Self.retentionSeconds else {
             throw ConversationPersistenceJournalError.unavailable
         }
     }

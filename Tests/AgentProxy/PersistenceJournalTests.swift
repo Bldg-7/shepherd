@@ -344,9 +344,11 @@ struct PersistenceJournalTests {
         do {
             let path = try root("date-matrix")
             let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
-            let journal = ConversationPersistenceJournal(files: files, now: { clock })
+            var dateClock = clock
+            let journal = ConversationPersistenceJournal(files: files, now: { dateClock })
             _ = try journal.upsert(record, updatedAt: clock)
             for millis: Int64 in [0, 1, 999, 1000, 1_700_000_000_001, 1_700_000_000_123, 1_700_000_000_999] {
+                dateClock = Date(timeIntervalSince1970: Double(millis) / 1000)
                 var object = try JSONSerialization.jsonObject(with: files.readIndex()!) as! [String: Any]
                 var entries = object["records"] as! [[String: Any]]
                 entries[0]["updatedMilliseconds"] = millis
@@ -359,6 +361,7 @@ struct PersistenceJournalTests {
                 let persisted = (result["records"] as! [[String: Any]])[0]["updatedMilliseconds"] as! NSNumber
                 guard persisted.int64Value == millis else { throw Failure() }
             }
+            dateClock = clock
             for (seconds, expected) in [(1_700_000_000.1234, Int64(1_700_000_000_123)), (1_700_000_000.1238, Int64(1_700_000_000_124))] {
                 _ = try journal.upsert(record, updatedAt: Date(timeIntervalSince1970: seconds))
                 let object = try JSONSerialization.jsonObject(with: files.readIndex()!) as! [String: Any]
@@ -387,6 +390,26 @@ struct PersistenceJournalTests {
             object["records"] = entries
             try files.writeIndex(JSONSerialization.data(withJSONObject: object))
             guard try journal.metadata().count == 1 else { throw Failure() }
+        }
+        // Until index-first retention exists, expired history fails closed.
+        // The boundary is inclusive and refusal must not mutate either file.
+        do {
+            let path = try root("expired-refusal")
+            let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+            var current = clock
+            let journal = ConversationPersistenceJournal(files: files, now: { current })
+            let saved = try journal.upsert(record, updatedAt: clock)
+            let index = try files.readIndex()!
+            let bytes = try files.readRecord(saved.generation)
+            current = clock.addingTimeInterval(30 * 24 * 60 * 60 - 1)
+            guard try journal.metadata() == [saved], try journal.load(saved).record == record else { throw Failure() }
+            // Compare with the persisted millisecond time, not the caller's
+            // original sub-millisecond value.
+            current = saved.updatedAt.addingTimeInterval(30 * 24 * 60 * 60)
+            try reject { _ = try journal.metadata() }
+            try reject { _ = try journal.load(saved) }
+            try reject { _ = try journal.upsert(record, updatedAt: current) }
+            guard try files.readIndex() == index, try files.readRecord(saved.generation) == bytes else { throw Failure() }
         }
         // Individually small valid messages, aggregate exceeds 4 MiB.
         do {
