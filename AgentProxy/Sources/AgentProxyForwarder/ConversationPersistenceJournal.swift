@@ -1,9 +1,9 @@
 import Foundation
 import AgentProxyCore
 
-/// A bounded, unwired journal for already-admitted Core records. The index is
-/// metadata only and is never route authorization; its caller must gate a
-/// loaded record again before making it visible.
+/// A bounded journal for already-admitted Core records. The index is metadata
+/// only and is never route authorization; its caller must gate a loaded record
+/// again before making it visible.
 enum ConversationPersistenceJournalError: Error, Equatable {
     case unavailable
     case capacity

@@ -3,9 +3,9 @@ import Darwin
 import AgentProxyProtocol
 import AgentProxyCore
 
-/// Reads tee frames from descriptor 3 into bounded, memory-only conversation
-/// capture. No transcript files or raw logging. The read API is wired separately.
-/// Exits on parent EOF or malformed framing; a new process has a fresh epoch.
+/// Reads tee frames from descriptor 3 into bounded normalized capture. Socket
+/// mode can schedule normalized records to the journal when a state directory
+/// is supplied; it never logs raw tee bodies. Exits on EOF or malformed framing.
 public enum AgentProxyRecorder {
     public static func run(descriptor: Int32 = 3, socketPath: String? = nil, stateDirectory: String? = nil) -> Int32 {
         var info = stat()
