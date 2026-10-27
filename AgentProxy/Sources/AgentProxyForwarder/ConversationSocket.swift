@@ -394,6 +394,23 @@ private final class ReadState: @unchecked Sendable {
         return snapshot.generation
     }
 
+    func acceptClear(_ frame: AgentProxyTeeFrame.Frame) -> Bool {
+        guard frame.payload.isEmpty, frame.exchange > authorityGeneration else { return false }
+        authorityGeneration = frame.exchange
+        capture.invalidateForClear()
+        scheduledRevisions.removeAll()
+        persistentIDs.removeAll()
+        blockedPersistence.removeAll()
+        historicalConflicts.removeAll()
+        for client in Array(clients.values) { client.channel.close(promise: nil) }
+        return true
+    }
+
+    func clearPersistence(_ completion: @escaping (ConversationPersistenceCoordinator.ClearOutcome) -> Void) {
+        guard let persistence else { loop.execute { completion(.unavailable) }; return }
+        persistence.clearHistory(completion)
+    }
+
     func fencePersistence(_ completion: @escaping () -> Void) {
         if let persistence { persistence.fence(completion) }
         else { loop.execute(completion) }
@@ -535,11 +552,41 @@ private final class TeeInput: ChannelInboundHandler {
                 else if let next = try decoder.next() { frame = next }
                 else { break }
                 // ACKs are only valid in the recorder-to-supervisor direction.
-                guard frame.kind != .routeAcknowledgement else { state.exitCode = 3; context.close(promise: nil); return }
+                guard frame.kind != .routeAcknowledgement && frame.kind != .clearFailure else { state.exitCode = 3; context.close(promise: nil); return }
                 if partialAuthority != nil && frame.kind != .routeSnapshotPart {
                     state.exitCode = 3; context.close(promise: nil); return
                 }
-                if frame.kind == .routeSnapshot || frame.kind == .routeSnapshotPart {
+                if frame.kind == .clearHistory {
+                    guard state.acceptClear(frame), let options = context.channel.syncOptions else { state.exitCode = 3; context.close(promise: nil); return }
+                    fencing = true
+                    do { try options.setOption(ChannelOptions.autoRead, value: false) }
+                    catch { state.exitCode = 3; context.close(promise: nil); return }
+                    state.clearPersistence { [self] outcome in
+                        guard context.channel.isActive else { return }
+                        let kind: AgentProxyTeeFrame.Kind
+                        let payload: Data
+                        switch outcome {
+                        case .cleared: kind = .routeAcknowledgement; payload = Data()
+                        case .unavailable, .partial:
+                            kind = .clearFailure
+                            let reason: AgentProxyTeeFrame.ClearFailure.Outcome = outcome == .partial ? .partial : .unavailable
+                            guard let encoded = try? JSONEncoder().encode(AgentProxyTeeFrame.ClearFailure(outcome: reason)) else { context.close(promise: nil); return }
+                            payload = encoded
+                        }
+                        let header = AgentProxyTeeFrame.header(kind: kind, exchange: frame.exchange, payloadCount: payload.count)
+                        context.channel.write(ByteBuffer(bytes: header), promise: nil)
+                        context.channel.writeAndFlush(ByteBuffer(bytes: payload)).whenFailure { _ in context.close(promise: nil) }
+                        state.resumePersistenceAfterAuthority()
+                        fencing = false
+                        process(context: context)
+                        if !fencing {
+                            guard let options = context.channel.syncOptions else { state.exitCode = 3; context.close(promise: nil); return }
+                            do { try options.setOption(ChannelOptions.autoRead, value: true) }
+                            catch { state.exitCode = 3; context.close(promise: nil) }
+                        }
+                    }
+                    return
+                } else if frame.kind == .routeSnapshot || frame.kind == .routeSnapshotPart {
                     let generation: UInt64?
                     if frame.kind == .routeSnapshot {
                         guard let reservation = deferredReservation ?? state.reserveAuthority() else { deferAuthority(frame, context: context); return }

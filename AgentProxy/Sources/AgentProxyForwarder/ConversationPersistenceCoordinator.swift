@@ -142,6 +142,40 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
         else { loop.execute(completion) }
     }
 
+    enum ClearOutcome: Equatable { case cleared, unavailable, partial }
+
+    /// Invalidate capture/read tickets before calling. Pauses admission and
+    /// fences every old pending or active I/O operation before index-first
+    /// journal clearing. The caller resumes admission after reporting outcome.
+    func clearHistory(_ completion: @escaping (ClearOutcome) -> Void) {
+        loop.assertInEventLoop()
+        pauseForAuthority { [self] in
+            guard Self.workspaceBytes <= capture.limits.totalBytes,
+                  capture.accountedBytes <= capture.limits.totalBytes - Self.workspaceBytes,
+                  let workspace = capture.reserve(bytes: Self.workspaceBytes) else {
+                health = .degraded
+                completion(.unavailable)
+                return
+            }
+            running = true
+            worker.async { [self] in
+                let outcome: ClearOutcome
+                do { try openJournal().clearSupported(); outcome = .cleared }
+                catch { outcome = .partial }
+                loop.execute { [self] in
+                    capture.release(workspace)
+                    running = false
+                    if case .cleared = outcome {} else { health = .degraded }
+                    completion(outcome)
+                    let waiters = fenceWaiters
+                    fenceWaiters.removeAll()
+                    for waiter in waiters { waiter() }
+                    drain()
+                }
+            }
+        }
+    }
+
     /// The caller waits outside the event loop and imposes its own deadline.
     func finishWhenIdle() -> DispatchSemaphore {
         loop.assertInEventLoop()

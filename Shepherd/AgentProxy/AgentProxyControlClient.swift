@@ -10,6 +10,13 @@ nonisolated protocol AgentProxyControlling: Sendable {
     func createRoute(_ request: AgentProxyRouteCreate) async throws -> AgentProxyRouteCreated
     func removeRoute(_ routeID: String) async throws -> Bool
     func listRoutes() async throws -> [AgentProxyRoute]
+    func clearSavedHistory() async throws
+    func historyStatus() async throws -> AgentProxyHistoryStatus
+}
+
+extension AgentProxyControlling {
+    func clearSavedHistory() async throws { throw AgentProxyControlFailure.unreachable }
+    func historyStatus() async throws -> AgentProxyHistoryStatus { throw AgentProxyControlFailure.unreachable }
 }
 
 nonisolated enum AgentProxyControlFailure: Error, Equatable, CustomStringConvertible {
@@ -60,6 +67,31 @@ nonisolated struct AgentProxyControlClient: AgentProxyControlling {
         try await call(.routesList, EmptyParams(), as: AgentProxyRouteList.self).routes
     }
 
+    func clearSavedHistory() async throws {
+        let result = try await call(.clearHistory, AgentProxyHistoryClearRequest(confirmed: true), as: AgentProxyHistoryCleared.self)
+        guard result.cleared else { throw AgentProxyControlFailure.malformed }
+    }
+
+    func historyStatus() async throws -> AgentProxyHistoryStatus {
+        let id = "app_" + UUID().uuidString.prefix(8).lowercased()
+        struct Request: Encodable { let id: String; let method = "persistence.status" }
+        var line = try AgentProxyControl.encoder.encode(Request(id: id)); line.append(0x0A)
+        let path = AgentProxyPaths.recorderSocket(forControlSocket: socketPath), timeout = timeout
+        let request = line
+        let answer: Data = try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async {
+                continuation.resume(with: Swift.Result { try Self.exchange(request, path: path, timeout: timeout) })
+            }
+        }
+        guard let response = try? AgentProxyControl.decodeResponse(answer, as: AgentProxyHistoryStatus.self),
+              response.id == id, response.error == nil, let result = response.result,
+              ["off", "volatile", "healthy", "degraded"].contains(result.mode),
+              (0...256).contains(result.blockedConversations), (0...256).contains(result.historicalConflicts) else {
+            throw AgentProxyControlFailure.malformed
+        }
+        return result
+    }
+
     private func call<Params: Encodable & Sendable, Result: Decodable & Sendable>(
         _ method: AgentProxyControl.Method, _ params: Params, as type: Result.Type) async throws -> Result {
         let id = "app_" + UUID().uuidString.prefix(8).lowercased()
@@ -81,7 +113,13 @@ nonisolated struct AgentProxyControlClient: AgentProxyControlling {
 
     /// One request line out and the answer's line back, without its newline.
     static func exchange(_ line: Data, path: String, timeout: TimeInterval) throws -> Data {
-        guard AgentProxyPaths.socketPathFits(path) else { throw AgentProxyControlFailure.unreachable }
+        guard AgentProxyPaths.socketPathFits(path), geteuid() != 0 else { throw AgentProxyControlFailure.unreachable }
+        let folder = (path as NSString).deletingLastPathComponent
+        var parent = stat(), before = stat()
+        guard lstat(folder, &parent) == 0, parent.st_mode & S_IFMT == S_IFDIR,
+              parent.st_uid == geteuid(), parent.st_mode & 0o022 == 0,
+              lstat(path, &before) == 0, before.st_mode & S_IFMT == S_IFSOCK,
+              before.st_uid == geteuid(), before.st_mode & 0o077 == 0 else { throw AgentProxyControlFailure.unreachable }
         let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
         guard descriptor >= 0 else { throw AgentProxyControlFailure.unreachable }
         defer { close(descriptor) }
@@ -102,6 +140,11 @@ nonisolated struct AgentProxyControlClient: AgentProxyControlling {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(descriptor, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
         }
         guard connected == 0 else { throw AgentProxyControlFailure.unreachable }
+        var peerUID: uid_t = 0, peerGID: gid_t = 0, after = stat()
+        guard getpeereid(descriptor, &peerUID, &peerGID) == 0, peerUID == geteuid(),
+              lstat(path, &after) == 0, after.st_mode & S_IFMT == S_IFSOCK,
+              after.st_uid == geteuid(), after.st_mode & 0o077 == 0,
+              after.st_dev == before.st_dev, after.st_ino == before.st_ino else { throw AgentProxyControlFailure.unreachable }
         var sent = 0
         while sent < line.count {
             let count = line.withUnsafeBytes { write(descriptor, $0.baseAddress! + sent, line.count - sent) }

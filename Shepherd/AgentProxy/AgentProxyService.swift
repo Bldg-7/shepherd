@@ -61,6 +61,9 @@ final class AgentProxyService: AgentProxyRouting {
     private(set) var rejectedKinds: Set<String>
     /// Why the last launch went without the proxy; nil when it got a route.
     private(set) var lastSkip: AgentProxyInjectionPolicy.Skip?
+    private(set) var clearingSavedHistory = false
+    private(set) var savedHistoryMessage: String?
+    private(set) var historyStatus: AgentProxyHistoryStatus?
 
     @ObservationIgnored private let environment: Environment
     @ObservationIgnored private var monitor: Task<Void, Never>?
@@ -99,6 +102,24 @@ final class AgentProxyService: AgentProxyRouting {
         }
         await check()
         scheduleChecks()
+    }
+
+    /// Called only after the Settings confirmation. A stopped recorder cannot
+    /// be safely cleared through this live control path.
+    func clearSavedHistory() async {
+        guard isOn, phase == .running, !clearingSavedHistory else {
+            savedHistoryMessage = String(localized: "Saved conversations could not be cleared while the proxy is unavailable.")
+            return
+        }
+        clearingSavedHistory = true
+        savedHistoryMessage = nil
+        defer { clearingSavedHistory = false }
+        do {
+            try await environment.control.clearSavedHistory()
+            savedHistoryMessage = String(localized: "Saved conversations were cleared. New captures may include history sent again by the agent.")
+        } catch {
+            savedHistoryMessage = String(localized: "Saved conversations could not be fully cleared. Some data may already have been removed.")
+        }
     }
 
     func openLoginItems() { environment.launchAgent.openSystemSettings() }
@@ -146,6 +167,7 @@ final class AgentProxyService: AgentProxyRouting {
             if sweeping { await sweep() }
         } else {
             guard agent.state == .enabled || agent.state == .requiresApproval else {
+                historyStatus = nil
                 if phase != .off { phase = .off }
                 routes = []
                 return
@@ -194,6 +216,9 @@ final class AgentProxyService: AgentProxyRouting {
         } else {
             phase = .running
         }
+        if phase == .running {
+            historyStatus = try? await environment.control.historyStatus()
+        } else { historyStatus = nil }
         if let listed = try? await environment.control.listRoutes() {
             routes = listed
             noteRejections()

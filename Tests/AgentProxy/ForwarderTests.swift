@@ -184,6 +184,7 @@ final class Suite {
     func run() -> Int32 {
         let cases: [(String, () throws -> Void)] = [
             ("control-socket", controlSocket),
+            ("control-confirmed-history-clear", controlConfirmedHistoryClear),
             ("forward-claude-body-and-headers", forwardClaude),
             ("forward-codex-zstd-chunked", forwardCodex),
             ("forward-pi-openai-subscription", forwardOpenAI),
@@ -960,6 +961,28 @@ final class Suite {
         let opens = try frames.filter { $0.kind == .open }.map { try JSONDecoder().decode(AgentProxyTeeFrame.Open.self, from: Data($0.payload)) }
         try check(opens.count == 1 && opens[0].routeID == claude.routeID, "only the known route's exchange was copied")
         try check(!contains(fileBytes(tap), bytes(unknown)), "the unknown token is nowhere in the copy")
+    }
+
+    func controlConfirmedHistoryClear() throws {
+        let proxy = try self.proxy("confirmed-clear", recorder: .real)
+        let control = try proxy.control()
+        let refused = try control.call("conversation.clearSaved", [:])
+        try check(refused["result"] == nil && refused["error"] != nil, "unconfirmed history clear is refused")
+        try check(waitUntil(5) { (try? control.result("proxy.status")["recorder"] as? [String: Any])?["state"] as? String == "running" }, "owned recorder starts")
+        let known = try route(control, "claude")
+        try check(try control.result("routes.remove", ["routeID": known.routeID])["removed"] as? Bool == true, "recorder authority synchronized before clear")
+        guard chmod(proxy.socket, 0o666) == 0 else { throw TestFailure(description: "owned socket mode change") }
+        let unsafe = try control.call("conversation.clearSaved", ["confirmed": true])
+        try check(unsafe["result"] == nil && unsafe["error"] != nil, "unsafe control socket mode rejects destructive clear")
+        guard chmod(proxy.socket, 0o600) == 0 else { throw TestFailure(description: "owned socket mode restore") }
+        let response = try control.call("conversation.clearSaved", ["confirmed": true])
+        try check((response["result"] as? [String: Any])?["cleared"] as? Bool == true,
+                  "same-UID confirmed clear succeeds only after recorder acknowledgement")
+        control.sendRaw("{\"id\":\"first\",\"method\":\"conversation.clearSaved\",\"params\":{\"confirmed\":true}}\n" +
+                        "{\"id\":\"second\",\"method\":\"proxy.status\",\"params\":{}}\n")
+        let first = try control.readLine(), second = try control.readLine()
+        try check(first["id"] as? String == "first" && second["id"] as? String == "second",
+                  "asynchronous clear preserves pipelined control response order")
     }
 
     func authorityTimeout() throws {

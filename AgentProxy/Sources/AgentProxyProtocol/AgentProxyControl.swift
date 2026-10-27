@@ -24,6 +24,8 @@ public nonisolated enum AgentProxyControl {
         case routesCreate = "routes.create"
         case routesRemove = "routes.remove"
         case routesList = "routes.list"
+        /// Same-UID local control only; clear has no mobile/read-socket method.
+        case clearHistory = "conversation.clearSaved"
     }
 
     public enum ErrorCode: String, Codable, Sendable {
@@ -54,6 +56,22 @@ public nonisolated enum AgentProxyControl {
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         return encoder
     }()
+}
+
+public nonisolated struct AgentProxyHistoryStatus: Codable, Sendable, Equatable {
+    public let mode: String
+    public let blockedConversations: Int
+    public let historicalConflicts: Int
+}
+
+public nonisolated struct AgentProxyHistoryClearRequest: Codable, Sendable, Equatable {
+    public let confirmed: Bool
+    public init(confirmed: Bool) { self.confirmed = confirmed }
+}
+
+public nonisolated struct AgentProxyHistoryCleared: Codable, Sendable, Equatable {
+    public let cleared: Bool
+    public init(cleared: Bool) { self.cleared = cleared }
 }
 
 public nonisolated struct EmptyParams: Codable, Sendable, Equatable {

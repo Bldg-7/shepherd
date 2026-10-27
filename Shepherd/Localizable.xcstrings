@@ -1,6 +1,84 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Some saved history is unavailable or could not be saved. Live capture may continue." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "保存された履歴の一部を利用または保存できません。ライブ収集は続行される場合があります。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "저장된 기록 일부를 사용할 수 없거나 저장하지 못했습니다. 실시간 수집은 계속될 수 있습니다." } }
+      }
+    },
+    "Saved history storage is available; recent changes may still be saving." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "履歴の保存先は利用できます。最近の変更はまだ保存中の場合があります。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "기록 저장소를 사용할 수 있습니다. 최근 변경 사항은 아직 저장 중일 수 있습니다." } }
+      }
+    },
+    "Saved history storage has not been verified." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "履歴の保存先はまだ確認されていません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "기록 저장소가 아직 확인되지 않았습니다." } }
+      }
+    },
+    "Saved history status is unavailable." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "保存履歴の状態を取得できません。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "저장된 기록의 상태를 확인할 수 없습니다." } }
+      }
+    },
+    "Saved history is subject to a 30-day, 256-conversation and 256 MiB policy when storage is maintained. Turning this setting off keeps saved history." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "保存履歴はストレージのメンテナンス時に 30 日、256 件、256 MiB のポリシーに従います。設定をオフにしても保存履歴は残ります。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "저장된 기록은 저장소를 관리할 때 30일, 대화 256개, 256 MiB 정책을 따릅니다. 이 설정을 꺼도 저장된 기록은 유지됩니다." } }
+      }
+    },
+    "Clear Saved Conversations…" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "保存された会話を消去…" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "저장된 대화 지우기…" } }
+      }
+    },
+    "Clear Saved Conversations?" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "保存された会話を消去しますか？" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "저장된 대화를 지울까요?" } }
+      }
+    },
+    "Clear Saved Conversations" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "保存された会話を消去" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "저장된 대화 지우기" } }
+      }
+    },
+    "To clear saved conversations, turn this setting on and wait for the proxy to start." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "保存された会話を消去するには、この設定をオンにしてプロキシの起動を待ってください。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "저장된 대화를 지우려면 이 설정을 켜고 프록시가 시작될 때까지 기다리세요." } }
+      }
+    },
+    "Saved conversation files on this Mac will be removed where possible. Backups and snapshots may retain copies. New captures may include history sent again by the agent." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "この Mac の保存済み会話ファイルを可能な範囲で削除します。バックアップやスナップショットにはコピーが残る場合があります。新しい収集にはエージェントが再送した履歴が含まれる場合があります。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "이 Mac에 저장된 대화 파일을 가능한 범위에서 삭제합니다. 백업과 스냅샷에는 복사본이 남을 수 있습니다. 새로 수집한 내용에는 에이전트가 다시 보낸 기록이 포함될 수 있습니다." } }
+      }
+    },
+    "Saved conversations could not be cleared while the proxy is unavailable." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "プロキシを利用できないため、保存された会話を消去できませんでした。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "프록시를 사용할 수 없어 저장된 대화를 지우지 못했습니다." } }
+      }
+    },
+    "Saved conversations were cleared. New captures may include history sent again by the agent." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "保存された会話を消去しました。新しい収集にはエージェントが再送した履歴が含まれる場合があります。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "저장된 대화를 지웠습니다. 새로 수집한 내용에는 에이전트가 다시 보낸 기록이 포함될 수 있습니다." } }
+      }
+    },
+    "Saved conversations could not be fully cleared. Some data may already have been removed." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "保存された会話を完全に消去できませんでした。一部のデータはすでに削除されている場合があります。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "저장된 대화를 모두 지우지 못했습니다. 일부 데이터는 이미 삭제되었을 수 있습니다." } }
+      }
+    },
     "Go to Agent or Pane…" : {
       "localizations" : {
         "ja" : { "stringUnit" : { "state" : "translated", "value" : "agent または pane へ移動…" } },

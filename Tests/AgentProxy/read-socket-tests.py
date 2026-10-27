@@ -74,6 +74,20 @@ class Recorder:
     def frame(self, kind, payload=b'', exchange=1):
         if not isinstance(payload, bytes): payload = json.dumps(payload).encode()
         self.tee.sendall(struct.pack('>IBQ', 9 + len(payload), kind, exchange) + payload)
+    def reply_frame(self):
+        header = bytearray()
+        while len(header) < 13:
+            part = self.tee.recv(13 - len(header))
+            assert part, 'recorder closed before frame reply'
+            header.extend(part)
+        length, kind, exchange = struct.unpack('>IBQ', header)
+        assert 9 <= length <= (1 << 20) + 9, 'bounded reply frame'
+        payload = bytearray()
+        while len(payload) < length - 9:
+            part = self.tee.recv(length - 9 - len(payload))
+            assert part, 'recorder closed during frame reply'
+            payload.extend(part)
+        return kind, exchange, bytes(payload)
     def ack(self, generation):
         ack = bytearray()
         while len(ack) < 13:
@@ -160,6 +174,80 @@ finally:
 reopened_index = json.loads(index.read_bytes())
 check(len(reopened_index['records']) == 1 and reopened_index['records'][0]['recordID'] == retained_index['records'][0]['recordID'],
       'restart saves retain the original persistent ID without duplication')
+
+# Confirmed clear through the inherited supervisor stream fences in-memory
+# tickets and serial journal operations. Only owned synthetic bytes are used.
+clear_root = a.work / 'clear-state'
+clear_root.mkdir(mode=0o700)
+clear_recorder = Recorder(a.work / 'clear-socket', state_directory=clear_root)
+try:
+    clear_recorder.authority(); clear_recorder.begin(wait_admission=True); clear_recorder.end()
+    clear_recorder.conversation()
+    clear_index = clear_root / 'Conversations' / 'index-v1.json'
+    until = time.monotonic() + 10
+    while True:
+        try:
+            if json.loads(clear_index.read_bytes())['records']: break
+        except (OSError, ValueError, KeyError): pass
+        assert time.monotonic() < until, 'pre-clear durable fixture deadline'
+        time.sleep(.02)
+    # An already-open producer is fenced; its later response is queued behind
+    # the clear and cannot recreate the pre-clear epoch.
+    clear_recorder.frame(1, {'routeID': 'route', 'upstream': 'anthropic', 'method': 'POST', 'path': '/v1/messages',
+                             'routeIdentity': {'kind': 'claude', 'session': 'session', 'paneID': 'pane', 'terminalID': 'terminal', 'cliVersion': '2.1.309'},
+                             'headers': [['x-claude-code-session-id', 'old-open'], ['x-claude-code-request-class', 'main']]}, exchange=2)
+    clear_recorder.frame(2, {'messages': [{'role': 'user', 'content': 'old-before-clear'}]}, exchange=2)
+    clear_recorder.frame(3, exchange=2)
+    clear_recorder.frame(10, exchange=2)
+    clear_recorder.frame(4, {'status': 200, 'headers': [['content-type', 'text/event-stream']]}, exchange=2)
+    clear_recorder.event({'type': 'message_start', 'message': {'id': 'm', 'role': 'assistant', 'content': []}}, exchange=2)
+    clear_recorder.event({'type': 'content_block_start', 'index': 0, 'content_block': {'type': 'text', 'text': 'old-late-response'}}, exchange=2)
+    clear_recorder.frame(6, {'outcome': 'complete'}, exchange=2)
+    clear_recorder.frame(7, {'generation': 3, 'routes': [{'routeID': 'route', 'identity': {'kind': 'claude', 'session': 'session', 'paneID': 'pane', 'terminalID': 'terminal', 'cliVersion': '2.1.309'}}]}, exchange=0)
+    clear_recorder.ack(2); clear_recorder.ack(3)
+    check(not clear_recorder.query('conversations.list')['result']['conversations'], 'clear ACK fences prior capture and late frames')
+    check(not json.loads(clear_index.read_bytes())['records'], 'clear ACK follows index-first durable removal')
+    # New MAIN after the barrier is legitimate future capture.
+    clear_recorder.frame(1, {'routeID': 'route', 'upstream': 'anthropic', 'method': 'POST', 'path': '/v1/messages',
+                             'routeIdentity': {'kind': 'claude', 'session': 'session', 'paneID': 'pane', 'terminalID': 'terminal', 'cliVersion': '2.1.309'},
+                             'headers': [['x-claude-code-session-id', 'new-after-clear'], ['x-claude-code-request-class', 'main']]}, exchange=3)
+    clear_recorder.frame(2, {'messages': [{'role': 'user', 'content': 'new-after-clear'}]}, exchange=3); clear_recorder.frame(3, exchange=3)
+    new_id = clear_recorder.conversation()
+    page = clear_recorder.query('conversation.read', conversationID=new_id)['result']
+    check(any(block.get('text') == 'new-after-clear' for item in page['items'] for block in item['blocks']), 'new post-clear capture remains allowed')
+finally:
+    check(clear_recorder.stop() == 0, 'clear fixture recorder exits naturally')
+
+# An unconfigured recorder must return an explicit failed-clear frame, never
+# a success ACK, even though its live epoch was fenced.
+clear_unavailable = Recorder(a.work / 'clear-unavailable')
+try:
+    clear_unavailable.authority(); clear_unavailable.frame(10, exchange=2)
+    kind, generation, payload = clear_unavailable.reply_frame()
+    check(kind == 11 and generation == 2 and json.loads(payload)['outcome'] == 'unavailable',
+          'unconfigured clear reports failure rather than synchronized success')
+finally:
+    check(clear_unavailable.stop() == 0, 'unavailable-clear recorder exits naturally')
+
+# A corrupt future/unknown index must be preserved and the clear must report a
+# partial/unknown outcome, never a success ACK.
+clear_bad_root = a.work / 'clear-corrupt-state'
+clear_bad_root.mkdir(mode=0o700)
+clear_bad_dir = clear_bad_root / 'Conversations'
+clear_bad_dir.mkdir(mode=0o700)
+(clear_bad_dir / 'records').mkdir(mode=0o700)
+clear_bad_index = clear_bad_dir / 'index-v1.json'
+clear_bad_index.write_bytes(b'{"version":999,"records":[]}')
+clear_bad_index.chmod(0o600)
+clear_bad = Recorder(a.work / 'clear-corrupt-socket', state_directory=clear_bad_root)
+try:
+    clear_bad.authority(); clear_bad.frame(10, exchange=2)
+    kind, generation, payload = clear_bad.reply_frame()
+    check(kind == 11 and generation == 2 and json.loads(payload)['outcome'] == 'partial',
+          'unsupported index clear reports incomplete rather than success')
+    check(clear_bad_index.read_bytes() == b'{"version":999,"records":[]}', 'unsupported index bytes remain preserved')
+finally:
+    check(clear_bad.stop() == 0, 'corrupt-clear recorder exits naturally')
 
 # Hold the owned journal lease before the recorder opens it, then release it.
 # The existing live MAIN must become persistable without another mutation.
@@ -611,6 +699,7 @@ try:
     check(not r.query('conversations.list', terminalID='other')['result']['conversations'], 'terminal scope filter')
     check(r.query('conversation.read', conversationID=cid, epoch='old')['result']['reset'], 'old epoch reset')
     check(r.query('routes.create').get('error', {}).get('code') == 'unknown_method', 'read socket rejects mutation method')
+    check(r.query('conversation.clearSaved').get('error', {}).get('code') == 'unknown_method', 'read socket cannot clear history')
     sub = r.connect()
     sub.sendall(json.dumps({'id':'s', 'method':'conversation.subscribe', 'params':{'conversationID':cid}}).encode()+b'\n')
     stream = Reader(sub); initial = stream.line()['result']; sequence = initial['seq']; items = initial['items']

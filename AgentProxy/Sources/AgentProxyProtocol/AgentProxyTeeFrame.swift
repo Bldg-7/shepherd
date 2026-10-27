@@ -35,6 +35,16 @@ public nonisolated enum AgentProxyTeeFrame {
         case routeAcknowledgement = 8
         /// One ordered part of an oversized legacy authority snapshot.
         case routeSnapshotPart = 9
+        /// Supervisor-owned clear barrier. Exchange is its generation; payload empty.
+        case clearHistory = 10
+        /// Recorder-to-supervisor clear failure; exchange is the generation.
+        case clearFailure = 11
+    }
+
+    public struct ClearFailure: Codable, Sendable, Equatable {
+        public enum Outcome: String, Codable, Sendable { case unavailable, partial }
+        public let outcome: Outcome
+        public init(outcome: Outcome) { self.outcome = outcome }
     }
 
     public struct RouteSnapshot: Codable, Sendable, Equatable {

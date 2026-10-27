@@ -166,6 +166,7 @@
   <ul>
     <li>The machines you add are kept in the app’s preferences on the Mac, and each one’s SSH credential (a private key, one the app makes or one you paste in, or a password) in the Mac’s Keychain, only on this Mac. The app remembers each machine’s host key fingerprint, as on iPhone and iPad.</li>
     <li>It talks to herdr on this Mac through herdr’s local socket, and to your other machines over SSH.</li>
+    <li>If you turn on “Show Conversations on iPhone and iPad,” eligible conversation content is captured on this Mac and saved in owner-only local files. Storage maintenance applies a 256 MiB, 256-conversation and 30-day policy; older files may remain while the proxy is off or cleanup fails. The app does not add application-layer encryption to these files; they may contain sensitive text and may be included in backups.</li>
     <li>Settings → iPhone and iPad: while it shows QR codes, for ten minutes at most, the app listens for devices on a port of its own. When you approve a device, it adds one line with the device's public key to your <code>~/.ssh/authorized_keys</code>, and keeps the list of devices it added (each one's name, model, app version and key fingerprint) and the last 1,000 pairing events, with the address each request came from, in its folder on your Mac.</li>
     <li>Updates: the app asks GitHub for its update feed (<code>https://github.com/Bldg-7/shepherd/releases/latest/download/appcast.xml</code>) when you choose Check for Updates, or on its own if you allow automatic checks, and downloads an update you install from GitHub. The request carries the app’s name and version; the app doesn’t send the optional system profile its update framework (Sparkle) can send. GitHub’s privacy statement applies to these requests.</li>
     <li>The In-app Browser, an experimental feature that is off unless you turn it on, loads the pages you or your agents open directly from those websites, as any browser does. Text you type into its address bar that isn’t a web address is searched on Google. Website data such as cookies and the cache are kept in the app’s folder on your Mac.</li>
@@ -179,6 +180,7 @@
     <li>Everything the app keeps stays on your device, and in the backups you make of it, for as long as you keep it there. We hold no copy.</li>
     <li>Removing a machine in the app deletes its details and its saved key or password from the Keychain.</li>
     <li>On a Mac, removing a device in Settings → iPhone and iPad takes its line out of <code>authorized_keys</code>.</li>
+    <li>Turning conversation capture off keeps saved history. While the proxy is running, Settings → iPhone and iPad offers a confirmed clear of supported saved conversation files; a failure can leave data partly cleared. New captures may include history the agent sends again. Backups, APFS snapshots and storage media may retain copies; clearing does not promise cryptographic or physical erasure.</li>
     <li>Deleting the app doesn’t always delete everything: iOS may keep Keychain items after an app is deleted, and on a Mac the app’s preferences, its folder and its Keychain items stay when you move the app to the Trash. To delete the keys too, remove your machines in the app before you delete it.</li>
     <li>If you added a key from the app to a machine’s <code>~/.ssh/authorized_keys</code>, remove that line, the one the app showed you when you added the machine, to take away the device’s access to it.</li>
   </ul>
@@ -221,6 +223,7 @@
   <ul>
     <li>사용자가 추가한 machine은 Mac의 앱 환경설정에, 각 machine의 SSH 자격 증명(앱이 만들거나 사용자가 붙여 넣은 개인 키, 또는 비밀번호)은 Mac의 Keychain에 이 Mac 전용으로 보관됩니다. 각 machine의 호스트 키 지문도 iPhone·iPad에서처럼 기억합니다.</li>
     <li>이 Mac의 herdr와는 herdr의 로컬 소켓으로, 다른 machine과는 SSH로 통신합니다.</li>
+    <li>“iPhone 및 iPad에서 대화 보기”를 켜면 해당되는 대화 내용이 이 Mac에서 수집되어 소유자만 접근할 수 있는 로컬 파일에 저장됩니다. 저장소 관리 시 256 MiB, 대화 256개, 30일 정책이 적용되며 프록시가 꺼져 있거나 정리가 실패하면 오래된 파일이 남을 수 있습니다. 앱은 이 파일에 별도의 애플리케이션 암호화를 적용하지 않습니다. 민감한 텍스트가 포함될 수 있으며 백업에 포함될 수 있습니다.</li>
     <li>설정 → iPhone 및 iPad: QR 코드가 표시되는 동안, 최대 10분간 앱은 별도의 포트에서 기기의 연결을 받습니다. 기기를 승인하면 기기의 공개 키를 담은 줄 하나를 <code>~/.ssh/authorized_keys</code>에 추가하고, 추가한 기기 목록(각 기기의 이름, 모델, 앱 버전, 키 지문)과 각 요청이 온 주소를 포함한 최근 1,000건의 페어링 기록을 Mac의 앱 폴더에 보관합니다.</li>
     <li>업데이트: 사용자가 ‘업데이트 확인’을 고르거나 자동 확인을 허용한 경우, 앱은 GitHub에 업데이트 피드(<code>https://github.com/Bldg-7/shepherd/releases/latest/download/appcast.xml</code>)를 요청하고, 사용자가 설치하는 업데이트를 GitHub에서 내려받습니다. 이 요청에는 앱의 이름과 버전이 담깁니다. 앱은 업데이트 프레임워크(Sparkle)가 보낼 수 있는 선택 항목인 시스템 프로필은 보내지 않습니다. 이 요청에는 GitHub의 개인정보 처리방침이 적용됩니다.</li>
     <li>In-app Browser는 사용자가 켜야만 동작하는 실험 기능으로, 사용자나 agent가 연 페이지를 일반 브라우저처럼 해당 웹사이트에서 직접 불러옵니다. 주소창에 입력한 텍스트가 웹 주소가 아니면 Google에서 검색합니다. 쿠키와 캐시 같은 웹사이트 데이터는 Mac의 앱 폴더에 보관됩니다.</li>
@@ -234,6 +237,7 @@
     <li>앱이 보관하는 모든 정보는 사용자가 지우기 전까지 사용자의 기기와 사용자가 만든 그 기기의 백업에만 있습니다. 저희는 사본을 갖고 있지 않습니다.</li>
     <li>앱에서 machine을 삭제하면 그 machine의 정보와, Keychain에 저장된 키나 비밀번호가 함께 삭제됩니다.</li>
     <li>Mac의 설정 → iPhone 및 iPad에서 기기를 삭제하면 그 기기의 줄이 <code>authorized_keys</code>에서 빠집니다.</li>
+    <li>대화 수집을 꺼도 저장된 기록은 유지됩니다. 프록시가 실행 중일 때 설정 → iPhone 및 iPad에서 확인 후 지원되는 저장 대화 파일을 지울 수 있으며, 실패 시 일부만 지워졌을 수 있습니다. 새 수집에는 agent가 다시 보낸 기록이 포함될 수 있습니다. 백업, APFS 스냅샷 및 저장 매체에 사본이 남을 수 있으며 암호학적 또는 물리적 삭제를 보장하지 않습니다.</li>
     <li>앱을 삭제해도 모든 것이 지워지지는 않습니다. iOS는 앱이 삭제된 뒤에도 Keychain 항목을 남겨 둘 수 있고, Mac에서는 앱을 휴지통으로 옮겨도 앱의 환경설정, 앱 폴더, Keychain 항목이 남습니다. 키까지 지우려면 앱을 삭제하기 전에 앱에서 machine을 먼저 삭제하세요.</li>
     <li>앱이 만든 키를 machine의 <code>~/.ssh/authorized_keys</code>에 추가했다면, machine을 추가할 때 앱이 보여 준 그 줄을 지워 기기의 접근 권한을 없애세요.</li>
   </ul>

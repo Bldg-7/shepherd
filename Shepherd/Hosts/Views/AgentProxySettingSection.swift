@@ -12,6 +12,7 @@ struct AgentProxySettingSection: View {
     var unavailableReason: String?
     /// The page's accessibility identifiers start with this.
     let identifier: String
+    @State private var confirmClear = false
 
     var body: some View {
         Section {
@@ -21,6 +22,20 @@ struct AgentProxySettingSection: View {
             .disabled(unavailableReason != nil)
             .accessibilityIdentifier(identifier + ".conversations")
             status
+            Text("Saved history is subject to a 30-day, 256-conversation and 256 MiB policy when storage is maintained. Turning this setting off keeps saved history.")
+                .foregroundStyle(.secondary)
+            if service.isOn && service.phase == .running { historyStorageStatus }
+            Button("Clear Saved Conversations…", role: .destructive) { confirmClear = true }
+                .disabled(unavailableReason != nil || !service.isOn || service.phase != .running || service.clearingSavedHistory)
+                .accessibilityIdentifier(identifier + ".conversations.clear")
+            if !service.isOn || service.phase != .running {
+                Text("To clear saved conversations, turn this setting on and wait for the proxy to start.")
+                    .foregroundStyle(.secondary)
+            }
+            if let message = service.savedHistoryMessage {
+                Text(verbatim: message).foregroundStyle(.secondary)
+                    .accessibilityIdentifier(identifier + ".conversations.clear-status")
+            }
             if let unavailableReason {
                 Label(unavailableReason, systemImage: "info.circle")
                     .foregroundStyle(.secondary)
@@ -30,6 +45,29 @@ struct AgentProxySettingSection: View {
             Text("Claude Code, Codex and Pi that you start on this Mac from New Tab, signed in with a Claude or ChatGPT subscription, send their requests through a proxy on this Mac, so that iPhone and iPad can show their conversations. Claude Code's Remote Control is turned off for them. The first time you turn this on, macOS shows a “Background Items Added” notification for the proxy.")
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier(identifier + ".conversations.about")
+        }
+        .confirmationDialog("Clear Saved Conversations?", isPresented: $confirmClear, titleVisibility: .visible) {
+            Button("Clear Saved Conversations", role: .destructive) { Task { await service.clearSavedHistory() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Saved conversation files on this Mac will be removed where possible. Backups and snapshots may retain copies. New captures may include history sent again by the agent.")
+        }
+    }
+
+    @ViewBuilder
+    private var historyStorageStatus: some View {
+        if let status = service.historyStatus {
+            if status.mode == "degraded" || status.blockedConversations > 0 {
+                Text("Some saved history is unavailable or could not be saved. Live capture may continue.")
+                    .foregroundStyle(.orange)
+            } else if status.mode == "healthy" {
+                Text("Saved history storage is available; recent changes may still be saving.")
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Saved history storage has not been verified.").foregroundStyle(.secondary)
+            }
+        } else {
+            Text("Saved history status is unavailable.").foregroundStyle(.secondary)
         }
     }
 

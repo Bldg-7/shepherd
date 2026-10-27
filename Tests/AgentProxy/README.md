@@ -17,8 +17,10 @@ the read API and paired iPhone/iPad conversation UI are connected. It runs as tw
   request comes from. `proxy.restartWhenIdle` on the same socket makes the
   forwarder exit as soon as no request is in progress, so that launchd can start
   a newer build.
-- The recorder is a child process that consumes the copies into memory-only
-  conversations. It never writes transcript files or raw error logs. It decodes
+- The recorder is a child process that consumes the copies into bounded
+  conversations. With a configured state directory it persists validated,
+  normalized history in the private journal; it does not persist raw tee bodies,
+  headers or credentials and does not log raw errors. It decodes
   gzip, zlib-wrapped deflate and zstd copies with bounded output and an 8-MiB
   zstd window; forwarding retains the original bytes. Unknown/stacked encodings,
   trailing/concatenated frames, invalid checksums and truncated streams fail

@@ -151,6 +151,11 @@ nonisolated final class FakeProxy: @unchecked Sendable {
                 return .success(["removed": _routes.count < before])
             case "routes.list":
                 return .success(["routes": _routes])
+            case "conversation.clearSaved":
+                guard params["confirmed"] as? Bool == true else {
+                    return .failure(AgentProxyControlError(code: .invalidParams, message: "confirmation required"))
+                }
+                return .success(["cleared": true])
             default:
                 return .failure(AgentProxyControlError(code: .unknownMethod, message: "unknown"))
             }
@@ -330,6 +335,9 @@ func pane(_ id: String, terminal: String, session: String = "default", herdrMach
     let service = world.service
     await service.check()
     check(service.phase == .off && world.agent.registered == 0 && world.proxy.calls.isEmpty, "off: nothing registered, the proxy not asked")
+    await service.clearSavedHistory()
+    check(world.proxy.count("conversation.clearSaved") == 0 && service.savedHistoryMessage != nil,
+          "offline clear fails closed without sending an unconfirmed request")
     check(await service.route(for: .claude, pane: pane("w1:p1", terminal: "t1"), cliVersion: "2.1.288 (Claude Code)", on: thisMac) == nil
           && service.lastSkip == .settingOff && world.proxy.count("routes.create") == 0, "off: a launch goes without the proxy")
 
@@ -337,6 +345,10 @@ func pane(_ id: String, terminal: String, session: String = "default", herdrMach
     check(world.saved == [true] && world.agent.registered == 1 && world.agent.state == .enabled, "on: saved, and the LaunchAgent registered")
     check(service.phase == .running && world.proxy.count("proxy.status") == 1 && world.proxy.count("routes.list") == 1,
           "on: the proxy asked how it is and for its routes, and running")
+    await service.clearSavedHistory()
+    check(world.proxy.count("conversation.clearSaved") == 1 && world.proxy.calls.last?.params["confirmed"] as? Bool == true,
+          "confirmed local clear is explicitly marked in the control request")
+    check(service.savedHistoryMessage != nil && !service.clearingSavedHistory, "clear completion is visible and retires busy state")
     await service.check()
     check(world.agent.registered == 1, "on: registered once")
 

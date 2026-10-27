@@ -116,7 +116,7 @@ public final class ConversationCapture {
         }
         do {
             switch frame.kind {
-            case .open, .routeSnapshot, .routeSnapshotPart, .routeAcknowledgement: break
+            case .open, .routeSnapshot, .routeSnapshotPart, .routeAcknowledgement, .clearHistory, .clearFailure: break
             case .requestBody:
                 guard !exchange.requestEnded else { throw Failure.invalid }
                 try wire(frame.payload.count, exchange)

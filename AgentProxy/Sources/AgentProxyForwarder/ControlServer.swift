@@ -44,13 +44,14 @@ enum ControlServer {
 
     static func bind(_ path: String, core: ProxyCore, group: EventLoopGroup) throws -> Channel {
         let connections = ConnectionCount()
+        let identity = ControlSocketIdentity(path: path)
         let channel = try ServerBootstrap(group: group)
             .serverChannelOption(ChannelOptions.backlog, value: 16)
             .childChannelInitializer { channel in
                 guard connections.add(channel) else { return channel.close() }
                 return channel.eventLoop.makeCompletedFuture {
                     try channel.pipeline.syncOperations.addHandler(ByteToMessageHandler(LineDecoder()))
-                    try channel.pipeline.syncOperations.addHandler(ControlHandler(core: core))
+                    try channel.pipeline.syncOperations.addHandler(ControlHandler(core: core, identity: identity))
                 }
             }
             .bind(unixDomainSocketPath: path).wait()
@@ -58,7 +59,34 @@ enum ControlServer {
             channel.close(promise: nil)
             throw AgentProxyStartError.socketPath("cannot be made private")
         }
+        let verified = try channel.eventLoop.submit { identity.install() }.wait()
+        guard verified else { channel.close(promise: nil); throw AgentProxyStartError.socketPath("cannot verify private control socket") }
         return channel
+    }
+}
+
+/// Captured on the control event loop; every destructive request rechecks the
+/// bound inode, private socket and owner-only-writable parent before use.
+private final class ControlSocketIdentity: @unchecked Sendable {
+    private let path: String
+    private var device: dev_t?
+    private var inode: ino_t?
+    init(path: String) { self.path = path }
+    func install() -> Bool {
+        var info = stat()
+        guard lstat(path, &info) == 0, info.st_mode & S_IFMT == S_IFSOCK,
+              info.st_uid == geteuid(), info.st_mode & 0o077 == 0 else { return false }
+        device = info.st_dev; inode = info.st_ino
+        return valid()
+    }
+    func valid() -> Bool {
+        var file = stat(), parent = stat()
+        let folder = (path as NSString).deletingLastPathComponent
+        return lstat(folder, &parent) == 0 && parent.st_mode & S_IFMT == S_IFDIR &&
+            parent.st_uid == geteuid() && parent.st_mode & 0o022 == 0 &&
+            lstat(path, &file) == 0 && file.st_mode & S_IFMT == S_IFSOCK &&
+            file.st_uid == geteuid() && file.st_mode & 0o077 == 0 &&
+            file.st_dev == device && file.st_ino == inode
     }
 }
 
@@ -108,16 +136,28 @@ private final class ControlHandler: ChannelInboundHandler {
     typealias OutboundOut = ByteBuffer
 
     private let core: ProxyCore
+    private let identity: ControlSocketIdentity
     private var pendingRemovals = 0
+    private var pendingClear = false
+    private var processing = false
+    private var queuedLines: [Data] = []
 
-    init(core: ProxyCore) { self.core = core }
+    init(core: ProxyCore, identity: ControlSocketIdentity) { self.core = core; self.identity = identity }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        let line = Data(unwrapInboundIn(data).readableBytesView)
+        guard queuedLines.count < 16 else { context.close(promise: nil); return }
+        queuedLines.append(Data(unwrapInboundIn(data).readableBytesView))
+        processNext(context: context)
+    }
+
+    private func processNext(context: ChannelHandlerContext) {
+        guard !processing, !queuedLines.isEmpty, context.channel.isActive else { return }
+        processing = true
+        let line = queuedLines.removeFirst()
         if let object = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any],
-           object["method"] as? String == AgentProxyControl.Method.routesRemove.rawValue {
-            removeRoute(object, context: context)
-            return
+           let method = object["method"] as? String {
+            if method == AgentProxyControl.Method.routesRemove.rawValue { removeRoute(object, context: context); return }
+            if method == AgentProxyControl.Method.clearHistory.rawValue { clearHistory(object, context: context); return }
         }
         let (reply, afterwards) = answer(line)
         write(reply, context: context, afterwards: afterwards)
@@ -128,10 +168,51 @@ private final class ControlHandler: ChannelInboundHandler {
         buffer.writeBytes(reply)
         buffer.writeInteger(UInt8(0x0A))
         let written = context.writeAndFlush(wrapOutboundOut(buffer))
-        if let afterwards { written.whenComplete { _ in afterwards() } }
+        written.whenComplete { [self] _ in
+            afterwards?()
+            processing = false
+            processNext(context: context)
+        }
     }
 
     func errorCaught(context: ChannelHandlerContext, error: Error) { context.close(promise: nil) }
+
+    private func clearHistory(_ object: [String: Any], context: ChannelHandlerContext) {
+        guard !pendingClear, let id = object["id"] as? String,
+              let request = try? decode(AgentProxyHistoryClearRequest.self, object["params"] ?? [String: Any]()),
+              request.confirmed else {
+            write(encode(id: object["id"] as? String, error: AgentProxyControlError(code: .invalidParams, message: "Explicit confirmation is required.")), context: context)
+            return
+        }
+        guard geteuid() != 0, identity.valid(), let provider = context.channel as? any SocketOptionProvider else {
+            write(encode(id: id, error: AgentProxyControlError(code: .unavailable, message: "Local control identity could not be verified.")), context: context)
+            return
+        }
+        pendingClear = true
+        let peer: EventLoopFuture<xucred> = provider.unsafeGetSocketOption(
+            level: NIOBSDSocket.OptionLevel(rawValue: SOL_LOCAL), name: NIOBSDSocket.Option(rawValue: LOCAL_PEERCRED))
+        peer.whenComplete { [self] result in
+            guard context.channel.isActive else { pendingClear = false; return }
+            guard case .success(let credentials) = result, credentials.cr_version == UInt32(XUCRED_VERSION),
+                  credentials.cr_uid == geteuid(), identity.valid(), let recorder = core.recorder else {
+                pendingClear = false
+                write(encode(id: id, error: AgentProxyControlError(code: .unavailable, message: "Local recorder identity is unavailable.")), context: context)
+                return
+            }
+            recorder.clearHistory().whenComplete { [self] outcome in
+                pendingClear = false
+                guard context.channel.isActive else { return }
+                switch outcome {
+                case .success: write(encode(id: id, result: AgentProxyHistoryCleared(cleared: true)), context: context)
+                case .failure(let error):
+                    let message = (error as? RecorderSupervisor.ClearError) == .partial
+                        ? "History clear was incomplete; some data may already have been removed."
+                        : "History could not be cleared or synchronized."
+                    write(encode(id: id, error: AgentProxyControlError(code: .unavailable, message: message)), context: context)
+                }
+            }
+        }
+    }
 
     private func removeRoute(_ object: [String: Any], context: ChannelHandlerContext) {
         guard pendingRemovals < 16 else { context.close(promise: nil); return }
@@ -192,6 +273,8 @@ private final class ControlHandler: ChannelInboundHandler {
                 return (encode(id: id, error: AgentProxyControlError(code: .unavailable, message: "Route removal requires synchronization.")), nil)
             case .routesList:
                 return (encode(id: id, result: AgentProxyRouteList(routes: core.routes.list())), nil)
+            case .clearHistory:
+                return (encode(id: id, error: AgentProxyControlError(code: .unavailable, message: "Local confirmation and peer verification are required.")), nil)
             }
         } catch let error as AgentProxyControlError {
             return (encode(id: id, error: error), nil)
