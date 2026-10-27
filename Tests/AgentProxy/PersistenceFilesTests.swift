@@ -65,6 +65,10 @@ struct PersistenceFilesTests {
               "bounded index and opaque record writes round trip")
         check(mode(valid + "/Conversations/index-v1.json") == 0o600,
               "atomic output is explicitly 0600 independent of the fixture umask")
+        let firstInventory = try holder!.inventoryRecords()
+        let secondInventory = try holder!.inventoryRecords()
+        check(firstInventory == secondInventory && firstInventory.count == 1 && firstInventory[0].generation == generation,
+              "repeated record inventory uses an independent directory stream")
         try runChild("--lock-child", root: valid, expected: 0)
         holder = nil
 
@@ -156,6 +160,16 @@ struct PersistenceFilesTests {
         try expect(.ioFailure, "pre-existing exclusive temporary collision") { try eexistWriter.writeIndex(Data("new".utf8)) }
         check(readFile(existingTemp) == Data("preserve-existing-temp".utf8),
               "failed O_EXCL creation never unlinks a pre-existing private temp")
+
+        let chmodFailure = try root("temp-fchmod-failure", under: work)
+        let chmodFailureTemporary = UUID(uuidString: "12121212-1212-1212-1212-121212121212")!
+        let chmodFailurePath = chmodFailure + "/Conversations/.tmp-" + chmodFailureTemporary.uuidString.lowercased()
+        let chmodFailureWriter = try ConversationPersistenceFiles(
+            verifiedStateRootPath: chmodFailure,
+            testControl: .init(temporaryUUID: chmodFailureTemporary, fault: .temporaryFchmod))
+        try expect(.ioFailure, "temporary fchmod failure") { try chmodFailureWriter.writeIndex(Data("new".utf8)) }
+        check(!FileManager.default.fileExists(atPath: chmodFailurePath),
+              "identity captured before fchmod cleans only the newly created temporary")
 
         let replacement = try root("temp-replacement", under: work)
         let replacementTemporary = UUID(uuidString: "22222222-2222-2222-2222-222222222222")!
