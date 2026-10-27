@@ -83,6 +83,7 @@ enum ConversationPersistenceFilesTestEvent: Equatable {
     case beforeLateDestinationCheck(String)
     case beforePublish(String)
     case beforeRecordRemoval(ConversationPersistenceGeneration)
+    case temporaryScanEntry(ConversationPersistenceFilesDirectory)
 }
 
 enum ConversationPersistenceIndexTestFault {
@@ -97,18 +98,21 @@ struct ConversationPersistenceFilesTestControl {
     let indexFault: ConversationPersistenceIndexTestFault?
     let event: ((ConversationPersistenceFilesTestEvent) -> Void)?
     let temporaryCreateError: (() -> Int32?)?
+    let temporaryScanLimit: Int?
 
     init(temporaryUUID: UUID? = nil, recordUUID: UUID? = nil,
          fault: ConversationPersistenceFilesTestFault? = nil,
          indexFault: ConversationPersistenceIndexTestFault? = nil,
          event: ((ConversationPersistenceFilesTestEvent) -> Void)? = nil,
-         temporaryCreateError: (() -> Int32?)? = nil) {
+         temporaryCreateError: (() -> Int32?)? = nil,
+         temporaryScanLimit: Int? = nil) {
         self.temporaryUUID = temporaryUUID
         self.recordUUID = recordUUID
         self.fault = fault
         self.indexFault = indexFault
         self.event = event
         self.temporaryCreateError = temporaryCreateError
+        self.temporaryScanLimit = temporaryScanLimit
     }
 }
 
@@ -330,6 +334,8 @@ final class ConversationPersistenceFiles {
     func emptyTemporaryTickets() throws -> [ConversationPersistenceEmptyTemporaryTicket] {
         try verifyLease()
         var tickets: [ConversationPersistenceEmptyTemporaryTicket] = []
+        var visited = 0
+        let scanLimit = max(1, min(testControl?.temporaryScanLimit ?? Self.maximumPhysicalRecords, Self.maximumPhysicalRecords))
         for (directory, fd) in [(ConversationPersistenceFilesDirectory.conversations, conversationsFD), (.records, recordsFD)] {
             let scanFD = Darwin.openat(fd, ".", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
             guard scanFD >= 0 else { throw ConversationPersistenceFilesError.ioFailure }
@@ -344,6 +350,13 @@ final class ConversationPersistenceFiles {
                 let name = withUnsafePointer(to: entry.pointee.d_name) {
                     $0.withMemoryRebound(to: CChar.self, capacity: Int(NAME_MAX) + 1) { String(cString: $0) }
                 }
+                if name == "." || name == ".." { continue }
+                // Fixed root entries are not managed generations or temps;
+                // every other name in either directory consumes scan budget.
+                if directory == .conversations && (name == Self.recordsName || name == Self.lockName || name == Self.indexName) { continue }
+                visited += 1
+                testControl?.event?(.temporaryScanEntry(directory))
+                guard visited <= scanLimit else { throw ConversationPersistenceFilesError.tooLarge }
                 guard Self.isTemporaryName(name) else { continue }
                 guard tickets.count < Self.maximumPhysicalRecords else { throw ConversationPersistenceFilesError.tooLarge }
                 let descriptor = Darwin.openat(fd, name, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)

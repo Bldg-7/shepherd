@@ -72,6 +72,35 @@ struct PersistenceFilesTests {
         try runChild("--lock-child", root: valid, expected: 0)
         holder = nil
 
+        // Discovery must stop on the fourth non-temp name, before a later
+        // inventory scan; both valid-looking generations and unknown names
+        // consume the same combined bound. The owned files remain untouched.
+        for knownNames in [false, true] {
+            let scanRoot = try root(knownNames ? "scan-generations" : "scan-unknown", under: work)
+            var visits = 0
+            let scanWriter = try ConversationPersistenceFiles(verifiedStateRootPath: scanRoot, testControl: .init(event: { event in
+                if case .temporaryScanEntry = event { visits += 1 }
+            }, temporaryScanLimit: 3))
+            let index = Data("preserved-index".utf8)
+            try scanWriter.writeIndex(index)
+            let directory = scanRoot + "/Conversations/records"
+            for n in 0..<10 {
+                let name = knownNames ? String(format: "00000000-0000-0000-0000-%012x.json", n + 1) : "unknown-\(n)"
+                try writePrivateFile(directory + "/" + name, Data("preserved".utf8))
+            }
+            let before = try FileManager.default.contentsOfDirectory(atPath: directory).sorted()
+            try expect(.tooLarge, "temporary discovery bounded non-temp scan") { _ = try scanWriter.emptyTemporaryTickets() }
+            check(visits == 4, "temporary discovery stops at first name beyond its trusted bound")
+            let after = try FileManager.default.contentsOfDirectory(atPath: directory).sorted()
+            let indexAfter = try scanWriter.readIndex()
+            check(after == before && before.count == 10 &&
+                  before.allSatisfy({ readFile(directory + "/" + $0) == Data("preserved".utf8) }) &&
+                  indexAfter == index, "bounded refusal preserves index and every non-temp entry")
+            visits = 0
+            try expect(.tooLarge, "inventory stops in bounded discovery") { _ = try scanWriter.inventoryRecords() }
+            check(visits == 4, "inventory does not enter its generation scan after discovery refusal")
+        }
+
         let priorUmask = umask(0o022)
         let umask022Root = try root("umask-022", under: work)
         let umask022Writer = try ConversationPersistenceFiles(verifiedStateRootPath: umask022Root)
