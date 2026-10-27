@@ -443,6 +443,15 @@ try:
 finally:
     oversized_field.stop()
 
+oversized_part_field = Recorder(a.work / 'authority-oversized-part-field')
+try:
+    oversized_part_field.frame(9, {'generation': 1, 'index': 0, 'count': 2,
+                                   'routes': [{'routeID': 'route', 'identity': invalid}]}, exchange=0)
+    check(oversized_part_field.wait() == 3, 'oversized field is rejected before multipart retention')
+    check(oversized_part_field.tee.recv(1) == b'', 'oversized part sends no ACK')
+finally:
+    oversized_part_field.stop()
+
 chunk_desync = Recorder(a.work / 'authority-chunk-desync')
 try:
     chunk_desync.frame(9, {'generation': 1, 'index': 1, 'count': 2, 'routes': [{'routeID': 'route', 'identity': identity}]}, exchange=0)
