@@ -305,14 +305,25 @@ struct FindRoot: View {
         func longHeading(_ title: String) -> PreviewMarkdownHeading { longHeadings.first { $0.title == title }! }
         try Data(longGuide.utf8).write(to: URL(fileURLWithPath: directory + "/long.md"))
 
+        // The rendered Markdown budget is 120,000 ASCII characters. Keep a
+        // bounded two-heading document whose changed suffix is outside it.
+        let largeHeader = "# Large guide\n\n## Stable heading\n\n"
+        let largePrefix = largeHeader + String(repeating: "x", count: 120_000 - largeHeader.count)
+        let largeOriginal = largePrefix + "\n\noriginal suffix"
+        let largeChanged = largePrefix + "\n\nchanged suffix"
+        check(largeOriginal != largeChanged && String(largeOriginal.prefix(120_000)) == String(largeChanged.prefix(120_000)),
+              "the large Markdown changes only outside the rendered prefix")
+        try Data(largeOriginal.utf8).write(to: URL(fileURLWithPath: directory + "/large.md"))
+
         let r = pane("w1:p3", terminal: "term_r", cwd: directory), s = pane("w1:p4", terminal: "term_s", cwd: directory),
             t = pane("w1:p5", terminal: "term_t", cwd: directory), u = pane("w1:p6", terminal: "term_u", cwd: directory),
-            n = pane("w1:p7", terminal: "term_n", cwd: directory)
+            n = pane("w1:p7", terminal: "term_n", cwd: directory), v = pane("w1:p8", terminal: "term_v", cwd: directory)
         let rItem = TerminalIdentity(connection: local.connectionIdentity, itemID: r.id)
         let sItem = TerminalIdentity(connection: local.connectionIdentity, itemID: s.id)
         let tItem = TerminalIdentity(connection: local.connectionIdentity, itemID: t.id)
         let uItem = TerminalIdentity(connection: local.connectionIdentity, itemID: u.id)
         let nItem = TerminalIdentity(connection: local.connectionIdentity, itemID: n.id)
+        let vItem = TerminalIdentity(connection: local.connectionIdentity, itemID: v.id)
         let window = host.view.window!
         func select(_ item: TerminalIdentity, _ pane: AgentSummary, expanded: Bool = false) {
             host.rootView = PanelRoot(entry: states.entry(for: item, panes: [pane]), store: store, expanded: expanded)
@@ -498,6 +509,20 @@ struct FindRoot: View {
               "a changed reload does not retain the previous document's reveal")
         check(press(trigger()) && settle(host.view) { outlineShown() == ["Replacement", "New heading"] },
               "reloaded headings are revealed and remain navigable")
+
+        // The local accessible reveal observes the complete loaded document,
+        // not only the 120,000 characters rendered on screen.
+        states.open(FilePreviewRequest(machine: local, pane: v, link: "large.md"), for: vItem)
+        let vModel = states.entry(for: vItem, panes: [v])!.model
+        select(vItem, v)
+        check(await settleAsync(host.view) { text(vModel) == largeOriginal && trigger() != nil }, "the bounded large Markdown preview is read")
+        check(press(trigger()), "the large preview's accessibility trigger can be pressed")
+        check(await settleAsync(host.view) { outlineShown() == ["Large guide", "Stable heading"] },
+              "the large preview's accessible TOC is revealed")
+        try Data(largeChanged.utf8).write(to: URL(fileURLWithPath: directory + "/large.md"))
+        await vModel.reload(states.entry(for: vItem, panes: [v])!.request, store: store)
+        check(await settleAsync(host.view) { text(vModel) == largeChanged && outlineShown().isEmpty },
+              "a suffix-only change outside the rendered prefix closes the accessible TOC")
     }
 
     static func views<T: NSView>(of type: T.Type, in view: NSView) -> [T] {

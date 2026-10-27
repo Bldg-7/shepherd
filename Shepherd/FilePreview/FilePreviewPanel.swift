@@ -225,7 +225,7 @@ struct FilePreviewPanel: View {
                 .overlay(alignment: .topTrailing) {
                     #if os(macOS)
                     if let markdown = shown.markdown, !markdown.headings.isEmpty {
-                        PreviewOutlineOverlay(model: model, headings: markdown.headings, document: shown.text,
+                        PreviewOutlineOverlay(model: model, headings: markdown.headings, document: text,
                                               documentID: request.id, outlineFocus: $outlineFocused,
                                               explicitReveal: $outlineExplicitlyRevealed)
                     }

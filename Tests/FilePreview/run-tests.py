@@ -11,9 +11,9 @@ env=dict(os.environ,DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer',H
 # placement from completion of PreviewScrollPlace's private anchor restoration.
 # Generate observer-bearing copies rather than expanding the production API.
 DERIVED_HASHES={
- 'Shepherd/FilePreview/FilePreviewPanel.swift':'fb9115d49126774b171562edc12aefcc4089a40fb8bb31f26e9f2378cf54fdc2',
+ 'Shepherd/FilePreview/FilePreviewPanel.swift':'fdbb7e360d0741973f7095f043e00bfece7addd450d227d7bf4ade59b60234e3',
  'Shepherd/FilePreview/SourceFilePreview.swift':'9d07eec8d9b1dd8cbbdc5d6a20b1a7c8cb3bccaa5b64f52ea8f692e64637d9f6',
- 'Tests/FilePreview/PanelWindowTests.swift':'ffd337085f80992fb746e2cae09ce814073d8187c587e88e104e15023d934b5a'
+ 'Tests/FilePreview/PanelWindowTests.swift':'5ea00c7483a2bdb8d2a159f9dd2d9bb457caded3fd9ccc2b0539ea2b46b1103a'
 }
 def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 def once(text,old,new,label):
