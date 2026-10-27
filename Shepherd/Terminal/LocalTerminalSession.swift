@@ -1,10 +1,11 @@
 import Foundation
+import os
 import NIOCore
 
 // SwiftTerm's `LocalProcess` (forkpty-based) is only compiled for
 // `!os(iOS) && !os(Windows)`, which in this app's target set means macOS.
 #if os(macOS)
-import SwiftTerm
+@preconcurrency import SwiftTerm
 
 /// Attaches to a herdr pane's live terminal the same way `TerminalSession`
 /// does (`herdr terminal attach <terminal> --takeover`, under a real PTY),
@@ -37,6 +38,21 @@ actor LocalTerminalSession: TerminalSessionProviding {
     /// terminate. Without this, that `stop()` would do nothing and the
     /// `start()` behind it would spawn an attach nobody is left to end.
     private var stopRequested = false
+
+    /// `forkpty` copies every descriptor the app has open. Keep one spawn's
+    /// master descriptor private until it is close-on-exec, so another attach
+    /// cannot inherit it during its own fork.
+    private struct SpawnGateState: Sendable {
+        /// Once setting FD_CLOEXEC failed, LocalProcess can only close the
+        /// master asynchronously. No subsequent fork may run in this process.
+        var blockedError: CInt?
+    }
+    private enum SpawnGateResult {
+        case started
+        case failed(CInt)
+        case blocked(CInt)
+    }
+    private static let spawnGate = OSAllocatedUnfairLock(initialState: SpawnGateState())
 
     init(terminalID: String, on herdrMachine: HerdrMachine? = nil) {
         self.terminalID = terminalID
@@ -83,17 +99,73 @@ actor LocalTerminalSession: TerminalSessionProviding {
         // backstop two seconds later (an interactive zsh happened to clear
         // the mask, which is why this never showed while every attach went
         // through one). The mask is opened for the fork alone.
-        var hangupSignals = sigset_t()
-        sigemptyset(&hangupSignals)
-        for signal in [SIGHUP, SIGTERM, SIGINT] {
-            sigaddset(&hangupSignals, signal)
-        }
-        var previousMask = sigset_t()
-        pthread_sigmask(SIG_UNBLOCK, &hangupSignals, &previousMask)
-        process.startProcess(executable: launch.executable, args: launch.arguments, environment: launch.environment)
-        pthread_sigmask(SIG_SETMASK, &previousMask, nil)
+        let executable = launch.executable
+        let arguments = launch.arguments
+        let environment = launch.environment
+        let result = Self.spawnGate.withLock { state -> SpawnGateResult in
+            if let error = state.blockedError { return .blocked(error) }
 
-        return stream
+            var hangupSignals = sigset_t()
+            sigemptyset(&hangupSignals)
+            for signal in [SIGHUP, SIGTERM, SIGINT] {
+                sigaddset(&hangupSignals, signal)
+            }
+            var previousMask = sigset_t()
+            pthread_sigmask(SIG_UNBLOCK, &hangupSignals, &previousMask)
+            defer { pthread_sigmask(SIG_SETMASK, &previousMask, nil) }
+
+            process.startProcess(executable: executable, args: arguments, environment: environment)
+            guard process.childfd >= 0 else {
+                // SwiftTerm's forkpty failure leaves both shellPid and childfd
+                // at their initial values. A positive pid here would violate
+                // that contract, so conservatively close this process's gate.
+                let error = CInt(EIO)
+                if process.shellPid > 0 { state.blockedError = error }
+                return .failed(error)
+            }
+            if let error = Self.setCloseOnExec(process.childfd) {
+                // LocalProcess closes its master asynchronously. Mark the gate
+                // before this lock releases so no later fork can inherit it.
+                state.blockedError = error
+                return .failed(error)
+            }
+            return .started
+        }
+
+        switch result {
+        case .started:
+            return stream
+        case .failed(let error), .blocked(let error):
+            discardFailedStart(process, bridge: bridge)
+            throw POSIXError(POSIXErrorCode(rawValue: error) ?? .EIO)
+        }
+    }
+
+    /// Returns the fcntl error after retrying an interrupted call. The caller
+    /// holds `spawnGate` until this has succeeded or blocked every future fork.
+    private static func setCloseOnExec(_ fd: Int32) -> CInt? {
+        var descriptorFlags: CInt
+        repeat { descriptorFlags = fcntl(fd, F_GETFD) } while descriptorFlags == -1 && errno == EINTR
+        guard descriptorFlags >= 0 else { return errno == 0 ? EIO : errno }
+
+        var result: CInt
+        repeat { result = fcntl(fd, F_SETFD, descriptorFlags | FD_CLOEXEC) } while result == -1 && errno == EINTR
+        return result == 0 ? nil : (errno == 0 ? EIO : errno)
+    }
+
+    /// Stops and reaps a child from a failed start before dropping the state
+    /// that owns its PID. `LocalProcess` reports a failed fork as childfd -1.
+    private func discardFailedStart(_ process: LocalProcess, bridge: DelegateBridge) {
+        if process.shellPid > 0 && !bridge.processHasExited {
+            let pid = process.shellPid
+            Self.hangUp(pid)
+            process.terminate()
+            Self.reapWhenExited(pid)
+        }
+        self.process = nil
+        delegateBridge = nil
+        outputContinuation?.finish()
+        outputContinuation = nil
     }
 
     func write(_ data: Data) async throws {
