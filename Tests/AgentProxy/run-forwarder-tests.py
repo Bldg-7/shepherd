@@ -194,7 +194,7 @@ def stage(name, seconds, command):
 build = out / 'package/.build/debug'
 sandbox = ['/usr/bin/sandbox-exec', '-f', str(out / 'sandbox.sb')]
 stage('agent-proxy-build', 900, ['/usr/bin/xcrun', 'swift', 'build', '--package-path', str(out / 'package'), '--jobs', '4',
-                                 '--disable-automatic-resolution'])
+                                 '--disable-automatic-resolution', '-Xswiftc', '-D', '-Xswiftc', 'SHPHRD_OWNER_CLOSE_TESTING'])
 linkage = subprocess.check_output(['/usr/bin/otool', '-L', str(build / 'hrdrhrdrhrdr-agent-proxy')], text=True, timeout=30)
 (out / 'compression-linkage.log').write_text(linkage)
 assert '/opt/homebrew/' not in linkage and 'libzstd' not in linkage, 'decoder must not depend on a local zstd dylib'

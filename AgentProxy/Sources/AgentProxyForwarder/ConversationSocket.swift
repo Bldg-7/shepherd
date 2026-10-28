@@ -280,6 +280,12 @@ private final class ReadState: @unchecked Sendable {
         let admittedClients: Int
         let activeExchanges: Int
         let statusWorkspaceDeferrals: Int
+        #if SHPHRD_OWNER_CLOSE_TESTING
+        var retiredSettlementCount: Int = 0
+        var retiredSettlementReleaseCount: Int = 0
+        var testOperationRunning: Bool = false
+        var testPendingRecords: Int = 0
+        #endif
     }
 
     func persistenceStatus() -> PersistenceStatus {
@@ -291,15 +297,22 @@ private final class ReadState: @unchecked Sendable {
             case .degraded: mode = "degraded"
             }
         } else { mode = "off" }
-        return PersistenceStatus(mode: mode, blockedConversations: blockedPersistence.count,
-                                 historicalConflicts: historicalConflicts.count,
-                                 authorityRetainedBytes: authorityReservation == nil ? 0 : Self.authorityWorkspaceBytes,
-                                 captureReservedBytes: capture.reservedBytes,
-                                 authorityAwaitingCapacity: authorityAwaitingCapacity,
-                                 authorityAssemblyBytes: authorityAssemblyBytes,
-                                 admittedClients: clients.count,
-                                 activeExchanges: capture.activeExchangeCount,
-                                 statusWorkspaceDeferrals: persistence?.statusWorkspaceDeferrals ?? 0)
+        var status = PersistenceStatus(mode: mode, blockedConversations: blockedPersistence.count,
+                                       historicalConflicts: historicalConflicts.count,
+                                       authorityRetainedBytes: authorityReservation == nil ? 0 : Self.authorityWorkspaceBytes,
+                                       captureReservedBytes: capture.reservedBytes,
+                                       authorityAwaitingCapacity: authorityAwaitingCapacity,
+                                       authorityAssemblyBytes: authorityAssemblyBytes,
+                                       admittedClients: clients.count,
+                                       activeExchanges: capture.activeExchangeCount,
+                                       statusWorkspaceDeferrals: persistence?.statusWorkspaceDeferrals ?? 0)
+        #if SHPHRD_OWNER_CLOSE_TESTING
+        status.retiredSettlementCount = persistence?.retiredSettlementCount ?? 0
+        status.retiredSettlementReleaseCount = persistence?.retiredSettlementReleaseCount ?? 0
+        status.testOperationRunning = persistence?.testOperationRunning ?? false
+        status.testPendingRecords = persistence?.testPendingRecords ?? 0
+        #endif
+        return status
     }
 
     /// Retry one blocked live key per interval. Only a no-record result can
@@ -480,7 +493,11 @@ private final class ReadState: @unchecked Sendable {
                 self.retryTicks = 0
                 self.retryBlockedPersistence()
                 self.scheduleChangedRecords()
+                #if SHPHRD_OWNER_CLOSE_TESTING
+                if getenv("SHPHRD_OWNER_TEST_NO_STATUS") == nil { self.persistence?.refreshStatus() }
+                #else
                 self.persistence?.refreshStatus()
+                #endif
             }
         }
     }

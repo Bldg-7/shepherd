@@ -2,7 +2,7 @@
 """Synthetic fd3 tee -> real recorder -> private NDJSON socket. No app/agents,
 credentials, transcript files or external network. All sockets under --work.
 """
-import argparse, fcntl, hashlib, json, os, select, signal, socket, stat, struct, subprocess, threading, time
+import argparse, fcntl, hashlib, json, os, select, signal, socket, stat, struct, subprocess, time
 from pathlib import Path
 
 p = argparse.ArgumentParser()
@@ -71,7 +71,7 @@ class Reader:
             self.buffer.extend(chunk)
 
 class Recorder:
-    def __init__(self, directory, path=None, state_directory=None, initial=b''):
+    def __init__(self, directory, path=None, state_directory=None, initial=b'', close_barrier=False, wait_mode=None, disable_status_tick=False):
         directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.path = path or directory / 'ac.sock'
         self.tee, child = socket.socketpair()
@@ -79,10 +79,39 @@ class Recorder:
         actions = [(os.POSIX_SPAWN_DUP2, child.fileno(), 3)]
         if child.fileno() != 3: actions.append((os.POSIX_SPAWN_CLOSE, child.fileno()))
         for fd in [1, 2]: actions.append((os.POSIX_SPAWN_OPEN, fd, '/dev/null', os.O_WRONLY, 0o600))
+        self.close_barrier = None; self.wait_control = None
+        barrier_child = None; barrier_copy = None; wait_child = None; wait_copy = None; environment = {}
+        if close_barrier:
+            self.close_barrier, barrier_child = socket.socketpair()
+            self.close_barrier.settimeout(3)
+            barrier_copy = fcntl.fcntl(barrier_child.fileno(), fcntl.F_DUPFD_CLOEXEC, 60)
+            actions.append((os.POSIX_SPAWN_DUP2, barrier_copy, 50))
+            environment['SHPHRD_OWNER_CLOSE_BARRIER_FD'] = '50'
+        if wait_mode is not None:
+            assert wait_mode in ('pending', 'unknown')
+            self.wait_control, wait_child = socket.socketpair()
+            self.wait_control.settimeout(3)
+            wait_copy = fcntl.fcntl(wait_child.fileno(), fcntl.F_DUPFD_CLOEXEC, 60)
+            actions.append((os.POSIX_SPAWN_DUP2, wait_copy, 51))
+            environment['SHPHRD_OWNER_WAIT_TEST_FD'] = '51'
+            environment['SHPHRD_OWNER_WAIT_TEST_MODE'] = wait_mode
+        if disable_status_tick:
+            environment['SHPHRD_OWNER_TEST_NO_STATUS'] = '1'
         command = [str(a.binary), 'recorder', '--socket', str(self.path)]
         if state_directory is not None: command += ['--state-dir', str(state_directory)]
-        self.pid = os.posix_spawn(str(a.binary), command, {}, file_actions=actions)
-        child.close(); self.tee.settimeout(5); self.status = None
+        try: self.pid = os.posix_spawn(str(a.binary), command, environment, file_actions=actions)
+        except BaseException:
+            self.tee.close()
+            if self.close_barrier is not None: self.close_barrier.close()
+            if self.wait_control is not None: self.wait_control.close()
+            raise
+        finally:
+            child.close()
+            if barrier_child is not None: barrier_child.close()
+            if barrier_copy is not None: os.close(barrier_copy)
+            if wait_child is not None: wait_child.close()
+            if wait_copy is not None: os.close(wait_copy)
+        self.tee.settimeout(5); self.status = None
     def wait(self, timeout=5):
         until = time.monotonic() + timeout
         while self.status is None:
@@ -447,8 +476,8 @@ finally:
 # recorder must wait off-loop for EOF/reaping without an exceptional failure.
 late_root = a.work / 'late-owner-state'
 late_root.mkdir(mode=0o700)
-late = Recorder(a.work / 'late-owner-socket', state_directory=late_root)
-late_owner = None; late_started = None; resume_errors = []; resume_thread = None
+late = Recorder(a.work / 'late-owner-socket', state_directory=late_root, close_barrier=True)
+late_owner = None; late_started = None
 try:
     late.authority(); late.begin(wait_admission=True); late.end(); late.conversation()
     late_index = late_root / 'Conversations' / 'index-v1.json'
@@ -468,18 +497,14 @@ try:
         if children[late_owner][0].startswith('T'): break
         assert time.monotonic() < deadline, 'late owner stop barrier'
         time.sleep(.02)
-    def resume_late_owner():
-        try:
-            time.sleep(.1)
-            signal_recorder_owner(late, late_owner, late_started, signal.SIGCONT)
-        except Exception as error: resume_errors.append(error)
-    resume_thread = threading.Thread(target=resume_late_owner)
-    resume_thread.start()
-    check(late.stop() == 0, 'late owner EOF exit within the grace period is clean')
-    resume_thread.join(timeout=3)
-    check(not resume_thread.is_alive() and not resume_errors, 'late owned child was resumed only after identity verification')
+    late.tee.shutdown(socket.SHUT_WR)
+    assert late.close_barrier.recv(1) == b'\x01', 'worker close-entry barrier'
+    signal_recorder_owner(late, late_owner, late_started, signal.SIGCONT)
+    late.close_barrier.sendall(b'\x01'); late.close_barrier.close()
+    check(late.wait() == 0, 'late owner EOF exit after close-entry barrier is clean')
+    late.tee.close()
 finally:
-    if resume_thread is not None: resume_thread.join(timeout=3)
+    if late.close_barrier is not None: late.close_barrier.close()
     if late.status is None and late_owner is not None:
         children = recorder_children(late.pid)
         if late_owner in children and children[late_owner][1] == late_started:
@@ -524,6 +549,144 @@ try:
 finally:
     if owner_crash.status is None:
         check(owner_crash.stop() == 4, 'abnormal owner exit makes recorder shutdown report failure')
+
+# Test-build-only waitpid controls hold a genuine signalled child unreaped or
+# make its identity unprovable. They never synthesize a successful waitpid.
+def reservation_retirement(mode, operation):
+    name = 'reservation-' + operation + '-' + mode
+    root = a.work / (name + '-state')
+    root.mkdir(mode=0o700)
+    child = Recorder(a.work / (name + '-socket'), state_directory=root, wait_mode=mode, disable_status_tick=True)
+    owner_pid = None; owner_started = None
+    try:
+        child.authority(); child.begin(wait_admission=True); child.end(); child.conversation()
+        index = root / 'Conversations' / 'index-v1.json'
+        deadline = time.monotonic() + 10
+        while True:
+            try:
+                if json.loads(index.read_bytes())['records']:
+                    status = child.query('persistence.status')['result']
+                    if not status['testOperationRunning'] and status['testPendingRecords'] == 0: break
+            except (OSError, ValueError, KeyError): pass
+            assert time.monotonic() < deadline, 'reservation test initial save and idle barrier deadline'
+            time.sleep(.02)
+        owner_pid, owner_started = wait_for_recorder_owner(child)
+        signal_recorder_owner(child, owner_pid, owner_started, signal.SIGSTOP)
+        deadline = time.monotonic() + 3
+        while True:
+            children = recorder_children(child.pid)
+            assert owner_pid in children and children[owner_pid][1] == owner_started, 'reservation owner identity'
+            if children[owner_pid][0].startswith('T'): break
+            assert time.monotonic() < deadline, 'reservation owner stop barrier'
+            time.sleep(.02)
+        identity = {'kind': 'claude', 'session': 'session', 'paneID': 'pane', 'terminalID': 'terminal', 'cliVersion': '2.1.309'}
+        if operation == 'clear':
+            child.frame(10, exchange=2)
+        else:
+            native = 'native' if operation == 'save' else 'synthetic-new-load'
+            child.frame(1, {'routeID': 'route', 'upstream': 'anthropic', 'method': 'POST', 'path': '/v1/messages',
+                            'routeIdentity': identity, 'headers': [['x-claude-code-session-id', native],
+                            ['x-claude-code-request-class', 'main'], ['x-claude-code-agent-id', 'root']]}, exchange=2)
+            child.frame(2, {'messages': [{'role': 'user', 'content': 'held-synthetic-write'}]}, exchange=2)
+            child.frame(3, exchange=2)
+        minimum = (72 if operation == 'save' else 64) << 20
+        deadline = time.monotonic() + 12
+        while True:
+            status = child.query('persistence.status')['result']
+            if status['mode'] == 'degraded' and status['captureReservedBytes'] >= minimum: break
+            assert time.monotonic() < deadline, 'unreaped owner reservation barrier'
+            time.sleep(.05)
+        held_count = status['retiredSettlementCount']
+        held_releases = status['retiredSettlementReleaseCount']
+        held_bytes = status['captureReservedBytes']
+        time.sleep(.2)
+        status = child.query('persistence.status')['result']
+        check(status['captureReservedBytes'] >= minimum and status['retiredSettlementCount'] == held_count
+              and status['retiredSettlementReleaseCount'] == held_releases,
+              operation + '/' + mode + ' retains operation reservations without release')
+        if operation != 'clear': child.authority(generation=2, routes=False, expect_ack=False)
+        check(not select.select([child.tee], [], [], .2)[0], operation + '/' + mode + ' owner fences reply while unreaped')
+        if mode == 'pending':
+            child.wait_control.sendall(b'\x01')
+            if operation == 'clear':
+                kind, generation, payload = child.reply_frame()
+                check(kind == 11 and generation == 2 and json.loads(payload)['outcome'] == 'partial',
+                      'interrupted clear reports partial after the owner is reaped')
+            else: child.ack(2)
+            status = child.query('persistence.status')['result']
+            expected_releases = 2 if operation == 'save' else 1
+            check(status['retiredSettlementCount'] == held_count + 1
+                  and status['retiredSettlementReleaseCount'] == held_releases + expected_releases,
+                  operation + ' late reap releases its held reservations exactly once')
+            check(status['captureReservedBytes'] <= held_bytes - (64 << 20),
+                  operation + ' late reap returns the held modeled workspace')
+        else:
+            check(not select.select([child.tee], [], [], .2)[0], 'unknown identity never grants revocation ACK')
+    finally:
+        if child.wait_control is not None:
+            if mode == 'pending':
+                try: child.wait_control.sendall(b'\x01')
+                except OSError: pass
+            child.wait_control.close()
+        if child.status is None and owner_pid is not None:
+            children = recorder_children(child.pid)
+            if owner_pid in children and children[owner_pid][1] == owner_started and children[owner_pid][0].startswith('T'):
+                signal_recorder_owner(child, owner_pid, owner_started, signal.SIGCONT)
+        if child.status is None:
+            check(child.stop() == 4, mode + ' exceptional owner retirement reports recorder failure')
+
+reservation_retirement('pending', 'save')
+reservation_retirement('pending', 'load')
+reservation_retirement('pending', 'clear')
+reservation_retirement('unknown', 'save')
+
+# Keep the normal periodic status timer enabled: its own 64 MiB workspace
+# must also survive a pending reap, independently of the deterministic save.
+status_retire_root = a.work / 'reservation-status-state'
+status_retire_root.mkdir(mode=0o700)
+status_retire = Recorder(a.work / 'reservation-status-socket', state_directory=status_retire_root, wait_mode='pending')
+status_owner = None; status_started = None
+try:
+    status_retire.authority()
+    status_owner, status_started = wait_for_recorder_owner(status_retire)
+    deadline = time.monotonic() + 5
+    while status_retire.query('persistence.status')['result']['testOperationRunning']:
+        assert time.monotonic() < deadline, 'status worker initial idle deadline'
+        time.sleep(.02)
+    signal_recorder_owner(status_retire, status_owner, status_started, signal.SIGSTOP)
+    deadline = time.monotonic() + 3
+    while True:
+        children = recorder_children(status_retire.pid)
+        assert status_owner in children and children[status_owner][1] == status_started, 'status owner identity'
+        if children[status_owner][0].startswith('T'): break
+        assert time.monotonic() < deadline, 'status owner stop barrier'
+        time.sleep(.02)
+    deadline = time.monotonic() + 12
+    while True:
+        status = status_retire.query('persistence.status')['result']
+        if status['mode'] == 'degraded' and status['captureReservedBytes'] >= 64 << 20: break
+        assert time.monotonic() < deadline, 'periodic status retirement barrier'
+        time.sleep(.05)
+    held_count = status['retiredSettlementCount']; held_releases = status['retiredSettlementReleaseCount']
+    status_retire.authority(generation=2, routes=False, expect_ack=False)
+    check(not select.select([status_retire.tee], [], [], .2)[0], 'periodic status pending reap fences authority')
+    status = status_retire.query('persistence.status')['result']
+    check(status['captureReservedBytes'] >= 64 << 20 and status['retiredSettlementCount'] == held_count
+          and status['retiredSettlementReleaseCount'] == held_releases, 'periodic status workspace remains reserved')
+    status_retire.wait_control.sendall(b'\x01'); status_retire.ack(2)
+    status = status_retire.query('persistence.status')['result']
+    check(status['retiredSettlementCount'] == held_count + 1 and status['retiredSettlementReleaseCount'] == held_releases + 1,
+          'proven status-owner reap releases its workspace exactly once')
+finally:
+    if status_retire.wait_control is not None:
+        try: status_retire.wait_control.sendall(b'\x01')
+        except OSError: pass
+        status_retire.wait_control.close()
+    if status_retire.status is None and status_owner is not None:
+        children = recorder_children(status_retire.pid)
+        if status_owner in children and children[status_owner][1] == status_started and children[status_owner][0].startswith('T'):
+            signal_recorder_owner(status_retire, status_owner, status_started, signal.SIGCONT)
+    if status_retire.status is None: check(status_retire.stop() == 4, 'periodic status abnormal owner retirement is reported')
 
 # A root-wide producer lease is acquired before a recorder accepts capture,
 # regardless of its independent read/control socket path.

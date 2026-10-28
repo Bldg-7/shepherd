@@ -32,6 +32,14 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
     private var authorityPaused = false
     private var storageGeneration: UInt64 = 1 // recorder loop only
     private var fenceWaiters: [() -> Void] = []
+    private struct Settlement {
+        let reservations: [UUID]
+        let completion: () -> Void
+        #if SHPHRD_OWNER_CLOSE_TESTING
+        var ownerWasPending = false
+        #endif
+    }
+    private var settlement: Settlement? // recorder loop only
     final class Finish: @unchecked Sendable {
         private let semaphore = DispatchSemaphore(value: 0)
         private var clean = false
@@ -41,6 +49,12 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
     private var finished: Finish?
     private(set) var health: Health = .volatile
     private(set) var statusWorkspaceDeferrals = 0
+    #if SHPHRD_OWNER_CLOSE_TESTING
+    private(set) var retiredSettlementCount = 0
+    private(set) var retiredSettlementReleaseCount = 0
+    var testOperationRunning: Bool { running }
+    var testPendingRecords: Int { pending.count }
+    #endif
 
     init(root: String, loop: EventLoop, capture: ConversationCapture, producerLease: ConversationProducerLease) {
         self.root = root; self.loop = loop; self.capture = capture; self.producerLease = producerLease
@@ -83,12 +97,10 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
             } catch { retireOwner(); result = .failure(error) }
             let ownerPending = owner?.isClosed == true
             loop.execute { [self] in
-                capture.release(workspace)
                 // Degradation is sticky for this recorder lifetime: a later
                 // unrelated success does not prove a failed record is healthy.
                 if case .failure = result { health = .degraded }
-                completion(result)
-                settleWorker(ownerPending: ownerPending)
+                beginSettlement(ownerPending: ownerPending, reservations: [workspace]) { completion(result) }
             }
         }
         return true
@@ -154,10 +166,9 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
             } catch { retireOwner(); healthy = false }
             let ownerPending = owner?.isClosed == true
             loop.execute { [self] in
-                capture.release(reservation)
                 if !healthy { health = .degraded }
                 else if case .volatile = health { health = .healthy }
-                settleWorker(ownerPending: ownerPending)
+                beginSettlement(ownerPending: ownerPending, reservations: [reservation]) {}
             }
         }
     }
@@ -215,10 +226,8 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
                 } catch { retireOwner(); outcome = .partial }
                 let ownerPending = owner?.isClosed == true
                 loop.execute { [self] in
-                    capture.release(workspace)
                     if case .cleared = outcome {} else { health = .degraded }
-                    completion(outcome)
-                    settleWorker(ownerPending: ownerPending)
+                    beginSettlement(ownerPending: ownerPending, reservations: [workspace]) { completion(outcome) }
                 }
             }
         }
@@ -274,18 +283,28 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
             } catch { retireOwner(); success = false }
             let ownerPending = owner?.isClosed == true
             loop.execute { [self] in
-                capture.release(workspace)
-                capture.release(next.reservation)
                 if !success { health = .degraded }
                 else if case .volatile = health { health = .healthy }
-                loop.execute { next.completion(success) }
-                settleWorker(ownerPending: ownerPending)
+                beginSettlement(ownerPending: ownerPending, reservations: [workspace, next.reservation]) {
+                    loop.execute { next.completion(success) }
+                }
             }
         }
     }
 
-    /// An unreaped owner may still finish I/O. Keep the fence closed until
-    /// the worker proves exit; an unknown child identity stays fail-closed.
+    private func beginSettlement(ownerPending: Bool, reservations: [UUID], completion: @escaping () -> Void) {
+        loop.assertInEventLoop()
+        precondition(settlement == nil && Set(reservations).count == reservations.count)
+        var value = Settlement(reservations: reservations, completion: completion)
+        #if SHPHRD_OWNER_CLOSE_TESTING
+        value.ownerWasPending = ownerPending
+        #endif
+        settlement = value
+        settleWorker(ownerPending: ownerPending)
+    }
+
+    /// An unreaped owner may still finish I/O. Its reservations and fence stay
+    /// held until exit is proved; an unknown child identity stays fail-closed.
     private func settleWorker(ownerPending: Bool) {
         loop.assertInEventLoop()
         if ownerPending {
@@ -306,10 +325,26 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
             }
             return
         }
+        guard let settled = settlement else { preconditionFailure("missing owner settlement") }
+        settlement = nil
+        for reservation in settled.reservations { capture.release(reservation) }
+        #if SHPHRD_OWNER_CLOSE_TESTING
+        if settled.ownerWasPending {
+            retiredSettlementCount += 1
+            retiredSettlementReleaseCount += settled.reservations.count
+        }
+        #endif
         running = false
         let waiters = fenceWaiters
         fenceWaiters.removeAll()
-        for waiter in waiters { waiter() }
+        settled.completion()
+        for (index, waiter) in waiters.enumerated() {
+            if running {
+                fenceWaiters.insert(contentsOf: waiters[index...], at: 0)
+                break
+            }
+            waiter()
+        }
         drain()
     }
 }

@@ -15,6 +15,10 @@ final class ConversationStorageOwnerClient {
     private var reaped = false
     private var uncertain = false
     private var escalated = false
+    #if SHPHRD_OWNER_CLOSE_TESTING
+    private var signalAttempted = false
+    private var testWaitReleased = false
+    #endif
 
     enum CloseResult { case clean, failed, pending, unknown }
 
@@ -106,15 +110,50 @@ final class ConversationStorageOwnerClient {
         if !closed {
             closed = true
             shutdown(socketFD, SHUT_RDWR); Darwin.close(socketFD)
+            #if SHPHRD_OWNER_CLOSE_TESTING
+            if !waitForTestCloseBarrier() { escalated = true }
+            #endif
             if let result = waitForExit(milliseconds: 300) { return result }
             // Only an owned, unreaped child can still have this PID.
             escalated = true
+            #if SHPHRD_OWNER_CLOSE_TESTING
+            signalAttempted = true
+            #endif
             _ = kill(child, SIGKILL)
             if let result = waitForExit(milliseconds: 300) { return result }
             return .pending
         }
         return pollExit() ?? .pending
     }
+
+    #if SHPHRD_OWNER_CLOSE_TESTING
+    /// The explicit inherited socket is present only in the synthetic test
+    /// build. The bounded handshake pauses the worker, never the NIO loop.
+    private func waitForTestCloseBarrier() -> Bool {
+        guard let value = getenv("SHPHRD_OWNER_CLOSE_BARRIER_FD") else { return true }
+        guard String(cString: value) == "50" else { return false }
+        let fd: Int32 = 50
+        var info = stat(), noSignal: Int32 = 1
+        guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFSOCK,
+              fcntl(fd, F_SETFD, FD_CLOEXEC) == 0,
+              setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &noSignal, socklen_t(MemoryLayout<Int32>.size)) == 0 else { return false }
+        defer { Darwin.close(fd) }
+        var byte: UInt8 = 1
+        guard Darwin.send(fd, &byte, 1, MSG_DONTWAIT) == 1 else { return false }
+        let deadline = DispatchTime.now().uptimeNanoseconds + 2_000_000_000
+        var descriptor = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+        while true {
+            let now = DispatchTime.now().uptimeNanoseconds
+            guard now < deadline else { return false }
+            let remaining = Int32(min((deadline - now + 999_999) / 1_000_000, 2_000))
+            let result = Darwin.poll(&descriptor, 1, remaining)
+            if result < 0 && errno == EINTR { continue }
+            guard result > 0, descriptor.revents & Int16(POLLIN) != 0 else { return false }
+            byte = 0
+            return Darwin.recv(fd, &byte, 1, MSG_DONTWAIT) == 1 && byte == 1
+        }
+    }
+    #endif
 
     private func waitForExit(milliseconds: Int) -> CloseResult? {
         let deadline = DispatchTime.now().uptimeNanoseconds + UInt64(milliseconds) * 1_000_000
@@ -128,6 +167,23 @@ final class ConversationStorageOwnerClient {
     private func pollExit() -> CloseResult? {
         if uncertain { return .unknown }
         if reaped { return .failed }
+        #if SHPHRD_OWNER_CLOSE_TESTING
+        if signalAttempted, !testWaitReleased, let mode = getenv("SHPHRD_OWNER_WAIT_TEST_MODE") {
+            var info = stat()
+            guard let value = getenv("SHPHRD_OWNER_WAIT_TEST_FD"), String(cString: value) == "51",
+                  fstat(51, &info) == 0, info.st_mode & S_IFMT == S_IFSOCK,
+                  fcntl(51, F_SETFD, FD_CLOEXEC) == 0 else { uncertain = true; return .unknown }
+            let selected = String(cString: mode)
+            if selected == "unknown" { uncertain = true; return .unknown }
+            guard selected == "pending" else { uncertain = true; return .unknown }
+            var byte: UInt8 = 0
+            let count = Darwin.recv(51, &byte, 1, MSG_DONTWAIT)
+            if count < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) { return nil }
+            guard count == 1, byte == 1 else { uncertain = true; return .unknown }
+            testWaitReleased = true
+            Darwin.close(51)
+        }
+        #endif
         var status: Int32 = 0
         let result = waitpid(child, &status, WNOHANG)
         if result == child {
