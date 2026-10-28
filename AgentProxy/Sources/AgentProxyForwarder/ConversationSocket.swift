@@ -276,6 +276,8 @@ private final class ReadState: @unchecked Sendable {
         let authorityAwaitingCapacity: Bool
         let authorityAssemblyBytes: Int
         let admittedClients: Int
+        let activeExchanges: Int
+        let statusWorkspaceDeferrals: Int
     }
 
     func persistenceStatus() -> PersistenceStatus {
@@ -293,7 +295,9 @@ private final class ReadState: @unchecked Sendable {
                                  captureReservedBytes: capture.reservedBytes,
                                  authorityAwaitingCapacity: authorityAwaitingCapacity,
                                  authorityAssemblyBytes: authorityAssemblyBytes,
-                                 admittedClients: clients.count)
+                                 admittedClients: clients.count,
+                                 activeExchanges: capture.activeExchangeCount,
+                                 statusWorkspaceDeferrals: persistence?.statusWorkspaceDeferrals ?? 0)
     }
 
     /// Retry one blocked live key per interval. Only a no-record result can

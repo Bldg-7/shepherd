@@ -49,10 +49,10 @@
         "ko" : { "stringUnit" : { "state" : "translated", "value" : "저장된 기록 일부를 사용할 수 없거나 저장하지 못했습니다. 실시간 수집은 계속될 수 있습니다." } }
       }
     },
-    "The last storage check succeeded; recent changes may still be saving." : {
+    "The last storage index check succeeded. Individual records may still be unreadable, and recent changes may still be saving." : {
       "localizations" : {
-        "ja" : { "stringUnit" : { "state" : "translated", "value" : "前回の保存先確認に成功しました。最近の変更はまだ保存中の場合があります。" } },
-        "ko" : { "stringUnit" : { "state" : "translated", "value" : "마지막 저장소 확인에 성공했습니다. 최근 변경 사항은 아직 저장 중일 수 있습니다." } }
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "前回の保存インデックス確認に成功しました。個々の記録を読み取れない場合や、最近の変更がまだ保存中の場合があります。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "마지막 저장 인덱스 확인에 성공했습니다. 개별 기록을 읽지 못할 수 있으며 최근 변경 사항은 아직 저장 중일 수 있습니다." } }
       }
     },
     "Saved history storage has not been verified." : {

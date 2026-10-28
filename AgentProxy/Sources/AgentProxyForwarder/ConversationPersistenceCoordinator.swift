@@ -33,6 +33,7 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
     private var fenceWaiters: [() -> Void] = []
     private var finished: DispatchSemaphore?
     private(set) var health: Health = .volatile
+    private(set) var statusWorkspaceDeferrals = 0
 
     init(root: String, loop: EventLoop, capture: ConversationCapture, producerLease: ConversationProducerLease) {
         self.root = root; self.loop = loop; self.capture = capture; self.producerLease = producerLease
@@ -110,14 +111,18 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
         initializationRetryAfter = ProcessInfo.processInfo.systemUptime + 5
     }
 
-    /// Status is obtained from the owner over the same serial channel; this
-    /// cached health never claims that a queued write has committed.
+    /// Status may start the owner and its activation/retention scan, or run a
+    /// metadata check that retires expired records. Admit the full journal
+    /// workspace; this is accounting, not an allocator or process RSS bound.
     func refreshStatus() {
         loop.assertInEventLoop()
-        let workspace = 1 << 20
-        guard !authorityPaused, !running, pending.isEmpty, workspace <= capture.limits.totalBytes,
-              capture.accountedBytes <= capture.limits.totalBytes - workspace,
-              let reservation = capture.reserve(bytes: workspace) else { return }
+        guard !authorityPaused, !running, pending.isEmpty else { return }
+        guard Self.workspaceBytes <= capture.limits.totalBytes,
+              capture.accountedBytes <= capture.limits.totalBytes - Self.workspaceBytes,
+              let reservation = capture.reserve(bytes: Self.workspaceBytes) else {
+            if statusWorkspaceDeferrals < Int.max { statusWorkspaceDeferrals += 1 }
+            return
+        }
         running = true
         let generation = storageGeneration
         worker.async { [self] in

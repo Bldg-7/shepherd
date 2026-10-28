@@ -2,7 +2,7 @@
 """Synthetic fd3 tee -> real recorder -> private NDJSON socket. No app/agents,
 credentials, transcript files or external network. All sockets under --work.
 """
-import argparse, fcntl, json, os, select, signal, socket, stat, struct, subprocess, time
+import argparse, fcntl, hashlib, json, os, select, signal, socket, stat, struct, subprocess, time
 from pathlib import Path
 
 p = argparse.ArgumentParser()
@@ -35,10 +35,11 @@ class Reader:
             self.buffer.extend(chunk)
 
 class Recorder:
-    def __init__(self, directory, path=None, state_directory=None):
+    def __init__(self, directory, path=None, state_directory=None, initial=b''):
         directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.path = path or directory / 'ac.sock'
         self.tee, child = socket.socketpair()
+        if initial: self.tee.sendall(initial)
         actions = [(os.POSIX_SPAWN_DUP2, child.fileno(), 3)]
         if child.fileno() != 3: actions.append((os.POSIX_SPAWN_CLOSE, child.fileno()))
         for fd in [1, 2]: actions.append((os.POSIX_SPAWN_OPEN, fd, '/dev/null', os.O_WRONLY, 0o600))
@@ -195,6 +196,13 @@ try:
     check(owner_reply(owner_socket, 4)['outcome'] == 'success', 'owner commits ordered pre-clear save')
     check(owner_reply(owner_socket, 5)['outcome'] == 'success', 'owner serializes clear after queued save')
     check(owner_request(owner_socket, 6, 'load', key, generation=2).get('record') is None, 'pre-clear record is not reloaded after clear')
+    owner_index = owner_root / 'Conversations' / 'index-v1.json'
+    owner_original = owner_index.read_bytes()
+    owner_index.write_bytes(b'{broken')
+    bad_status = owner_request(owner_socket, 7, 'status', generation=2)
+    check(bad_status['outcome'] == 'unavailable' and bad_status['health'] == 'degraded', 'owner status detects a corrupt index after a healthy check')
+    check(owner_index.read_bytes() == b'{broken', 'status check preserves corrupt index bytes')
+    owner_index.write_bytes(owner_original)
     os.kill(owner_pid, signal.SIGKILL)
     check(wait_owned(owner_pid) == -signal.SIGKILL, 'owned storage owner crash is reaped')
     owner_pid = None
@@ -205,7 +213,20 @@ try:
     check(owner_request(owner_socket, 2, 'load', key, generation=2).get('record') is None, 'owner restart cannot resurrect cleared record')
     owner_send(owner_socket, 3, 'save', record=record, updatedAt=time.time() - 978307200, generation=1)
     check(wait_owned(owner_pid) == 3, 'owner rejects an old-generation save after clear')
+    owner_pid = None; owner_socket.close()
+    owner_pid, owner_socket = start_owner()
+    check(owner_request(owner_socket, 1, 'begin', generation=2)['outcome'] == 'success', 'owner starts before held IPC crash')
+    owner_socket.sendall(struct.pack('>I', 128) + b'{"id":')
+    os.kill(owner_pid, signal.SIGKILL)
+    check(wait_owned(owner_pid) == -signal.SIGKILL, 'owner can die while a bounded IPC frame is incomplete')
     owner_pid = None
+    try: no_reply = owner_socket.recv(1) == b''
+    except ConnectionResetError: no_reply = True
+    check(no_reply, 'incomplete in-flight IPC cannot return success after owner death')
+    owner_socket.close(); owner_pid, owner_socket = start_owner()
+    check(owner_request(owner_socket, 1, 'begin', generation=2)['outcome'] == 'success' and
+          owner_request(owner_socket, 2, 'load', key, generation=2).get('record') is None,
+          'owner restart after incomplete IPC does not resurrect cleared history')
 finally:
     owner_socket.close()
     if owner_pid is not None:
@@ -214,6 +235,54 @@ finally:
     if second_pid is not None:
         os.kill(second_pid, signal.SIGKILL); wait_owned(second_pid)
     fcntl.flock(owner_lock, fcntl.LOCK_UN); os.close(owner_lock)
+
+# Hold four owned exchange workspaces before a status attempt. A large valid
+# orphan would be read during owner activation if the attempt were admitted.
+status_root = a.work / 'status-workspace-state'
+status_root.mkdir(mode=0o700)
+status_dir = status_root / 'Conversations'; status_dir.mkdir(mode=0o700)
+status_records = status_dir / 'records'; status_records.mkdir(mode=0o700)
+status_index = status_dir / 'index-v1.json'; status_index.write_bytes(b'{"version":1,"records":[]}'); status_index.chmod(0o600)
+large_record = {'id': 'owned-orphan', 'key': {'agent': 'claude', 'herdrSession': 'session', 'nativeSession': 'orphan'},
+                'context': {'routeID': 'route', 'paneID': 'pane', 'terminalID': 'terminal'}, 'updatedOrder': 1,
+                'items': [{'id': 'item', 'message': {'role': 'user', 'blocks': [{'kind': 'text', 'text': '\x01' * (2 << 20)}], 'truncated': False},
+                           'origin': {'kind': 'observed'}, 'status': 'complete'}], 'truncated': False, 'status': 'complete',
+                'subagents': {'observed': 0, 'withFinalResult': 0, 'limited': False, 'linkAvailable': False, 'ancestryIncomplete': False}}
+orphan = status_records / '00000000-0000-0000-0000-000000000001.json'
+orphan.write_bytes(json.dumps({'schemaVersion': 1, 'records': [large_record]}).encode()); orphan.chmod(0o600)
+assert orphan.stat().st_size > 8 << 20, 'owned encoded orphan exceeds the old status workspace'
+orphan_digest = hashlib.sha256(orphan.read_bytes()).digest()
+def initial_frame(kind, payload, exchange):
+    body = json.dumps(payload).encode()
+    return struct.pack('>IBQ', 9 + len(body), kind, exchange) + body
+status_identity = {'kind': 'claude', 'session': 'session', 'paneID': 'pane', 'terminalID': 'terminal', 'cliVersion': '2.1.309'}
+initial = initial_frame(7, {'generation': 1, 'routes': [{'routeID': 'route', 'identity': status_identity}]}, 0)
+for n in range(1, 5):
+    initial += initial_frame(1, {'routeID': 'route', 'upstream': 'anthropic', 'method': 'POST', 'path': '/v1/messages',
+                                 'routeIdentity': status_identity,
+                                 'headers': [['x-claude-code-session-id', 'pressure-%d' % n], ['x-claude-code-request-class', 'main']]}, n)
+status_pressure = Recorder(a.work / 'status-workspace-socket', state_directory=status_root, initial=initial)
+try:
+    status_pressure.ack(1)
+    until = time.monotonic() + 8
+    while True:
+        status = status_pressure.query('persistence.status')['result']
+        if status['activeExchanges'] == 4 and status['statusWorkspaceDeferrals'] > 0: break
+        assert time.monotonic() < until, 'status workspace deferral barrier deadline'
+        time.sleep(.02)
+    check(not (status_root / 'owner.lock').exists() and status['mode'] == 'volatile', 'status cannot start owner without full workspace')
+    check(hashlib.sha256(orphan.read_bytes()).digest() == orphan_digest, 'unadmitted owner activation leaves large orphan untouched')
+    for n in range(1, 5): status_pressure.frame(6, {'outcome': 'dropped'}, exchange=n)
+    status_pressure.authority(generation=2)
+    until = time.monotonic() + 15
+    while True:
+        status = status_pressure.query('persistence.status')['result']
+        if status['mode'] == 'healthy': break
+        assert time.monotonic() < until, 'owner status after workspace release deadline'
+        time.sleep(.05)
+    check(not orphan.exists(), 'owner activation occurs after pressure clears and handles supported orphan')
+finally:
+    check(status_pressure.stop() == 0, 'status workspace recorder exits')
 
 store_root = a.work / 'persistence-state'
 store_root.mkdir(mode=0o700)

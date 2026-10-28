@@ -142,13 +142,17 @@ enum ConversationStorageOwner {
                 try journal.clearSupported()
             case .status:
                 guard request.key == nil, request.record == nil, request.updatedAt == nil else { throw Failure.invalid }
+                // Checks descriptor bindings, index and bounded inventory. It
+                // does not assert that every referenced body is readable.
+                _ = try journal.metadata()
             }
             outcome = .success
         } catch is Failure { throw Failure.invalid }
         catch { outcome = request.operation == .clear ? .partial : .unavailable }
         try producer.verify(); try owner.verify()
         let health: String
-        switch journal.health { case .healthy: health = "healthy"; case .degraded: health = "degraded" }
+        if outcome != .success { health = "degraded" }
+        else { switch journal.health { case .healthy: health = "healthy"; case .degraded: health = "degraded" } }
         return Reply(id: request.id, generation: request.generation, protocolVersion: protocolVersion, outcome: outcome, record: record, health: health)
     }
 
