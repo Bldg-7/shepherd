@@ -2,8 +2,8 @@ import Foundation
 import NIOCore
 import AgentProxyCore
 
-/// Recorder-loop admission with one serial filesystem worker. The worker owns
-/// the journal lease; no filesystem operation runs on the capture loop.
+/// Recorder-loop admission with one serial IPC worker. Only the spawned
+/// storage-owner role opens the journal; capture never performs journal I/O.
 final class ConversationPersistenceCoordinator: @unchecked Sendable {
     enum Health { case volatile, healthy, degraded }
     private struct Pending {
