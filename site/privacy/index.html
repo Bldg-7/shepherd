@@ -180,7 +180,7 @@
     <li>Everything the app keeps stays on your device, and in the backups you make of it, for as long as you keep it there. We hold no copy.</li>
     <li>Removing a machine in the app deletes its details and its saved key or password from the Keychain.</li>
     <li>On a Mac, removing a device in Settings → iPhone and iPad takes its line out of <code>authorized_keys</code>.</li>
-    <li>Turning conversation capture off keeps saved history. The in-app clear action is currently unavailable because the app cannot yet safely fence all recording processes that may use the same store. New captures may include history the agent sends again. Backups, APFS snapshots and storage media may retain copies; deletion does not promise cryptographic or physical erasure.</li>
+    <li>Turning conversation capture off keeps saved history. Settings → iPhone and iPad offers a confirmed clear of supported saved history while capture is on or off. Clear can be unavailable while another recorder is active, and a failure may leave data partly cleared. New captures may include history the agent sends again. Backups, APFS snapshots, already delivered content, older volatile conversations and storage media may retain copies; deletion does not promise cryptographic or physical erasure.</li>
     <li>Deleting the app doesn’t always delete everything: iOS may keep Keychain items after an app is deleted, and on a Mac the app’s preferences, its folder and its Keychain items stay when you move the app to the Trash. To delete the keys too, remove your machines in the app before you delete it.</li>
     <li>If you added a key from the app to a machine’s <code>~/.ssh/authorized_keys</code>, remove that line, the one the app showed you when you added the machine, to take away the device’s access to it.</li>
   </ul>
@@ -237,7 +237,7 @@
     <li>앱이 보관하는 모든 정보는 사용자가 지우기 전까지 사용자의 기기와 사용자가 만든 그 기기의 백업에만 있습니다. 저희는 사본을 갖고 있지 않습니다.</li>
     <li>앱에서 machine을 삭제하면 그 machine의 정보와, Keychain에 저장된 키나 비밀번호가 함께 삭제됩니다.</li>
     <li>Mac의 설정 → iPhone 및 iPad에서 기기를 삭제하면 그 기기의 줄이 <code>authorized_keys</code>에서 빠집니다.</li>
-    <li>대화 수집을 꺼도 저장된 기록은 유지됩니다. 같은 저장소를 사용하는 모든 기록 프로세스를 아직 안전하게 차단할 수 없어 앱에서 지우는 기능은 현재 사용할 수 없습니다. 새 수집에는 agent가 다시 보낸 기록이 포함될 수 있습니다. 백업, APFS 스냅샷 및 저장 매체에 사본이 남을 수 있으며 암호학적 또는 물리적 삭제를 보장하지 않습니다.</li>
+    <li>대화 수집을 꺼도 저장된 기록은 유지됩니다. 설정 → iPhone 및 iPad에서 수집이 켜져 있거나 꺼져 있을 때 확인 후 지원되는 저장 기록을 지울 수 있습니다. 다른 기록 프로세스가 실행 중이면 지우기를 사용할 수 없으며 실패 시 일부만 지워졌을 수 있습니다. 새 수집에는 agent가 다시 보낸 기록이 포함될 수 있습니다. 백업, APFS 스냅샷, 이미 전달된 내용, 이전 버전의 메모리 대화 및 저장 매체에 사본이 남을 수 있으며 암호학적 또는 물리적 삭제를 보장하지 않습니다.</li>
     <li>앱을 삭제해도 모든 것이 지워지지는 않습니다. iOS는 앱이 삭제된 뒤에도 Keychain 항목을 남겨 둘 수 있고, Mac에서는 앱을 휴지통으로 옮겨도 앱의 환경설정, 앱 폴더, Keychain 항목이 남습니다. 키까지 지우려면 앱을 삭제하기 전에 앱에서 machine을 먼저 삭제하세요.</li>
     <li>앱이 만든 키를 machine의 <code>~/.ssh/authorized_keys</code>에 추가했다면, machine을 추가할 때 앱이 보여 준 그 줄을 지워 기기의 접근 권한을 없애세요.</li>
   </ul>

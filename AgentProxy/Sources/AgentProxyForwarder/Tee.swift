@@ -32,6 +32,9 @@ final class Tee {
         copies.removeAll()
     }
 
+    /// Forget all pre-barrier copies before an ordered clear command.
+    func fenceExistingCopies() { copies.removeAll() }
+
     /// Whether the exchange is copied at all.
     @discardableResult
     func open(_ exchange: UInt64, _ open: AgentProxyTeeFrame.Open) -> Bool {

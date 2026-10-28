@@ -8,11 +8,37 @@ import AgentProxyProtocol
 /// One event loop owns tee ingestion, history and all read clients. The parent
 /// forwarder never waits for this process. No raw request/error/transcript logs.
 enum ConversationSocket {
-    static func run(descriptor: Int32, path: String, stateDirectory: String? = nil) -> Int32 {
+    /// Offline maintenance is admitted before the recorder and journal locks.
+    /// No default path, provider, network listener or stale socket removal.
+    static func clearOffline(stateDirectory: String, socketPath: String) -> Int32 {
+        do {
+            let producer = try ConversationProducerLease(rootPath: stateDirectory)
+            let socketLease = try SocketLease(socketPath, removeStale: false)
+            return try withExtendedLifetime((producer, socketLease)) {
+                try socketLease.verifyLock()
+                let files = try ConversationPersistenceFiles(verifiedStateRootPath: stateDirectory)
+                let journal = ConversationPersistenceJournal(files: files)
+                do { try producer.verify(); try journal.clearSupported(); return 0 }
+                catch { return 5 } // may be partial or durability-uncertain
+            }
+        } catch { return 4 } // admission, path or lease unavailable; no clear attempted
+    }
+
+    static func run(descriptor: Int32, path: String, stateDirectory: String? = nil, inheritedProducerDescriptor: Int32? = nil) -> Int32 {
+        let producer: ConversationProducerLease?
+        if let stateDirectory {
+            do {
+                producer = try ConversationProducerLease(rootPath: stateDirectory, inheritedDescriptor: inheritedProducerDescriptor)
+                if let inheritedProducerDescriptor { Darwin.close(inheritedProducerDescriptor) }
+            } catch { return 4 }
+        } else {
+            guard inheritedProducerDescriptor == nil else { return 4 }
+            producer = nil
+        }
         let lease: SocketLease
         do { lease = try SocketLease(path) } catch { return 4 }
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        let state = ReadState(loop: group.next(), stateDirectory: stateDirectory)
+        let state = ReadState(loop: group.next(), stateDirectory: stateDirectory, producerLease: producer)
         var listener: Channel?
         var tee: Channel?
         defer {
@@ -53,7 +79,7 @@ private final class SocketLease {
     private let lock: Int32
     private var inode: ino_t?
     private var device: dev_t?
-    init(_ path: String) throws {
+    init(_ path: String, removeStale: Bool = true) throws {
         guard AgentProxyPaths.socketPathFits(path) else { throw UnsafePath() }
         try StateDirectory.prepareSocketFolder(for: path)
         let folder = (path as NSString).deletingLastPathComponent
@@ -69,13 +95,24 @@ private final class SocketLease {
         let fd = Darwin.open(path + ".lock", O_CREAT | O_RDWR | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK, 0o600)
         guard fd >= 0 else { throw UnsafePath() }
         guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_uid == getuid(),
-              info.st_mode & 0o077 == 0, info.st_nlink == 1, flock(fd, LOCK_EX | LOCK_NB) == 0 else {
+              info.st_mode & 0o777 == 0o600, info.st_nlink == 1, flock(fd, LOCK_EX | LOCK_NB) == 0 else {
             Darwin.close(fd); throw UnsafePath()
         }
-        do { try Self.clearStale(path) } catch { Darwin.close(fd); throw error }
+        if removeStale {
+            do { try Self.clearStale(path) } catch { Darwin.close(fd); throw error }
+        }
+        do { try Self.verifyLock(path: path, descriptor: fd) } catch { Darwin.close(fd); throw error }
         self.path = path; lock = fd
     }
     deinit { Darwin.close(lock) }
+    func verifyLock() throws { try Self.verifyLock(path: path, descriptor: lock) }
+    private static func verifyLock(path: String, descriptor: Int32) throws {
+        var opened = stat(), current = stat()
+        guard fstat(descriptor, &opened) == 0, lstat(path + ".lock", &current) == 0,
+              opened.st_mode & S_IFMT == S_IFREG, opened.st_uid == getuid(), opened.st_mode & 0o777 == 0o600,
+              opened.st_nlink == 1, current.st_mode & S_IFMT == S_IFREG,
+              opened.st_dev == current.st_dev, opened.st_ino == current.st_ino else { throw UnsafePath() }
+    }
     func bindDescriptor() throws -> Int32 {
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { throw UnsafePath() }
@@ -152,6 +189,7 @@ private final class ReadState: @unchecked Sendable {
     static let authorityWorkspaceBytes = 8 << 20
     var authorityAwaitingCapacity = false
     var authorityAssemblyBytes = 0
+    private let producerLease: ConversationProducerLease?
     private var persistence: ConversationPersistenceCoordinator?
     private struct ScheduledRevision { let revision: UInt64; let token: UUID }
     private var scheduledRevisions: [String: ScheduledRevision] = [:]
@@ -161,8 +199,9 @@ private final class ReadState: @unchecked Sendable {
     private var retryTicks = 0
     private var retryRunning = false
     private var retryCursor: String?
-    init(loop: EventLoop, stateDirectory: String?) {
+    init(loop: EventLoop, stateDirectory: String?, producerLease: ConversationProducerLease?) {
         self.loop = loop
+        self.producerLease = producerLease
         guard let current = capture.reserve(bytes: Self.authorityWorkspaceBytes),
               let replacement = capture.reserve(bytes: Self.authorityWorkspaceBytes) else {
             preconditionFailure("recorder authority headroom unavailable at initialization")
@@ -170,11 +209,17 @@ private final class ReadState: @unchecked Sendable {
         authorityReservation = current
         authorityReplacementReservation = replacement
         if let stateDirectory {
-            persistence = ConversationPersistenceCoordinator(root: stateDirectory, loop: loop, capture: capture)
+            guard let producerLease else { preconditionFailure("persistent recorder requires producer admission") }
+            persistence = ConversationPersistenceCoordinator(root: stateDirectory, loop: loop, capture: capture, producerLease: producerLease)
             capture.onMainAdmission = { [weak self] owner, current, live, resume, cancel in
                 self?.beginRestore(owner, current: current, live: live, resume: resume, cancel: cancel) ?? false
             }
         }
+    }
+
+    func producerIsValid() -> Bool {
+        guard let producerLease else { return persistence == nil }
+        do { try producerLease.verify(); return true } catch { return false }
     }
 
     private func authorized(_ owner: ConversationOwner) -> Bool {
@@ -196,7 +241,7 @@ private final class ReadState: @unchecked Sendable {
         let admitted = persistence.loadFirst(diskKey) { [weak self] result in
             guard let self else { return }
             let awaiting = current()
-            guard (awaiting || live()), self.capture.reconciler.store.epoch == captureEpoch,
+            guard (awaiting || live()), self.producerIsValid(), self.capture.reconciler.store.epoch == captureEpoch,
                   self.authorized(owner) else { cancel(); return }
             switch result {
             case .failure:
@@ -283,7 +328,7 @@ private final class ReadState: @unchecked Sendable {
         let admitted = persistence.loadFirst(diskKey) { [weak self] result in
             guard let self else { return }
             self.retryRunning = false
-            guard self.capture.reconciler.store.epoch == captureEpoch, self.authorized(owner),
+            guard self.producerIsValid(), self.capture.reconciler.store.epoch == captureEpoch, self.authorized(owner),
                   self.blockedPersistence.contains(key),
                   self.capture.reconciler.ownsConversation(owner, conversationID: liveID),
                   self.capture.reconciler.store.read(key: key)?.summary.id == liveID else { return }
@@ -394,6 +439,22 @@ private final class ReadState: @unchecked Sendable {
         return snapshot.generation
     }
 
+    var hasPersistentProducer: Bool { producerLease != nil }
+
+    func acceptClear(_ frame: AgentProxyTeeFrame.Frame) -> Bool {
+        guard producerLease != nil, producerIsValid(), frame.payload.isEmpty, frame.exchange > authorityGeneration else { return false }
+        authorityGeneration = frame.exchange
+        capture.invalidateForClear()
+        scheduledRevisions.removeAll(); persistentIDs.removeAll(); blockedPersistence.removeAll(); historicalConflicts.removeAll()
+        for client in Array(clients.values) { client.channel.close(promise: nil) }
+        return true
+    }
+
+    func clearPersistence(_ completion: @escaping (ConversationPersistenceCoordinator.ClearOutcome) -> Void) {
+        guard let persistence else { loop.execute { completion(.unavailable) }; return }
+        persistence.clearHistory(completion)
+    }
+
     func fencePersistence(_ completion: @escaping () -> Void) {
         if let persistence { persistence.fence(completion) }
         else { loop.execute(completion) }
@@ -417,6 +478,12 @@ private final class ReadState: @unchecked Sendable {
         loop.assertInEventLoop()
         ticker = loop.scheduleRepeatedTask(initialDelay: .milliseconds(100), delay: .milliseconds(100)) { [weak self] _ in
             guard let self else { return }
+            guard self.producerIsValid() else {
+                self.exitCode = 3
+                self.capture.invalidateForClear()
+                for client in Array(self.clients.values) { client.channel.close(promise: nil) }
+                return
+            }
             for client in Array(self.clients.values) { client.tick() }
             self.retryTicks += 1
             if self.retryTicks >= 20 {
@@ -428,7 +495,7 @@ private final class ReadState: @unchecked Sendable {
     }
     func add(_ channel: Channel) -> EventLoopFuture<Void> {
         loop.assertInEventLoop()
-        guard clients.count < 16, let reservation = capture.reserve(bytes: 4 << 20) else { return channel.close() }
+        guard producerIsValid(), clients.count < 16, let reservation = capture.reserve(bytes: 4 << 20) else { return channel.close() }
         let key = ObjectIdentifier(channel)
         let client = ReadClient(state: self, channel: channel)
         clients[key] = client
@@ -486,6 +553,7 @@ private final class TeeInput: ChannelInboundHandler {
     private var fencing = false
     init(_ state: ReadState) { self.state = state }
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+        guard state.producerIsValid() else { state.exitCode = 3; context.close(promise: nil); return }
         decoder.append(unwrapInboundIn(data).readableBytesView)
         // One maximum frame plus one fixed-size socket read. This covers a
         // deferred frame and pipelined bytes without unbounded framing storage.
@@ -540,15 +608,43 @@ private final class TeeInput: ChannelInboundHandler {
                     state.exitCode = 3; context.close(promise: nil); return
                 }
                 if frame.kind == .clearHistory {
-                    // No cross-producer exclusion proof exists. Refuse before
-                    // capture, queue, authority or journal state is changed.
-                    guard frame.exchange > 0, frame.payload.isEmpty,
-                          let payload = try? JSONEncoder().encode(AgentProxyTeeFrame.ClearFailure(outcome: .unavailable)) else {
-                        state.exitCode = 3; context.close(promise: nil); return
+                    if !state.hasPersistentProducer {
+                        guard frame.exchange > 0, frame.payload.isEmpty,
+                              let payload = try? JSONEncoder().encode(AgentProxyTeeFrame.ClearFailure(outcome: .unavailable)) else { state.exitCode = 3; context.close(promise: nil); return }
+                        let header = AgentProxyTeeFrame.header(kind: .clearFailure, exchange: frame.exchange, payloadCount: payload.count)
+                        context.channel.write(ByteBuffer(bytes: header), promise: nil)
+                        context.channel.writeAndFlush(ByteBuffer(bytes: payload)).whenFailure { _ in context.close(promise: nil) }
+                        continue
                     }
-                    let header = AgentProxyTeeFrame.header(kind: .clearFailure, exchange: frame.exchange, payloadCount: payload.count)
-                    context.channel.write(ByteBuffer(bytes: header), promise: nil)
-                    context.channel.writeAndFlush(ByteBuffer(bytes: payload)).whenFailure { _ in context.close(promise: nil) }
+                    guard state.acceptClear(frame), let options = context.channel.syncOptions else { state.exitCode = 3; context.close(promise: nil); return }
+                    fencing = true
+                    do { try options.setOption(ChannelOptions.autoRead, value: false) }
+                    catch { state.exitCode = 3; context.close(promise: nil); return }
+                    state.clearPersistence { [self] outcome in
+                        guard context.channel.isActive else { return }
+                        guard state.producerIsValid() else { state.exitCode = 3; context.close(promise: nil); return }
+                        let kind: AgentProxyTeeFrame.Kind
+                        let payload: Data
+                        switch outcome {
+                        case .cleared: kind = .routeAcknowledgement; payload = Data()
+                        case .unavailable, .partial:
+                            kind = .clearFailure
+                            let reason: AgentProxyTeeFrame.ClearFailure.Outcome = outcome == .partial ? .partial : .unavailable
+                            guard let encoded = try? JSONEncoder().encode(AgentProxyTeeFrame.ClearFailure(outcome: reason)) else { context.close(promise: nil); return }
+                            payload = encoded
+                        }
+                        let header = AgentProxyTeeFrame.header(kind: kind, exchange: frame.exchange, payloadCount: payload.count)
+                        context.channel.write(ByteBuffer(bytes: header), promise: nil)
+                        context.channel.writeAndFlush(ByteBuffer(bytes: payload)).whenFailure { _ in context.close(promise: nil) }
+                        state.resumePersistenceAfterAuthority()
+                        fencing = false; process(context: context)
+                        if !fencing {
+                            guard let options = context.channel.syncOptions else { state.exitCode = 3; context.close(promise: nil); return }
+                            do { try options.setOption(ChannelOptions.autoRead, value: true) }
+                            catch { state.exitCode = 3; context.close(promise: nil) }
+                        }
+                    }
+                    return
                 } else if frame.kind == .routeSnapshot || frame.kind == .routeSnapshotPart {
                     let generation: UInt64?
                     if frame.kind == .routeSnapshot {
@@ -593,6 +689,7 @@ private final class TeeInput: ChannelInboundHandler {
                     catch { state.exitCode = 3; context.close(promise: nil); return }
                     state.fencePersistence { [self] in
                         guard context.channel.isActive else { return }
+                        guard state.producerIsValid() else { state.exitCode = 3; context.close(promise: nil); return }
                         let ack = AgentProxyTeeFrame.header(kind: .routeAcknowledgement, exchange: generation, payloadCount: 0)
                         context.channel.writeAndFlush(ByteBuffer(bytes: ack)).whenFailure { _ in context.close(promise: nil) }
                         state.resumePersistenceAfterAuthority()
@@ -662,6 +759,7 @@ private final class ReadClient: ChannelInboundHandler {
     }
     func channelInactive(context: ChannelHandlerContext) { initialDeadline?.cancel(); context.fireChannelInactive() }
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+        guard state.producerIsValid() else { context.close(promise: nil); return }
         // One query per channel; a subscribe query turns it into an event stream.
         // Never accumulate pipelined replies or retain unbounded request state.
         guard !requested else { context.close(promise: nil); return }

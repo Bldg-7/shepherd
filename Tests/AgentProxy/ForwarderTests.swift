@@ -185,6 +185,7 @@ final class Suite {
         let cases: [(String, () throws -> Void)] = [
             ("control-socket", controlSocket),
             ("control-confirmed-history-clear", controlConfirmedHistoryClear),
+            ("same-root-producer-exclusion", sameRootProducerExclusion),
             ("forward-claude-body-and-headers", forwardClaude),
             ("forward-codex-zstd-chunked", forwardCodex),
             ("forward-pi-openai-subscription", forwardOpenAI),
@@ -261,7 +262,7 @@ final class Suite {
         let exits = Box<[Int32]>([])
         let command: [String]? = switch recorder {
         case .none: nil
-        case .real: [proxyBinary, "recorder", "--socket", folder + "/rec.sock", "--state-dir", folder + "/state"]
+        case .real: [proxyBinary, "recorder", "--socket", folder + "/rec.sock", "--state-dir", folder + "/state", "--producer-fd", "4"]
         case .tap(let file): [harness, "tap-recorder", file]
         case .stall: [harness, "stall-recorder"]
         case .badAck: [harness, "bad-ack-recorder"]
@@ -963,6 +964,19 @@ final class Suite {
         try check(!contains(fileBytes(tap), bytes(unknown)), "the unknown token is nowhere in the copy")
     }
 
+    func sameRootProducerExclusion() throws {
+        let tap = out + "/same-root-producer.tap"
+        let first = try self.proxy("same-root-producer", recorder: .tap(tap))
+        let alternate = out + "/c/same-root-producer/other.sock"
+        let configuration = AgentProxyServer.Configuration(stateDirectory: first.state, controlSocketPath: alternate,
+            recorderCommand: [harness, "stall-recorder"], build: "synthetic", log: { _ in }, onExitRequest: { _ in })
+        let other = AgentProxyServer(configuration: configuration, testUpstreams: [:], trustRoots: [ca.root])
+        servers.append(other)
+        var rejected = false
+        do { _ = try other.start() } catch { rejected = true }
+        try check(rejected && !FileManager.default.fileExists(atPath: alternate), "second same-root forwarder rejected before control listener")
+    }
+
     func controlConfirmedHistoryClear() throws {
         let proxy = try self.proxy("confirmed-clear", recorder: .real)
         let control = try proxy.control()
@@ -976,13 +990,13 @@ final class Suite {
         try check(unsafe["result"] == nil && unsafe["error"] != nil, "unsafe control socket mode rejects destructive clear")
         guard chmod(proxy.socket, 0o600) == 0 else { throw TestFailure(description: "owned socket mode restore") }
         let response = try control.call("conversation.clearSaved", ["confirmed": true])
-        try check(response["result"] == nil && (response["error"] as? [String: Any])?["code"] as? String == "unavailable",
-                  "same-UID confirmed clear fails closed before touching history")
+        try check((response["result"] as? [String: Any])?["cleared"] as? Bool == true,
+                  "same-UID confirmed clear succeeds only after exclusive producer fence")
         control.sendRaw("{\"id\":\"first\",\"method\":\"conversation.clearSaved\",\"params\":{\"confirmed\":true}}\n" +
                         "{\"id\":\"second\",\"method\":\"proxy.status\",\"params\":{}}\n")
         let first = try control.readLine(), second = try control.readLine()
-        try check(first["id"] as? String == "first" && first["error"] != nil && second["id"] as? String == "second",
-                  "refused clear preserves pipelined control response order")
+        try check(first["id"] as? String == "first" && first["result"] != nil && second["id"] as? String == "second",
+                  "confirmed clear preserves pipelined control response order")
     }
 
     func authorityTimeout() throws {

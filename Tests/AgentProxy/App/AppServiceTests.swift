@@ -155,7 +155,7 @@ nonisolated final class FakeProxy: @unchecked Sendable {
                 guard params["confirmed"] as? Bool == true else {
                     return .failure(AgentProxyControlError(code: .invalidParams, message: "confirmation required"))
                 }
-                return .failure(AgentProxyControlError(code: .unavailable, message: "producer exclusion unverified"))
+                return .success(["cleared": true])
             default:
                 return .failure(AgentProxyControlError(code: .unknownMethod, message: "unknown"))
             }
@@ -182,8 +182,16 @@ nonisolated final class FakeProxy: @unchecked Sendable {
 
 struct Failure: Error, LocalizedError { var errorDescription: String? { "refused by the stand-in" } }
 
+final class OfflineClearCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0
+    func increment() { lock.lock(); value += 1; lock.unlock() }
+    var count: Int { lock.lock(); defer { lock.unlock() }; return value }
+}
+
 @MainActor final class World {
     let proxy: FakeProxy
+    let offlineClear = OfflineClearCounter()
     let agent = FakeLaunchAgent()
     var setting = false
     var saved: [Bool] = []
@@ -201,6 +209,7 @@ struct Failure: Error, LocalizedError { var errorDescription: String? { "refused
 
     func environment(timeout: TimeInterval) -> AgentProxyService.Environment {
         let bundled = { [unowned self] in self.bundled }()
+        let offlineClear = self.offlineClear
         return AgentProxyService.Environment(
             launchAgent: agent,
             control: AgentProxyControlClient(socketPath: proxy.path, timeout: timeout),
@@ -208,6 +217,7 @@ struct Failure: Error, LocalizedError { var errorDescription: String? { "refused
             saveSetting: { [unowned self] in setting = $0; saved.append($0) },
             loadRejectedKinds: { [unowned self] in rejected },
             saveRejectedKinds: { [unowned self] in rejected = $0 },
+            clearOffline: { offlineClear.increment() },
             bundledBuild: { bundled },
             systemProxyConfigured: { [unowned self] in systemProxy },
             liveTerminals: { [unowned self] session in liveAsked.append(session); return live[session] },
@@ -336,8 +346,8 @@ func pane(_ id: String, terminal: String, session: String = "default", herdrMach
     await service.check()
     check(service.phase == .off && world.agent.registered == 0 && world.proxy.calls.isEmpty, "off: nothing registered, the proxy not asked")
     await service.clearSavedHistory()
-    check(world.proxy.count("conversation.clearSaved") == 0 && service.savedHistoryMessage != nil,
-          "offline clear fails closed without sending an unconfirmed request")
+    check(world.proxy.count("conversation.clearSaved") == 0 && world.offlineClear.count == 1 && service.savedHistoryMessage != nil,
+          "confirmed OFF clear uses only the injected offline maintenance path")
     check(await service.route(for: .claude, pane: pane("w1:p1", terminal: "t1"), cliVersion: "2.1.288 (Claude Code)", on: thisMac) == nil
           && service.lastSkip == .settingOff && world.proxy.count("routes.create") == 0, "off: a launch goes without the proxy")
 
@@ -346,8 +356,8 @@ func pane(_ id: String, terminal: String, session: String = "default", herdrMach
     check(service.phase == .running && world.proxy.count("proxy.status") == 1 && world.proxy.count("routes.list") == 1,
           "on: the proxy asked how it is and for its routes, and running")
     await service.clearSavedHistory()
-    check(world.proxy.count("conversation.clearSaved") == 0 && service.savedHistoryMessage != nil,
-          "running proxy still fails clear closed without dispatching a mutation")
+    check(world.proxy.count("conversation.clearSaved") == 1 && world.proxy.calls.last?.params["confirmed"] as? Bool == true,
+          "running proxy sends explicit confirmed clear")
     await service.check()
     check(world.agent.registered == 1, "on: registered once")
 

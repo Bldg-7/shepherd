@@ -24,13 +24,22 @@ func fail(_ message: String, code: Int32 = 1) -> Never {
 }
 
 var arguments = Array(CommandLine.arguments.dropFirst())
+if arguments.first == "clear-history" {
+    guard arguments.count == 6, arguments[1] == "--confirmed", arguments[2] == "--state-dir",
+          arguments[3].hasPrefix("/"), arguments[4] == "--socket", AgentProxyPaths.socketPathFits(arguments[5]) else {
+        fail("usage: clear-history --confirmed --state-dir DIR --socket PATH", code: 64)
+    }
+    exit(AgentProxyRecorder.clearOffline(stateDirectory: arguments[3], socketPath: arguments[5]))
+}
 if arguments.first == "recorder" {
     guard arguments.count == 1 || (arguments.count == 3 && arguments[1] == "--socket" && AgentProxyPaths.socketPathFits(arguments[2])) ||
-          (arguments.count == 5 && arguments[1] == "--socket" && AgentProxyPaths.socketPathFits(arguments[2]) && arguments[3] == "--state-dir" && arguments[4].hasPrefix("/")) else {
-        fail("usage: recorder [--socket PATH [--state-dir DIR]]", code: 64)
+          ((arguments.count == 5 || arguments.count == 7) && arguments[1] == "--socket" && AgentProxyPaths.socketPathFits(arguments[2]) && arguments[3] == "--state-dir" && arguments[4].hasPrefix("/") &&
+           (arguments.count == 5 || (arguments[5] == "--producer-fd" && arguments[6] == "4"))) else {
+        fail("usage: recorder [--socket PATH [--state-dir DIR [--producer-fd 4]]]", code: 64)
     }
     exit(AgentProxyRecorder.run(socketPath: arguments.count >= 3 ? arguments[2] : nil,
-                                stateDirectory: arguments.count == 5 ? arguments[4] : nil))
+                                stateDirectory: arguments.count >= 5 ? arguments[4] : nil,
+                                inheritedProducerDescriptor: arguments.count == 7 ? 4 : nil))
 }
 
 let home = FileManager.default.homeDirectoryForCurrentUser.path
@@ -79,7 +88,7 @@ let build = AgentProxyServer.build(ofExecutableAt: executable)
 
 nonisolated(unsafe) var server: AgentProxyServer?
 let configuration = AgentProxyServer.Configuration(
-    stateDirectory: stateDirectory, controlSocketPath: controlSocket, recorderCommand: [executable, "recorder", "--socket", AgentProxyPaths.recorderSocket(forControlSocket: controlSocket), "--state-dir", stateDirectory], build: build,
+    stateDirectory: stateDirectory, controlSocketPath: controlSocket, recorderCommand: [executable, "recorder", "--socket", AgentProxyPaths.recorderSocket(forControlSocket: controlSocket), "--state-dir", stateDirectory, "--producer-fd", "4"], build: build,
     log: { log($0) },
     onExitRequest: { code in
         // Off the event loop: shutting down waits for it.

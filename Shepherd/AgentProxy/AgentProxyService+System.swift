@@ -34,6 +34,11 @@ extension AgentProxyService.Environment {
             saveSetting: { UserDefaults.standard.set($0, forKey: settingKey) },
             loadRejectedKinds: { Set(UserDefaults.standard.stringArray(forKey: rejectedKey) ?? []) },
             saveRejectedKinds: { UserDefaults.standard.set($0.sorted(), forKey: rejectedKey) },
+            clearOffline: {
+                try await AgentProxyControlClient.clearOffline(executable: executable,
+                    stateDirectory: AgentProxyPaths.stateDirectory(home: home, variant: variant),
+                    socketPath: AgentProxyPaths.recorderSocket(home: home, variant: variant))
+            },
             bundledBuild: { await build.value() },
             systemProxyConfigured: { AgentProxySystemSettings.httpProxyConfigured() },
             liveTerminals: { await AgentProxySystemSettings.liveTerminals(session: $0) })

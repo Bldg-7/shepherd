@@ -532,7 +532,7 @@ final class ConversationPersistenceFiles {
         }
     }
 
-    private static func openVerifiedStateRoot(_ path: String, testControl: ConversationPersistenceFilesTestControl?) throws -> Int32 {
+    fileprivate static func openVerifiedStateRoot(_ path: String, testControl: ConversationPersistenceFilesTestControl?) throws -> Int32 {
         guard path.hasPrefix("/"), !path.utf8.contains(0) else { throw ConversationPersistenceFilesError.unsafeStateRoot }
         let parts = path.split(separator: "/", omittingEmptySubsequences: true)
         guard !parts.isEmpty, parts.allSatisfy({ $0 != "." && $0 != ".." }) else {
@@ -587,7 +587,7 @@ final class ConversationPersistenceFiles {
         }
     }
 
-    private static func openAndLock(named name: String, in directoryFD: Int32, testControl: ConversationPersistenceFilesTestControl?) throws -> Int32 {
+    fileprivate static func openAndLock(named name: String, in directoryFD: Int32, testControl: ConversationPersistenceFilesTestControl?) throws -> Int32 {
         try checkFixedName(name)
         try verifyDirectory(directoryFD)
         if let code = testControl?.openError?(.lockFile) { throw openError(code, unsafe: .unsafeObject) }
@@ -638,7 +638,7 @@ final class ConversationPersistenceFiles {
         }
     }
 
-    private static func verifyDirectory(_ descriptor: Int32) throws {
+    fileprivate static func verifyDirectory(_ descriptor: Int32) throws {
         var info = stat()
         guard fstat(descriptor, &info) == 0 else { throw ConversationPersistenceFilesError.ioFailure }
         guard info.st_mode & S_IFMT == S_IFDIR, info.st_uid == getuid(), info.st_mode & 0o777 == 0o700 else {
@@ -659,7 +659,7 @@ final class ConversationPersistenceFiles {
     }
 
     @discardableResult
-    private static func verifyFileBinding(named name: String, in directoryFD: Int32, descriptor: Int32,
+    fileprivate static func verifyFileBinding(named name: String, in directoryFD: Int32, descriptor: Int32,
                                           maximumBytes: Int, exactSize: off_t?) throws -> stat {
         let info = try verifyRegularFile(descriptor, maximumBytes: maximumBytes, exactSize: exactSize)
         var pathInfo = stat()
@@ -733,5 +733,56 @@ final class ConversationPersistenceFiles {
 
     private static func require(_ condition: Bool) throws {
         guard condition else { throw ConversationPersistenceFilesError.tooLarge }
+    }
+}
+
+/// Root-wide exclusive admission for every first-shipping persistent producer.
+/// Forwarder and its recorder share the same locked open-file description;
+/// independent recorders and offline maintenance must acquire their own lock.
+/// The file is never unlinked. This is not a boundary against a hostile same-UID
+/// process or unsupported experimental binaries that ignore this protocol.
+final class ConversationProducerLease: @unchecked Sendable {
+    private static let name = "producer.lock"
+    private let path: String
+    private let rootFD: Int32
+    let descriptor: Int32
+
+    init(rootPath: String, inheritedDescriptor: Int32? = nil) throws {
+        let root = try ConversationPersistenceFiles.openVerifiedStateRoot(rootPath, testControl: nil)
+        var lock: Int32 = -1
+        do {
+            if let inheritedDescriptor {
+                lock = dup(inheritedDescriptor)
+                guard lock >= 0, fcntl(lock, F_SETFD, FD_CLOEXEC) == 0 else { throw ConversationPersistenceFilesError.ioFailure }
+                _ = try ConversationPersistenceFiles.verifyFileBinding(named: Self.name, in: root, descriptor: lock, maximumBytes: 0, exactSize: 0)
+                guard flock(lock, LOCK_EX | LOCK_NB) == 0 else { throw ConversationPersistenceFilesError.lockUnavailable }
+            } else {
+                lock = try ConversationPersistenceFiles.openAndLock(named: Self.name, in: root, testControl: nil)
+            }
+            try Self.verify(path: rootPath, rootFD: root, descriptor: lock)
+            path = rootPath; rootFD = root; descriptor = lock
+        } catch {
+            if lock >= 0 { Darwin.close(lock) }
+            Darwin.close(root)
+            throw error
+        }
+    }
+
+    deinit { Darwin.close(descriptor); Darwin.close(rootFD) }
+
+    /// Re-walk the explicit path and compare root and lock inodes; reject a
+    /// replaced/moved namespace rather than following it or recreating a lock.
+    func verify() throws { try Self.verify(path: path, rootFD: rootFD, descriptor: descriptor) }
+
+    private static func verify(path: String, rootFD: Int32, descriptor: Int32) throws {
+        let current = try ConversationPersistenceFiles.openVerifiedStateRoot(path, testControl: nil)
+        defer { Darwin.close(current) }
+        var expected = stat(), actual = stat()
+        guard fstat(rootFD, &expected) == 0, fstat(current, &actual) == 0,
+              expected.st_dev == actual.st_dev, expected.st_ino == actual.st_ino else { throw ConversationPersistenceFilesError.unsafeObject }
+        try ConversationPersistenceFiles.verifyDirectory(rootFD)
+        _ = try ConversationPersistenceFiles.verifyFileBinding(named: Self.name, in: rootFD, descriptor: descriptor, maximumBytes: 0, exactSize: 0)
+        guard flock(descriptor, LOCK_EX | LOCK_NB) == 0 else { throw ConversationPersistenceFilesError.lockUnavailable }
+        _ = try ConversationPersistenceFiles.verifyFileBinding(named: Self.name, in: rootFD, descriptor: descriptor, maximumBytes: 0, exactSize: 0)
     }
 }

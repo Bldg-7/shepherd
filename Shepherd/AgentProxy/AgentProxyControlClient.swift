@@ -111,6 +111,67 @@ nonisolated struct AgentProxyControlClient: AgentProxyControlling {
         return result
     }
 
+    /// Launch only the bundled maintenance executable with explicit paths and
+    /// an empty environment. A timed-out child is signalled only while still
+    /// our unreaped child, so its PID cannot have been reused.
+    static func clearOffline(executable: String, stateDirectory: String, socketPath: String) async throws {
+        guard geteuid() != 0, executable.hasPrefix("/"), stateDirectory.hasPrefix("/"), AgentProxyPaths.socketPathFits(socketPath) else {
+            throw AgentProxyControlFailure.unreachable
+        }
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            DispatchQueue.global(qos: .utility).async {
+                continuation.resume(with: Swift.Result {
+                    var actions: posix_spawn_file_actions_t?
+                    var attributes: posix_spawnattr_t?
+                    guard posix_spawn_file_actions_init(&actions) == 0 else { throw AgentProxyControlFailure.unreachable }
+                    guard posix_spawnattr_init(&attributes) == 0 else { posix_spawn_file_actions_destroy(&actions); throw AgentProxyControlFailure.unreachable }
+                    defer { posix_spawn_file_actions_destroy(&actions); posix_spawnattr_destroy(&attributes) }
+                    for fd: Int32 in [0, 1, 2] {
+                        guard posix_spawn_file_actions_addopen(&actions, fd, "/dev/null", fd == 0 ? O_RDONLY : O_WRONLY, 0) == 0 else { throw AgentProxyControlFailure.unreachable }
+                    }
+                    guard posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT)) == 0 else { throw AgentProxyControlFailure.unreachable }
+                    let args = [executable, "clear-history", "--confirmed", "--state-dir", stateDirectory, "--socket", socketPath].map { strdup($0) } + [nil]
+                    let environment: [UnsafeMutablePointer<CChar>?] = [nil]
+                    defer { args.forEach { free($0) } }
+                    guard args.dropLast().allSatisfy({ $0 != nil }) else { throw AgentProxyControlFailure.unreachable }
+                    var child: pid_t = 0
+                    guard posix_spawn(&child, executable, &actions, &attributes, args, environment) == 0 else { throw AgentProxyControlFailure.unreachable }
+                    let deadline = ProcessInfo.processInfo.systemUptime + 3
+                    var status: Int32 = 0
+                    while true {
+                        let waited = waitpid(child, &status, WNOHANG)
+                        if waited == child {
+                            guard status == 0 else { throw AgentProxyControlFailure.refused(.init(code: .unavailable, message: "Clear unavailable or incomplete.")) }
+                            return
+                        }
+                        if waited < 0 && errno != EINTR { throw AgentProxyControlFailure.unreachable }
+                        if ProcessInfo.processInfo.systemUptime >= deadline { break }
+                        usleep(20_000)
+                    }
+                    // At this point waitpid has not reaped the owned child.
+                    _ = kill(child, SIGKILL)
+                    let cleanupDeadline = ProcessInfo.processInfo.systemUptime + 1
+                    var reaped = false
+                    while ProcessInfo.processInfo.systemUptime < cleanupDeadline {
+                        let waited = waitpid(child, &status, WNOHANG)
+                        if waited == child || (waited < 0 && errno != EINTR) { reaped = true; break }
+                        usleep(20_000)
+                    }
+                    if !reaped {
+                        // The caller stays bounded. A stuck owned child retains
+                        // admission until exit; reap it if the kernel later ends it.
+                        let reapPID = child
+                        DispatchQueue.global(qos: .utility).async {
+                            var ignored: Int32 = 0
+                            while waitpid(reapPID, &ignored, 0) < 0 && errno == EINTR {}
+                        }
+                    }
+                    throw AgentProxyControlFailure.timedOut
+                })
+            }
+        }
+    }
+
     /// One request line out and the answer's line back, without its newline.
     static func exchange(_ line: Data, path: String, timeout: TimeInterval) throws -> Data {
         guard AgentProxyPaths.socketPathFits(path), geteuid() != 0 else { throw AgentProxyControlFailure.unreachable }

@@ -22,7 +22,8 @@ public final class AgentProxyServer: @unchecked Sendable {
         public var stateDirectory: String
         public var controlSocketPath: String
         /// The recorder's executable and arguments; nil starts none, and no
-        /// copy is made.
+        /// copy is made. A persistent recorder must use the inherited producer
+        /// descriptor 4 (the bundled command passes `--producer-fd 4`).
         public var recorderCommand: [String]?
         public var build: String
         /// Lines about the proxy itself: start, status codes, error counts.
@@ -54,6 +55,7 @@ public final class AgentProxyServer: @unchecked Sendable {
     private var listener: Channel?
     private var control: Channel?
     private var recorder: RecorderSupervisor?
+    private var producerLease: ConversationProducerLease?
     private var stopped = false
 
     public private(set) var port = 0
@@ -91,6 +93,10 @@ public final class AgentProxyServer: @unchecked Sendable {
     public func start() throws -> Int {
         let log = configuration.log
         let directory = try StateDirectory.prepare(configuration.stateDirectory)
+        // Admission precedes listener binding, capture and recorder spawning.
+        if configuration.recorderCommand?.isEmpty == false {
+            producerLease = try ConversationProducerLease(rootPath: configuration.stateDirectory)
+        }
         try StateDirectory.prepareSocketFolder(for: configuration.controlSocketPath)
         try ControlServer.clear(configuration.controlSocketPath)
         let pool = try loop.submit { [self] in try UpstreamPool(loop: loop, trustRoots: trustRoots, addressing: addressing, timing: timing) }.wait()
@@ -118,7 +124,8 @@ public final class AgentProxyServer: @unchecked Sendable {
         }
 
         if let command = configuration.recorderCommand, !command.isEmpty {
-            let recorder = RecorderSupervisor(command: command, loop: loop, tee: core.tee, routes: core.routes, log: log)
+            guard let producerLease else { throw AgentProxyStartError.stateDirectory("producer admission unavailable") }
+            let recorder = RecorderSupervisor(command: command, loop: loop, tee: core.tee, routes: core.routes, producerLease: producerLease, log: log)
             self.recorder = recorder
             try loop.submit {
                 core.recorder = recorder
@@ -172,13 +179,14 @@ public final class AgentProxyServer: @unchecked Sendable {
         guard !stopped else { return }
         stopped = true
         recorder?.stop()
-        if let core { try? loop.submit { core.pool.closeAll() }.wait() }
+        if let core { try? loop.submit { core.pool.closeAll(); core.recorder = nil; core.routes.onAuthorityChanged = nil }.wait() }
         listener?.close(promise: nil)
         if let control {
             control.close(promise: nil)
             unlink(configuration.controlSocketPath)
         }
         try? group.syncShutdownGracefully()
+        recorder = nil; core = nil; producerLease = nil
     }
 }
 

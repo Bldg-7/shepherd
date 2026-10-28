@@ -26,6 +26,8 @@ final class AgentProxyService: AgentProxyRouting {
         var saveSetting: (Bool) -> Void
         var loadRejectedKinds: () -> Set<String>
         var saveRejectedKinds: (Set<String>) -> Void
+        /// Explicit bundled OFF maintenance. Tests default to unavailable.
+        var clearOffline: @Sendable () async throws -> Void = { throw AgentProxyControlFailure.unreachable }
         /// SHA-256 of the executable in this app's bundle, as the proxy
         /// reports its `build`; nil when it can't be read.
         var bundledBuild: @Sendable () async -> String?
@@ -62,6 +64,7 @@ final class AgentProxyService: AgentProxyRouting {
     /// Why the last launch went without the proxy; nil when it got a route.
     private(set) var lastSkip: AgentProxyInjectionPolicy.Skip?
     private(set) var savedHistoryMessage: String?
+    private(set) var clearingSavedHistory = false
     private(set) var historyStatus: AgentProxyHistoryStatus?
 
     @ObservationIgnored private let environment: Environment
@@ -103,10 +106,21 @@ final class AgentProxyService: AgentProxyRouting {
         scheduleChecks()
     }
 
-    /// No current or legacy cross-producer exclusion proof exists. Do not
-    /// dispatch a destructive request, even while this proxy is running.
+    /// Invoked only after Settings confirmation. OFF maintenance and live
+    /// control each enforce the root-wide producer admission separately.
     func clearSavedHistory() async {
-        savedHistoryMessage = String(localized: "Clearing saved conversations is currently unavailable because all recording processes cannot be safely fenced.")
+        guard !clearingSavedHistory else { return }
+        clearingSavedHistory = true; savedHistoryMessage = nil
+        defer { clearingSavedHistory = false }
+        do {
+            if isOn && phase == .running { try await environment.control.clearSavedHistory() }
+            else if !isOn && phase == .off && (environment.launchAgent.state == .notRegistered || environment.launchAgent.state == .notFound) {
+                try await environment.clearOffline()
+            } else { throw AgentProxyControlFailure.unreachable }
+            savedHistoryMessage = String(localized: "Saved conversations were cleared. New captures may include history sent again by the agent.")
+        } catch {
+            savedHistoryMessage = String(localized: "Saved conversations could not be fully cleared. Some data may already have been removed.")
+        }
     }
 
     func openLoginItems() { environment.launchAgent.openSystemSettings() }

@@ -16,6 +16,7 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
     private let worker = DispatchQueue(label: "conversation-persistence")
     private let root: String
     private let capture: ConversationCapture
+    private let producerLease: ConversationProducerLease
     private var journal: ConversationPersistenceJournal? // worker queue only
     private var initializationFailed = false // worker queue only; unsafe/unsupported data stays closed
     private var initializationRetryAfter: TimeInterval = 0 // worker queue only
@@ -31,8 +32,8 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
     private var finished: DispatchSemaphore?
     private(set) var health: Health = .volatile
 
-    init(root: String, loop: EventLoop, capture: ConversationCapture) {
-        self.root = root; self.loop = loop; self.capture = capture
+    init(root: String, loop: EventLoop, capture: ConversationCapture, producerLease: ConversationProducerLease) {
+        self.root = root; self.loop = loop; self.capture = capture; self.producerLease = producerLease
     }
 
     /// Pressure skips a snapshot instead of delaying forwarding. Replacing a
@@ -83,6 +84,7 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
     }
 
     private func openJournal() throws -> ConversationPersistenceJournal {
+        try producerLease.verify()
         if let journal { return journal }
         let now = ProcessInfo.processInfo.systemUptime
         guard !initializationFailed, now.isFinite, now >= initializationRetryAfter else { throw ConversationPersistenceJournalError.unavailable }
@@ -140,6 +142,35 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
         pending.removeAll()
         if running { fenceWaiters.append(completion) }
         else { loop.execute(completion) }
+    }
+
+    enum ClearOutcome: Equatable { case cleared, unavailable, partial }
+
+    /// The owner has already invalidated capture and readers. Admission is
+    /// paused before queued writes are dropped and active disk work finishes.
+    func clearHistory(_ completion: @escaping (ClearOutcome) -> Void) {
+        loop.assertInEventLoop()
+        pauseForAuthority { [self] in
+            guard Self.workspaceBytes <= capture.limits.totalBytes,
+                  capture.accountedBytes <= capture.limits.totalBytes - Self.workspaceBytes,
+                  let workspace = capture.reserve(bytes: Self.workspaceBytes) else {
+                health = .degraded; completion(.unavailable); return
+            }
+            running = true
+            worker.async { [self] in
+                let outcome: ClearOutcome
+                do { try producerLease.verify(); try openJournal().clearSupported(); outcome = .cleared }
+                catch { outcome = .partial }
+                loop.execute { [self] in
+                    capture.release(workspace); running = false
+                    if case .cleared = outcome {} else { health = .degraded }
+                    completion(outcome)
+                    let waiters = fenceWaiters; fenceWaiters.removeAll()
+                    for waiter in waiters { waiter() }
+                    drain()
+                }
+            }
+        }
     }
 
     /// The caller waits outside the event loop and imposes its own deadline.

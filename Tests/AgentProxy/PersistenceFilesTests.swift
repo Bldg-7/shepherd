@@ -44,6 +44,30 @@ struct PersistenceFilesTests {
         let work = String(cString: resolved)
         guard mode(work) == 0o700 else { throw POSIXFailure("owned work directory mode") }
 
+        // Root-wide admission is independent of control/read socket names.
+        // Duplicated inherited descriptors retain the same lock after the
+        // original owner is released; a separate open must fail closed.
+        let producerRoot = try root("producer-admission", under: work)
+        var producer: ConversationProducerLease? = try ConversationProducerLease(rootPath: producerRoot)
+        try expect(.lockUnavailable, "independent producer excluded") { _ = try ConversationProducerLease(rootPath: producerRoot) }
+        var inherited: ConversationProducerLease? = try ConversationProducerLease(rootPath: producerRoot, inheritedDescriptor: producer!.descriptor)
+        try inherited!.verify()
+        producer = nil
+        try expect(.lockUnavailable, "inherited producer retains lifetime admission") { _ = try ConversationProducerLease(rootPath: producerRoot) }
+        inherited = nil
+        let admittedAgain = try ConversationProducerLease(rootPath: producerRoot)
+        try admittedAgain.verify()
+        check(true, "producer admission reopens only after all inherited owners exit")
+        let replacedRoot = try root("producer-lock-replaced", under: work)
+        let replaced = try ConversationProducerLease(rootPath: replacedRoot)
+        guard rename(replacedRoot + "/producer.lock", replacedRoot + "/displaced-lock") == 0 else { throw POSIXFailure("rename synthetic producer lock") }
+        try writePrivateFile(replacedRoot + "/producer.lock", Data())
+        try expect(.unsafeObject, "replaced producer lock is rejected") { try replaced.verify() }
+        let movedRoot = try root("producer-root-moved", under: work)
+        let moved = try ConversationProducerLease(rootPath: movedRoot)
+        guard rename(movedRoot, movedRoot + "-old") == 0, mkdir(movedRoot, 0o700) == 0 else { throw POSIXFailure("replace synthetic root") }
+        try expect(.unsafeObject, "replaced producer root is rejected") { try moved.verify() }
+
         let valid = try root("valid", under: work)
         let initialSyncs = EventLog()
         var holder: ConversationPersistenceFiles? = try ConversationPersistenceFiles(

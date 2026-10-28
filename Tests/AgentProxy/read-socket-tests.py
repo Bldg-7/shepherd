@@ -2,7 +2,7 @@
 """Synthetic fd3 tee -> real recorder -> private NDJSON socket. No app/agents,
 credentials, transcript files or external network. All sockets under --work.
 """
-import argparse, fcntl, json, os, select, socket, stat, struct, subprocess, time
+import argparse, fcntl, json, os, select, signal, socket, stat, struct, subprocess, time
 from pathlib import Path
 
 p = argparse.ArgumentParser()
@@ -175,19 +175,14 @@ reopened_index = json.loads(index.read_bytes())
 check(len(reopened_index['records']) == 1 and reopened_index['records'][0]['recordID'] == retained_index['records'][0]['recordID'],
       'restart saves retain the original persistent ID without duplication')
 
-# Two independent producers share one owned root. A refusal cannot be called a
-# successful clear: B's already-captured history is preserved and can later be
-# saved after A releases its lease. This is precisely why clear is blocked.
+# A root-wide producer lease is acquired before a recorder accepts capture,
+# regardless of its independent read/control socket path.
 shared_root = a.work / 'clear-two-producer-state'
 shared_root.mkdir(mode=0o700)
 producer_a = Recorder(a.work / 'clear-producer-a', state_directory=shared_root)
 producer_b = None
 try:
     producer_a.authority(); producer_a.begin(wait_admission=True); producer_a.end(); producer_a.conversation()
-    until = time.monotonic() + 10
-    while producer_a.query('persistence.status')['result']['mode'] != 'healthy':
-        assert time.monotonic() < until, 'producer A journal lease deadline'
-        time.sleep(.02)
     index_path = shared_root / 'Conversations' / 'index-v1.json'
     until = time.monotonic() + 10
     while True:
@@ -200,59 +195,95 @@ try:
         assert time.monotonic() < until, 'producer A completed durable snapshot deadline'
         time.sleep(.02)
     producer_b = Recorder(a.work / 'clear-producer-b', state_directory=shared_root)
-    producer_b.authority()
-    producer_b.frame(1, {'routeID': 'route', 'upstream': 'anthropic', 'method': 'POST', 'path': '/v1/messages',
+    check(producer_b.wait() == 4, 'second same-root producer fails before listener or capture')
+    check(not producer_b.path.exists(), 'locked-out recorder exposes no read socket')
+    producer_a.frame(10, exchange=2); producer_a.ack(2)
+    check(not json.loads(index_path.read_bytes())['records'], 'live clear commits empty index after exclusive admission')
+    check(not producer_a.query('conversations.list')['result']['conversations'], 'live clear invalidates prior capture')
+    producer_a.frame(1, {'routeID': 'route', 'upstream': 'anthropic', 'method': 'POST', 'path': '/v1/messages',
                          'routeIdentity': {'kind': 'claude', 'session': 'session', 'paneID': 'pane', 'terminalID': 'terminal', 'cliVersion': '2.1.309'},
-                         'headers': [['x-claude-code-session-id', 'producer-b'], ['x-claude-code-request-class', 'main']]})
-    producer_b.frame(2, {'messages': [{'role': 'user', 'content': 'owned-producer-b-before-refusal'}]}); producer_b.frame(3)
-    b_id = producer_b.conversation()
-    until = time.monotonic() + 5
-    while producer_b.query('persistence.status')['result']['mode'] != 'degraded':
-        assert time.monotonic() < until, 'producer B competing lease deadline'
-        time.sleep(.02)
-    producer_a.frame(10, exchange=2)
-    kind, generation, payload = producer_a.reply_frame()
-    check(kind == 11 and generation == 2 and json.loads(payload)['outcome'] == 'unavailable',
-          'clear refuses when global producer exclusion is unproved')
-    check(index_path.read_bytes() == initial_index, 'refused clear leaves A index bytes untouched')
-    page = producer_b.query('conversation.read', conversationID=b_id)['result']
-    check(any(block.get('text') == 'owned-producer-b-before-refusal' for item in page['items'] for block in item['blocks']),
-          'refused clear leaves B preexisting live capture intact')
-    check(producer_a.stop() == 0, 'producer A releases journal lease')
-    until = time.monotonic() + 15
+                         'headers': [['x-claude-code-session-id', 'after-clear'], ['x-claude-code-request-class', 'main']]}, exchange=2)
+    producer_a.frame(2, {'messages': [{'role': 'user', 'content': 'allowed-after-clear'}]}, exchange=2); producer_a.frame(3, exchange=2)
+    producer_a.conversation()
+    until = time.monotonic() + 10
     while True:
         try:
-            entries = json.loads(index_path.read_bytes())['records']
-            bodies = [(shared_root / 'Conversations' / 'records' / (entry['generation'] + '.json')).read_bytes() for entry in entries]
-            if any(b'owned-producer-b-before-refusal' in body for body in bodies): break
+            before_offline = index_path.read_bytes()
+            entries = json.loads(before_offline)['records']
+            if entries: break
         except (OSError, ValueError, KeyError): pass
-        assert time.monotonic() < until, 'producer B retry after lease release'
-        time.sleep(.05)
-    check(True, 'pre-refusal producer B can persist only because no clear success was reported')
+        assert time.monotonic() < until, 'post-clear capture persisted deadline'
+        time.sleep(.02)
+    command = [str(a.binary), 'clear-history', '--confirmed', '--state-dir', str(shared_root), '--socket', str(producer_a.path)]
+    busy = subprocess.run(command, env={}, capture_output=True, timeout=10)
+    check(busy.returncode == 4, 'offline clear refuses while producer is active')
+    check(index_path.read_bytes() == before_offline, 'busy offline clear does not mutate history')
+    check(producer_a.stop() == 0, 'producer A releases lifetime admission')
+    after_stop = index_path.read_bytes()
+    unconfirmed = subprocess.run([str(a.binary), 'clear-history', '--state-dir', str(shared_root), '--socket', str(producer_a.path)], env={}, capture_output=True, timeout=10)
+    check(unconfirmed.returncode == 64 and index_path.read_bytes() == after_stop, 'offline command requires explicit confirmation')
+    cleared = subprocess.run(command, env={}, capture_output=True, timeout=10)
+    check(cleared.returncode == 0 and not json.loads(index_path.read_bytes())['records'], 'OFF confirmed clear uses producer and journal admission')
 finally:
-    if producer_b is not None: check(producer_b.stop() == 0, 'producer B exits naturally')
+    if producer_b is not None: producer_b.stop()
     if producer_a.status is None: check(producer_a.stop() == 0, 'producer A exits naturally')
 
-# A second, non-cooperating producer starts against the same root before it
-# opens the journal; clear remains denied without depending on a lease probe.
+# A standalone recorder competing with an independently held lifecycle lease
+# must not consume pre-clear traffic and retry it after the lease is released.
 startup_root = a.work / 'clear-startup-state'
 startup_root.mkdir(mode=0o700)
 first = Recorder(a.work / 'clear-startup-first', state_directory=startup_root)
-late = Recorder(a.work / 'clear-startup-late', state_directory=startup_root)
+late = None
 try:
     first.authority()
-    late.query('conversations.list')  # child exists, no journal open required
-    first.frame(10, exchange=2)
-    kind, generation, payload = first.reply_frame()
-    check(kind == 11 and generation == 2 and json.loads(payload)['outcome'] == 'unavailable',
-          'unproved startup/legacy exclusion cannot produce clear success')
-    check(not (startup_root / 'Conversations').exists(), 'refused clear does not even initialize the journal')
+    late = Recorder(a.work / 'clear-startup-late', state_directory=startup_root)
+    check(late.wait() == 4, 'standalone racing producer fails before capture while lease held')
+    first.frame(10, exchange=2); first.ack(2)
+    check(not first.query('conversations.list')['result']['conversations'], 'live clear succeeds without competing producer admission')
 finally:
-    check(late.stop() == 0, 'simulated noncooperating producer exits')
+    if late is not None: late.stop()
     check(first.stop() == 0, 'startup-exclusion recorder exits')
 
+# Model OFF maintenance/startup contention with a held synthetic producer
+# admission lock. A competing recorder must not admit queued pre-clear input.
+race_root = a.work / 'offline-start-race-state'
+race_root.mkdir(mode=0o700)
+race_socket_dir = a.work / 'offline-start-race-socket'
+race_socket_dir.mkdir(mode=0o700)
+race_socket = race_socket_dir / 'ac.sock'
+race_fd = os.open(race_root / 'producer.lock', os.O_CREAT | os.O_RDWR, 0o600)
+fcntl.flock(race_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+racing = Recorder(a.work / 'offline-start-racer', state_directory=race_root)
+try:
+    check(racing.wait() == 4, 'racing recorder cannot admit capture while producer admission is held')
+    command = [str(a.binary), 'clear-history', '--confirmed', '--state-dir', str(race_root), '--socket', str(race_socket)]
+    busy = subprocess.run(command, env={}, capture_output=True, timeout=10)
+    check(busy.returncode == 4, 'OFF maintenance cannot clear under held producer admission')
+    fcntl.flock(race_fd, fcntl.LOCK_UN)
+    cleared = subprocess.run(command, env={}, capture_output=True, timeout=10)
+    check(cleared.returncode == 0, 'OFF maintenance can clear after producer admission is released')
+finally:
+    racing.stop(); fcntl.flock(race_fd, fcntl.LOCK_UN); os.close(race_fd)
+
+# Crash an owned idle producer, then prove its lifecycle and journal locks do
+# not survive the child while the stale socket itself is never unlinked by OFF.
+crash_root = a.work / 'clear-crash-state'
+crash_root.mkdir(mode=0o700)
+crashed = Recorder(a.work / 'clear-crash-socket', state_directory=crash_root)
+try:
+    crashed.authority()
+    os.kill(crashed.pid, signal.SIGKILL)
+    check(crashed.wait() == -signal.SIGKILL, 'owned producer crash reaped')
+    stale_inode = crashed.path.lstat().st_ino
+    command = [str(a.binary), 'clear-history', '--confirmed', '--state-dir', str(crash_root), '--socket', str(crashed.path)]
+    outcome = subprocess.run(command, env={}, capture_output=True, timeout=10)
+    check(outcome.returncode == 0, 'OFF clear acquires released producer admission after crash')
+    check(crashed.path.lstat().st_ino == stale_inode, 'OFF clear does not unlink stale recorder socket')
+finally:
+    crashed.stop()
+
 # An unconfigured recorder must return an explicit failed-clear frame, never
-# a success ACK or mutation of its live epoch.
+# a success ACK when no persistent producer lease exists.
 clear_unavailable = Recorder(a.work / 'clear-unavailable')
 try:
     clear_unavailable.authority(); clear_unavailable.frame(10, exchange=2)
@@ -262,8 +293,8 @@ try:
 finally:
     check(clear_unavailable.stop() == 0, 'unavailable-clear recorder exits naturally')
 
-# A corrupt future/unknown index is preserved because clear is refused before
-# opening the journal, without claiming success.
+# A corrupt future/unknown index is preserved and clear reports a partial/unknown
+# failure, never success.
 clear_bad_root = a.work / 'clear-corrupt-state'
 clear_bad_root.mkdir(mode=0o700)
 clear_bad_dir = clear_bad_root / 'Conversations'
@@ -276,8 +307,8 @@ clear_bad = Recorder(a.work / 'clear-corrupt-socket', state_directory=clear_bad_
 try:
     clear_bad.authority(); clear_bad.frame(10, exchange=2)
     kind, generation, payload = clear_bad.reply_frame()
-    check(kind == 11 and generation == 2 and json.loads(payload)['outcome'] == 'unavailable',
-          'unsupported index clear is refused before journal access')
+    check(kind == 11 and generation == 2 and json.loads(payload)['outcome'] == 'partial',
+          'unsupported index clear reports incomplete rather than success')
     check(clear_bad_index.read_bytes() == b'{"version":999,"records":[]}', 'unsupported index bytes remain preserved')
 finally:
     check(clear_bad.stop() == 0, 'corrupt-clear recorder exits naturally')

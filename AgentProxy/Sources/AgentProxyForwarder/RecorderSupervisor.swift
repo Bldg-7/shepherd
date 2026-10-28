@@ -21,10 +21,12 @@ final class RecorderSupervisor: @unchecked Sendable {
     private let loop: EventLoop
     private let tee: Tee
     private let routes: RouteTable
+    private let producerLease: ConversationProducerLease
     private let log: @Sendable (String) -> Void
     private var authorityGeneration: UInt64 = 0
     private var acknowledgedGeneration: UInt64 = 0
     private var acknowledgements: [UInt64: EventLoopPromise<Void>] = [:]
+    private var clearGenerations: Set<UInt64> = []
     private var pid: pid_t?
     private var link: Channel?
     private var delay = RecorderSupervisor.firstDelay
@@ -36,8 +38,8 @@ final class RecorderSupervisor: @unchecked Sendable {
     private let exits = NSCondition()
     private var waiting = 0
 
-    init(command: [String], loop: EventLoop, tee: Tee, routes: RouteTable, log: @escaping @Sendable (String) -> Void) {
-        self.command = command; self.loop = loop; self.tee = tee; self.routes = routes; self.log = log
+    init(command: [String], loop: EventLoop, tee: Tee, routes: RouteTable, producerLease: ConversationProducerLease, log: @escaping @Sendable (String) -> Void) {
+        self.command = command; self.loop = loop; self.tee = tee; self.routes = routes; self.producerLease = producerLease; self.log = log
     }
 
     /// A snapshot and all subsequent tee frames share the same ordered stream.
@@ -51,12 +53,25 @@ final class RecorderSupervisor: @unchecked Sendable {
     private struct AuthorityUnavailable: Error {}
     enum ClearError: Error, Equatable { case unavailable, partial }
 
-    /// A journal lease does not fence a different recorder's in-memory
-    /// producers, including older forwarders with independent socket paths.
-    /// No global exclusion proof exists yet: reject before any mutation.
+    /// The producer lease covers this forwarder and its inherited recorder;
+    /// independent first-shipping persistent producers cannot start capturing.
     func clearHistory() -> EventLoopFuture<Void> {
         loop.assertInEventLoop()
-        return loop.makeFailedFuture(ClearError.unavailable)
+        guard (try? producerLease.verify()) != nil, let channel = link, channel.isActive, channel.isWritable,
+              authorityGeneration < UInt64.max, acknowledgements.count < 128 else { return loop.makeFailedFuture(ClearError.unavailable) }
+        authorityGeneration += 1
+        let generation = authorityGeneration
+        let promise = loop.makePromise(of: Void.self)
+        acknowledgements[generation] = promise; clearGenerations.insert(generation)
+        let timeout = loop.scheduleTask(in: .seconds(2)) { [weak self, weak channel] in
+            guard let self, let channel, self.link === channel, self.acknowledgements[generation] != nil else { return }
+            channel.close(promise: nil)
+        }
+        promise.futureResult.whenComplete { _ in timeout.cancel() }
+        tee.fenceExistingCopies()
+        let header = AgentProxyTeeFrame.header(kind: .clearHistory, exchange: generation, payloadCount: 0)
+        channel.writeAndFlush(ByteBuffer(bytes: header)).whenFailure { _ in channel.close(promise: nil) }
+        return promise.futureResult
     }
 
     /// Fails rather than reporting a synchronized mutation when the child is
@@ -114,17 +129,23 @@ final class RecorderSupervisor: @unchecked Sendable {
     }
 
     private func received(_ frame: AgentProxyTeeFrame.Frame, on channel: Channel) -> Bool {
-        guard link === channel, frame.kind == .routeAcknowledgement, frame.payload.isEmpty,
-              let first = acknowledgements.keys.min(), frame.exchange == first,
-              let promise = acknowledgements.removeValue(forKey: first) else { return false }
-        acknowledgedGeneration = first
-        promise.succeed(())
+        guard link === channel, let first = acknowledgements.keys.min(), frame.exchange == first else { return false }
+        let failure: ClearError?
+        if frame.kind == .routeAcknowledgement && frame.payload.isEmpty { failure = nil }
+        else if clearGenerations.contains(first), frame.kind == .clearFailure,
+                let value = try? JSONDecoder().decode(AgentProxyTeeFrame.ClearFailure.self, from: Data(frame.payload)) {
+            failure = value.outcome == .partial ? .partial : .unavailable
+        } else { return false }
+        guard let promise = acknowledgements.removeValue(forKey: first) else { return false }
+        clearGenerations.remove(first); acknowledgedGeneration = first
+        if let failure { promise.fail(failure) } else { promise.succeed(()) }
         return true
     }
 
     private func failAcknowledgements() {
         let pending = acknowledgements.values
         acknowledgements.removeAll()
+        clearGenerations.removeAll()
         for promise in pending { promise.fail(AuthorityUnavailable()) }
     }
 
@@ -137,15 +158,27 @@ final class RecorderSupervisor: @unchecked Sendable {
 
     private func spawn() {
         guard !stopped else { return }
+        guard (try? producerLease.verify()) != nil else { state = .stopped; log("recorder: producer admission invalid"); return }
         var pair: [Int32] = [-1, -1]
         guard socketpair(AF_UNIX, SOCK_STREAM, 0, &pair) == 0 else { scheduleRestart(); return }
-        let (ours, theirs) = (pair[0], pair[1])
+        let ours = pair[0]
+        var theirs = pair[1]
+        // Descriptor 4 is reserved for admission in the child. Preserve the
+        // socket source if the newly-created pair happened to occupy it.
+        if theirs == 4 {
+            let moved = fcntl(theirs, F_DUPFD_CLOEXEC, 5)
+            guard moved >= 0 else { close(ours); close(theirs); scheduleRestart(); return }
+            close(theirs); theirs = moved
+        }
         _ = fcntl(ours, F_SETFD, FD_CLOEXEC)
         var on: Int32 = 1
         _ = setsockopt(ours, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
         var size: Int32 = 1 << 20
         _ = setsockopt(ours, SOL_SOCKET, SO_SNDBUF, &size, socklen_t(MemoryLayout<Int32>.size))
 
+        let inheritedLease = fcntl(producerLease.descriptor, F_DUPFD_CLOEXEC, 5)
+        guard inheritedLease >= 0 else { close(ours); close(theirs); scheduleRestart(); return }
+        defer { close(inheritedLease) }
         var actions: posix_spawn_file_actions_t?
         var attributes: posix_spawnattr_t?
         posix_spawn_file_actions_init(&actions)
@@ -154,6 +187,9 @@ final class RecorderSupervisor: @unchecked Sendable {
         posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0)
         posix_spawn_file_actions_addinherit_np(&actions, 1)
         posix_spawn_file_actions_addinherit_np(&actions, 2)
+        // Duplicate admission before descriptor 3 is replaced. It is inherited
+        // by the recorder so parent death cannot release admission prematurely.
+        posix_spawn_file_actions_adddup2(&actions, inheritedLease, 4)
         posix_spawn_file_actions_adddup2(&actions, theirs, 3)
         posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_SETSIGMASK))
         var defaults = sigset_t()

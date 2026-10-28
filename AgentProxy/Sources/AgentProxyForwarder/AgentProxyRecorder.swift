@@ -7,10 +7,19 @@ import AgentProxyCore
 /// mode can schedule normalized records to the journal when a state directory
 /// is supplied; it never logs raw tee bodies. Exits on EOF or malformed framing.
 public enum AgentProxyRecorder {
-    public static func run(descriptor: Int32 = 3, socketPath: String? = nil, stateDirectory: String? = nil) -> Int32 {
+    /// Caller must supply explicit state/socket paths and obtain user consent.
+    /// Returns 0 on complete clear, 4 when admission is unavailable, and 5
+    /// for a possibly partial or durability-uncertain journal outcome.
+    public static func clearOffline(stateDirectory: String, socketPath: String) -> Int32 {
+        guard stateDirectory.hasPrefix("/"), AgentProxyPaths.socketPathFits(socketPath) else { return 4 }
+        return ConversationSocket.clearOffline(stateDirectory: stateDirectory, socketPath: socketPath)
+    }
+
+    public static func run(descriptor: Int32 = 3, socketPath: String? = nil, stateDirectory: String? = nil,
+                           inheritedProducerDescriptor: Int32? = nil) -> Int32 {
         var info = stat()
         guard fstat(descriptor, &info) == 0, info.st_mode & S_IFMT == S_IFSOCK else { return 2 }
-        if let socketPath { return ConversationSocket.run(descriptor: descriptor, path: socketPath, stateDirectory: stateDirectory) }
+        if let socketPath { return ConversationSocket.run(descriptor: descriptor, path: socketPath, stateDirectory: stateDirectory, inheritedProducerDescriptor: inheritedProducerDescriptor) }
         var decoder = AgentProxyTeeFrame.Decoder()
         let capture = ConversationCapture(makeDecoder: AgentProxyBodyDecoder.make)
         defer { capture.finishAll() }
