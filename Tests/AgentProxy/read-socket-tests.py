@@ -2,7 +2,7 @@
 """Synthetic fd3 tee -> real recorder -> private NDJSON socket. No app/agents,
 credentials, transcript files or external network. All sockets under --work.
 """
-import argparse, fcntl, hashlib, json, os, select, signal, socket, stat, struct, subprocess, time
+import argparse, fcntl, hashlib, json, os, select, signal, socket, stat, struct, subprocess, threading, time
 from pathlib import Path
 
 p = argparse.ArgumentParser()
@@ -17,6 +17,42 @@ def check(value, label):
     assert value, label
     passed += 1
     print('PASS ' + label, flush=True)
+
+def process_metadata():
+    # Only PID/PPID/state/start metadata; never inspect unrelated command lines.
+    result = subprocess.run(['/bin/ps', '-axo', 'pid=,ppid=,stat=,lstart='], stdin=subprocess.DEVNULL,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True,
+                            env={'PATH': '/usr/bin:/bin', 'LC_ALL': 'C'}, timeout=3, check=True)
+    rows = {}
+    for line in result.stdout.decode('utf-8', 'strict').splitlines():
+        fields = line.split()
+        if not fields: continue
+        assert len(fields) == 8, 'malformed process metadata'
+        pid, parent = map(int, fields[:2])
+        rows[pid] = (parent, fields[2], ' '.join(fields[3:]))
+    assert rows, 'empty process metadata'
+    return rows
+
+def recorder_children(recorder_pid):
+    return {pid: (state, started) for pid, (parent, state, started) in process_metadata().items()
+            if parent == recorder_pid and not state.startswith('Z')}
+
+def wait_for_recorder_owner(recorder):
+    deadline = time.monotonic() + 8
+    while True:
+        children = recorder_children(recorder.pid)
+        if len(children) == 1:
+            pid, (_, started) = next(iter(children.items()))
+            return pid, started
+        assert len(children) == 0 and time.monotonic() < deadline, 'one owned recorder child deadline'
+        time.sleep(.02)
+
+def signal_recorder_owner(recorder, pid, started, sig):
+    # Never signal an inferred, reparented, exited or identity-mismatched PID.
+    assert recorder.status is None
+    children = recorder_children(recorder.pid)
+    assert pid in children and children[pid][1] == started, 'owned recorder child identity changed'
+    os.kill(pid, sig)
 
 class Reader:
     def __init__(self, sock): self.sock, self.buffer = sock, bytearray()
@@ -329,6 +365,8 @@ finally:
     check(persisted.stop() == 0, 'synthetic persistence recorder exits')
 
 retained_index = json.loads(index.read_bytes())
+retained_body = (store_root / 'Conversations' / 'records' / (retained_index['records'][0]['generation'] + '.json')).read_bytes()
+check(b'alpha' in retained_body, 'natural recorder shutdown drains the final accepted response before closing its owner')
 reopened = Recorder(a.work / 'persistence-reopen', state_directory=store_root)
 try:
     reopened.authority()
@@ -352,6 +390,140 @@ finally:
 reopened_index = json.loads(index.read_bytes())
 check(len(reopened_index['records']) == 1 and reopened_index['records'][0]['recordID'] == retained_index['records'][0]['recordID'],
       'restart saves retain the original persistent ID without duplication')
+
+# A stopped owned storage owner exercises the bounded exceptional close path.
+# This is an intentional fault-injection signal, not a zero-signal test.
+stalled_root = a.work / 'stalled-owner-state'
+stalled_root.mkdir(mode=0o700)
+stalled = Recorder(a.work / 'stalled-owner-socket', state_directory=stalled_root)
+stalled_owner = None
+stalled_started = None
+try:
+    stalled.authority(); stalled.begin(wait_admission=True); stalled.end(); stalled.conversation()
+    stalled_index = stalled_root / 'Conversations' / 'index-v1.json'
+    deadline = time.monotonic() + 10
+    while True:
+        try:
+            if json.loads(stalled_index.read_bytes())['records']: break
+        except (OSError, ValueError, KeyError): pass
+        assert time.monotonic() < deadline, 'stalled owner initial save deadline'
+        time.sleep(.02)
+    stalled_owner, stalled_started = wait_for_recorder_owner(stalled)
+    signal_recorder_owner(stalled, stalled_owner, stalled_started, signal.SIGSTOP)
+    deadline = time.monotonic() + 3
+    while True:
+        children = recorder_children(stalled.pid)
+        assert stalled_owner in children and children[stalled_owner][1] == stalled_started, 'stopped owner identity'
+        if children[stalled_owner][0].startswith('T'): break
+        assert time.monotonic() < deadline, 'owned owner stop barrier'
+        time.sleep(.02)
+    start = time.monotonic()
+    check(bool(stalled.query('conversations.list')['result']['conversations']) and time.monotonic() - start < 1,
+          'stalled owner does not block the recorder event loop')
+    competitor = Recorder(a.work / 'stalled-owner-competitor', state_directory=stalled_root)
+    try: check(competitor.wait() == 4, 'stalled owner cannot admit an independent producer')
+    finally: competitor.stop()
+    # EOF asks for the bounded close. A stopped owner cannot exit naturally;
+    # any escalation must be reported by the recorder rather than exit zero.
+    stalled.tee.shutdown(socket.SHUT_WR)
+    check(stalled.wait(timeout=5) == 4, 'stalled owner shutdown is reported as failure, not zero-signal success')
+    stalled.tee.close()
+    deadline = time.monotonic() + 5
+    while True:
+        old_owner = process_metadata().get(stalled_owner)
+        if old_owner is None or old_owner[2] != stalled_started: break
+        assert time.monotonic() < deadline, 'owned stopped owner remains after failed shutdown; cleanup unknown'
+        time.sleep(.02)
+finally:
+    # Never signal a child after its recorder has exited or its identity changed.
+    if stalled.status is None and stalled_owner is not None:
+        children = recorder_children(stalled.pid)
+        if stalled_owner in children and children[stalled_owner][1] == stalled_started:
+            signal_recorder_owner(stalled, stalled_owner, stalled_started, signal.SIGCONT)
+    if stalled.status is None:
+        stalled.stop()
+
+# Resume a verified stopped owner within the natural-exit allowance. The
+# recorder must wait off-loop for EOF/reaping without an exceptional failure.
+late_root = a.work / 'late-owner-state'
+late_root.mkdir(mode=0o700)
+late = Recorder(a.work / 'late-owner-socket', state_directory=late_root)
+late_owner = None; late_started = None; resume_errors = []; resume_thread = None
+try:
+    late.authority(); late.begin(wait_admission=True); late.end(); late.conversation()
+    late_index = late_root / 'Conversations' / 'index-v1.json'
+    deadline = time.monotonic() + 10
+    while True:
+        try:
+            if json.loads(late_index.read_bytes())['records']: break
+        except (OSError, ValueError, KeyError): pass
+        assert time.monotonic() < deadline, 'late owner initial save deadline'
+        time.sleep(.02)
+    late_owner, late_started = wait_for_recorder_owner(late)
+    signal_recorder_owner(late, late_owner, late_started, signal.SIGSTOP)
+    deadline = time.monotonic() + 3
+    while True:
+        children = recorder_children(late.pid)
+        assert late_owner in children and children[late_owner][1] == late_started, 'late owner identity'
+        if children[late_owner][0].startswith('T'): break
+        assert time.monotonic() < deadline, 'late owner stop barrier'
+        time.sleep(.02)
+    def resume_late_owner():
+        try:
+            time.sleep(.1)
+            signal_recorder_owner(late, late_owner, late_started, signal.SIGCONT)
+        except Exception as error: resume_errors.append(error)
+    resume_thread = threading.Thread(target=resume_late_owner)
+    resume_thread.start()
+    check(late.stop() == 0, 'late owner EOF exit within the grace period is clean')
+    resume_thread.join(timeout=3)
+    check(not resume_thread.is_alive() and not resume_errors, 'late owned child was resumed only after identity verification')
+finally:
+    if resume_thread is not None: resume_thread.join(timeout=3)
+    if late.status is None and late_owner is not None:
+        children = recorder_children(late.pid)
+        if late_owner in children and children[late_owner][1] == late_started:
+            signal_recorder_owner(late, late_owner, late_started, signal.SIGCONT)
+    if late.status is None: late.stop()
+
+# Killing the verified owned child is an intentional fault injection. The
+# recorder must degrade, reap it before replacement, and keep one disk record.
+owner_crash_root = a.work / 'owner-crash-retry-state'
+owner_crash_root.mkdir(mode=0o700)
+owner_crash = Recorder(a.work / 'owner-crash-retry-socket', state_directory=owner_crash_root)
+try:
+    owner_crash.authority(); owner_crash.begin(wait_admission=True); owner_crash.end(); owner_crash.conversation()
+    crash_index = owner_crash_root / 'Conversations' / 'index-v1.json'
+    deadline = time.monotonic() + 10
+    while True:
+        try:
+            records_before_crash = json.loads(crash_index.read_bytes())['records']
+            if records_before_crash: break
+        except (OSError, ValueError, KeyError): pass
+        assert time.monotonic() < deadline, 'owner crash initial save deadline'
+        time.sleep(.02)
+    old_owner, old_started = wait_for_recorder_owner(owner_crash)
+    signal_recorder_owner(owner_crash, old_owner, old_started, signal.SIGKILL)
+    deadline = time.monotonic() + 18
+    degraded = False; replacement = None
+    while True:
+        status = owner_crash.query('persistence.status')['result']
+        degraded = degraded or status['mode'] == 'degraded'
+        children = recorder_children(owner_crash.pid)
+        assert len(children) <= 1, 'recorder launched duplicate owners during recovery'
+        if children:
+            pid, (_, started) = next(iter(children.items()))
+            if (pid, started) != (old_owner, old_started): replacement = pid
+        if degraded and replacement is not None: break
+        assert time.monotonic() < deadline, 'crashed owner degraded/replacement deadline'
+        time.sleep(.05)
+    check(degraded and replacement is not None, 'crashed owner is reported degraded before replacement')
+    records_after_crash = json.loads(crash_index.read_bytes())['records']
+    check(len(records_after_crash) == 1 and records_after_crash[0]['recordID'] == records_before_crash[0]['recordID'],
+          'owner crash recovery does not duplicate the persisted record')
+finally:
+    if owner_crash.status is None:
+        check(owner_crash.stop() == 4, 'abnormal owner exit makes recorder shutdown report failure')
 
 # A root-wide producer lease is acquired before a recorder accepts capture,
 # regardless of its independent read/control socket path.

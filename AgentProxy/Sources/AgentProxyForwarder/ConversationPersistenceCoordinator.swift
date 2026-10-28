@@ -19,6 +19,7 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
     private let capture: ConversationCapture
     private let producerLease: ConversationProducerLease
     private var owner: ConversationStorageOwnerClient? // worker queue only
+    private var ownerCloseFailed = false // worker queue only; sticky shutdown outcome
     private var initializationFailed = false // worker queue only; unsafe state stays closed
     private var initializationRetryAfter: TimeInterval = 0 // worker queue only
     private var pending: [String: Pending] = [:] // recorder loop only
@@ -31,7 +32,13 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
     private var authorityPaused = false
     private var storageGeneration: UInt64 = 1 // recorder loop only
     private var fenceWaiters: [() -> Void] = []
-    private var finished: DispatchSemaphore?
+    final class Finish: @unchecked Sendable {
+        private let semaphore = DispatchSemaphore(value: 0)
+        private var clean = false
+        func complete(_ value: Bool) { clean = value; semaphore.signal() }
+        func wait(timeout: DispatchTime) -> Bool { semaphore.wait(timeout: timeout) == .success && clean }
+    }
+    private var finished: Finish?
     private(set) var health: Health = .volatile
     private(set) var statusWorkspaceDeferrals = 0
 
@@ -74,17 +81,14 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
                 guard reply.outcome == .success else { throw ConversationStorageOwner.Failure.unavailable }
                 result = .success(reply.record)
             } catch { retireOwner(); result = .failure(error) }
+            let ownerPending = owner?.isClosed == true
             loop.execute { [self] in
                 capture.release(workspace)
-                running = false
                 // Degradation is sticky for this recorder lifetime: a later
                 // unrelated success does not prove a failed record is healthy.
                 if case .failure = result { health = .degraded }
                 completion(result)
-                let waiters = fenceWaiters
-                fenceWaiters.removeAll()
-                for waiter in waiters { waiter() }
-                drain()
+                settleWorker(ownerPending: ownerPending)
             }
         }
         return true
@@ -92,14 +96,25 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
 
     private func openOwner(generation: UInt64) throws -> ConversationStorageOwnerClient {
         try producerLease.verify()
-        if let owner { return owner }
+        if let current = owner {
+            if !current.isClosed { return current }
+            switch current.closeOwner() {
+            case .pending, .unknown: throw ConversationStorageOwner.Failure.unavailable
+            case .clean, .failed: owner = nil
+            }
+        }
         let now = ProcessInfo.processInfo.systemUptime
         guard !initializationFailed, now.isFinite, now >= initializationRetryAfter else { throw ConversationStorageOwner.Failure.unavailable }
         do {
-            let opened = try ConversationStorageOwnerClient(stateDirectory: root, producer: producerLease, generation: generation)
+            let opened = try ConversationStorageOwnerClient(stateDirectory: root, producer: producerLease)
+            // Install before the first request so even a failed begin remains
+            // fenced until the child has actually been reaped.
             owner = opened
+            let reply = try opened.request(operation: .begin, generation: generation)
+            guard reply.outcome == .success else { throw ConversationStorageOwner.Failure.unavailable }
             return opened
         } catch {
+            retireOwner()
             if let failure = error as? ConversationStorageOwner.Failure, case .unsafe = failure { initializationFailed = true }
             else { initializationRetryAfter = now + 5 }
             throw error
@@ -107,7 +122,13 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
     }
 
     private func retireOwner() {
-        owner = nil
+        if let current = owner {
+            switch current.closeOwner() {
+            case .clean: owner = nil
+            case .failed: ownerCloseFailed = true; owner = nil
+            case .pending, .unknown: ownerCloseFailed = true
+            }
+        }
         initializationRetryAfter = ProcessInfo.processInfo.systemUptime + 5
     }
 
@@ -131,13 +152,12 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
                 let reply = try openOwner(generation: generation).request(operation: .status, generation: generation)
                 healthy = reply.outcome == .success && reply.health == "healthy" && reply.record == nil
             } catch { retireOwner(); healthy = false }
+            let ownerPending = owner?.isClosed == true
             loop.execute { [self] in
-                capture.release(reservation); running = false
+                capture.release(reservation)
                 if !healthy { health = .degraded }
                 else if case .volatile = health { health = .healthy }
-                let waiters = fenceWaiters; fenceWaiters.removeAll()
-                for waiter in waiters { waiter() }
-                drain()
+                settleWorker(ownerPending: ownerPending)
             }
         }
     }
@@ -193,22 +213,21 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
                     let reply = try openOwner(generation: generation - 1).request(operation: .clear, generation: generation)
                     outcome = reply.outcome == .success ? .cleared : .partial
                 } catch { retireOwner(); outcome = .partial }
+                let ownerPending = owner?.isClosed == true
                 loop.execute { [self] in
-                    capture.release(workspace); running = false
+                    capture.release(workspace)
                     if case .cleared = outcome {} else { health = .degraded }
                     completion(outcome)
-                    let waiters = fenceWaiters; fenceWaiters.removeAll()
-                    for waiter in waiters { waiter() }
-                    drain()
+                    settleWorker(ownerPending: ownerPending)
                 }
             }
         }
     }
 
     /// The caller waits outside the event loop and imposes its own deadline.
-    func finishWhenIdle() -> DispatchSemaphore {
+    func finishWhenIdle() -> Finish {
         loop.assertInEventLoop()
-        let result = DispatchSemaphore(value: 0)
+        let result = Finish()
         finished = result
         drain()
         return result
@@ -218,7 +237,23 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
         loop.assertInEventLoop()
         guard !running, !authorityPaused else { return }
         guard let key = pending.keys.sorted().first, let next = pending.removeValue(forKey: key) else {
-            finished?.signal(); finished = nil
+            guard let completion = finished else { return }
+            finished = nil; running = true
+            worker.async { [self] in
+                if let current = owner {
+                    switch current.closeOwner() {
+                    case .clean: owner = nil
+                    case .failed: ownerCloseFailed = true; owner = nil
+                    case .pending, .unknown: ownerCloseFailed = true
+                    }
+                }
+                let clean = !ownerCloseFailed
+                loop.execute { [self] in
+                    running = false
+                    if !clean { health = .degraded }
+                    completion.complete(clean)
+                }
+            }
             return
         }
         guard Self.workspaceBytes <= capture.limits.totalBytes,
@@ -237,18 +272,44 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
                 let reply = try openOwner(generation: next.generation).request(operation: .save, generation: next.generation, record: next.record, updatedAt: next.updatedAt)
                 success = reply.outcome == .success
             } catch { retireOwner(); success = false }
+            let ownerPending = owner?.isClosed == true
             loop.execute { [self] in
                 capture.release(workspace)
                 capture.release(next.reservation)
                 if !success { health = .degraded }
                 else if case .volatile = health { health = .healthy }
                 loop.execute { next.completion(success) }
-                running = false
-                let waiters = fenceWaiters
-                fenceWaiters.removeAll()
-                for completion in waiters { completion() }
-                drain()
+                settleWorker(ownerPending: ownerPending)
             }
         }
+    }
+
+    /// An unreaped owner may still finish I/O. Keep the fence closed until
+    /// the worker proves exit; an unknown child identity stays fail-closed.
+    private func settleWorker(ownerPending: Bool) {
+        loop.assertInEventLoop()
+        if ownerPending {
+            loop.scheduleTask(in: .milliseconds(50)) { [self] in
+                worker.async { [self] in
+                    guard let current = owner else {
+                        loop.execute { [self] in settleWorker(ownerPending: false) }
+                        return
+                    }
+                    switch current.closeOwner() {
+                    case .pending: loop.execute { [self] in settleWorker(ownerPending: true) }
+                    case .unknown: break // Keep the fence closed without guessing the child's identity.
+                    case .clean, .failed:
+                        owner = nil
+                        loop.execute { [self] in settleWorker(ownerPending: false) }
+                    }
+                }
+            }
+            return
+        }
+        running = false
+        let waiters = fenceWaiters
+        fenceWaiters.removeAll()
+        for waiter in waiters { waiter() }
+        drain()
     }
 }

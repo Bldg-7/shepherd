@@ -25,14 +25,7 @@ enum ConversationSocket {
         let state = ReadState(loop: group.next(), stateDirectory: stateDirectory, producerLease: producer)
         var listener: Channel?
         var tee: Channel?
-        defer {
-            let flush = try? state.loop.submit { state.stop() }.wait()
-            if let flush { _ = flush.wait(timeout: .now() + .seconds(1)) }
-            try? listener?.close().wait()
-            try? tee?.close().wait()
-            try? group.syncShutdownGracefully()
-            lease.cleanup()
-        }
+        var result: Int32 = 4
         do {
             // NIO-created Unix listeners unconditionally unlink their pathname
             // on close. Adopt our bound descriptor instead, so only the lease's
@@ -50,8 +43,17 @@ enum ConversationSocket {
                 .withConnectedSocket(descriptor).wait()
             try state.loop.submit { state.start() }.wait()
             try tee!.closeFuture.wait()
-            return try state.loop.submit { state.exitCode }.wait()
-        } catch { return 4 }
+            result = try state.loop.submit { state.exitCode }.wait()
+        } catch { result = 4 }
+        do {
+            if let flush = try state.loop.submit({ state.stop() }).wait(),
+               !flush.wait(timeout: .now() + .milliseconds(1500)) { result = 4 }
+        } catch { result = 4 }
+        try? listener?.close().wait()
+        try? tee?.close().wait()
+        try? group.syncShutdownGracefully()
+        lease.cleanup()
+        return result
     }
 }
 
@@ -510,7 +512,7 @@ private final class ReadState: @unchecked Sendable {
         persistence?.resumeAfterAuthority()
     }
 
-    func stop() -> DispatchSemaphore? {
+    func stop() -> ConversationPersistenceCoordinator.Finish? {
         loop.assertInEventLoop(); ticker?.cancel(); ticker = nil
         capture.finishAll(); scheduleChangedRecords()
         authority.removeAll()

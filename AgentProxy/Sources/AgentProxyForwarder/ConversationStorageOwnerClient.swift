@@ -9,10 +9,18 @@ import AgentProxyCore
 final class ConversationStorageOwnerClient {
     private let socketFD: Int32
     private let child: pid_t
+    private let producer: ConversationProducerLease
     private var nextID: UInt64 = 0
     private var closed = false
+    private var reaped = false
+    private var uncertain = false
+    private var escalated = false
 
-    init(stateDirectory: String, producer: ConversationProducerLease, generation: UInt64) throws {
+    enum CloseResult { case clean, failed, pending, unknown }
+
+    var isClosed: Bool { closed }
+
+    init(stateDirectory: String, producer: ConversationProducerLease) throws {
         try producer.verify()
         guard let executable = Bundle.main.executablePath, executable.hasPrefix("/") else { throw ConversationStorageOwner.Failure.unavailable }
         var pair: [Int32] = [-1, -1]
@@ -26,6 +34,14 @@ final class ConversationStorageOwnerClient {
             Darwin.close(local); Darwin.close(remote); throw ConversationStorageOwner.Failure.unavailable
         }
         defer { Darwin.close(inheritedSocket); Darwin.close(inheritedLease); Darwin.close(remote) }
+        var noSignal: Int32 = 1
+        var timeout = timeval(tv_sec: 5, tv_usec: 0)
+        guard fcntl(local, F_SETFD, FD_CLOEXEC) == 0,
+              setsockopt(local, SOL_SOCKET, SO_NOSIGPIPE, &noSignal, socklen_t(MemoryLayout<Int32>.size)) == 0,
+              setsockopt(local, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size)) == 0,
+              setsockopt(local, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size)) == 0 else {
+            Darwin.close(local); throw ConversationStorageOwner.Failure.unavailable
+        }
         var actions: posix_spawn_file_actions_t?
         var attributes: posix_spawnattr_t?
         guard posix_spawn_file_actions_init(&actions) == 0 else { Darwin.close(local); throw ConversationStorageOwner.Failure.unavailable }
@@ -51,22 +67,7 @@ final class ConversationStorageOwnerClient {
         guard posix_spawn(&pid, executable, &actions, &attributes, args, environment) == 0 else {
             Darwin.close(local); throw ConversationStorageOwner.Failure.unavailable
         }
-        var noSignal: Int32 = 1
-        var timeout = timeval(tv_sec: 5, tv_usec: 0)
-        guard fcntl(local, F_SETFD, FD_CLOEXEC) == 0,
-              setsockopt(local, SOL_SOCKET, SO_NOSIGPIPE, &noSignal, socklen_t(MemoryLayout<Int32>.size)) == 0,
-              setsockopt(local, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size)) == 0,
-              setsockopt(local, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size)) == 0 else {
-            Darwin.close(local); _ = kill(pid, SIGKILL)
-            let reapPID = pid
-            DispatchQueue.global(qos: .utility).async { var status: Int32 = 0; while waitpid(reapPID, &status, 0) < 0 && errno == EINTR {} }
-            throw ConversationStorageOwner.Failure.unavailable
-        }
-        socketFD = local; child = pid
-        do {
-            let reply = try request(operation: .begin, generation: generation)
-            guard reply.outcome == .success else { throw ConversationStorageOwner.Failure.unavailable }
-        } catch { closeOwner(); throw error }
+        socketFD = local; child = pid; self.producer = producer
     }
 
     func request(operation: ConversationStorageOwner.Request.Operation, generation: UInt64,
@@ -96,21 +97,60 @@ final class ConversationStorageOwnerClient {
                       Data(value.key.nativeSession.utf8) == Data(key.nativeSession.utf8) else { throw ConversationStorageOwner.Failure.invalid }
             }
             return reply
-        } catch {
-            closeOwner()
-            throw error
-        }
+        } catch { throw error }
     }
 
-    private func closeOwner() {
-        guard !closed else { return }
-        closed = true
-        shutdown(socketFD, SHUT_RDWR); Darwin.close(socketFD)
-        // The child remains ours and unreaped here, so this PID cannot be
-        // reused. Its lifecycle and owner locks persist until it actually exits.
-        _ = kill(child, SIGKILL)
-        let pid = child
-        DispatchQueue.global(qos: .utility).async { var status: Int32 = 0; while waitpid(pid, &status, 0) < 0 && errno == EINTR {} }
+    /// Called only on the serial persistence worker, never on the NIO loop.
+    /// A closed but unreaped client remains installed, fencing replacement.
+    func closeOwner() -> CloseResult {
+        if !closed {
+            closed = true
+            shutdown(socketFD, SHUT_RDWR); Darwin.close(socketFD)
+            if let result = waitForExit(milliseconds: 300) { return result }
+            // Only an owned, unreaped child can still have this PID.
+            escalated = true
+            _ = kill(child, SIGKILL)
+            if let result = waitForExit(milliseconds: 300) { return result }
+            return .pending
+        }
+        return pollExit() ?? .pending
     }
-    deinit { closeOwner() }
+
+    private func waitForExit(milliseconds: Int) -> CloseResult? {
+        let deadline = DispatchTime.now().uptimeNanoseconds + UInt64(milliseconds) * 1_000_000
+        repeat {
+            if let result = pollExit() { return result }
+            if DispatchTime.now().uptimeNanoseconds >= deadline { return nil }
+            usleep(10_000)
+        } while true
+    }
+
+    private func pollExit() -> CloseResult? {
+        if uncertain { return .unknown }
+        if reaped { return .failed }
+        var status: Int32 = 0
+        let result = waitpid(child, &status, WNOHANG)
+        if result == child {
+            reaped = true
+            return status == 0 && !escalated ? .clean : .failed
+        }
+        if result < 0 && errno != EINTR {
+            // Without a waitable child identity, do not signal or replace it.
+            uncertain = true
+            return .unknown
+        }
+        return nil
+    }
+
+    deinit {
+        if !closed { shutdown(socketFD, SHUT_RDWR); Darwin.close(socketFD) }
+        guard !reaped, !uncertain else { return }
+        let pid = child, retainedProducer = producer
+        DispatchQueue.global(qos: .utility).async {
+            withExtendedLifetime(retainedProducer) {
+                var status: Int32 = 0
+                while waitpid(pid, &status, 0) < 0 && errno == EINTR {}
+            }
+        }
+    }
 }
