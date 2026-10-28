@@ -151,12 +151,41 @@ struct PersistenceJournalTests {
             }
             try safetyFixtures(base: String(cString: resolved), record: record, clock: clock)
             try firstRecordFixtures(base: String(cString: resolved), record: record, clock: clock)
+            try largeOrphanAdmissionFixtures(base: String(cString: resolved), record: record, clock: clock)
             print("PASS: bounded persistence journal")
         } catch {
             print("FAIL: journal \(error)")
             exit(1)
         }
     }
+    private static func largeOrphanAdmissionFixtures(base: String, record: ConversationStore.PersistentSnapshot.Record, clock: Date) throws {
+        let path = base + "/large-orphan-admission"
+        guard mkdir(path, 0o700) == 0 else { throw Failure() }
+        let files = try ConversationPersistenceFiles(verifiedStateRootPath: path)
+        let journal = ConversationPersistenceJournal(files: files, now: { clock })
+        let text = String(repeating: "\u{1}", count: 48 << 10)
+        func item(_ id: String, _ content: String) -> ConversationStore.PersistentSnapshot.Item {
+            .init(id: id, message: .init(role: "user", blocks: [.init(kind: "text", text: content, callID: nil, toolName: nil)], truncated: false),
+                  origin: .init(kind: "observed"), status: "complete")
+        }
+        let items = (0..<32).map { item(String(format: "owned-item-%02d", $0), text) }
+        let valid = ConversationStore.PersistentSnapshot.Record(id: "large-valid", key: record.key, context: record.context,
+            updatedOrder: 1, items: items, truncated: false, status: "complete", subagents: record.subagents)
+        let saved = try journal.upsert(valid, updatedAt: clock)
+        guard saved.encodedBytes > 8 << 20 else { throw Failure() }
+        let invalid = ConversationStore.PersistentSnapshot.Record(id: "large-invalid", key: record.key, context: record.context,
+            updatedOrder: 1, items: [item("invalid-item", String(repeating: "\u{1}", count: (64 << 10) + 1))],
+            truncated: false, status: "complete", subagents: record.subagents)
+        let invalidBytes = try ConversationStore.PersistentSnapshot(records: [invalid]).encoded(maximumBytes: ConversationPersistenceFiles.maximumRecordBytes)
+        let invalidGeneration = try files.writeRecord(invalidBytes)
+        try files.writeIndex(JSONSerialization.data(withJSONObject: ["version": 1, "records": []]))
+        try journal.activate()
+        let inventory = try files.inventoryRecords()
+        guard !inventory.contains(where: { $0.generation == saved.generation }),
+              inventory.contains(where: { $0.generation == invalidGeneration }),
+              try files.readRecord(invalidGeneration) == invalidBytes else { throw Failure() }
+    }
+
     private static func firstRecordFixtures(base: String, record: ConversationStore.PersistentSnapshot.Record, clock: Date) throws {
         let path = base + "/first-record"
         guard mkdir(path, 0o700) == 0 else { throw Failure() }

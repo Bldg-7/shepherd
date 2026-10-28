@@ -243,15 +243,33 @@ status_root.mkdir(mode=0o700)
 status_dir = status_root / 'Conversations'; status_dir.mkdir(mode=0o700)
 status_records = status_dir / 'records'; status_records.mkdir(mode=0o700)
 status_index = status_dir / 'index-v1.json'; status_index.write_bytes(b'{"version":1,"records":[]}'); status_index.chmod(0o600)
+# 32 distinct user items of 48 KiB each stay below the 64 KiB per-user-item
+# cap and 4 MiB conversation bound. JSON escaping expands them beyond 8 MiB.
+valid_text = '\x01' * (48 << 10)
+valid_items = [{'id': 'owned-item-%02d' % n,
+                'message': {'role': 'user', 'blocks': [{'kind': 'text', 'text': valid_text}], 'truncated': False},
+                'origin': {'kind': 'observed'}, 'status': 'complete'} for n in range(32)]
+assert len({item['id'] for item in valid_items}) == 32
+assert all(len(item['message']['blocks'][0]['text'].encode()) <= 64 << 10 for item in valid_items)
+assert sum(len(item['message']['blocks'][0]['text'].encode()) for item in valid_items) < 4 << 20
 large_record = {'id': 'owned-orphan', 'key': {'agent': 'claude', 'herdrSession': 'session', 'nativeSession': 'orphan'},
                 'context': {'routeID': 'route', 'paneID': 'pane', 'terminalID': 'terminal'}, 'updatedOrder': 1,
-                'items': [{'id': 'item', 'message': {'role': 'user', 'blocks': [{'kind': 'text', 'text': '\x01' * (2 << 20)}], 'truncated': False},
-                           'origin': {'kind': 'observed'}, 'status': 'complete'}], 'truncated': False, 'status': 'complete',
+                'items': valid_items, 'truncated': False, 'status': 'complete',
                 'subagents': {'observed': 0, 'withFinalResult': 0, 'limited': False, 'linkAvailable': False, 'ancestryIncomplete': False}}
 orphan = status_records / '00000000-0000-0000-0000-000000000001.json'
 orphan.write_bytes(json.dumps({'schemaVersion': 1, 'records': [large_record]}).encode()); orphan.chmod(0o600)
 assert orphan.stat().st_size > 8 << 20, 'owned encoded orphan exceeds the old status workspace'
 orphan_digest = hashlib.sha256(orphan.read_bytes()).digest()
+# A separate unreferenced record exceeds the per-user-item limit; it must be
+# preserved even while the valid large orphan is recovered.
+invalid_record = dict(large_record)
+invalid_record['id'] = 'invalid-orphan'
+invalid_record['items'] = [{'id': 'invalid-item',
+                            'message': {'role': 'user', 'blocks': [{'kind': 'text', 'text': '\x01' * ((64 << 10) + 1)}], 'truncated': False},
+                            'origin': {'kind': 'observed'}, 'status': 'complete'}]
+invalid_orphan = status_records / '00000000-0000-0000-0000-000000000002.json'
+invalid_orphan.write_bytes(json.dumps({'schemaVersion': 1, 'records': [invalid_record]}).encode()); invalid_orphan.chmod(0o600)
+invalid_digest = hashlib.sha256(invalid_orphan.read_bytes()).digest()
 def initial_frame(kind, payload, exchange):
     body = json.dumps(payload).encode()
     return struct.pack('>IBQ', 9 + len(body), kind, exchange) + body
@@ -272,6 +290,7 @@ try:
         time.sleep(.02)
     check(not (status_root / 'owner.lock').exists() and status['mode'] == 'volatile', 'status cannot start owner without full workspace')
     check(hashlib.sha256(orphan.read_bytes()).digest() == orphan_digest, 'unadmitted owner activation leaves large orphan untouched')
+    check(hashlib.sha256(invalid_orphan.read_bytes()).digest() == invalid_digest, 'unadmitted activation leaves invalid orphan untouched')
     for n in range(1, 5): status_pressure.frame(6, {'outcome': 'dropped'}, exchange=n)
     status_pressure.authority(generation=2)
     until = time.monotonic() + 15
@@ -281,6 +300,7 @@ try:
         assert time.monotonic() < until, 'owner status after workspace release deadline'
         time.sleep(.05)
     check(not orphan.exists(), 'owner activation occurs after pressure clears and handles supported orphan')
+    check(hashlib.sha256(invalid_orphan.read_bytes()).digest() == invalid_digest, 'invalid orphan remains byte-exactly preserved after activation')
 finally:
     check(status_pressure.stop() == 0, 'status workspace recorder exits')
 
