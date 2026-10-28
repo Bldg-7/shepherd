@@ -118,6 +118,8 @@ final class AgentProxyService: AgentProxyRouting {
                 try await environment.clearOffline()
             } else { throw AgentProxyControlFailure.unreachable }
             savedHistoryMessage = String(localized: "Saved conversations were cleared. New captures may include history sent again by the agent.")
+        } catch AgentProxyControlFailure.timedOut {
+            savedHistoryMessage = String(localized: "Clear timed out and may still be finishing. Some data may already have been removed.")
         } catch {
             savedHistoryMessage = String(localized: "Saved conversations could not be fully cleared. Some data may already have been removed.")
         }
