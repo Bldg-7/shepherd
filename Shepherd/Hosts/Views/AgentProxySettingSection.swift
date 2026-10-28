@@ -60,7 +60,7 @@ struct AgentProxySettingSection: View {
                 Text("Some saved history is unavailable or could not be saved. Live capture may continue.")
                     .foregroundStyle(.orange)
             } else if status.mode == "healthy" {
-                Text("Saved history storage is available; recent changes may still be saving.")
+                Text("The last storage check succeeded; recent changes may still be saving.")
                     .foregroundStyle(.secondary)
             } else {
                 Text("Saved history storage has not been verified.").foregroundStyle(.secondary)

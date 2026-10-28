@@ -532,7 +532,31 @@ final class ConversationPersistenceFiles {
         }
     }
 
-    fileprivate static func openVerifiedStateRoot(_ path: String, testControl: ConversationPersistenceFilesTestControl?) throws -> Int32 {
+    /// Confirmed maintenance may need a fresh root. Walk without symlinks and
+    /// create only missing directory components, never chmod or unlink an
+    /// existing object. Competing creators converge on the same verified root.
+    static func prepareOwnerStateRoot(_ path: String) throws {
+        guard path.hasPrefix("/"), !path.utf8.contains(0) else { throw ConversationPersistenceFilesError.unsafeStateRoot }
+        let parts = path.split(separator: "/", omittingEmptySubsequences: true)
+        guard !parts.isEmpty, parts.allSatisfy({ $0 != "." && $0 != ".." }) else { throw ConversationPersistenceFilesError.unsafeStateRoot }
+        var descriptor = Darwin.open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+        guard descriptor >= 0 else { throw openError(errno, unsafe: .unsafeStateRoot) }
+        defer { Darwin.close(descriptor) }
+        for component in parts {
+            var next = component.withCString { Darwin.openat(descriptor, $0, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC) }
+            if next < 0 && errno == ENOENT {
+                let made = component.withCString { mkdirat(descriptor, $0, 0o700) }
+                guard made == 0 || errno == EEXIST else { throw openError(errno, unsafe: .unsafeStateRoot) }
+                if made == 0 && fsync(descriptor) != 0 { throw ConversationPersistenceFilesError.ioFailure }
+                next = component.withCString { Darwin.openat(descriptor, $0, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC) }
+            }
+            guard next >= 0 else { throw openError(errno, unsafe: .unsafeStateRoot) }
+            Darwin.close(descriptor); descriptor = next
+        }
+        try verifyDirectory(descriptor)
+    }
+
+    static func openVerifiedStateRoot(_ path: String, testControl: ConversationPersistenceFilesTestControl?) throws -> Int32 {
         guard path.hasPrefix("/"), !path.utf8.contains(0) else { throw ConversationPersistenceFilesError.unsafeStateRoot }
         let parts = path.split(separator: "/", omittingEmptySubsequences: true)
         guard !parts.isEmpty, parts.allSatisfy({ $0 != "." && $0 != ".." }) else {
@@ -587,7 +611,7 @@ final class ConversationPersistenceFiles {
         }
     }
 
-    fileprivate static func openAndLock(named name: String, in directoryFD: Int32, testControl: ConversationPersistenceFilesTestControl?) throws -> Int32 {
+    static func openAndLock(named name: String, in directoryFD: Int32, testControl: ConversationPersistenceFilesTestControl?) throws -> Int32 {
         try checkFixedName(name)
         try verifyDirectory(directoryFD)
         if let code = testControl?.openError?(.lockFile) { throw openError(code, unsafe: .unsafeObject) }
@@ -638,7 +662,7 @@ final class ConversationPersistenceFiles {
         }
     }
 
-    fileprivate static func verifyDirectory(_ descriptor: Int32) throws {
+    static func verifyDirectory(_ descriptor: Int32) throws {
         var info = stat()
         guard fstat(descriptor, &info) == 0 else { throw ConversationPersistenceFilesError.ioFailure }
         guard info.st_mode & S_IFMT == S_IFDIR, info.st_uid == getuid(), info.st_mode & 0o777 == 0o700 else {
@@ -659,7 +683,7 @@ final class ConversationPersistenceFiles {
     }
 
     @discardableResult
-    fileprivate static func verifyFileBinding(named name: String, in directoryFD: Int32, descriptor: Int32,
+    static func verifyFileBinding(named name: String, in directoryFD: Int32, descriptor: Int32,
                                           maximumBytes: Int, exactSize: off_t?) throws -> stat {
         let info = try verifyRegularFile(descriptor, maximumBytes: maximumBytes, exactSize: exactSize)
         var pathInfo = stat()

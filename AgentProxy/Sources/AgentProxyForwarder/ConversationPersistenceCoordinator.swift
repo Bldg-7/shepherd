@@ -10,6 +10,7 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
         let record: ConversationStore.PersistentSnapshot.Record
         let reservation: UUID
         let updatedAt: Date
+        let generation: UInt64
         let completion: (Bool) -> Void
     }
     private let loop: EventLoop
@@ -17,8 +18,8 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
     private let root: String
     private let capture: ConversationCapture
     private let producerLease: ConversationProducerLease
-    private var journal: ConversationPersistenceJournal? // worker queue only
-    private var initializationFailed = false // worker queue only; unsafe/unsupported data stays closed
+    private var owner: ConversationStorageOwnerClient? // worker queue only
+    private var initializationFailed = false // worker queue only; unsafe state stays closed
     private var initializationRetryAfter: TimeInterval = 0 // worker queue only
     private var pending: [String: Pending] = [:] // recorder loop only
     // JSON encoding, checked reads and validation can transiently exceed the
@@ -28,6 +29,7 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
     private static let recordBytes = 8 << 20
     private var running = false
     private var authorityPaused = false
+    private var storageGeneration: UInt64 = 1 // recorder loop only
     private var fenceWaiters: [() -> Void] = []
     private var finished: DispatchSemaphore?
     private(set) var health: Health = .volatile
@@ -42,14 +44,14 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
         loop.assertInEventLoop()
         guard !authorityPaused else { return false }
         if let old = pending[record.id] {
-            pending[record.id] = Pending(record: record, reservation: old.reservation, updatedAt: Date(), completion: completion)
+            pending[record.id] = Pending(record: record, reservation: old.reservation, updatedAt: Date(), generation: storageGeneration, completion: completion)
             loop.execute { old.completion(false) }
             return true
         }
         guard pending.count < 8, Self.recordBytes <= capture.limits.totalBytes,
               capture.accountedBytes <= capture.limits.totalBytes - Self.recordBytes,
               let reservation = capture.reserve(bytes: Self.recordBytes) else { health = .degraded; return false }
-        pending[record.id] = Pending(record: record, reservation: reservation, updatedAt: Date(), completion: completion)
+        pending[record.id] = Pending(record: record, reservation: reservation, updatedAt: Date(), generation: storageGeneration, completion: completion)
         drain()
         return true
     }
@@ -57,16 +59,20 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
     /// One serial, admitted referenced-body scan. Busy or memory pressure is
     /// reported to the caller, which must not create a duplicate disk record.
     func loadFirst(_ key: ConversationStore.PersistentSnapshot.Key,
-                   completion: @escaping (Result<ConversationPersistenceJournalLoadedRecord?, Error>) -> Void) -> Bool {
+                   completion: @escaping (Result<ConversationStore.PersistentSnapshot.Record?, Error>) -> Void) -> Bool {
         loop.assertInEventLoop()
         guard !authorityPaused, !running, Self.workspaceBytes <= capture.limits.totalBytes,
               capture.accountedBytes <= capture.limits.totalBytes - Self.workspaceBytes,
               let workspace = capture.reserve(bytes: Self.workspaceBytes) else { return false }
         running = true
+        let generation = storageGeneration
         worker.async { [self] in
-            let result: Result<ConversationPersistenceJournalLoadedRecord?, Error>
-            do { result = .success(try openJournal().firstRecord(matching: key)) }
-            catch { result = .failure(error) }
+            let result: Result<ConversationStore.PersistentSnapshot.Record?, Error>
+            do {
+                let reply = try openOwner(generation: generation).request(operation: .load, generation: generation, key: key)
+                guard reply.outcome == .success else { throw ConversationStorageOwner.Failure.unavailable }
+                result = .success(reply.record)
+            } catch { retireOwner(); result = .failure(error) }
             loop.execute { [self] in
                 capture.release(workspace)
                 running = false
@@ -83,36 +89,51 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
         return true
     }
 
-    private func openJournal() throws -> ConversationPersistenceJournal {
+    private func openOwner(generation: UInt64) throws -> ConversationStorageOwnerClient {
         try producerLease.verify()
-        if let journal { return journal }
+        if let owner { return owner }
         let now = ProcessInfo.processInfo.systemUptime
-        guard !initializationFailed, now.isFinite, now >= initializationRetryAfter else { throw ConversationPersistenceJournalError.unavailable }
-        let files: ConversationPersistenceFiles
-        do { files = try ConversationPersistenceFiles(verifiedStateRootPath: root) }
-        catch {
-            if let reason = error as? ConversationPersistenceFilesError {
-                switch reason {
-                case .lockUnavailable, .ioFailure, .retryableBeforeTemporaryCreation(_), .retryableOpen(_):
-                    initializationRetryAfter = now + 5
-                default: initializationFailed = true
-                }
-            } else { initializationFailed = true }
-            throw error
-        }
-        let opened = ConversationPersistenceJournal(files: files)
+        guard !initializationFailed, now.isFinite, now >= initializationRetryAfter else { throw ConversationStorageOwner.Failure.unavailable }
         do {
-            try opened.activate()
-            journal = opened
+            let opened = try ConversationStorageOwnerClient(stateDirectory: root, producer: producerLease, generation: generation)
+            owner = opened
             return opened
         } catch {
-            // The journal exposes a degraded deadline only for checked I/O
-            // failures; malformed/future data remains permanently untouched.
-            if let journalError = error as? ConversationPersistenceJournalError,
-               journalError == .unavailable, case .degraded(let deadline) = opened.health {
-                initializationRetryAfter = max(now + 5, deadline)
-            } else { initializationFailed = true }
+            if let failure = error as? ConversationStorageOwner.Failure, case .unsafe = failure { initializationFailed = true }
+            else { initializationRetryAfter = now + 5 }
             throw error
+        }
+    }
+
+    private func retireOwner() {
+        owner = nil
+        initializationRetryAfter = ProcessInfo.processInfo.systemUptime + 5
+    }
+
+    /// Status is obtained from the owner over the same serial channel; this
+    /// cached health never claims that a queued write has committed.
+    func refreshStatus() {
+        loop.assertInEventLoop()
+        let workspace = 1 << 20
+        guard !authorityPaused, !running, pending.isEmpty, workspace <= capture.limits.totalBytes,
+              capture.accountedBytes <= capture.limits.totalBytes - workspace,
+              let reservation = capture.reserve(bytes: workspace) else { return }
+        running = true
+        let generation = storageGeneration
+        worker.async { [self] in
+            let healthy: Bool
+            do {
+                let reply = try openOwner(generation: generation).request(operation: .status, generation: generation)
+                healthy = reply.outcome == .success && reply.health == "healthy" && reply.record == nil
+            } catch { retireOwner(); healthy = false }
+            loop.execute { [self] in
+                capture.release(reservation); running = false
+                if !healthy { health = .degraded }
+                else if case .volatile = health { health = .healthy }
+                let waiters = fenceWaiters; fenceWaiters.removeAll()
+                for waiter in waiters { waiter() }
+                drain()
+            }
         }
     }
 
@@ -156,11 +177,17 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
                   let workspace = capture.reserve(bytes: Self.workspaceBytes) else {
                 health = .degraded; completion(.unavailable); return
             }
+            guard storageGeneration < UInt64.max else { capture.release(workspace); completion(.unavailable); return }
+            storageGeneration += 1
+            let generation = storageGeneration
             running = true
             worker.async { [self] in
                 let outcome: ClearOutcome
-                do { try producerLease.verify(); try openJournal().clearSupported(); outcome = .cleared }
-                catch { outcome = .partial }
+                do {
+                    try producerLease.verify()
+                    let reply = try openOwner(generation: generation - 1).request(operation: .clear, generation: generation)
+                    outcome = reply.outcome == .success ? .cleared : .partial
+                } catch { retireOwner(); outcome = .partial }
                 loop.execute { [self] in
                     capture.release(workspace); running = false
                     if case .cleared = outcome {} else { health = .degraded }
@@ -202,9 +229,9 @@ final class ConversationPersistenceCoordinator: @unchecked Sendable {
         worker.async { [self] in
             let success: Bool
             do {
-                try openJournal().upsert(next.record, updatedAt: next.updatedAt)
-                success = true
-            } catch { success = false }
+                let reply = try openOwner(generation: next.generation).request(operation: .save, generation: next.generation, record: next.record, updatedAt: next.updatedAt)
+                success = reply.outcome == .success
+            } catch { retireOwner(); success = false }
             loop.execute { [self] in
                 capture.release(workspace)
                 capture.release(next.reservation)

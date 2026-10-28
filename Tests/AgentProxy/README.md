@@ -8,7 +8,7 @@ starts (Claude Code, Codex and Pi, signed in with a Claude or ChatGPT
 subscription) on to api.anthropic.com, chatgpt.com, or the exact api.openai.com
 Responses endpoint for a prepared Pi route. The app-side wiring is
 implemented. Bounded main/compaction collection, observed child final results,
-the read API and paired iPhone/iPad conversation UI are connected. It runs as two processes:
+the read API and paired iPhone/iPad conversation UI are connected. With persistent capture configured it uses three process roles:
 
 - The forwarder listens on 127.0.0.1 and passes requests on. Over its control
   socket, `ap.sock`, the app asks it for a route for each agent it starts. A
@@ -18,15 +18,18 @@ the read API and paired iPhone/iPad conversation UI are connected. It runs as tw
   forwarder exit as soon as no request is in progress, so that launchd can start
   a newer build.
 - The recorder is a child process that consumes the copies into bounded
-  conversations. With a configured state directory it persists validated,
-  normalized history in the private journal; it does not persist raw tee bodies,
-  headers or credentials and does not log raw errors. It decodes
+  conversations and sends only validated normalized records over a private,
+  bounded inherited socketpair to the storage owner. It does not persist raw tee
+  bodies, headers or credentials and does not log raw errors. It decodes
   gzip, zlib-wrapped deflate and zstd copies with bounded output and an 8-MiB
   zstd window; forwarding retains the original bytes. Unknown/stacked encodings,
   trailing/concatenated frames, invalid checksums and truncated streams fail
   capture closed without changing the HTTP exchange. Pi uses request-local
   contract2 tagging qualified against1.3.0/1.4.0; legacy tags and unknown builds
   cannot become main. Child ancestry is bounded, byte-exact and scope-checked.
+- The singleton storage-owner process owns the private journal, retention and
+  clear operations. OFF maintenance starts the same owner role with explicit
+  paths and a separate producer admission; it does not launch an agent.
 
 The app's Pi extension adds `x-3rdr-pi-*` headers to say which Pi session a
 request belongs to. The forwarder removes every `x-3rdr-*` header before it

@@ -8,22 +8,6 @@ import AgentProxyProtocol
 /// One event loop owns tee ingestion, history and all read clients. The parent
 /// forwarder never waits for this process. No raw request/error/transcript logs.
 enum ConversationSocket {
-    /// Offline maintenance is admitted before the recorder and journal locks.
-    /// No default path, provider, network listener or stale socket removal.
-    static func clearOffline(stateDirectory: String, socketPath: String) -> Int32 {
-        do {
-            let producer = try ConversationProducerLease(rootPath: stateDirectory)
-            let socketLease = try SocketLease(socketPath, removeStale: false)
-            return try withExtendedLifetime((producer, socketLease)) {
-                try socketLease.verifyLock()
-                let files = try ConversationPersistenceFiles(verifiedStateRootPath: stateDirectory)
-                let journal = ConversationPersistenceJournal(files: files)
-                do { try producer.verify(); try journal.clearSupported(); return 0 }
-                catch { return 5 } // may be partial or durability-uncertain
-            }
-        } catch { return 4 } // admission, path or lease unavailable; no clear attempted
-    }
-
     static func run(descriptor: Int32, path: String, stateDirectory: String? = nil, inheritedProducerDescriptor: Int32? = nil) -> Int32 {
         let producer: ConversationProducerLease?
         if let stateDirectory {
@@ -74,7 +58,7 @@ enum ConversationSocket {
 /// A private lock prevents two cooperating recorders from unlinking each
 /// other's listener. Never unlink a file/symlink, an active socket or a path
 /// whose inode changed after bind. Only an empty coordination file persists.
-private final class SocketLease {
+final class SocketLease {
     let path: String
     private let lock: Int32
     private var inode: ino_t?
@@ -252,11 +236,11 @@ private final class ReadState: @unchecked Sendable {
                     // A live request won the race. Never replace its state or
                     // overwrite the historical disk body with an unmerged view.
                     guard awaiting else { self.blockedPersistence.insert(key); self.historicalConflicts.insert(key); return }
-                    let diskID = loaded.record.id
+                    let diskID = loaded.id
                     guard !self.persistentIDs.contains(where: { $0.key != key && Data($0.value.utf8) == Data(diskID.utf8) }) else {
                         self.blockedPersistence.insert(key); cancel(); return
                     }
-                    let r = loaded.record
+                    let r = loaded
                     let adjusted = ConversationStore.PersistentSnapshot.Record(id: r.id, key: r.key,
                         context: .init(routeID: owner.context.routeID, paneID: owner.context.paneID, terminalID: owner.context.terminalID),
                         updatedOrder: r.updatedOrder, items: r.items, truncated: r.truncated, status: r.status, subagents: r.subagents)
@@ -490,6 +474,7 @@ private final class ReadState: @unchecked Sendable {
                 self.retryTicks = 0
                 self.retryBlockedPersistence()
                 self.scheduleChangedRecords()
+                self.persistence?.refreshStatus()
             }
         }
     }

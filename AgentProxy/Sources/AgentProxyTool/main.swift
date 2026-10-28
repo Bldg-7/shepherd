@@ -24,12 +24,15 @@ func fail(_ message: String, code: Int32 = 1) -> Never {
 }
 
 var arguments = Array(CommandLine.arguments.dropFirst())
-if arguments.first == "clear-history" {
-    guard arguments.count == 6, arguments[1] == "--confirmed", arguments[2] == "--state-dir",
-          arguments[3].hasPrefix("/"), arguments[4] == "--socket", AgentProxyPaths.socketPathFits(arguments[5]) else {
-        fail("usage: clear-history --confirmed --state-dir DIR --socket PATH", code: 64)
+if arguments.first == "storage-owner" {
+    if arguments.count == 5 && arguments[1] == "--state-dir" && arguments[2].hasPrefix("/") && arguments[3] == "--producer-fd" && arguments[4] == "4" {
+        exit(AgentProxyRecorder.storageOwner(stateDirectory: arguments[2], descriptor: 3, producerDescriptor: 4))
     }
-    exit(AgentProxyRecorder.clearOffline(stateDirectory: arguments[3], socketPath: arguments[5]))
+    if arguments.count == 7 && arguments[1] == "--maintenance-clear" && arguments[2] == "--confirmed" && arguments[3] == "--state-dir" &&
+       arguments[4].hasPrefix("/") && arguments[5] == "--socket" && AgentProxyPaths.socketPathFits(arguments[6]) {
+        exit(AgentProxyRecorder.storageOwnerMaintenance(stateDirectory: arguments[4], socketPath: arguments[6]))
+    }
+    fail("usage: storage-owner --state-dir DIR --producer-fd 4 | --maintenance-clear --confirmed --state-dir DIR --socket PATH", code: 64)
 }
 if arguments.first == "recorder" {
     guard arguments.count == 1 || (arguments.count == 3 && arguments[1] == "--socket" && AgentProxyPaths.socketPathFits(arguments[2])) ||

@@ -126,6 +126,95 @@ class Recorder:
         self.tee.shutdown(socket.SHUT_WR)
         code = self.wait(); self.tee.close(); return code
 
+# The designated owner is an actual child process using only an inherited
+# socketpair and inherited producer descriptor. A second owner with the same
+# producer open-file description must still fail the separate owner lock.
+owner_root = a.work / 'owner-process-state'
+owner_root.mkdir(mode=0o700)
+owner_lock = os.open(owner_root / 'producer.lock', os.O_CREAT | os.O_RDWR, 0o600)
+fcntl.flock(owner_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+def start_owner():
+    client, child = socket.socketpair()
+    socket_copy = fcntl.fcntl(child.fileno(), fcntl.F_DUPFD_CLOEXEC, 10)
+    lock_copy = fcntl.fcntl(owner_lock, fcntl.F_DUPFD_CLOEXEC, 10)
+    actions = [(os.POSIX_SPAWN_DUP2, socket_copy, 3), (os.POSIX_SPAWN_DUP2, lock_copy, 4)]
+    for fd in (0, 1, 2): actions.append((os.POSIX_SPAWN_OPEN, fd, '/dev/null', os.O_RDONLY if fd == 0 else os.O_WRONLY, 0o600))
+    try:
+        pid = os.posix_spawn(str(a.binary), [str(a.binary), 'storage-owner', '--state-dir', str(owner_root), '--producer-fd', '4'], {}, file_actions=actions)
+    finally:
+        child.close(); os.close(socket_copy); os.close(lock_copy)
+    client.settimeout(5)
+    return pid, client
+
+def owner_send(sock, number, operation, key=None, record=None, updatedAt=None, generation=1):
+    body = json.dumps({'id': number, 'generation': generation, 'protocolVersion': 1, 'operation': operation, 'key': key, 'record': record, 'updatedAt': updatedAt}).encode()
+    sock.sendall(struct.pack('>I', len(body)) + body)
+
+def owner_reply(sock, number):
+    header = bytearray()
+    while len(header) < 4:
+        chunk = sock.recv(4 - len(header)); assert chunk, 'owner reply header'; header.extend(chunk)
+    length = struct.unpack('>I', header)[0]
+    assert 0 < length <= (33 << 20), 'bounded owner reply'
+    data = bytearray()
+    while len(data) < length:
+        chunk = sock.recv(length - len(data)); assert chunk, 'owner reply body'; data.extend(chunk)
+    reply = json.loads(data); assert reply['id'] == number and reply['protocolVersion'] == 1, 'owner reply correlation'
+    return reply
+
+def owner_request(sock, number, operation, key=None, generation=1):
+    owner_send(sock, number, operation, key, generation=generation)
+    return owner_reply(sock, number)
+
+def wait_owned(pid, deadline=5):
+    until = time.monotonic() + deadline
+    while True:
+        child, status = os.waitpid(pid, os.WNOHANG)
+        if child: return os.waitstatus_to_exitcode(status)
+        assert time.monotonic() < until, 'owned owner exit deadline'
+        time.sleep(.02)
+
+owner_pid, owner_socket = start_owner()
+second_pid = None
+second_socket = None
+try:
+    check(owner_request(owner_socket, 1, 'begin')['outcome'] == 'success', 'owner binds initial storage generation')
+    first = owner_request(owner_socket, 2, 'load', {'agent': 'claude', 'herdrSession': 'session', 'nativeSession': 'owned'})
+    check(first['outcome'] == 'success' and first.get('record') is None, 'owner handles bounded no-record lookup')
+    second_pid, second_socket = start_owner()
+    check(wait_owned(second_pid) == 4, 'separate owner process cannot acquire the same owner lock')
+    second_pid = None; second_socket.close(); second_socket = None
+    check(owner_request(owner_socket, 3, 'status')['outcome'] == 'success', 'status is obtained from storage owner')
+    key = {'agent': 'claude', 'herdrSession': 'session', 'nativeSession': 'owned'}
+    record = {'id': 'owned-record', 'key': key, 'context': {'routeID': 'route', 'paneID': 'pane', 'terminalID': 'terminal'},
+              'updatedOrder': 1, 'items': [{'id': 'owned-item', 'message': {'role': 'user', 'blocks': [{'kind': 'text', 'text': 'old-before-clear'}], 'truncated': False},
+                                          'origin': {'kind': 'observed'}, 'status': 'complete'}], 'truncated': False, 'status': 'complete',
+              'subagents': {'observed': 0, 'withFinalResult': 0, 'limited': False, 'linkAvailable': False, 'ancestryIncomplete': False}}
+    owner_send(owner_socket, 4, 'save', record=record, updatedAt=time.time() - 978307200)
+    owner_send(owner_socket, 5, 'clear', generation=2)
+    check(owner_reply(owner_socket, 4)['outcome'] == 'success', 'owner commits ordered pre-clear save')
+    check(owner_reply(owner_socket, 5)['outcome'] == 'success', 'owner serializes clear after queued save')
+    check(owner_request(owner_socket, 6, 'load', key, generation=2).get('record') is None, 'pre-clear record is not reloaded after clear')
+    os.kill(owner_pid, signal.SIGKILL)
+    check(wait_owned(owner_pid) == -signal.SIGKILL, 'owned storage owner crash is reaped')
+    owner_pid = None
+    check(owner_socket.recv(1) == b'', 'owner crash closes its private channel')
+    owner_socket.close()
+    owner_pid, owner_socket = start_owner()
+    check(owner_request(owner_socket, 1, 'begin', generation=2)['outcome'] == 'success', 'replacement owner binds current generation')
+    check(owner_request(owner_socket, 2, 'load', key, generation=2).get('record') is None, 'owner restart cannot resurrect cleared record')
+    owner_send(owner_socket, 3, 'save', record=record, updatedAt=time.time() - 978307200, generation=1)
+    check(wait_owned(owner_pid) == 3, 'owner rejects an old-generation save after clear')
+    owner_pid = None
+finally:
+    owner_socket.close()
+    if owner_pid is not None:
+        os.kill(owner_pid, signal.SIGKILL); wait_owned(owner_pid)
+    if second_socket is not None: second_socket.close()
+    if second_pid is not None:
+        os.kill(second_pid, signal.SIGKILL); wait_owned(second_pid)
+    fcntl.flock(owner_lock, fcntl.LOCK_UN); os.close(owner_lock)
+
 store_root = a.work / 'persistence-state'
 store_root.mkdir(mode=0o700)
 persisted = Recorder(a.work / 'persistence-socket', state_directory=store_root)
@@ -214,13 +303,13 @@ try:
         except (OSError, ValueError, KeyError): pass
         assert time.monotonic() < until, 'post-clear capture persisted deadline'
         time.sleep(.02)
-    command = [str(a.binary), 'clear-history', '--confirmed', '--state-dir', str(shared_root), '--socket', str(producer_a.path)]
+    command = [str(a.binary), 'storage-owner', '--maintenance-clear', '--confirmed', '--state-dir', str(shared_root), '--socket', str(producer_a.path)]
     busy = subprocess.run(command, env={}, capture_output=True, timeout=10)
     check(busy.returncode == 4, 'offline clear refuses while producer is active')
     check(index_path.read_bytes() == before_offline, 'busy offline clear does not mutate history')
     check(producer_a.stop() == 0, 'producer A releases lifetime admission')
     after_stop = index_path.read_bytes()
-    unconfirmed = subprocess.run([str(a.binary), 'clear-history', '--state-dir', str(shared_root), '--socket', str(producer_a.path)], env={}, capture_output=True, timeout=10)
+    unconfirmed = subprocess.run([str(a.binary), 'storage-owner', '--maintenance-clear', '--state-dir', str(shared_root), '--socket', str(producer_a.path)], env={}, capture_output=True, timeout=10)
     check(unconfirmed.returncode == 64 and index_path.read_bytes() == after_stop, 'offline command requires explicit confirmation')
     cleared = subprocess.run(command, env={}, capture_output=True, timeout=10)
     check(cleared.returncode == 0 and not json.loads(index_path.read_bytes())['records'], 'OFF confirmed clear uses producer and journal admission')
@@ -256,7 +345,7 @@ fcntl.flock(race_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
 racing = Recorder(a.work / 'offline-start-racer', state_directory=race_root)
 try:
     check(racing.wait() == 4, 'racing recorder cannot admit capture while producer admission is held')
-    command = [str(a.binary), 'clear-history', '--confirmed', '--state-dir', str(race_root), '--socket', str(race_socket)]
+    command = [str(a.binary), 'storage-owner', '--maintenance-clear', '--confirmed', '--state-dir', str(race_root), '--socket', str(race_socket)]
     busy = subprocess.run(command, env={}, capture_output=True, timeout=10)
     check(busy.returncode == 4, 'OFF maintenance cannot clear under held producer admission')
     fcntl.flock(race_fd, fcntl.LOCK_UN)
@@ -275,7 +364,7 @@ try:
     os.kill(crashed.pid, signal.SIGKILL)
     check(crashed.wait() == -signal.SIGKILL, 'owned producer crash reaped')
     stale_inode = crashed.path.lstat().st_ino
-    command = [str(a.binary), 'clear-history', '--confirmed', '--state-dir', str(crash_root), '--socket', str(crashed.path)]
+    command = [str(a.binary), 'storage-owner', '--maintenance-clear', '--confirmed', '--state-dir', str(crash_root), '--socket', str(crashed.path)]
     outcome = subprocess.run(command, env={}, capture_output=True, timeout=10)
     check(outcome.returncode == 0, 'OFF clear acquires released producer admission after crash')
     check(crashed.path.lstat().st_ino == stale_inode, 'OFF clear does not unlink stale recorder socket')
@@ -312,6 +401,26 @@ try:
     check(clear_bad_index.read_bytes() == b'{"version":999,"records":[]}', 'unsupported index bytes remain preserved')
 finally:
     check(clear_bad.stop() == 0, 'corrupt-clear recorder exits naturally')
+
+# Confirmed OFF maintenance on a fresh absent root is a no-history result;
+# only its explicit private owned path may be created.
+fresh_parent = a.work / 'fresh-owner-parent'
+fresh_parent.mkdir(mode=0o700)
+marker = fresh_parent / 'unrelated-marker'
+marker.write_bytes(b'preserve')
+fresh_root = fresh_parent / 'state'
+fresh_socket_dir = a.work / 'fresh-owner-socket'
+fresh_socket_dir.mkdir(mode=0o700)
+fresh_clear = subprocess.run([str(a.binary), 'storage-owner', '--maintenance-clear', '--confirmed',
+                              '--state-dir', str(fresh_root), '--socket', str(fresh_socket_dir / 'ac.sock')],
+                             env={}, capture_output=True, timeout=10)
+check(fresh_clear.returncode == 0 and marker.read_bytes() == b'preserve', 'fresh OFF clear returns no-history without altering unrelated data')
+unsafe_root = fresh_parent / 'symlink-state'
+os.symlink(fresh_root, unsafe_root)
+unsafe_clear = subprocess.run([str(a.binary), 'storage-owner', '--maintenance-clear', '--confirmed',
+                               '--state-dir', str(unsafe_root), '--socket', str(fresh_socket_dir / 'ac.sock')],
+                              env={}, capture_output=True, timeout=10)
+check(unsafe_clear.returncode == 4 and marker.read_bytes() == b'preserve', 'OFF maintenance refuses symlink root without touching unrelated data')
 
 # Hold the owned journal lease before the recorder opens it, then release it.
 # The existing live MAIN must become persistable without another mutation.
@@ -356,8 +465,11 @@ try:
     dirty.frame(2, {'messages': [{'role': 'user', 'content': 'dirty-input'}]}); dirty.frame(3)
     dirty.conversation()
     until = time.monotonic() + 10
-    while dirty.query('persistence.status')['result']['mode'] != 'healthy':
-        assert time.monotonic() < until, 'initial dirty fixture save deadline'
+    while True:
+        try:
+            if json.loads((dirty_root / 'Conversations' / 'index-v1.json').read_bytes())['records']: break
+        except (OSError, ValueError, KeyError): pass
+        assert time.monotonic() < until, 'initial dirty fixture durable save deadline'
         time.sleep(.05)
     records_dir = dirty_root / 'Conversations' / 'records'
     records_dir.chmod(0o755)
@@ -398,8 +510,11 @@ try:
     pressure.frame(2, {'messages': [{'role': 'user', 'content': 'pressure-input'}]}); pressure.frame(3)
     pressure_id = pressure.conversation()
     until = time.monotonic() + 10
-    while pressure.query('persistence.status')['result']['mode'] != 'healthy':
-        assert time.monotonic() < until, 'pressure fixture initial save deadline'
+    while True:
+        try:
+            if json.loads((pressure_root / 'Conversations' / 'index-v1.json').read_bytes())['records']: break
+        except (OSError, ValueError, KeyError): pass
+        assert time.monotonic() < until, 'pressure fixture initial durable save deadline'
         time.sleep(.05)
     for n in range(15):
         reader = pressure.connect()
@@ -450,18 +565,22 @@ try:
 finally:
     check(bad.stop() == 0, 'failed journal recorder exits naturally')
 
-# A later bad index must degrade an already healthy recorder, and a later
-# successful operation must not clear a previous integrity failure silently.
+# A later bad index must degrade an already healthy recorder; repairing bytes
+# does not silently clear the previous integrity failure.
 health_root = a.work / 'health-state'
 health_root.mkdir(mode=0o700)
 health = Recorder(a.work / 'health-socket', state_directory=health_root)
 try:
     health.authority(); health.begin(wait_admission=True); health.end(); health.conversation()
-    until = time.monotonic() + 10
-    while health.query('persistence.status')['result']['mode'] != 'healthy':
-        assert time.monotonic() < until, 'successful journal write deadline'
     health_index = health_root / 'Conversations' / 'index-v1.json'
-    original = health_index.read_bytes()
+    until = time.monotonic() + 10
+    while True:
+        try:
+            original = health_index.read_bytes()
+            if json.loads(original)['records']: break
+        except (OSError, ValueError, KeyError): pass
+        assert time.monotonic() < until, 'successful durable journal write deadline'
+        time.sleep(.05)
     health_index.write_bytes(b'{broken')
     health.frame(1, {'routeID': 'route', 'upstream': 'anthropic', 'method': 'POST', 'path': '/v1/messages',
                      'routeIdentity': {'kind': 'claude', 'session': 'session', 'paneID': 'pane', 'terminalID': 'terminal', 'cliVersion': '2.1.309'},
@@ -471,13 +590,8 @@ try:
     while health.query('persistence.status')['result']['mode'] != 'degraded':
         assert time.monotonic() < until, 'post-success lookup failure status deadline'
     health_index.write_bytes(original)
-    until = time.monotonic() + 8
-    while True:
-        status = health.query('persistence.status')['result']
-        if status['blockedConversations'] == 0: break
-        assert time.monotonic() < until, 'successful repaired-journal retry deadline'
-        time.sleep(.05)
-    check(status['mode'] == 'degraded', 'integrity degradation remains sticky after successful retry')
+    status = health.query('persistence.status')['result']
+    check(status['mode'] == 'degraded', 'integrity degradation remains sticky after external repair')
 finally:
     check(health.stop() == 0, 'post-success failure recorder exits naturally')
 
