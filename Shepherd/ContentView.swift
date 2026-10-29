@@ -102,7 +102,10 @@ struct ContentView: View {
         let shownPreview = keptPreview?.entry.isShown == true ? keptPreview : nil
         let browserShown = shownPreview == nil && ShepherdBrowserFeature.shared.isEnabled && showsBrowser
         let coversTerminal = previewCoversTerminal(on: machine)
-        return WorkspaceNavigationSplitView {
+        // What the window's minimum keeps room for: the terminal's 320pt,
+        // and beside it the panel's minimum past the split's 1pt divider.
+        let detailMinimumWidth: CGFloat = 320 + (shownPreview != nil ? 1 + 320 : browserShown ? 1 + 360 : 0)
+        return WorkspaceNavigationSplitView(detailMinimumWidth: detailMinimumWidth) {
             Group {
                 if let machine {
                     // One board per machine: its pane list, connection and

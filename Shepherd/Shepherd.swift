@@ -53,6 +53,8 @@ import SwiftUI
 
         }
         #if os(macOS)
+        // No smaller than its content allows: see `WorkspaceWindowMetrics`.
+        .windowResizability(.contentMinSize)
         .commands {
             CheckForUpdatesCommands(updater: softwareUpdater)
             SettingsCommands()

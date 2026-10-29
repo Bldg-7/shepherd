@@ -27,7 +27,7 @@ def stage(name,seconds,command,expect_failure=False):
 stage('sidebar-build',90,['xcrun','swiftc','-swift-version','6','-default-isolation','MainActor','-target',platform.machine()+'-apple-macos26.6.2','-parse-as-library','-I',str(products),*sources,str(products/'SwiftTerm.o'),'-framework','AppKit','-framework','QuartzCore','-framework','CoreText','-o',str(out/'sidebar-tests')])
 stage('sidebar-tests',45,[str(out/'sidebar-tests'),str(out/'geometry.json')]+(['--legacy'] if a.legacy else [])+(['--restoration-red'] if a.restoration_red else []),expect_failure=a.legacy or a.restoration_red or a.collapse_red or a.width_red)
 content=(ROOT/'Shepherd/ContentView.swift').read_text()
-assert 'WorkspaceNavigationSplitView {' in content
+assert 'WorkspaceNavigationSplitView(detailMinimumWidth: detailMinimumWidth) {' in content
 assert 'WorkspaceDetailSplitView(' in content, 'avoid inherited-inset redistribution in the native detail split'
 assert content.count('.modifier(WorkspaceSidebarDetailLayout())') == 3, 'terminal/preview/browser HSplit children need the same native-host safe-area policy'
 (out/'validation.json').write_text(json.dumps({'passed':not (a.legacy or a.restoration_red or a.collapse_red or a.width_red),'expectedWidthFailure':a.width_red,'expectedCollapseFailure':a.collapse_red,'expectedLegacyFailure':a.legacy,'expectedRestorationFailure':a.restoration_red,'automaticNativeCollapsedWithoutAnyToolbarToggle':True,'actualProductionSplitWrapper':True,'actualNativeRevealChangesVisibilityToAll':True,'explicitPinIntentSeparateFromNativeVisibility':True,'ownedUnshownWindow':True,'ownedKernelPTY':True,'realFullscreenHover':'NOTRUN','userGUIOrSSH':False,'stages':2},indent=2))

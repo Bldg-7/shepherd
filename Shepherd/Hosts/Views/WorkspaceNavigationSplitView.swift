@@ -9,6 +9,20 @@ enum WorkspaceSidebarMetrics {
     static let maximum: CGFloat = 480
 }
 
+/// The main window's smallest content (SHPHRD-141): the detail's own
+/// minimum, beside the sidebar's while that is pinned and open, and never
+/// under 400 × 400. The native sidebar divider lies over the detail's
+/// leading edge, so it takes nothing from the detail. A hover drawer
+/// overlays the detail and reserves nothing.
+enum WorkspaceWindowMetrics {
+    static let minimumWidth: CGFloat = 400
+    static let minimumHeight: CGFloat = 400
+
+    static func minimumWidth(detail: CGFloat, reservesSidebar: Bool) -> CGFloat {
+        max(minimumWidth, detail + (reservesSidebar ? WorkspaceSidebarMetrics.minimum : 0))
+    }
+}
+
 /// Native expansion includes hover and never confers pin intent. Native
 /// collapse (including a divider drag) releases it; only the button pins.
 @MainActor @Observable final class WorkspaceSidebarState {
@@ -18,6 +32,9 @@ enum WorkspaceSidebarMetrics {
     /// restored sidebar is pinned. Track an initial native collapse until a
     /// collapse is seen or the person makes an explicit pin choice.
     private(set) var awaitsInitialNativeCollapse: Bool
+    /// Whether AppKit last reported the sidebar open. Until it reports, a
+    /// restored hidden sidebar must not widen the window's minimum.
+    private(set) var nativeSidebarIsOpen = false
     @ObservationIgnored private(set) var pinRevision = 0
     @ObservationIgnored var nativeSidebarCollapsed: (() -> Bool?)?
     @ObservationIgnored private var awaitingNativeOpen: Bool
@@ -35,6 +52,15 @@ enum WorkspaceSidebarMetrics {
         isPinned = false
         // Leave native visibility alone: revealing/dismissing the drawer
         // belongs to AppKit, and restoring it must not trigger another toggle.
+    }
+
+    /// Pin intent with AppKit's sidebar actually open: what the window's
+    /// minimum width keeps room for.
+    var reservesWidth: Bool { isPinned && nativeSidebarIsOpen }
+
+    /// Outside native layout only: this is observed UI state.
+    func noteNativeSidebar(isCollapsed: Bool) {
+        if nativeSidebarIsOpen == isCollapsed { nativeSidebarIsOpen = !isCollapsed }
     }
 
     func reconcileNativeSidebar(isCollapsed: Bool, revision: Int) {
@@ -144,6 +170,7 @@ private struct WorkspaceNativeSidebarVisibility: NSViewRepresentable {
                                     DispatchQueue.main.async { [weak self, weak item] in
                                         guard let self, let item, self.window != nil,
                                               self.observedItem === item, item.isCollapsed == collapsed else { return }
+                                        self.state.noteNativeSidebar(isCollapsed: collapsed)
                                         self.state.reconcileNativeSidebar(isCollapsed: collapsed, revision: revision)
                                         self.scheduleObservation()
                                     }
@@ -182,24 +209,29 @@ struct WorkspaceSidebarDetailLayout: ViewModifier {
 struct WorkspaceNavigationSplitView<Sidebar: View, Detail: View>: View {
     private let sidebar: Sidebar
     private let detail: Detail
+    /// The detail's smallest width, which the window's minimum keeps room
+    /// for; nil for no window minimum.
+    private let detailMinimumWidth: CGFloat?
     #if os(macOS)
     @State private var sidebarState: WorkspaceSidebarState
     #endif
 
-    init(initialVisibility: NavigationSplitViewVisibility = .automatic,
+    init(initialVisibility: NavigationSplitViewVisibility = .automatic, detailMinimumWidth: CGFloat? = nil,
          @ViewBuilder sidebar: () -> Sidebar, @ViewBuilder detail: () -> Detail) {
         self.sidebar = sidebar()
         self.detail = detail()
+        self.detailMinimumWidth = detailMinimumWidth
         #if os(macOS)
         _sidebarState = State(initialValue: WorkspaceSidebarState(initialVisibility: initialVisibility))
         #endif
     }
 
     #if os(macOS)
-    init(sidebarState: WorkspaceSidebarState,
+    init(sidebarState: WorkspaceSidebarState, detailMinimumWidth: CGFloat? = nil,
          @ViewBuilder sidebar: () -> Sidebar, @ViewBuilder detail: () -> Detail) {
         self.sidebar = sidebar()
         self.detail = detail()
+        self.detailMinimumWidth = detailMinimumWidth
         _sidebarState = State(initialValue: sidebarState)
     }
     #endif
@@ -226,5 +258,9 @@ struct WorkspaceNavigationSplitView<Sidebar: View, Detail: View>: View {
                 .environment(\.workspaceSidebarIsPinned, state.isPinned)
                 .background { WorkspaceNativeSidebarVisibility(state: state) }
         }
+        // The window takes its minimum from this (`.contentMinSize`). It
+        // grows to a larger one, but a smaller one leaves it as it is.
+        .frame(minWidth: detailMinimumWidth.map { WorkspaceWindowMetrics.minimumWidth(detail: $0, reservesSidebar: state.reservesWidth) },
+               minHeight: detailMinimumWidth.map { _ in WorkspaceWindowMetrics.minimumHeight })
     }
 }
