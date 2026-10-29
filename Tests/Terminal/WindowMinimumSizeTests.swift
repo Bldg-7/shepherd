@@ -110,7 +110,7 @@ struct SizeRoot: View {
     }
 
     static func policyChecks() {
-        let expected: [(Bool, CGFloat, CGFloat)] = [(true, 320, 600), (false, 320, 400), (true, 641, 921), (false, 641, 641), (true, 681, 961), (false, 681, 681)]
+        let expected: [(Bool, CGFloat, CGFloat)] = [(true, 320, 600), (false, 320, 480), (true, 641, 921), (false, 641, 641), (true, 681, 961), (false, 681, 681)]
         for (reserves, detail, width) in expected {
             check(WorkspaceWindowMetrics.minimumWidth(detail: detail, reservesSidebar: reserves) == width, "minimum width for detail \(detail), sidebar \(reserves) is \(width)")
         }
@@ -149,7 +149,7 @@ struct SizeRoot: View {
                     spin(until: { split(in: host.view)!.splitViewItems.first!.isCollapsed && !state.nativeSidebarIsOpen }, "the sidebar hides")
                 }
                 let detail: CGFloat = panel == .none ? 320 : panel == .preview ? 641 : 681
-                let width = max(400, detail + (pinned ? 280 : 0))
+                let width = max(480, detail + (pinned ? 280 : 0))
                 spin(until: { window.contentMinSize.width == width }, "\(pinned ? "pinned" : "hidden") \(panel): the window's minimum width becomes \(width), is \(window.contentMinSize.width)")
                 window.setContentSize(window.contentMinSize)
                 spin()
@@ -203,13 +203,13 @@ struct SizeRoot: View {
             spin()
             check(window.contentLayoutRect.width == 961, "closing the browser leaves the window as wide as it was")
             state.togglePin()
-            spin(until: { window.contentMinSize.width == 400 }, "hiding the sidebar relaxes the minimum")
+            spin(until: { window.contentMinSize.width == 480 }, "hiding the sidebar relaxes the minimum")
             spin()
             check(window.contentLayoutRect.width == 961, "hiding the sidebar leaves the window as wide as it was")
-            window.setContentSize(NSSize(width: 400, height: 400))
+            window.setContentSize(NSSize(width: 480, height: 400))
             spin()
             state.togglePin()
-            spin(until: { window.contentLayoutRect.width == 600 }, "pinning the sidebar at 400pt grows the window to 600pt, is \(window.contentLayoutRect.width)")
+            spin(until: { window.contentMinSize.width == 600 && window.contentLayoutRect.width >= 600 }, "pinning the sidebar at 480pt grows the window to at least 600pt, is \(window.contentLayoutRect.width)")
             check(!window.isVisible, "the window is never shown")
         }
 
@@ -217,7 +217,7 @@ struct SizeRoot: View {
         // even for the moment before AppKit reports it.
         do {
             let probe = SizeProbe(), state = WorkspaceSidebarState()
-            let (window, host) = window(SizeRoot(probe: probe, sidebarState: state), width: 450, height: 400)
+            let (window, host) = window(SizeRoot(probe: probe, sidebarState: state), width: 520, height: 400)
             defer { window.close() }
             host.view.layoutSubtreeIfNeeded()
             let controller = split(in: host.view)
@@ -229,8 +229,8 @@ struct SizeRoot: View {
                 RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))
                 widest = max(widest, window.contentLayoutRect.width)
             }
-            check(!state.isPinned && !state.reservesWidth && window.contentMinSize.width == 400, "the restored hidden sidebar reserves nothing")
-            check(widest == 450, "the 450pt restored window was never widened, widest \(widest)")
+            check(!state.isPinned && !state.reservesWidth && window.contentMinSize.width == 480, "the restored hidden sidebar reserves nothing")
+            check(widest == 520, "the 520pt restored window was never widened, widest \(widest)")
             check(!window.isVisible, "the window is never shown")
         }
 

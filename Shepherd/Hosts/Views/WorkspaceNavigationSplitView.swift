@@ -15,7 +15,9 @@ enum WorkspaceSidebarMetrics {
 /// leading edge, so it takes nothing from the detail. A hover drawer
 /// overlays the detail and reserves nothing.
 enum WorkspaceWindowMetrics {
-    static let minimumWidth: CGFloat = 400
+    /// The narrowest width at which the toolbar, rename field included,
+    /// fits without overflowing.
+    static let minimumWidth: CGFloat = 480
     static let minimumHeight: CGFloat = 400
 
     static func minimumWidth(detail: CGFloat, reservesSidebar: Bool) -> CGFloat {
