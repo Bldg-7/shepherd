@@ -64,6 +64,11 @@ public final class MachineMonitors {
         return monitor
     }
 
+    /// The monitor for `machine`, if there is one already: never makes one.
+    public func existingMonitor(for machine: Machine) -> MachineMonitor? {
+        monitors[machine.connectionIdentity]
+    }
+
     /// Keeps `machine`'s monitor running for a board, for as long as the
     /// calling task — the board's — runs. Returns once that has been
     /// cancelled.

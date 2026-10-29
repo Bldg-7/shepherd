@@ -41,8 +41,9 @@ public nonisolated enum AgentKind: String, Sendable {
         contract()
         deriverMakesTheExamples()
         deriverRules()
+        exitedRules()
         observationsFromSnapshot()
-        print("PASS \(checks) agent event checks: SHA-256 vectors, example JSON decode/encode/ids, unknown kinds and fields, 2 KB limit, baselines (first look, connection, gap, herdr restart), unknown skipped, terminal and agent identity, startup grace, every transition, held or not, snapshot labels")
+        print("PASS \(checks) agent event checks: SHA-256 vectors, example JSON decode/encode/ids, unknown kinds and fields, 2 KB limit, baselines (first look, connection, gap, herdr restart), unknown skipped, terminal and agent identity, startup grace, every transition, held or not, quit while working, snapshot labels")
     }
 
     static func digest() {
@@ -56,7 +57,7 @@ public nonisolated enum AgentKind: String, Sendable {
     }
 
     static func contract() {
-        for name in ["needs-input.json", "resumed.json", "finished.json"] {
+        for name in ["needs-input.json", "resumed.json", "finished.json", "exited.json"] {
             let data = example(name)
             let event = try! AgentEvent.decode(data)
             check(sameJSON(try! AgentEvent.encode(event), data), name + ": encodes back to the example exactly")
@@ -130,6 +131,96 @@ public nonisolated enum AgentKind: String, Sendable {
         let finished = deriver.observe([pane(.idle, seq: 418)], at: time("2026-10-14T03:34:34Z"))
         check(finished.count == 1 && sameJSON(try! AgentEvent.encode(finished[0]), example("finished.json")),
               "working → idle is finished.json, 754 seconds after it went back to work")
+
+        // Quitting, as herdr tells of it: idle first, then no agent.
+        step = time("2026-10-14T03:34:34Z")
+        while step < time("2026-10-14T03:40:00Z") {
+            step = step.addingTimeInterval(30)
+            check(deriver.observe([pane(.idle, seq: 418)], at: step).isEmpty, "still idle")
+        }
+        check(kinds(deriver.observe([pane(.working, seq: 421)], at: time("2026-10-14T03:40:10Z")), ["agent.resumed"]), "back to work")
+        step = time("2026-10-14T03:40:10Z")
+        while step < time("2026-10-14T03:52:00Z") {
+            step = step.addingTimeInterval(30)
+            _ = deriver.observe([pane(.working, seq: 421)], at: min(step, time("2026-10-14T03:52:00Z")))
+        }
+        check(kinds(deriver.observe([pane(.idle, seq: 424)], at: time("2026-10-14T03:52:03Z")), ["agent.finished"]), "idle first: finished")
+        let exited = deriver.observe([pane(.idle, seq: 425, agent: nil)], at: time("2026-10-14T03:52:05Z"))
+        check(exited.count == 1 && sameJSON(try! AgentEvent.encode(exited[0]), example("exited.json")),
+              "then no agent, 5 s after it was last seen working, is exited.json")
+        check(exited[0].subject.collapseKey == finished[0].subject.collapseKey, "in place of the finished notification for the pane")
+    }
+
+    static func kinds(_ events: [AgentEvent], _ expected: [String]) -> Bool { events.map(\.kind.rawValue) == expected }
+
+    static func exitedRules() {
+        let start = time("2026-10-14T05:00:00Z")
+        func at(_ seconds: Double) -> Date { start.addingTimeInterval(seconds) }
+        let gone = pane(.unknown, seq: 9, agent: nil)
+
+        var deriver = AgentEventDeriver(source: thisMac)
+        _ = deriver.observe([pane(.idle, seq: 1)], at: at(0))
+        _ = deriver.observe([pane(.working, seq: 2)], at: at(5))
+        let quit = deriver.observe([gone], at: at(8))
+        check(kinds(quit, ["agent.exited"]), "working → no agent, the pane still there: one exited")
+        check(quit[0].urgency == .info && quit[0].transition.from == "working" && quit[0].transition.to == "exited"
+              && quit[0].transition.workedSeconds == 3, "info, from working to exited, with the time it worked")
+        check(quit[0].subject.agent == "claude" && quit[0].display.agentName == "claude", "about the agent that went, not the empty pane")
+        check(deriver.observe([gone], at: at(10)).isEmpty, "still no agent: told once")
+
+        deriver = AgentEventDeriver(source: thisMac)
+        _ = deriver.observe([pane(.idle, seq: 1)], at: at(0))
+        _ = deriver.observe([pane(.working, seq: 2)], at: at(5))
+        check(kinds(deriver.observe([pane(.done, seq: 3)], at: at(9)), ["agent.finished"]), "working → done")
+        check(kinds(deriver.observe([gone], at: at(15)), ["agent.exited"]), "→ no agent 10 s after last seen working: exited")
+
+        deriver = AgentEventDeriver(source: thisMac)
+        _ = deriver.observe([pane(.idle, seq: 1)], at: at(0))
+        _ = deriver.observe([pane(.working, seq: 2)], at: at(5))
+        _ = deriver.observe([pane(.done, seq: 3)], at: at(9))
+        check(deriver.observe([gone], at: at(15.5)).isEmpty, "more than 10 s after: nothing (/exit once done)")
+
+        deriver = AgentEventDeriver(source: thisMac)
+        _ = deriver.observe([pane(.blocked, seq: 1)], at: at(0))
+        _ = deriver.observe([pane(.blocked, seq: 1)], at: at(3))
+        check(deriver.observe([gone], at: at(5)).isEmpty, "blocked only, gone: nothing")
+        deriver = AgentEventDeriver(source: thisMac)
+        _ = deriver.observe([pane(.idle, seq: 1)], at: at(0))
+        _ = deriver.observe([pane(.blocked, seq: 2)], at: at(3))
+        check(deriver.observe([gone], at: at(5)).isEmpty, "idle and blocked only, gone: nothing")
+
+        deriver = AgentEventDeriver(source: thisMac)
+        _ = deriver.observe([pane(.idle, seq: 1)], at: at(0))
+        _ = deriver.observe([pane(.working, seq: 2)], at: at(3))
+        check(deriver.observe([], at: at(5)).isEmpty, "the pane closed with it: nothing")
+        check(deriver.observe([pane(.idle, seq: 3, terminal: "term_other", agent: nil)], at: at(6)).isEmpty, "nor for another pane in its place")
+
+        deriver = AgentEventDeriver(source: thisMac)
+        _ = deriver.observe([pane(.idle, seq: 1)], at: at(0))
+        _ = deriver.observe([pane(.working, seq: 2)], at: at(3))
+        check(deriver.observe([pane(.working, seq: 3, agent: "codex")], at: at(5)).isEmpty, "another agent in its place: nothing")
+
+        deriver = AgentEventDeriver(source: thisMac)
+        _ = deriver.observe([pane(.working, seq: 1)], at: at(0))
+        check(deriver.observe([gone], at: at(3)).isEmpty, "working in the baseline only, then gone: nothing")
+        _ = deriver.observe([pane(.working, seq: 1)], at: at(4))
+        _ = deriver.observe([pane(.working, seq: 2)], at: at(5), asBaseline: true)
+        check(deriver.observe([gone], at: at(7)).isEmpty, "right after a reconnect's baseline: nothing")
+
+        deriver = AgentEventDeriver(source: thisMac)
+        _ = deriver.observe([pane(.idle, seq: 1, agent: nil)], at: at(0))
+        _ = deriver.observe([pane(.working, seq: 2)], at: at(3))
+        check(kinds(deriver.observe([gone], at: at(6)), ["agent.exited"]), "an agent that came and worked since, gone: exited")
+        check(deriver.observe([pane(.working, seq: 4, agent: nil)], at: at(8)).isEmpty, "a plain terminal working: never anything")
+
+        // Held: the pane still there with no agent.
+        let event = quit[0]
+        check(AgentEventDeriver.stillHolds(event, in: [pane(.idle, agent: nil)]) && AgentEventDeriver.stillHolds(event, in: [gone]),
+              "still no agent: holds")
+        check(!AgentEventDeriver.stillHolds(event, in: [pane(.idle)]), "the agent back: doesn't")
+        check(!AgentEventDeriver.stillHolds(event, in: [pane(.working, agent: "codex")]), "another agent: doesn't")
+        check(!AgentEventDeriver.stillHolds(event, in: []) && !AgentEventDeriver.stillHolds(event, in: [pane(.idle, terminal: "t9", agent: nil)]),
+              "the pane closed since: doesn't")
     }
 
     static func deriverRules() {

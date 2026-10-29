@@ -15,7 +15,7 @@ import Foundation
         examples = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
         policy()
         text()
-        print("PASS \(checks) notification policy checks: kinds on and off, viewed pane, 10 s repeat, expiry, resumed retracts, unknown kinds by urgency; title, subtitle and body")
+        print("PASS \(checks) notification policy checks: kinds on and off (quit while working included), viewed pane, 10 s repeat, expiry, resumed retracts, unknown kinds by urgency; title, subtitle and body")
     }
 
     static func policy() {
@@ -24,35 +24,43 @@ import Foundation
         let resumed = example("resumed.json")
         let newer = example("from-a-newer-producer.json")
         let now = needsInput.observedAt.addingTimeInterval(2)
-        let all = NotificationKinds(needsInput: true, finished: true)
+        let exited = example("exited.json")
+        let all = NotificationKinds(needsInput: true, finished: true, exited: true)
         func decide(_ event: AgentEvent, _ enabled: NotificationKinds = all, viewed: Bool = false, last: Date? = nil, at time: Date? = nil) -> NotificationPolicy.Decision {
             NotificationPolicy.decide(event, enabled: enabled, isViewed: viewed, lastPresented: last, now: time ?? event.observedAt.addingTimeInterval(2))
         }
 
         check(decide(needsInput) == .present && decide(finished) == .present, "both kinds on: shown")
-        check(decide(needsInput, NotificationKinds(needsInput: false, finished: true)) == .drop(.turnedOff), "needs input off: dropped")
-        check(decide(finished, NotificationKinds(needsInput: false, finished: true)) == .present, "the other kind is unaffected")
-        check(decide(finished, NotificationKinds(needsInput: true, finished: false)) == .drop(.turnedOff), "finished off: dropped")
-        check(!NotificationKinds(needsInput: false, finished: false).any && all.any, "any kind on")
+        check(decide(needsInput, NotificationKinds(needsInput: false, finished: true, exited: true)) == .drop(.turnedOff), "needs input off: dropped")
+        check(decide(finished, NotificationKinds(needsInput: false, finished: true, exited: true)) == .present, "the other kind is unaffected")
+        check(decide(finished, NotificationKinds(needsInput: true, finished: false, exited: true)) == .drop(.turnedOff), "finished off: dropped")
+        check(!NotificationKinds(needsInput: false, finished: false, exited: false).any && all.any
+              && NotificationKinds(needsInput: false, finished: false, exited: true).any, "any kind on, quitting included")
+        check(decide(exited) == .present, "quit while working: shown")
+        check(decide(exited, NotificationKinds(needsInput: true, finished: true, exited: false)) == .drop(.turnedOff), "quit off: dropped")
+        check(decide(exited, NotificationKinds(needsInput: false, finished: false, exited: true)) == .present
+              && decide(finished, NotificationKinds(needsInput: true, finished: true, exited: false)) == .present, "its own switch, apart from finished")
+        check(decide(exited, viewed: true) == .drop(.viewed) && decide(exited, last: exited.observedAt, at: exited.observedAt.addingTimeInterval(2)) == .drop(.repeated),
+              "viewed and repeated as the others")
 
         check(decide(needsInput, viewed: true) == .drop(.viewed), "the pane in front of the person: dropped")
         check(decide(needsInput, last: now.addingTimeInterval(-9.9), at: now) == .drop(.repeated), "the same kind for the same pane 9.9 s ago: dropped")
         check(decide(needsInput, last: now.addingTimeInterval(-10), at: now) == .present, "10 s later: shown again")
         check(decide(needsInput, at: needsInput.expiresAt!) == .drop(.expired), "at its expiry: dropped")
         check(decide(needsInput, at: needsInput.expiresAt!.addingTimeInterval(-1)) == .present, "a second before: shown")
-        check(decide(needsInput, NotificationKinds(needsInput: false, finished: true), viewed: true) == .drop(.turnedOff), "turned off is the first reason")
+        check(decide(needsInput, NotificationKinds(needsInput: false, finished: true, exited: true), viewed: true) == .drop(.turnedOff), "turned off is the first reason")
 
-        let none = NotificationKinds(needsInput: false, finished: false)
+        let none = NotificationKinds(needsInput: false, finished: false, exited: false)
         check(decide(resumed) == .retract && decide(resumed, none) == .retract && decide(resumed, viewed: true) == .retract,
               "resumed takes back what was shown, whatever the settings")
 
         // Kinds this reader doesn't know go by their urgency.
         check(decide(newer) == .present, "unknown kind, info: shown")
-        check(decide(newer, NotificationKinds(needsInput: true, finished: false)) == .drop(.turnedOff), "info follows the finished setting")
+        check(decide(newer, NotificationKinds(needsInput: true, finished: false, exited: true)) == .drop(.turnedOff), "info follows the finished setting")
         var attention = newer
         attention.urgency = .attention
-        check(decide(attention, NotificationKinds(needsInput: true, finished: false)) == .present
-              && decide(attention, NotificationKinds(needsInput: false, finished: true)) == .drop(.turnedOff), "attention follows the needs-input setting")
+        check(decide(attention, NotificationKinds(needsInput: true, finished: false, exited: true)) == .present
+              && decide(attention, NotificationKinds(needsInput: false, finished: true, exited: true)) == .drop(.turnedOff), "attention follows the needs-input setting")
         var silent = newer
         silent.urgency = .silent
         check(decide(silent) == .drop(.silent), "unknown kind, silent: not shown")
@@ -72,6 +80,9 @@ import Foundation
               == NotificationText.Content(title: "claude finished", subtitle: "This Mac", body: "SHPHRD-17 · shepherd"),
               "finished, with the machine in the subtitle")
         check(NotificationText.content(for: example("resumed.json"), showsMachine: true) == nil, "resumed: nothing to show")
+        check(NotificationText.content(for: example("exited.json"), showsMachine: false)
+              == NotificationText.Content(title: "claude quit while working", subtitle: "", body: "SHPHRD-17 · shepherd"),
+              "quit while working: agent in the title")
 
         var bare = needsInput
         bare.display = AgentEvent.Display(paneTitle: "  ", workspaceLabel: "web")
@@ -83,6 +94,9 @@ import Foundation
         bare.subject.agent = "codex"
         bare.kind = .finished
         check(NotificationText.content(for: bare, showsMachine: false)?.title == "codex finished", "the agent from the subject when display has none")
+        bare.kind = .exited
+        bare.subject.agent = nil
+        check(NotificationText.content(for: bare, showsMachine: false)?.title == "An agent quit while working", "quit, no agent name")
 
         let newer = example("from-a-newer-producer.json")
         check(NotificationText.content(for: newer, showsMachine: false)?.title == "codex has an update", "unknown kind, info")

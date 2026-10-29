@@ -158,6 +158,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return .terminateCancel
         }
         MachineBrowserService.shared.stop()
+        NotificationCoordinator.shared.clearBadgeBeforeQuitting()
         #if DEBUG
         ShepherdBrowserFeature.shared.removeFixtureDefaults()
         OwnedOperatorFixture.cleanUp()

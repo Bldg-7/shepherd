@@ -1,6 +1,160 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "An agent has quit while working" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An agent has quit while working"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "agent が作業中に終了したとき"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "agent가 작업 중에 종료됐을 때"
+          }
+        }
+      }
+    },
+    "About Quit While Working Notifications" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "About Quit While Working Notifications"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "作業中の終了の通知について"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "작업 중 종료 알림 안내"
+          }
+        }
+      }
+    },
+    "When an agent that was working a moment ago is gone from its pane, and the pane is still open: it was stopped, or it crashed. Closing the pane, or quitting an agent that had already been done for a while, isn't reported." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When an agent that was working a moment ago is gone from its pane, and the pane is still open: it was stopped, or it crashed. Closing the pane, or quitting an agent that had already been done for a while, isn't reported."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "少し前まで作業中だった agent が pane からいなくなり、pane は開いたままのときです。停止されたか、クラッシュした場合です。pane を閉じたときや、作業を終えてしばらく経った agent を終了したときは通知しません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "조금 전까지 작업 중이던 agent가 pane에서 사라지고 pane은 열려 있을 때입니다. 중단됐거나 비정상 종료된 경우입니다. pane을 닫거나, 작업을 마친 지 한참 지난 agent를 종료하는 것은 알리지 않습니다."
+          }
+        }
+      }
+    },
+    "hrdrhrdrhrdr watches the agents on the machines turned on below, the active one and the others, for as long as it is running — with its window closed, too. A pane you are looking at doesn't notify." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "hrdrhrdrhrdr watches the agents on the machines turned on below, the active one and the others, for as long as it is running — with its window closed, too. A pane you are looking at doesn't notify."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "hrdrhrdrhrdr は実行中、下でオンにしたマシンの agent を、アクティブなマシンもほかのマシンも見守ります。ウインドウを閉じていても同じです。いま表示している pane については通知しません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "hrdrhrdrhrdr는 실행되는 동안 아래에서 켜 둔 머신의 agent를, 활성 머신이든 다른 머신이든 지켜봅니다. 창을 닫아도 마찬가지입니다. 지금 보고 있는 pane은 알리지 않습니다."
+          }
+        }
+      }
+    },
+    "Show agents waiting for input on the Dock icon" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show agents waiting for input on the Dock icon"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "応答を待っている agent の数を Dock アイコンに表示"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "응답을 기다리는 agent 수를 Dock 아이콘에 표시"
+          }
+        }
+      }
+    },
+    "Badges for hrdrhrdrhrdr are turned off in System Settings." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Badges for hrdrhrdrhrdr are turned off in System Settings."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "システム設定で hrdrhrdrhrdr のバッジがオフになっています。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "시스템 설정에서 hrdrhrdrhrdr의 배지가 꺼져 있습니다."
+          }
+        }
+      }
+    },
+    "A machine turned off gets no notifications and adds nothing to the Dock icon, and isn't connected to for them while the board isn't showing it. Its herdr machines go with it." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A machine turned off gets no notifications and adds nothing to the Dock icon, and isn't connected to for them while the board isn't showing it. Its herdr machines go with it."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オフにしたマシンは通知せず、Dock アイコンの数にも含めません。ボードに表示していない間は、通知のために接続することもありません。そのマシンの herdr machine も一緒にオフになります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "끈 머신은 알림을 보내지 않고 Dock 아이콘의 수에도 들어가지 않으며, 보드가 보여 주지 않는 동안에는 알림을 위해 연결하지도 않습니다. 그 머신의 herdr machine도 함께 꺼집니다."
+          }
+        }
+      }
+    },
     "Clear timed out and may still be finishing. Some data may already have been removed." : {
       "localizations" : {
         "ja" : { "stringUnit" : { "state" : "translated", "value" : "消去がタイムアウトし、まだ処理中の可能性があります。一部のデータはすでに削除されている場合があります。" } },
@@ -5292,28 +5446,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "hrdrhrdrhrdr 세션용 리소스"
-          }
-        }
-      }
-    },
-    "hrdrhrdrhrdr watches the agents on all of your machines, the active one and the others, for as long as it is running — with its window closed, too. A pane you are looking at doesn't notify." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "hrdrhrdrhrdr watches the agents on all of your machines, the active one and the others, for as long as it is running — with its window closed, too. A pane you are looking at doesn't notify."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "hrdrhrdrhrdr は実行中、アクティブなマシンとほかのマシンすべての agent を見守ります。ウインドウを閉じていても同じです。いま表示している pane については通知しません。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "hrdrhrdrhrdr는 실행되는 동안 활성 머신과 다른 머신 모두의 agent를 지켜봅니다. 창을 닫아도 마찬가지입니다. 지금 보고 있는 pane은 알리지 않습니다."
           }
         }
       }

@@ -33,6 +33,8 @@ public nonisolated enum NotificationText {
             return agent.map { String(localized: "\($0) needs your input", bundle: .shepherdKit) } ?? String(localized: "An agent needs your input", bundle: .shepherdKit)
         case .finished:
             return agent.map { String(localized: "\($0) finished", bundle: .shepherdKit) } ?? String(localized: "An agent finished", bundle: .shepherdKit)
+        case .exited:
+            return agent.map { String(localized: "\($0) quit while working", bundle: .shepherdKit) } ?? String(localized: "An agent quit while working", bundle: .shepherdKit)
         case .resumed:
             return nil
         default:
