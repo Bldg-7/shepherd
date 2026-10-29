@@ -64,7 +64,10 @@ public nonisolated struct AgentEvent: Codable, Equatable, Sendable {
         /// The agent is working again. Not shown: it takes back what was
         /// shown about the pane before.
         public static let resumed = Kind(rawValue: "agent.resumed")
-        /// The agent went away while it was working. Not made yet.
+        /// The agent went away while it was working: its pane is still
+        /// there, with no agent in it, and the agent was seen working a
+        /// moment before. Its transition is from `working` to `exited`, a
+        /// status of its own that herdr doesn't have.
         public static let exited = Kind(rawValue: "agent.exited")
 
         /// The urgency the kind has, for a kind this reader knows.

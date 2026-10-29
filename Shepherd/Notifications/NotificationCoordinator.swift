@@ -6,16 +6,18 @@ import AppKit
 #endif
 
 /// Tells the person, with a notification, when an agent on any of their
-/// machines needs their input or has finished — and takes the notification
-/// back once they are looking at the pane, or the agent has gone back to
-/// work. One for the app, running from launch to quit, window or no window.
+/// machines needs their input, has finished or has quit while working —
+/// and takes the notification back once they are looking at the pane, or
+/// the agent has gone back to work. Keeps the number of agents waiting for
+/// their input on the Dock icon. One for the app, running from launch to
+/// quit, window or no window.
 ///
 /// What it is told:
-/// - Snapshots, from the `MachineMonitor` of every machine — the same ones
-///   the board shows, read over the same connection — each through a
-///   `NotificationFeed`. It has `MachineMonitors` keep every machine's
-///   monitor running while there is anything to look for (see `reconcile`),
-///   window or no window.
+/// - Snapshots, from the `MachineMonitor` of every machine not turned off
+///   in Settings — the same ones the board shows, read over the same
+///   connection — each through a `NotificationFeed`. It has
+///   `MachineMonitors` keep those machines' monitors running while there is
+///   anything to look for (see `reconcile`), window or no window.
 /// - Which panes the person is looking at (`setViewedPanes`).
 ///
 /// What it does with a snapshot: an `AgentEventDeriver` per herdr server
@@ -56,6 +58,9 @@ final class NotificationCoordinator {
 
     let preferences = NotificationPreferences()
     private(set) var authorization: NotificationAuthorization = .unknown
+    /// Whether macOS shows no badge for Shepherd, though it may show
+    /// notifications.
+    private(set) var badgesAreOff = false
     /// The pane of the notification last clicked, until the window has
     /// selected it or given up.
     var navigationRequest: NotificationNavigationRequest?
@@ -82,6 +87,13 @@ final class NotificationCoordinator {
     @ObservationIgnored private var reconcileTask: Task<Void, Never>?
     @ObservationIgnored private var navigationTimeoutTask: Task<Void, Never>?
     @ObservationIgnored private var madeProducer: AgentEvent.Producer?
+    /// The machines turned off whose notifications have been taken away.
+    @ObservationIgnored private var withdrawnMachineIDs: Set<UUID> = []
+    /// Which look at the monitors the badge goes by; one that has been
+    /// looked past tells of no change.
+    @ObservationIgnored private var badgeTracking = 0
+    @ObservationIgnored private var shownBadge: Int?
+    @ObservationIgnored private var askedForBadge = false
 
     private init() {}
 
@@ -128,10 +140,10 @@ final class NotificationCoordinator {
         refreshAuthorization()
     }
 
-    /// Whether there is anything to look for: a kind of notification turned
-    /// on, and macOS not refusing them.
+    /// Whether there is anything to look for: a kind of notification, or
+    /// the badge, turned on, and macOS not refusing them.
     private var isWatching: Bool {
-        preferences.kinds.any && authorization != .denied
+        (preferences.kinds.any || preferences.showsBadge) && authorization != .denied
     }
 
     /// Keeps `machines` up to date with the store, and the monitors with
@@ -142,22 +154,61 @@ final class NotificationCoordinator {
         machines = withObservationTracking { machineStore.allMachines } onChange: {
             Task { @MainActor in NotificationCoordinator.shared.trackMachines() }
         }
+        // A removed machine's setting goes with it, and so does what was
+        // being compared for it.
+        let ids = Set(machines.map(\.id))
+        preferences.keepMuted(onlyAmong: ids)
+        derivers = derivers.filter { ids.contains($0.key.connection.machineID) }
+        scheduleReconcile()
+        trackBadge()
+    }
+
+    /// Starts or stops watching as kinds of notification, the badge and
+    /// machines are turned on and off.
+    private func trackPreferences() {
+        _ = withObservationTracking {
+            (preferences.kinds, preferences.showsBadge, preferences.mutedMachineIDs)
+        } onChange: {
+            Task { @MainActor in NotificationCoordinator.shared.trackPreferences() }
+        }
+        withdrawMutedMachines()
         scheduleReconcile()
     }
 
-    /// Starts or stops watching as kinds of notification are turned on and
-    /// off.
-    private func trackPreferences() {
-        _ = withObservationTracking { preferences.kinds } onChange: {
-            Task { @MainActor in NotificationCoordinator.shared.trackPreferences() }
+    /// Takes away what is shown about the machines turned off since last
+    /// time — from Notification Center too, and from earlier runs of the
+    /// app — and forgets what was compared for them: once one is turned on
+    /// again, its first snapshot is a baseline, and nothing from before
+    /// comes flooding in.
+    private func withdrawMutedMachines() {
+        let muted = preferences.mutedMachineIDs
+        let newlyMuted = muted.subtracting(withdrawnMachineIDs)
+        withdrawnMachineIDs = muted
+        guard !newlyMuted.isEmpty else { return }
+        derivers = derivers.filter { !newlyMuted.contains($0.key.connection.machineID) }
+        let identifiers = shown.filter { newlyMuted.contains($0.value.pane.server.connection.machineID) }.map(\.key)
+        for identifier in identifiers {
+            shown[identifier] = nil
         }
-        scheduleReconcile()
+        presenter.retract(identifiers: identifiers)
+        Task {
+            await presenter.retract(machineIDs: newlyMuted)
+        }
     }
 
     func refreshAuthorization() {
         guard isStarted else { return }
         Task {
             update(authorization: await presenter.authorization())
+            badgesAreOff = await presenter.badgesAreOff()
+            // Allowed before Shepherd had a badge, when it didn't ask for
+            // one: asking again, with the badge, doesn't put a question to
+            // the person once they have answered, and may be all it takes.
+            if authorization == .allowed, badgesAreOff, preferences.showsBadge, !askedForBadge {
+                askedForBadge = true
+                update(authorization: await presenter.requestAuthorization())
+                badgesAreOff = await presenter.badgesAreOff()
+            }
         }
     }
 
@@ -166,6 +217,7 @@ final class NotificationCoordinator {
         guard isStarted else { return }
         Task {
             update(authorization: await presenter.requestAuthorization())
+            badgesAreOff = await presenter.badgesAreOff()
         }
     }
 
@@ -184,13 +236,55 @@ final class NotificationCoordinator {
         }
     }
 
-    /// Has every machine watched — its monitor kept running whether or not
-    /// the board shows it — or none, while there is nothing to look for. A
-    /// monitor the board holds runs either way, and feeds the notifications
-    /// all the same.
+    /// Has every machine not turned off watched — its monitor kept running
+    /// whether or not the board shows it — or none, while there is nothing
+    /// to look for. A monitor the board holds runs either way, and feeds the
+    /// notifications all the same; a machine turned off is ignored then (see
+    /// `ingest`), and one over SSH isn't connected to for them otherwise.
     private func reconcile() {
         guard let machineStore else { return }
-        MachineMonitors.shared.watch(isWatching ? machines : [], in: machineStore)
+        MachineMonitors.shared.watch(isWatching ? machines.filter { !preferences.isMuted($0.id) } : [], in: machineStore)
+        trackBadge()
+    }
+
+    // MARK: Badge
+
+    /// Puts the number of agents waiting for input on the Dock icon, and
+    /// again whenever what it is counted from changes.
+    private func trackBadge() {
+        guard isStarted else { return }
+        badgeTracking += 1
+        let tracking = badgeTracking
+        let count = withObservationTracking { badgeCount() } onChange: {
+            Task { @MainActor in
+                guard NotificationCoordinator.shared.badgeTracking == tracking else { return }
+                NotificationCoordinator.shared.trackBadge()
+            }
+        }
+        guard count != shownBadge else { return }
+        shownBadge = count
+        presenter.setBadge(count)
+    }
+
+    /// From what the watched machines' monitors last saw, the board's
+    /// included: none while the badge is off, or there is nothing to look
+    /// for.
+    private func badgeCount() -> Int {
+        guard isWatching, preferences.showsBadge else { return 0 }
+        let agents = machines.compactMap { machine -> NotificationBadge.MachineAgents? in
+            guard let monitor = MachineMonitors.shared.existingMonitor(for: machine) else { return nil }
+            return NotificationBadge.MachineAgents(
+                machineID: machine.id, panes: monitor.panes, isFailing: monitor.loadError != nil,
+                herdrMachines: monitor.herdrMachineGroups.map { NotificationBadge.HerdrMachineAgents(panes: $0.agents, isFailing: $0.error != nil) }
+            )
+        }
+        return NotificationBadge.count(agents, muted: preferences.mutedMachineIDs)
+    }
+
+    /// No number left on the Dock icon once the app has quit.
+    func clearBadgeBeforeQuitting() {
+        guard isStarted else { return }
+        presenter.clearBadgeBeforeQuitting()
     }
 
     // MARK: Events
@@ -201,6 +295,11 @@ final class NotificationCoordinator {
                 refetch: @escaping @Sendable () async throws -> [AgentObservation]) {
         guard isStarted, let machineStore, machineStore.isCurrentConnection(machine), isWatching else { return }
         let server = NotificationServerKey(connection: machine.connectionIdentity, herdrMachineID: herdrMachine?.id)
+        guard !preferences.isMuted(machine.id) else {
+            // From the board, which shows a machine turned off all the same.
+            derivers[server] = nil
+            return
+        }
         let now = Date()
         let herdr = eventSource(for: (try? machineStore.currentMachine(matching: machine)) ?? machine, on: herdrMachine)
         var deriver = derivers[server] ?? AgentEventDeriver(source: herdr)
@@ -259,7 +358,7 @@ final class NotificationCoordinator {
     }
 
     private func deliver(_ event: AgentEvent, pane: NotificationPaneKey, route: NotificationRoute) {
-        guard isStarted, !handledEventIDs.contains(event.id) else { return }
+        guard isStarted, !handledEventIDs.contains(event.id), !preferences.isMuted(route.machineID) else { return }
         handledEventIDs.append(event.id)
         let now = Date()
         let identifier = event.subject.collapseKey

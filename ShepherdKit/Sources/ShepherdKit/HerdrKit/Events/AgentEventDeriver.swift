@@ -69,8 +69,16 @@ public nonisolated struct AgentEventSource: Equatable, Sendable {
 ///   is from the last status that wasn't.
 /// - An agent that finishes within `startupGrace` of being first seen in
 ///   its pane is only starting up, and that isn't told about.
+/// - An agent gone from a pane that is still there, within `exitWindow` of
+///   last being seen working, has quit while working (`agent.exited`).
+///   herdr tells of an agent quitting as `idle` first, and only takes it
+///   out of the pane a look or so later: what counts is when it was last
+///   seen working, not the status just before. An agent that goes having
+///   been only blocked or idle, goes with its pane, or makes way for
+///   another agent, is no news.
 public nonisolated struct AgentEventDeriver: Sendable {
     public static let startupGrace: TimeInterval = 10
+    public static let exitWindow: TimeInterval = 10
     public static let maximumGap: TimeInterval = 60
     /// How long an event stays worth showing (`expires_at`).
     public static let lifetime: TimeInterval = 3600
@@ -89,6 +97,9 @@ public nonisolated struct AgentEventDeriver: Sendable {
         var agentSince: Date?
         /// When the agent last started working, if that was seen.
         var workingSince: Date?
+        /// When the agent was last seen working, in a look that wasn't a
+        /// baseline.
+        var lastWorkingSeenAt: Date?
     }
 
     public init(source: AgentEventSource) {
@@ -121,11 +132,20 @@ public nonisolated struct AgentEventDeriver: Sendable {
             guard var memory = panes[observation.terminalID], memory.observation.agent == observation.agent else {
                 // A pane opened since the last look, or an agent that came,
                 // went or was replaced in it.
+                if let previous = panes[observation.terminalID], let agent = previous.observation.agent, observation.agent == nil,
+                   let seen = previous.lastWorkingSeenAt, now.timeIntervalSince(seen) <= Self.exitWindow {
+                    var departed = observation
+                    departed.agent = agent
+                    events.append(event(.exited, for: departed, from: .working, to: "exited", at: now,
+                                        workedSeconds: previous.workingSince.map { Int(now.timeIntervalSince($0)) }))
+                }
+                let working = observation.agent != nil && observation.state == .working
                 next[observation.terminalID] = Memory(
                     observation: observation,
                     knownState: observation.state == .unknown ? nil : observation.state,
                     agentSince: observation.agent == nil ? nil : now,
-                    workingSince: observation.state == .working ? now : nil
+                    workingSince: observation.state == .working ? now : nil,
+                    lastWorkingSeenAt: working ? now : nil
                 )
                 continue
             }
@@ -136,11 +156,14 @@ public nonisolated struct AgentEventDeriver: Sendable {
                     let startingUp = memory.agentSince.map { now.timeIntervalSince($0) < Self.startupGrace } ?? false
                     if !(kind == .finished && startingUp) {
                         let worked = kind == .finished ? memory.workingSince.map { Int(now.timeIntervalSince($0)) } : nil
-                        events.append(event(kind, for: observation, from: previous, at: now, workedSeconds: worked))
+                        events.append(event(kind, for: observation, from: previous, to: observation.state.rawValue, at: now, workedSeconds: worked))
                     }
                 }
                 if observation.state == .working, memory.knownState != .working {
                     memory.workingSince = now
+                }
+                if observation.state == .working {
+                    memory.lastWorkingSeenAt = now
                 }
                 memory.knownState = observation.state
             }
@@ -169,8 +192,10 @@ public nonisolated struct AgentEventDeriver: Sendable {
     /// Whether the pane `event` is about is still as the event says,
     /// in another look at its herdr taken since.
     public static func stillHolds(_ event: AgentEvent, in observations: [AgentObservation]) -> Bool {
-        guard let pane = observations.first(where: { $0.terminalID == event.subject.terminalID }),
-              pane.agent == event.subject.agent else { return false }
+        guard let pane = observations.first(where: { $0.terminalID == event.subject.terminalID }) else { return false }
+        // Quit: the pane is still there, and no agent has come back to it.
+        if event.kind == .exited { return pane.agent == nil }
+        guard pane.agent == event.subject.agent else { return false }
         switch event.kind {
         case .needsInput: return pane.state == .blocked
         case .finished: return pane.state == .idle || pane.state == .done
@@ -179,7 +204,8 @@ public nonisolated struct AgentEventDeriver: Sendable {
         }
     }
 
-    private func event(_ kind: AgentEvent.Kind, for pane: AgentObservation, from previous: AgentState,
+    /// `current` is herdr's status for the pane, but for `agent.exited`.
+    private func event(_ kind: AgentEvent.Kind, for pane: AgentObservation, from previous: AgentState, to current: String,
                        at now: Date, workedSeconds: Int?) -> AgentEvent {
         let observedAt = Date(timeIntervalSince1970: now.timeIntervalSince1970.rounded(.down))
         let instanceID = source.herdr.instanceID
@@ -199,7 +225,7 @@ public nonisolated struct AgentEventDeriver: Sendable {
                 agent: pane.agent,
                 collapseKey: AgentEvent.collapseKey(instanceID: instanceID, terminalID: pane.terminalID)
             ),
-            transition: AgentEvent.Transition(from: previous.rawValue, to: pane.state.rawValue,
+            transition: AgentEvent.Transition(from: previous.rawValue, to: current,
                                               stateChangeSeq: pane.stateChangeSeq, workedSeconds: workedSeconds),
             display: AgentEvent.Display(agentName: pane.agent, paneTitle: pane.paneTitle, tabLabel: pane.tabLabel,
                                         workspaceLabel: pane.workspaceLabel, machineLabel: source.machineLabel),

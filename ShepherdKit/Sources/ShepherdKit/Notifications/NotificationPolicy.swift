@@ -5,9 +5,10 @@ import Foundation
 public nonisolated struct NotificationKinds: Equatable, Sendable {
     public var needsInput: Bool
     public var finished: Bool
+    public var exited: Bool
 
     /// Whether there is any notification to give at all.
-    public var any: Bool { needsInput || finished }
+    public var any: Bool { needsInput || finished || exited }
 }
 
 /// Whether an agent event that has held is shown, takes back the one shown
@@ -57,6 +58,8 @@ public nonisolated enum NotificationPolicy {
             wanted = enabled.needsInput
         case .finished:
             wanted = enabled.finished
+        case .exited:
+            wanted = enabled.exited
         default:
             switch event.urgency {
             case .attention: wanted = enabled.needsInput
