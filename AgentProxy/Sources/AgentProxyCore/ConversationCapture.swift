@@ -191,7 +191,10 @@ public final class ConversationCapture {
                 _ = try RequestProjection.decodeObject(data)
                 let head = try JSONDecoder().decode(AgentProxyTeeFrame.ResponseHead.self, from: data)
                 let headers = try Self.headers(head.headers, response: true)
-                guard (200..<300).contains(head.status), Self.mediaType(headers["content-type"]) == "text/event-stream" else { throw Failure.unsupported }
+                // api.openai.com sends Pi's subscription Responses stream with
+                // no content type at all. Another declared type is not SSE.
+                guard (200..<300).contains(head.status),
+                      headers["content-type"] == nil || Self.mediaType(headers["content-type"]) == "text/event-stream" else { throw Failure.unsupported }
                 exchange.codec = try codec(headers["content-encoding"])
                 exchange.responseStarted = true
             case .responseBody:

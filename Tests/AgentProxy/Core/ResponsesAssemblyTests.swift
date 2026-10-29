@@ -52,6 +52,8 @@ struct ResponsesAssemblyTests {
         try stream.delta(1, "msg-1", text, done: true)
         try stream.part(1, "msg-1", ["type": "output_text", "text": text], done: true)
         try stream.item(1, message("msg-1", text), done: true)
+        // api.openai.com interleaves response.metadata with Pi's text deltas.
+        try stream.send(["type": "response.metadata", "metadata": [:]])
         try stream.item(2, function(""))
         for fragment in ["{\"q\":", "\"한글\"}"] { try stream.delta(2, "fn-1", fragment, arguments: true) }
         let arguments = "{\"q\":\"한글\"}"

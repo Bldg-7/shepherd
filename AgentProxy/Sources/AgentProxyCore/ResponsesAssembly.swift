@@ -129,9 +129,10 @@ public nonisolated struct ResponsesAssembly: Sendable {
                 && output.contains { $0["type"] as? String == "message" && $0["role"] as? String == "assistant" && $0["phase"] as? String == "final_answer" }
             self = final
         default:
-            // Annotations do not change visible text. Other future semantics
-            // are not silently advertised as a fully reconstructed view.
-            if type != "response.output_text.annotation.added" { truncated = true }
+            // Annotations and response metadata do not change visible text.
+            // Other future semantics are not silently advertised as a fully
+            // reconstructed view.
+            if !["response.output_text.annotation.added", "response.metadata"].contains(type) { truncated = true }
         }
     }
 

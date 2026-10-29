@@ -203,6 +203,12 @@ struct ConversationCaptureTests {
         }
         let nonSSE = Harness(); try nonSSE.open(1); try nonSSE.request(1); try nonSSE.head(1, type: "application/json")
         check(nonSSE.snapshot?.summary.status == .incomplete, "unexpected response format leaves explicit incomplete conversation")
+        // api.openai.com answers Pi's subscription Responses stream without a content type.
+        let untyped = Harness(); try untyped.open(1); try untyped.request(1)
+        try untyped.json(.responseHead, 1, AgentProxyTeeFrame.ResponseHead(status: 200, headers: []))
+        try untyped.answer(1, "untyped"); try untyped.end(1)
+        check(untyped.snapshot?.summary.status == .complete && untyped.snapshot?.items.last?.message.blocks.first?.text == "untyped",
+              "an SSE response without a content type is captured")
         let duplicateHeader = Harness(); try duplicateHeader.open(1, extra: [["Content-Type", "text/plain"]])
         check(duplicateHeader.capture.activeExchangeCount == 0 && duplicateHeader.capture.drops[.metadata] == 1, "case-insensitive header ambiguity rejected before retention")
         for kind in ["subagent", "auxiliary", "unknown"] {
