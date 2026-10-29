@@ -46,8 +46,14 @@ enum ConversationSocket {
             result = try state.loop.submit { state.exitCode }.wait()
         } catch { result = 4 }
         do {
-            if let flush = try state.loop.submit({ state.stop() }).wait(),
-               !flush.wait(timeout: .now() + .milliseconds(1500)) { result = 4 }
+            if let flush = try state.loop.submit({ state.stop() }).wait() {
+                // A write still running at the deadline is abandoned with the
+                // process; SQLite keeps the last committed transaction intact.
+                switch flush.wait(timeout: .now() + .milliseconds(1500)) {
+                case .clean: break
+                case .failed, .timedOut: result = 4
+                }
+            }
         } catch { result = 4 }
         try? listener?.close().wait()
         try? tee?.close().wait()
@@ -280,9 +286,10 @@ private final class ReadState: @unchecked Sendable {
         let admittedClients: Int
         let activeExchanges: Int
         let statusWorkspaceDeferrals: Int
-        #if SHPHRD_OWNER_CLOSE_TESTING
-        var retiredSettlementCount: Int = 0
-        var retiredSettlementReleaseCount: Int = 0
+        #if SHPHRD_PERSISTENCE_TESTING
+        var testSaveCount: Int = 0
+        var testItemsWritten: Int = 0
+        var testFullRewrites: Int = 0
         var testOperationRunning: Bool = false
         var testPendingRecords: Int = 0
         #endif
@@ -306,9 +313,11 @@ private final class ReadState: @unchecked Sendable {
                                        admittedClients: clients.count,
                                        activeExchanges: capture.activeExchangeCount,
                                        statusWorkspaceDeferrals: persistence?.statusWorkspaceDeferrals ?? 0)
-        #if SHPHRD_OWNER_CLOSE_TESTING
-        status.retiredSettlementCount = persistence?.retiredSettlementCount ?? 0
-        status.retiredSettlementReleaseCount = persistence?.retiredSettlementReleaseCount ?? 0
+        #if SHPHRD_PERSISTENCE_TESTING
+        let saves = persistence?.testSaves ?? []
+        status.testSaveCount = saves.count
+        status.testItemsWritten = saves.reduce(0) { $0 + $1.itemsWritten }
+        status.testFullRewrites = saves.filter(\.rewroteAllItems).count
         status.testOperationRunning = persistence?.testOperationRunning ?? false
         status.testPendingRecords = persistence?.testPendingRecords ?? 0
         #endif
@@ -493,8 +502,8 @@ private final class ReadState: @unchecked Sendable {
                 self.retryTicks = 0
                 self.retryBlockedPersistence()
                 self.scheduleChangedRecords()
-                #if SHPHRD_OWNER_CLOSE_TESTING
-                if getenv("SHPHRD_OWNER_TEST_NO_STATUS") == nil { self.persistence?.refreshStatus() }
+                #if SHPHRD_PERSISTENCE_TESTING
+                if getenv("SHPHRD_PERSISTENCE_TEST_NO_STATUS") == nil { self.persistence?.refreshStatus() }
                 #else
                 self.persistence?.refreshStatus()
                 #endif

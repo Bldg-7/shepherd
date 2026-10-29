@@ -4,25 +4,30 @@ import AgentProxyProtocol
 import AgentProxyCore
 
 /// Reads tee frames from descriptor 3 into bounded normalized capture. Socket
-/// mode can schedule normalized records to the journal when a state directory
+/// mode can schedule normalized records to the database when a state directory
 /// is supplied; it never logs raw tee bodies. Exits on EOF or malformed framing.
 public enum AgentProxyRecorder {
-    /// The executable enters the dedicated storage-owner role, never a second
-    /// recorder-side journal writer. All paths are explicit and local.
-    public static func storageOwner(stateDirectory: String, descriptor: Int32, producerDescriptor: Int32) -> Int32 {
+    /// Confirmed OFF maintenance: with capture off no recorder is running, so
+    /// take producer and socket admission, then remove the conversation
+    /// database. Exits 0 on success, 5 if removal failed, 4 if admission did.
+    public static func clearHistory(stateDirectory: String, socketPath: String) -> Int32 {
         let args = Array(CommandLine.arguments.dropFirst())
-        guard args.count == 5, args[0] == "storage-owner", args[1] == "--state-dir", args[2] == stateDirectory,
-              args[3] == "--producer-fd", args[4] == "4", stateDirectory.hasPrefix("/"), descriptor == 3, producerDescriptor == 4 else { return 4 }
-        return ConversationStorageOwner.run(stateDirectory: stateDirectory, descriptor: descriptor, producerDescriptor: producerDescriptor)
-    }
-
-    /// Same owner implementation in explicitly confirmed OFF maintenance mode.
-    public static func storageOwnerMaintenance(stateDirectory: String, socketPath: String) -> Int32 {
-        let args = Array(CommandLine.arguments.dropFirst())
-        guard args.count == 7, args[0] == "storage-owner", args[1] == "--maintenance-clear", args[2] == "--confirmed",
-              args[3] == "--state-dir", args[4] == stateDirectory, args[5] == "--socket", args[6] == socketPath,
+        guard args.count == 6, args[0] == "clear-history", args[1] == "--confirmed",
+              args[2] == "--state-dir", args[3] == stateDirectory, args[4] == "--socket", args[5] == socketPath,
               stateDirectory.hasPrefix("/"), AgentProxyPaths.socketPathFits(socketPath) else { return 4 }
-        return ConversationStorageOwner.runMaintenance(stateDirectory: stateDirectory, socketPath: socketPath)
+        do {
+            try ConversationStateRoot.prepare(stateDirectory)
+            let producer = try ConversationProducerLease(rootPath: stateDirectory)
+            let socketLease = try SocketLease(socketPath, removeStale: false)
+            return withExtendedLifetime((producer, socketLease)) {
+                do {
+                    try producer.verify(); try socketLease.verifyLock()
+                    try ConversationDatabase.removeAll(stateDirectory: stateDirectory)
+                    try producer.verify()
+                    return 0
+                } catch { return 5 }
+            }
+        } catch { return 4 }
     }
 
     public static func run(descriptor: Int32 = 3, socketPath: String? = nil, stateDirectory: String? = nil,

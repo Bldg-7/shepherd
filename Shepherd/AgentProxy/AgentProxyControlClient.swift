@@ -130,7 +130,7 @@ nonisolated struct AgentProxyControlClient: AgentProxyControlling {
                         guard posix_spawn_file_actions_addopen(&actions, fd, "/dev/null", fd == 0 ? O_RDONLY : O_WRONLY, 0) == 0 else { throw AgentProxyControlFailure.unreachable }
                     }
                     guard posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT)) == 0 else { throw AgentProxyControlFailure.unreachable }
-                    let args = [executable, "storage-owner", "--maintenance-clear", "--confirmed", "--state-dir", stateDirectory, "--socket", socketPath].map { strdup($0) } + [nil]
+                    let args = [executable, "clear-history", "--confirmed", "--state-dir", stateDirectory, "--socket", socketPath].map { strdup($0) } + [nil]
                     let environment: [UnsafeMutablePointer<CChar>?] = [nil]
                     defer { args.forEach { free($0) } }
                     guard args.dropLast().allSatisfy({ $0 != nil }) else { throw AgentProxyControlFailure.unreachable }

@@ -50,6 +50,36 @@ struct ConversationSubscriptionTests {
         let tokens = (0..<32).compactMap { _ in small.reserve(bytes: 1) }
         check(tokens.count == 32 && small.reserve(bytes: 1) == nil, "reservation token count is independently bounded")
         tokens.forEach(small.release)
+        let active = ConversationCaptureTests.Harness()
+        let authority1 = active.capture.reserve(bytes: 8 << 20)!
+        let authority2 = active.capture.reserve(bytes: 8 << 20)!
+        try active.open(1); try active.request(1)
+        let record = active.capture.reserve(bytes: 8 << 20)!
+        let save = active.capture.reserve(bytes: 64 << 20)!
+        let liveID = active.snapshot!.summary.id
+        check(active.capture.accountedBytes > 124 << 20 && active.capture.accountedBytes < 128 << 20, "active capture and save reservations reproduce read pressure")
+        check(active.capture.reserve(bytes: 4 << 20) == nil, "read reservation fails closed under active capture pressure")
+        check(active.capture.activeExchangeCount == 1 && active.snapshot?.summary.id == liveID && active.capture.drops[.evicted] == nil, "host reservation cannot evict an active conversation")
+        active.capture.release(save)
+        let reader = active.capture.reserve(bytes: 4 << 20)
+        let query = active.capture.reserve(bytes: 8 << 20)
+        check(reader != nil && query != nil && active.capture.accountedBytes <= active.capture.limits.totalBytes, "read admission progresses after save workspace is released")
+        if let reader { active.capture.release(reader) }
+        if let query { active.capture.release(query) }
+        active.capture.release(record); active.capture.release(authority1); active.capture.release(authority2)
+        try active.head(1); try active.answer(1, "still alive"); try active.end(1)
+        check(active.snapshot?.summary.id == liveID && active.snapshot?.items.last?.message.blocks.first?.text == "still alive", "active response remains capturable after refused reservation")
+
+        let mixed = ConversationCaptureTests.Harness(small)
+        try mixed.open(1, native: "old"); try mixed.request(1); try mixed.head(1); try mixed.answer(1, "old"); try mixed.end(1)
+        try mixed.open(2, native: "live"); try mixed.request(2)
+        let beforeIDs = Set(mixed.capture.reconciler.store.list().map(\.id))
+        let beforeBytes = mixed.capture.accountedBytes
+        check(beforeIDs.count == 2 && mixed.capture.activeExchangeCount == 1, "mixed history and live conversation established")
+        check(mixed.capture.reserve(bytes: 99_000) == nil && mixed.capture.accountedBytes == beforeBytes, "refused host admission does not mutate existing accounting")
+        check(Set(mixed.capture.reconciler.store.list().map(\.id)) == beforeIDs && mixed.capture.activeExchangeCount == 1, "host pressure preserves both live and idle history during an exchange")
+        try mixed.head(2); try mixed.answer(2, "new"); try mixed.end(2)
+
         let h = ConversationCaptureTests.Harness(small)
         try h.open(1); try h.request(1); try h.head(1); try h.answer(1, "answer"); try h.end(1)
         let pressure = small.reserve(bytes: 99_000)

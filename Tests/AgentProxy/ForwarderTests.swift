@@ -1201,6 +1201,8 @@ final class Suite {
         }
         let stored = fileBytes(proxy.state + "/routes.json")
         try check(contains(stored, bytes(sha256(claude.token))) && contains(stored, bytes(sha256(codex.token))), "routes.json keeps the hashes")
-        try check(fileBytes(tap).count > 0 && listFiles(proxy.state).count == 2, "state folder has state.json and routes.json only")
+        let names = Set(listFiles(proxy.state).map { ($0 as NSString).lastPathComponent })
+        try check(fileBytes(tap).count > 0 && names == ["state.json", "routes.json", "producer.lock"] &&
+                  fileBytes(proxy.state + "/producer.lock").isEmpty, "state folder has state.json, routes.json and an empty producer lock only")
     }
 }

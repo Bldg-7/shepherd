@@ -76,8 +76,16 @@ public final class ConversationCapture {
 
     /// Host-only admission for client buffers and transient encoding. Tokens
     /// are bounded independently; never accept a requested size from the wire.
+    /// During a live exchange, host workspace pressure must not evict its
+    /// conversation. Refuse the reservation instead; the host can retry after
+    /// existing reservations are released. Idle history remains evictable.
     public func reserve(bytes: Int) -> UUID? {
-        guard bytes > 0, bytes <= limits.totalBytes, reservations.count < 32, makeRoom(bytes) else { return nil }
+        guard bytes > 0, bytes <= limits.totalBytes, reservations.count < 32 else { return nil }
+        if !exchanges.isEmpty {
+            guard accountedBytes <= limits.totalBytes - bytes else { return nil }
+        } else {
+            guard makeRoom(bytes) else { return nil }
+        }
         let id = UUID(); reservations[id] = bytes; return id
     }
     public func release(_ id: UUID) { reservations.removeValue(forKey: id) }

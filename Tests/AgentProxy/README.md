@@ -8,7 +8,7 @@ starts (Claude Code, Codex and Pi, signed in with a Claude or ChatGPT
 subscription) on to api.anthropic.com, chatgpt.com, or the exact api.openai.com
 Responses endpoint for a prepared Pi route. The app-side wiring is
 implemented. Bounded main/compaction collection, observed child final results,
-the read API and paired iPhone/iPad conversation UI are connected. With persistent capture configured it uses three process roles:
+the read API and paired iPhone/iPad conversation UI are connected. It uses two process roles:
 
 - The forwarder listens on 127.0.0.1 and passes requests on. Over its control
   socket, `ap.sock`, the app asks it for a route for each agent it starts. A
@@ -18,18 +18,25 @@ the read API and paired iPhone/iPad conversation UI are connected. With persiste
   forwarder exit as soon as no request is in progress, so that launchd can start
   a newer build.
 - The recorder is a child process that consumes the copies into bounded
-  conversations and sends only validated normalized records over a private,
-  bounded inherited socketpair to the storage owner. It does not persist raw tee
-  bodies, headers or credentials and does not log raw errors. It decodes
+  conversations and saves only validated normalized records to a private SQLite
+  database, `Conversations/conversations.sqlite3` in the state folder (0700
+  folder, 0600 files). One serial worker owns the connection; a conversation is
+  one row plus one row per item, so a save writes only the items that changed.
+  Streaming changes are saved once quiet for 500 ms and at most 2 s after they
+  change. Retention is 256 conversations, 256 MiB and 30 days, oldest-updated
+  first. It does not persist raw tee bodies, headers or credentials and does
+  not log raw errors. It decodes
   gzip, zlib-wrapped deflate and zstd copies with bounded output and an 8-MiB
   zstd window; forwarding retains the original bytes. Unknown/stacked encodings,
   trailing/concatenated frames, invalid checksums and truncated streams fail
   capture closed without changing the HTTP exchange. Pi uses request-local
   contract2 tagging qualified against1.3.0/1.4.0; legacy tags and unknown builds
   cannot become main. Child ancestry is bounded, byte-exact and scope-checked.
-- The singleton storage-owner process owns the private journal, retention and
-  clear operations. OFF maintenance starts the same owner role with explicit
-  paths and a separate producer admission; it does not launch an agent.
+- Clearing history with capture on goes through the running recorder, which
+  closes its connection and removes the database files. With capture off, the
+  app runs `hrdrhrdrhrdr-agent-proxy clear-history --confirmed --state-dir DIR
+  --socket PATH`, which takes the same producer admission and does the same; it
+  does not launch an agent.
 
 The app's Pi extension adds `x-3rdr-pi-*` headers to say which Pi session a
 request belongs to. The forwarder removes every `x-3rdr-*` header before it
@@ -86,6 +93,17 @@ forwarder, process, real read-socket and EmbeddedChannel SSH-bridge stages.
 They run under `sandbox-exec` with a profile
 that allows connections only to 127.0.0.1 and denies the socket of mDNSResponder
 (macOS's name lookup service), so that no name can be looked up either.
+
+The conversation database has its own runner, which compiles only the protocol,
+core and database sources with `swiftc` and needs no dependencies:
+
+```sh
+python3 Tests/AgentProxy/Database/run-conversation-database-tests.py --output /tmp/shepherd-conversation-db-FRESH
+```
+
+It checks round trips, item-level incremental saves, retention by count, size
+and age, refusal of symlinks, loose permissions, replaced files, newer schemas
+and corrupt files, and that clearing removes the files and their text.
 
 ### The forwarder in the test program (`ForwarderTests.swift`)
 
