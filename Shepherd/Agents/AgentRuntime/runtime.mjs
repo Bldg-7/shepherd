@@ -101,7 +101,7 @@ export function install(request) {
     const pkg=readJSON(path.join(source,'node_modules','@playwright','mcp','package.json'),null);
     requireValue(pkg?.version === '0.0.83','offline-dependencies-missing');
     const hash=crypto.createHash('sha256');
-    for(const name of ['runtime.mjs','runtime-core.mjs','pi-runtime.mjs','pi-lifecycle.mjs','pi-control.mjs','pi-host.mjs','pi-mcp-run.mjs','pi-mcp-registration.mjs','pi-session-name.mjs','pi-entry.ts','pi-launch.mjs','pi-api-proxy.mjs','pi-capture-proof.mjs','pi-guidance.md','protected-read.mjs','credential.mjs','mcp-run.mjs','hook.mjs','package-lock.json','skill/SKILL.md']) hash.update(fs.readFileSync(path.join(source,name)));
+    for(const name of ['runtime.mjs','runtime-core.mjs','pi-runtime.mjs','pi-lifecycle.mjs','pi-control.mjs','pi-host.mjs','pi-mcp-registration.mjs','pi-session-name.mjs','pi-entry.ts','pi-launch.mjs','pi-api-proxy.mjs','pi-capture-proof.mjs','pi-guidance.md','protected-read.mjs','credential.mjs','mcp-run.mjs','playwright-mcp-snapshot.json','hook.mjs','package-lock.json','skill/SKILL.md']) hash.update(fs.readFileSync(path.join(source,name)));
     const version=VERSION+'-'+hash.digest('hex').slice(0,16);
     const versions=path.join(request.root,'versions');privateDirectory(versions);
     const destination=path.join(versions,version);

@@ -15,7 +15,7 @@ env = dict(os.environ, HOME=str(out/'home'), CFFIXED_USER_HOME=str(out/'home'), 
 sources = ['Shepherd/Agents/'+name+'.swift' for name in ['AgentRuntime','PiProcessIdentity','PiProcessLifetime','PiHostBridge','PiBridgeListener']]
 sources += ['ShepherdKit/Sources/ShepherdKit/Agents/AgentKind.swift', 'ShepherdKit/Sources/ShepherdKit/Resources.swift',
             'Tests/AgentBrowser/Phase3/PiBridgeIntegrationTests.swift']
-identity = sources + ['Tests/AgentBrowser/Phase3/PiBridgeClientFixture.mjs','Tests/AgentBrowser/Phase3/OwnedPiBridgePTY.py','Tests/AgentBrowser/Phase3/PiBridgeObserver.ts'] + [str(f.relative_to(ROOT)) for f in (ROOT/'Shepherd/Agents/AgentRuntime').glob('pi-*')]
+identity = sources + ['Tests/AgentBrowser/Phase3/PiBridgeClientFixture.mjs','Tests/AgentBrowser/Phase3/OwnedPiBridgePTY.py','Tests/AgentBrowser/Phase3/PiBridgeObserver.ts'] + [str(f.relative_to(ROOT)) for f in (ROOT/'Shepherd/Agents/AgentRuntime').glob('pi-*')] + ['Shepherd/Agents/AgentRuntime/mcp-run.mjs','Shepherd/Agents/AgentRuntime/playwright-mcp-snapshot.json']
 hashes={name:hashlib.sha256((ROOT/name).read_bytes()).hexdigest() for name in identity}
 (out/'source-hashes.json').write_text(json.dumps(hashes,indent=2))
 for name in sources:shutil.copy2(ROOT/name,out/'package/Sources/Bridge'/Path(name).name)

@@ -45,7 +45,7 @@ import NIOPosix
         try FileManager.default.createDirectory(at: decoySessions, withIntermediateDirectories: true, attributes: [.posixPermissions:0o700])
         let decoy = PiBridgeLaunch(id:UUID().uuidString.lowercased(),owner:.init(machineID:"owned-machine",herdrMachineID:nil,session:"default",paneID:"w1:p2",terminalID:"other-terminal"),
             node:node,entry:fixture,arguments:[],cwd:decoyDirectory.path,sessionID:UUID().uuidString.lowercased(),sessionDirectory:decoySessions.path,
-            helper:resources+"/pi-control.mjs",wrapper:resources+"/pi-mcp-run.mjs",bootstrap:decoyDirectory.appendingPathComponent("bootstrap.json").path)
+            helper:resources+"/pi-control.mjs",wrapper:resources+"/mcp-run.mjs",bootstrap:decoyDirectory.appendingPathComponent("bootstrap.json").path)
         try host.provision(decoy,socketPath:socket)
         precondition(host.nameSession(launchID:decoy.id,name:"Decoy pane"), "another launch named")
         for bad in ["", " padded", "trailing ", "two\nlines", "line\u{2028}separator", "escape\u{1b}[31m", String(repeating:"x",count:201)] {
@@ -72,7 +72,7 @@ import NIOPosix
                        "home":dir.path,"identity":identity,"sessions":sessions.path,"mode":mode],config)
             let launch = PiBridgeLaunch(id:id,owner:.init(machineID:"owned-machine",herdrMachineID:nil,session:"default",paneID:"w1:p1",terminalID:"owned-terminal"),
                 node:node,entry:fixture,arguments:[config.path],cwd:dir.path,sessionID:sessionID,sessionDirectory:sessions.path,
-                helper:resources+"/pi-control.mjs",wrapper:resources+"/pi-mcp-run.mjs",bootstrap:bootstrap.path,permitsPiTitleRewrite:mode == "exec")
+                helper:resources+"/pi-control.mjs",wrapper:resources+"/mcp-run.mjs",bootstrap:bootstrap.path,permitsPiTitleRewrite:mode == "exec")
             try host.provision(launch,socketPath:socket)
             // Renamed twice before Pi asked: the second name, under number 2.
             precondition(host.nameSession(launchID:id,name:"First \(mode)") && host.nameSession(launchID:id,name:String(repeating:"가",count:199)+mode.prefix(1)))
@@ -121,7 +121,7 @@ import NIOPosix
         precondition(browserConnections.value==0, "MCP discovery must not touch the browser")
         try await browser.close().get()
         try await group.shutdownGracefully()
-        print("PASS actual Unix peer PID, canonical node/entry/argv/cwd/start binding, unauthorized child denial, synchronous helper revoke, real pinned MCP initialize/tools, branch rebind, changed-session denial, shadowing failure, MCP exit acknowledgement; CEF/vendor NOTRUN (Pi TUI is a separate optional gate)")
+        print("PASS actual Unix peer PID, canonical node/entry/argv/cwd/start binding, unauthorized child denial, synchronous helper revoke, MCP wrapper initialize/tools from the pinned MCP snapshot, branch rebind, changed-session denial, shadowing failure, MCP exit acknowledgement; CEF/vendor NOTRUN (Pi TUI is a separate optional gate)")
     }
     static func actualPi(node: String, entry: String, resources: String, root: URL, socket: String, port: Int, host: PiHostBridge) async throws {
         let dir=root.appendingPathComponent("actual-pi")
@@ -144,7 +144,7 @@ import NIOPosix
         let bootEntry=resources+"/pi-launch.mjs", bootArguments=[manifest.path]+arguments
         let launch=PiBridgeLaunch(id:id,owner:.init(machineID:"owned-machine",herdrMachineID:nil,session:"default",paneID:"w1:p1",terminalID:"owned-terminal"),
             node:node,entry:bootEntry,arguments:bootArguments,cwd:dir.path,sessionID:sessionID,sessionDirectory:sessions.path,
-            helper:resources+"/pi-control.mjs",wrapper:resources+"/pi-mcp-run.mjs",bootstrap:bootstrap.path,permitsPiTitleRewrite:true)
+            helper:resources+"/pi-control.mjs",wrapper:resources+"/mcp-run.mjs",bootstrap:bootstrap.path,permitsPiTitleRewrite:true)
         try host.provision(launch,socketPath:socket)
         try write(["node":node,"entry":bootEntry,"arguments":bootArguments,"cwd":dir.path,"home":dir.path,"sessions":sessions.path,
                    "bootstrap":bootstrap.path,"pidFile":pidFile.path,"stopFile":stopFile.path,"result":result.path,"log":dir.appendingPathComponent("tui.log").path],config)

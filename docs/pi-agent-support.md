@@ -117,9 +117,13 @@ session 교체 또는 종료에서만 해제된다. acknowledgement는 같은 ca
 initialize/tools metadata만 확인하고, 브라우저 tool은 자동 호출하지 않는다.
 사용자 approval/config 정책은 보존한다. own runtime server만 idle shutdown 없이 세션에 묶는다.
 
-`pi-mcp-run.mjs`는 kernel-authenticated 직접 자식 및 정확한 descriptor인 경우에만
-기존 pinned Playwright MCP wrapper를 실행한다. 실제 initialize/tools 응답 후에만 native Ready를 낸다.
-등록 API 성공, 서버 이름 또는 다른 서버의 비슷한 도구 목록만으로는 Ready가 되지 않는다.
+Pi도 Claude Code·Codex와 같은 `mcp-run.mjs` 하나를 쓴다. descriptor가 Pi bridge descriptor(`piBridge`,
+`browserDescriptor`)이면 wrapper는 browser descriptor나 token을 읽기 전에 `mcpAttach`로 앱의 승인을 받는다.
+앱은 kernel-authenticated 직접 자식이 정확한 `node mcp-run.mjs <descriptor>` argv일 때만 승인한다.
+wrapper는 initialize와 tools/list에 pinned Playwright MCP의 응답 snapshot(`playwright-mcp-snapshot.json`)으로
+직접 답하고, 둘 다 답한 뒤 tools/list 응답을 보내기 전에 `mcpReady`를 보낸다. 따라서 Ready는
+"승인된 wrapper가 handshake를 마쳤다"는 뜻이고, Playwright MCP가 떠 있다는 뜻은 아니다. Playwright MCP는 첫
+tools/call에서 시작한다. 등록 API 성공, 서버 이름 또는 다른 서버의 비슷한 도구 목록만으로는 Ready가 되지 않는다.
 
 ### CEF 권한과 퇴역
 

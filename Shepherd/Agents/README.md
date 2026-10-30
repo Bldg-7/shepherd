@@ -193,8 +193,8 @@ Mechanical project requirements (integration owns the pbx edit):
    Generate new object IDs through the integration owner's normal tooling.
 
 The resulting bundle path must be `Contents/Resources/AgentRuntime/runtime.mjs`
-and contain `node_modules`, `runtime-core.mjs`, `mcp-run.mjs`, `hook.mjs`, the
-lock/manifest, and `skill/SKILL.md`. Do not auto-add every node_modules file as an
+and contain `node_modules`, `runtime-core.mjs`, `mcp-run.mjs`,
+`playwright-mcp-snapshot.json`, `hook.mjs`, the lock/manifest, and `skill/SKILL.md`. Do not auto-add every node_modules file as an
 individual build resource. No pbx file was edited by this component. The existing
 Swift filesystem group discovers `AgentRuntime.swift` and
 `AgentBrowserAdapter.swift`; the latter is excluded on iOS by `#if os(macOS)`.
@@ -390,10 +390,23 @@ Do not wrap raw shell text, silently run an external browser or put tokens in en
 
 ## Security and lifetime
 
-The MCP wrapper uses supported `--config <0600 file>` with browser.cdpHeaders.
-No bearer header is in argv/environment/reports. Raw MCP diagnostic stderr is
-suppressed and protocol output is redacted. The transient config is removed on
-normal MCP termination. An abrupt wrapper SIGKILL can leave it behind mode 0600;
+Claude Code, Codex and Pi all start one MCP wrapper, `mcp-run.mjs`. It answers
+`initialize`, `tools/list` and `ping` itself from `playwright-mcp-snapshot.json`,
+the pinned Playwright MCP's own replies (`McpRunTests.mjs` compares it with the
+live server; `node Tests/AgentBrowser/Phase3/McpRunTests.mjs --update` rewrites
+it after a version bump). Other requests get Playwright's `Method not found`.
+Playwright MCP starts at the first `tools/call`: the wrapper sends it the
+client's own initialize, then the calls in order. If it fails to start or dies,
+each call waiting for it gets a JSON-RPC error, and the next call starts it
+again; it is never restarted without a call. Input lines are limited to 1 MiB
+and Playwright's output lines to 8 MiB. Given a Pi bridge descriptor, the same
+wrapper asks the app's bridge to admit it (`mcpAttach`) before reading anything
+else, and reports `mcpReady` once it has answered initialize and tools/list.
+
+The MCP wrapper uses supported `--config <0600 file>` with browser.cdpHeaders,
+written when the wrapper starts. No bearer header is in argv/environment/reports.
+Raw MCP diagnostic stderr is suppressed and protocol output is redacted. The
+transient config is removed when the wrapper ends normally. An abrupt wrapper SIGKILL can leave it behind mode 0600;
 owned pane cleanup removes it after the wrapper is dead. Same-user PID reuse can
 conservatively delay cleanup; no processes are killed by file cleanup.
 

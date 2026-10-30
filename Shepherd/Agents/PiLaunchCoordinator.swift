@@ -60,7 +60,7 @@ import Foundation
         admission.nativeAuthorized = { [weak bridge] in bridge?.isMcpReady(launchID: launchID) == true }
         launch = PiBridgeLaunch(id: stage.id, owner: owner, node: stage.node, entry: stage.entry,
             arguments: [stage.manifest] + stage.arguments, cwd: PiProcessIdentity.canonical(cwd), sessionID: stage.sessionID,
-            sessionDirectory: stage.folder + "/sessions", helper: stage.resources + "/pi-control.mjs", wrapper: stage.resources + "/pi-mcp-run.mjs",
+            sessionDirectory: stage.folder + "/sessions", helper: stage.resources + "/pi-control.mjs", wrapper: stage.resources + "/mcp-run.mjs",
             bootstrap: stage.bootstrap, permitsPiTitleRewrite: true)
         socketDirectory = URL(fileURLWithPath: "/private/tmp/shp-pi-" + UUID().uuidString.lowercased())
     }

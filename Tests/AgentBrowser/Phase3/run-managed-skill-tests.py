@@ -36,6 +36,8 @@ identity += ['Shepherd/Agents/AgentRuntime/skill/SKILL.md',
              'Shepherd/Agents/AgentRuntime/pi-entry.ts',
              'Tests/AgentBrowser/Phase3/PiIntegrationTests.mjs',
              'Tests/AgentBrowser/Phase3/PiMcpRegistrationTests.mjs',
+             'Tests/AgentBrowser/Phase3/McpRunTests.mjs',
+             'Shepherd/Agents/AgentRuntime/playwright-mcp-snapshot.json',
              'ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/LocalCommand.swift',
              'Tests/AgentBrowser/Phase3/AgentHostExecutablesTests.swift',
              'Tests/AgentBrowser/Phase3/ExperimentalSettingsDiagnosticsTests.swift']
@@ -56,6 +58,7 @@ swift = ['/usr/bin/xcrun', 'swiftc','ShepherdKit/Sources/ShepherdKit/Resources.s
 stage('node-runtime', 120, ['node', 'Tests/AgentBrowser/Phase3/RuntimeCoreTests.mjs'])
 stage('pi-foundation', 60, ['node', '--test', 'Tests/AgentBrowser/Phase3/PiIntegrationTests.mjs'])
 stage('pi-mcp-registration', 30, ['node', '--test', 'Tests/AgentBrowser/Phase3/PiMcpRegistrationTests.mjs'])
+stage('mcp-run', 90, ['node', '--test', 'Tests/AgentBrowser/Phase3/McpRunTests.mjs'])
 stage('executable-lookup-build', 60, [*swift, 'Shepherd/Agents/AgentRuntime.swift','ShepherdKit/Sources/ShepherdKit/Agents/AgentKind.swift',
     'Shepherd/Agents/AgentHostExecutables.swift', 'ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/LocalCommand.swift',
     'Tests/AgentBrowser/Phase3/AgentHostExecutablesTests.swift', '-o', str(out / 'executable-lookup-tests')])
