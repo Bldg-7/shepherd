@@ -16,7 +16,9 @@ import {protectedRead, privateDirectory, atomicWrite, validateEndpoint, requireV
 // bridge (mcpAttach) before anything else, and reported ready (mcpReady) once
 // initialize and tools/list are answered.
 let child, configFile, secret, control, finished=false, closing=false;
-const INITIALIZE='3rdr-initialize', UNAVAILABLE='3rdr browser is unavailable.';
+const INITIALIZE='3rdr-initialize', UNAVAILABLE='3rdr browser is unavailable.', LIMIT=8*1024*1024, KEEP=4096;
+const STOPPED='The 3rdr browser server stopped before this call finished. The next browser call starts it again; retry the call if it is still needed.';
+const TOO_LARGE=(size,shared)=>`${shared ? 'A browser result, from this call or another one running at the same time,' : 'This browser tool\'s result'} was about ${Math.max(1,Math.round(size/1048576))} MB, too large to return. The browser keeps its current page and state. Retry with \`filename\` to save the result to the pane output folder, or narrow it (screenshots: \`target\`, \`fullPage: false\`, \`scale\`; snapshots: \`depth\` or \`target\`).`;
 async function* lines(stream, limit) {
   let pending=Buffer.alloc(0);
   for await(const chunk of stream) {
@@ -31,6 +33,26 @@ async function* lines(stream, limit) {
   if(pending.length)throw new Error('incomplete');
 }
 // A destroyed stream (a server that died) never drains: stop waiting on close.
+// Lines up to `limit` bytes; a longer one is discarded as it streams, keeping
+// only its first and last KEEP bytes and its size ({head, tail, size}).
+async function* frames(stream, limit) {
+  let parts=[], length=0, over;
+  for await(let chunk of stream) {
+    while(chunk.length) {
+      const newline=chunk.indexOf(10), part=newline < 0 ? chunk : chunk.subarray(0,newline);
+      chunk=newline < 0 ? chunk.subarray(chunk.length) : chunk.subarray(newline+1);
+      if(over) {over.size+=part.length;over.tail=Buffer.concat([over.tail,part]).subarray(-KEEP);}
+      else if(length+part.length > limit) {
+        const all=[...parts,part];
+        over={head:Buffer.concat(all,Math.min(KEEP,length+part.length)),tail:Buffer.concat(all.slice(-2)).subarray(-KEEP),size:length+part.length};parts=[];length=0;
+      } else {parts.push(part);length+=part.length;}
+      if(newline < 0) continue;
+      if(over) {yield over;over=undefined;}
+      else {yield Buffer.concat(parts).toString('utf8');parts=[];length=0;}
+    }
+  }
+  if(length || over)throw new Error('incomplete');
+}
 async function send(stream, line) {
   if(stream.write(line+'\n') || stream.destroyed)return;
   const abort=new AbortController();
@@ -38,6 +60,15 @@ async function send(stream, line) {
 }
 const respond=(id,body)=>send(process.stdout,JSON.stringify({jsonrpc:'2.0',id,...body}));
 const unavailable=id=>respond(id,{error:{code:-32603,message:UNAVAILABLE}});
+const toolError=(id,text)=>respond(id,{result:{content:[{type:'text',text}],isError:true}});
+// The pinned MCP SDK writes a result as {"result":…,"jsonrpc":"2.0","id":…}
+// and an error as {"jsonrpc":"2.0","id":…,…}: the id ends or starts the line.
+const ID='("(?:[^"\\\\]|\\\\.)*"|-?[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)';
+const TAIL=new RegExp(',"jsonrpc":"2\\.0","id":'+ID+'\\}\\s*$'), HEAD=new RegExp('^\\{"jsonrpc":"2\\.0","id":'+ID+'[,}]');
+function recoveredID({head,tail}) {
+  const match=TAIL.exec(tail.toString('latin1')) ?? HEAD.exec(head.toString('latin1'));
+  try { return match ? JSON.stringify(JSON.parse(match[1])) : undefined; } catch { return undefined; }
+}
 function finish(code) {
   if(finished)return; finished=true;
   try{fs.unlinkSync(configFile);}catch{}
@@ -77,7 +108,7 @@ try {
   // Playwright has answered initialize and the queue is flushed.
   const queue=[]; let ready=false, initialize, readySent=bridge === undefined;
   // Retry policy: a failed or dead server is not restarted on its own. Every
-  // request waiting for it gets an error, and the next tools/call starts one
+  // call waiting for it gets a tool error saying so, and the next tools/call starts one
   // new attempt, so starts follow the client's calls and never loop.
   function start() {
     const proc=child=spawn(process.execPath,[cli,'--config',configFile],{cwd:session.outputFolder,stdio:['pipe','pipe','pipe'],env:{PATH:process.env.PATH,HOME:process.env.HOME}});
@@ -86,17 +117,17 @@ try {
     const initialized=new Promise((resolve,reject)=>{handshake={resolve,reject};});
     const timer=setTimeout(()=>handshake.reject(),30000);
     proc.forward=message=>{
-      if(message.method !== undefined && message.id !== undefined) inflight.set(JSON.stringify(message.id),message.id);
+      if(message.method !== undefined && message.id !== undefined && message.id !== INITIALIZE) inflight.set(JSON.stringify(message.id),message.id);
       return send(proc.stdin,JSON.stringify(message)).catch(()=>{});
     };
     const lose=()=>{
       if(lost)return; lost=true; clearTimeout(timer); handshake.reject();
       if(child === proc) {
         child=undefined;ready=false;
-        for(const message of queue.splice(0)) if(message.id !== undefined) void unavailable(message.id);
+          for(const message of queue.splice(0)) if(message.id !== undefined) void toolError(message.id,STOPPED);
       }
       proc.kill('SIGKILL');
-      for(const id of inflight.values()) void unavailable(id);
+      for(const id of inflight.values()) void toolError(id,STOPPED);
       inflight.clear();
     };
     proc.stdin.on('error',()=>{}); proc.stderr.resume();
@@ -105,13 +136,24 @@ try {
     (async()=>{
       // Do not forward raw diagnostic stderr (which may contain headers). MCP is
       // newline-delimited JSON; redact the secret from complete protocol lines too.
-      for await(const line of lines(proc.stdout,8*1024*1024)) {
-        const message=JSON.parse(line);
+      // A line over LIMIT (a memory guard) is answered as a tool error for
+      // its call, found by its id, else the only call waiting; when that is
+      // ambiguous every waiting call gets it. The server keeps running, and
+      // later replies to calls already answered here are dropped.
+      for await(const frame of frames(proc.stdout,LIMIT)) {
+        if(typeof frame !== 'string') {
+          if(/^\s*\{"method":/.test(frame.head.toString('latin1'))) continue;
+          const key=recoveredID(frame);
+          const ids=inflight.has(key) ? [key] : [...inflight.keys()];
+          for(const id of ids) {void toolError(inflight.get(id),TOO_LARGE(frame.size,ids.length > 1));inflight.delete(id);}
+          continue;
+        }
+        const message=JSON.parse(frame);
         if(message.method === undefined) {
           if(message.id === INITIALIZE) {message.result?.protocolVersion ? handshake.resolve() : handshake.reject();continue;}
-          inflight.delete(JSON.stringify(message.id));
+          if(!inflight.delete(JSON.stringify(message.id))) continue;
         }
-        await send(process.stdout,line.replaceAll(secret,'[redacted]'));
+        await send(process.stdout,frame.replaceAll(secret,'[redacted]'));
       }
     })().catch(lose);
     void proc.forward({jsonrpc:'2.0',id:INITIALIZE,method:'initialize',params:initialize});

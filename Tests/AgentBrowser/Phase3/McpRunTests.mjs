@@ -16,6 +16,7 @@ const wrapper = path.join(runtime, 'mcp-run.mjs'), snapshotFile = path.join(runt
 const cli = path.join(runtime, 'node_modules/@playwright/mcp/cli.js');
 const UNAVAILABLE = {code: -32603, message: '3rdr browser is unavailable.'};
 const NOT_FOUND = {code: -32601, message: 'Method not found'};
+const stopped = reply => { assert.equal(reply.result?.isError, true, JSON.stringify(reply)); assert.match(reply.result.content[0].text, /stopped before this call finished.*retry/); };
 const clientInit = (protocolVersion = '2025-06-18', capabilities = {}) => ({protocolVersion, capabilities, clientInfo: {name: 'owned-mcp-run-fixture', version: '1'}});
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -63,7 +64,7 @@ async function fixture({pi, admit = true} = {}) {
 // A JSON-RPC peer over a child's stdio; `answered` lists response ids in order.
 // With `roots`, it answers the server's roots/list requests with them.
 function peer(child, f, roots) {
-  const messages = [], waiters = [];
+  const messages = [], raw = [], waiters = [];
   const write = message => child.stdin.write(JSON.stringify({jsonrpc: '2.0', ...message}) + '\n');
   let pending = '', stderr = '';
   child.stderr.on('data', data => stderr += data);
@@ -72,7 +73,7 @@ function peer(child, f, roots) {
     while ((newline = pending.indexOf('\n')) >= 0) {
       const line = pending.slice(0, newline); pending = pending.slice(newline + 1);
       if (f) assert(!line.includes(f.secret), 'secret on stdout');
-      const message = JSON.parse(line); messages.push(message);
+      const message = JSON.parse(line); messages.push(message); raw.push(line);
       if (roots && message.method === 'roots/list') write({id: message.id, result: {roots}});
       if (f && message.method === undefined) (f.answered ??= []).push(message.id);
       for (const waiter of [...waiters]) if (waiter.match(message)) { waiters.splice(waiters.indexOf(waiter), 1); waiter.resolve(message); }
@@ -86,11 +87,11 @@ function peer(child, f, roots) {
       waiters.push(waiter);
     });
   };
-  return {messages, wait, write, stderr: () => stderr,
+  return {messages, raw, wait, write, stderr: () => stderr,
     request: (id, method, params) => { write({id, method, params}); return wait(m => m.id === id && m.method === undefined); },
     notify: (method, params) => write({method, ...(params ? {params} : {})})};
 }
-const run = (f, args = [f.descriptor], env = {}) => spawn(process.execPath, [wrapper, ...args], {cwd: f.root, stdio: ['pipe', 'pipe', 'pipe'],
+const run = (f, args = [f.descriptor], env = {}, entry = wrapper) => spawn(process.execPath, [entry, ...args], {cwd: f.root, stdio: ['pipe', 'pipe', 'pipe'],
   env: {PATH: process.env.PATH, HOME: process.env.HOME, ...env}});
 const children = pid => execFileSync('ps', ['-A', '-o', 'pid=,ppid=']).toString().trim().split('\n').map(line => line.trim().split(/\s+/).map(Number))
   .filter(([, parent]) => parent === pid).map(([child]) => child);
@@ -196,6 +197,9 @@ if (process.argv[2] === '--update') {
       await client.wait(m => m.method === 'roots/list');
       const [first, second] = await Promise.all([client.wait(m => m.id === 'first'), client.wait(m => m.id === 4)]);
       for (const reply of [first, second]) { assert.equal(reply.result.isError, true); assert.match(reply.result.content[0].text, /Error/); }
+      // The pinned SDK's own field order, which oversized-line id recovery relies on.
+      assert.match(client.raw[client.messages.indexOf(first)], /^\{"result":.*,"jsonrpc":"2\.0","id":"first"\}$/);
+      assert.match(client.raw[client.messages.indexOf(second)], /^\{"result":.*,"jsonrpc":"2\.0","id":4\}$/);
       assert.deepEqual(client.messages.find(m => m.id === 3).result, {});
       assert(client.messages.indexOf(client.messages.find(m => m.id === 3)) < client.messages.indexOf(first), 'local replies do not wait for the server');
       assert(client.messages.indexOf(first) < client.messages.indexOf(second), 'forwarded in arrival order');
@@ -221,7 +225,7 @@ if (process.argv[2] === '--update') {
       await delay(200);
       process.kill(server, 'SIGKILL');
       const [two, three] = await Promise.all([client.wait(m => m.id === 2), client.wait(m => m.id === 3)]);
-      assert.deepEqual(two.error, UNAVAILABLE); assert.deepEqual(three.error, UNAVAILABLE);
+      stopped(two); stopped(three);
       await waitFor(() => children(child.pid).length === 0);
       await delay(300); assert.deepEqual(children(child.pid), [], 'not restarted on its own');
       f.cdp.mode = 'refuse';
@@ -233,7 +237,7 @@ if (process.argv[2] === '--update') {
       client.write({id: 5, method: 'tools/call', params: {name: 'browser_tabs', arguments: {action: 'list'}}});
       await waitFor(() => children(child.pid).length === 1, 5000);
       process.kill(children(child.pid)[0], 'SIGKILL');
-      assert.deepEqual((await client.wait(m => m.id === 5)).error, UNAVAILABLE);
+      stopped(await client.wait(m => m.id === 5));
       assert(!client.stderr().includes(f.secret) && !client.stderr().includes(f.root));
       child.kill('SIGTERM'); assert.deepEqual(await exited(child), [0, null]);
       assert.deepEqual(f.configs(), []);
@@ -288,5 +292,83 @@ if (process.argv[2] === '--update') {
       assert.deepEqual(await exited(child), [1, null]);
       assert.equal(f.commands.length, 1, 'no admission asked from the environment'); assert.deepEqual(f.configs(), []);
     } finally { await f.close(); }
+  });
+
+  // A stand-in Playwright MCP: the real wrapper and runtime files, a fake
+  // @playwright/mcp whose tools/call writes a result of `size` bytes in the
+  // SDK's field order (`id: 'none'` leaves the id out), after `delay` ms.
+  function stubRuntime(f) {
+    const dir = path.join(f.root, 'runtime'), pkg = path.join(dir, 'node_modules/@playwright/mcp');
+    fs.mkdirSync(pkg, {recursive: true});
+    for (const name of fs.readdirSync(runtime)) if (/\.(mjs|json)$/.test(name)) fs.copyFileSync(path.join(runtime, name), path.join(dir, name));
+    fs.symlinkSync(path.join(runtime, 'node_modules/@iarna'), path.join(dir, 'node_modules/@iarna'));
+    fs.writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({name: '@playwright/mcp', version: '0.0.83'}));
+    fs.writeFileSync(path.join(pkg, 'cli.js'), `
+const {once} = require('events');
+let chain = Promise.resolve();
+const write = async text => { if (!process.stdout.write(text)) await once(process.stdout, 'drain'); };
+const emit = fn => chain = chain.then(fn);
+require('readline').createInterface({input: process.stdin}).on('line', line => {
+  const m = JSON.parse(line);
+  if (m.method === 'initialize') emit(() => write(JSON.stringify({result: {protocolVersion: m.params.protocolVersion, capabilities: {}, serverInfo: {name: 'stub', version: '0'}}, jsonrpc: '2.0', id: m.id}) + '\\n'));
+  if (m.method !== 'tools/call') return;
+  const a = m.params.arguments ?? {};
+  setTimeout(() => emit(async () => {
+    if (!a.size) return write(JSON.stringify({result: {content: [{type: 'text', text: 'ok ' + process.pid}]}, jsonrpc: '2.0', id: m.id}) + '\\n');
+    await write('{"result":{"content":[{"type":"text","text":"');
+    const block = 'x'.repeat(1024 * 1024);
+    for (let left = a.size; left > 0; left -= block.length) await write(left >= block.length ? block : block.slice(0, left));
+    await write(a.id === 'none' ? '"}]}}\\n' : '"}]},"jsonrpc":"2.0","id":' + JSON.stringify(m.id) + '}\\n');
+  }), a.delay ?? 0);
+});`);
+    return path.join(dir, 'mcp-run.mjs');
+  }
+  const rss = pid => Number(execFileSync('ps', ['-o', 'rss=', '-p', String(pid)]).toString().trim());
+  const tooLarge = (reply, mb, shared = false) => {
+    assert.equal(reply.result?.isError, true, JSON.stringify(reply).slice(0, 300));
+    const text = reply.result.content[0].text;
+    assert.match(text, new RegExp((shared ? 'from this call or another one running at the same time,' : 'This browser tool\'s result') + ' was about ' + mb + ' MB, too large to return'));
+    assert.match(text, /`filename`/); assert(text.length < 400);
+  };
+
+  test('an oversized result answers its own call as a tool error, discarded as it streams; the server keeps running', async () => {
+    const f = await fixture(), child = run(f, [f.descriptor], {}, stubRuntime(f)), client = peer(child, f);
+    try {
+      await client.request(1, 'initialize', clientInit());
+      assert.match((await client.request(2, 'tools/call', {name: 'x', arguments: {}})).result.content[0].text, /^ok /);
+      const [server] = children(child.pid), before = rss(child.pid);
+      let peak = before;
+      const sampler = setInterval(() => { try { peak = Math.max(peak, rss(child.pid)); } catch {} }, 20);
+      client.write({id: 'big', method: 'tools/call', params: {name: 'x', arguments: {size: 512 * 1024 * 1024}}});
+      client.write({id: 3, method: 'tools/call', params: {name: 'x', arguments: {delay: 100}}});
+      const [big, small] = await Promise.all([client.wait(m => m.id === 'big', 60000), client.wait(m => m.id === 3, 60000)]);
+      clearInterval(sampler);
+      tooLarge(big, 512);
+      assert.equal(small.result.content[0].text, 'ok ' + server, 'the other call gets its own result');
+      // Buffering the 512 MiB line would add at least 512 MB; discarding it
+      // leaves the 8 MiB guard and garbage the collector has not yet freed.
+      assert(peak - before < 192 * 1024, `wrapper RSS grew ${peak - before} KB while discarding`);
+      assert.equal(client.raw.find(line => line.length > 1024 * 1024), undefined);
+      assert.equal((await client.request(4, 'tools/call', {name: 'x', arguments: {}})).result.content[0].text, 'ok ' + server);
+      assert.deepEqual(children(child.pid), [server], 'not restarted');
+      child.stdin.end(); assert.deepEqual(await exited(child), [0, null]);
+    } finally { child.kill('SIGKILL'); await f.close(); }
+  });
+
+  test('an oversized result without a readable id: the only waiting call, else every waiting call, answered once', async () => {
+    const f = await fixture(), child = run(f, [f.descriptor], {}, stubRuntime(f)), client = peer(child, f);
+    try {
+      await client.request(1, 'initialize', clientInit());
+      tooLarge(await client.request(2, 'tools/call', {name: 'x', arguments: {size: 9 * 1024 * 1024, id: 'none'}}), 9);
+      const [server] = children(child.pid);
+      client.write({id: 3, method: 'tools/call', params: {name: 'x', arguments: {size: 9 * 1024 * 1024, id: 'none'}}});
+      client.write({id: 4, method: 'tools/call', params: {name: 'x', arguments: {delay: 50}}});
+      const [three, four] = await Promise.all([client.wait(m => m.id === 3), client.wait(m => m.id === 4)]);
+      tooLarge(three, 9, true); tooLarge(four, 9, true);
+      assert.equal((await client.request(5, 'tools/call', {name: 'x', arguments: {}})).result.content[0].text, 'ok ' + server);
+      assert.equal(client.messages.filter(m => m.id === 4).length, 1, 'the late real reply is dropped');
+      assert.deepEqual(children(child.pid), [server]);
+      child.stdin.end(); assert.deepEqual(await exited(child), [0, null]);
+    } finally { child.kill('SIGKILL'); await f.close(); }
   });
 }

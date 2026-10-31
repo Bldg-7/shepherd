@@ -34,6 +34,8 @@ If MCP cannot connect, report the error and ask the user to open/check this
 pane's In-app Browser. Do not use a different browser as a silent fallback. Automatic
 files and screenshots go to the pane output folder (64 MiB eviction threshold
 by default); use relative filenames there. Pane close removes that folder.
+Save full-page screenshots and other large results with `filename` instead of
+returning them; a result over about 8 MB comes back as an error.
 Running sessions retain the resource version with which they were launched.
 
 ## Child agents

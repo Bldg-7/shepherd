@@ -397,9 +397,15 @@ live server; `node Tests/AgentBrowser/Phase3/McpRunTests.mjs --update` rewrites
 it after a version bump). Other requests get Playwright's `Method not found`.
 Playwright MCP starts at the first `tools/call`: the wrapper sends it the
 client's own initialize, then the calls in order. If it fails to start or dies,
-each call waiting for it gets a JSON-RPC error, and the next call starts it
-again; it is never restarted without a call. Input lines are limited to 1 MiB
-and Playwright's output lines to 8 MiB. Given a Pi bridge descriptor, the same
+each call waiting for it gets a tool error result (`isError`) saying it can be
+retried, and the next call starts it again; it is never restarted without a
+call. Input lines are limited to 1 MiB. A Playwright output line over 8 MiB is
+discarded as it streams (only its first and last 4 KiB are kept, to find its
+id) and its call gets a tool error asking for `filename` or a narrower call;
+Playwright keeps running with its page state. The id is read from the line's
+end (`{"result":…,"jsonrpc":"2.0","id":…}`, the pinned SDK's order); when it
+cannot be read, the only waiting call gets the error, or every waiting call
+when several are, and later replies to them are dropped. Given a Pi bridge descriptor, the same
 wrapper asks the app's bridge to admit it (`mcpAttach`) before reading anything
 else, and reports `mcpReady` once it has answered initialize and tools/list.
 
