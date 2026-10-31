@@ -137,7 +137,12 @@ import NIOPosix
             "endpoint":["origin":"thisMac","url":"ws://127.0.0.1:\(port)/v1/herdr/default/pane/w1:p1","tokenFile":token.path],
             "outputFolder":output.path,"outputMaxSize":1048576,"allowedOrigins":[],"blockedOrigins":[]],dir.appendingPathComponent("browser.json"))
         let observer=URL(fileURLWithPath:CommandLine.arguments[2]).deletingLastPathComponent().appendingPathComponent("PiBridgeObserver.ts").path
-        let arguments=["--offline","--tui-mode","regular","--no-extensions","--extension","builtin:mcp", "--extension","builtin:codemode",
+        // With an agent folder (pi-mcp-adapter as an installed package, the built-in
+        // MCP off, and an agent-folder extension whose session_start is slow), Pi
+        // loads extensions as it does for a user: ours first, the adapter after.
+        let agentTemplate=CommandLine.arguments.count > 5 ? CommandLine.arguments[5] : nil
+        let backend=agentTemplate == nil ? ["--no-extensions","--extension","builtin:mcp", "--extension","builtin:codemode"] : []
+        let arguments=["--offline","--tui-mode","regular"]+backend+[
                        "--extension",resources+"/pi-entry.ts","--extension",observer,"--session-dir",sessions.path,"--session-id",sessionID,"--provider","openai","--model","gpt-4.1"]
         let manifest=dir.appendingPathComponent("launch.json")
         try write(["version":1,"cli":entry,"bootstrap":bootstrap.path,"cwd":dir.path,"arguments":arguments],manifest)
@@ -147,7 +152,7 @@ import NIOPosix
             helper:resources+"/pi-control.mjs",wrapper:resources+"/mcp-run.mjs",bootstrap:bootstrap.path,permitsPiTitleRewrite:true)
         try host.provision(launch,socketPath:socket)
         try write(["node":node,"entry":bootEntry,"arguments":bootArguments,"cwd":dir.path,"home":dir.path,"sessions":sessions.path,
-                   "bootstrap":bootstrap.path,"pidFile":pidFile.path,"stopFile":stopFile.path,"result":result.path,"log":dir.appendingPathComponent("tui.log").path],config)
+                   "bootstrap":bootstrap.path,"agentTemplate":agentTemplate ?? "","pidFile":pidFile.path,"stopFile":stopFile.path,"result":result.path,"log":dir.appendingPathComponent("tui.log").path],config)
         let driver=Process();driver.executableURL=URL(fileURLWithPath:"/usr/bin/python3")
         let source=URL(fileURLWithPath:CommandLine.arguments[2]).deletingLastPathComponent().appendingPathComponent("OwnedPiBridgePTY.py")
         driver.arguments=[source.path,config.path]
@@ -172,7 +177,9 @@ import NIOPosix
                 guard let data=String(line).data(using:.utf8), let object=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any],
                       let value=object["value"] as? [String:Any], value["state"] as? String == "ready",
                       let tools=object["tools"] as? [String] else { return false }
-                return tools.contains("mcp__3rdr_browser__browser_snapshot")
+                // The adapter keeps a runtime server proxy-only: no direct tools, so
+                // ask the adapter itself whether it holds 3rdr-browser.
+                return agentTemplate == nil ? tools.contains("mcp__3rdr_browser__browser_snapshot") : object["adapterServer"] as? Bool == true
             }
         }
         while !(host.isMcpReady(launchID:id) && extensionReady()) && driver.isRunning && ContinuousClock().now<deadline { try await Task.sleep(for:.milliseconds(50)) }
@@ -201,7 +208,7 @@ import NIOPosix
         precondition(summary["forced"] as? Bool == false && summary["ctrlDSent"] as? Bool == true)
         precondition(!proof.isCurrent())
         host.retire(launchID:id)
-        print("PASS actual Pi 1.x private TUI extension -> native Unix bridge -> bundled MCP metadata; natural Ctrl-D exit, zero model prompts")
+        print("PASS actual Pi 1.x private TUI extension -> native Unix bridge -> bundled MCP metadata (\(agentTemplate == nil ? "built-in MCP" : "pi-mcp-adapter package after a slow agent-folder session_start")); natural Ctrl-D exit, zero model prompts")
     }
 
     static func write(_ value: [String:Any], _ file: URL) throws {

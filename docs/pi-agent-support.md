@@ -8,7 +8,7 @@
 범위는 npm caret과 같아 `1.y.z` 정식 버전만 받는다. 2.x, 0.x, pre-release(`1.3.0-beta.1`)는
 `pi-package-unsupported`로 거절한다.
 
-실제로 확인한 Pi는 **1.1.0, 1.2.0, 1.3.0**이다.
+실제로 확인한 Pi는 **1.1.0, 1.2.0, 1.3.0, 1.4.0**이다.
 
 - Pi 1.1.0: 기본 MCP와 **pi-mcp-adapter 5.1.0** 모두 실제 `AgentLaunchService.launch` 경로에서
   Herdr → Pi → MCP → native CEF 페이지 이동/내용 확인 → 권한 폐기 → 자연 종료를 검증했다.
@@ -18,6 +18,11 @@
 - Pi 1.3.0: shim을 절대 경로로 타이핑하는 런치로 `run-pi-native-tests.py`(기본 MCP)를 실행해
   Herdr → Pi → MCP → native CEF 페이지 이동/내용 확인 → 권한 폐기 → 자연 종료를 검증했다. 이 실행의
   private HOME에는 진짜 Pi를 PATH 앞에 두는 `.zshrc`가 있다(아래 검증 절).
+- Pi 1.4.0: `run-pi-bridge-tests.py --pi-cli`로 기본 MCP를, `--pi-adapter`를 더해 **pi-mcp-adapter 7.0.0**을
+  검증했다. adapter 실행은 사용자 설치와 같은 모양이다: adapter를 설치된 Pi package로 두고
+  (`packages: ["npm:pi-mcp-adapter"]`, `extensions: ["-builtin:mcp", "+builtin:tool-search"]`, codemode on),
+  agent 폴더 `extensions/`에 `session_start`가 2초 걸리는 확장을 둔다. 실제 TUI 기동 → 확장 → native bridge →
+  adapter mediated connect → wrapper `mcpAttach`/`mcpReady` → 자연 종료까지 확인했다. native CEF 경로는 실행하지 않았다.
 
 로그인 확인이나 실제 비밀정보 입력이 완료되었다는 뜻은 아니다.
 
@@ -117,6 +122,16 @@ session 교체 또는 종료에서만 해제된다. acknowledgement는 같은 ca
 initialize/tools metadata만 확인하고, 브라우저 tool은 자동 호출하지 않는다.
 사용자 approval/config 정책은 보존한다. own runtime server만 idle shutdown 없이 세션에 묶는다.
 
+adapter의 mediated connect는 adapter 자신의 `session_start` handler가 session을 활성으로 표시한 뒤에만 받는다
+(그 전에는 "MCP connections require an active Pi session"으로 거절한다). Pi는 `session_start` handler를 load 순서대로
+하나씩 기다리며 실행하는데, 앱 확장(CLI `--extension`)이 먼저, agent 폴더의 `extensions/`(Herdr의 Pi 확장
+`herdr-agent-state.ts`가 여기 있고, `session_start`에서 Herdr socket 응답을 기다린다)가 다음, 설치된 package인
+adapter가 그 뒤다. 0.8.1까지는 앱 확장이 `host.open` 직후 connect해서, 앞의 handler나 adapter 자신의 준비가
+그보다 늦으면 connect가 거절되고 lifecycle은 바로 `failed`로 끝났다. 등록도 폐기되므로 wrapper는 실행되지 않고,
+Pi 안의 `mcp({server:"3rdr-browser"})`는 `not found`, 앱은 20초 뒤 `pi-mcp-readiness-unconfirmed`를 보였다
+(SHPHRD-146). 이제 adapter backend는 Pi가 모든 `session_start` handler 뒤에 보내는 `resources_discover`를 받은 뒤에
+connect한다. 같은 세션 안의 다음 시작(tree 이동)은 기다리지 않는다. 대기도 lifecycle의 10초 제한 안에 든다.
+
 Pi도 Claude Code·Codex와 같은 `mcp-run.mjs` 하나를 쓴다. descriptor가 Pi bridge descriptor(`piBridge`,
 `browserDescriptor`)이면 wrapper는 browser descriptor나 token을 읽기 전에 `mcpAttach`로 앱의 승인을 받는다.
 앱은 kernel-authenticated 직접 자식이 정확한 `node mcp-run.mjs <descriptor>` argv일 때만 승인한다.
@@ -139,8 +154,12 @@ terminal 변경으로 권한을 넘기지 않는다. 불확실한 cleanup은 새
 ## 검증과 구분
 
 - `PiIntegrationTests.mjs`: fake host/Pi registry 수명·late completion·retirement 경계.
-- `PiMcpRegistrationTests.mjs`: backend 선택, no fallback, late connect, 비동기 unregister ack.
+- `PiMcpRegistrationTests.mjs`: backend 선택, no fallback, late connect, 비동기 unregister ack,
+  모든 `session_start` handler가 끝나기 전에는 adapter에 connect하지 않음.
 - `run-pi-bridge-tests.py`: 실제 Unix peer/PID/exec lifetime와 실제 Pi CLI boot barrier 및 MCP metadata.
+  `--pi-adapter <Pi npm 폴더 사본>`(`--pi-cli` 필요)은 그 폴더를 private agent 폴더에 복사해 adapter를 설치된
+  package로 load하고, `PiSlowSessionStart.ts`를 agent 폴더 확장으로 둔다. ready 판정은 adapter의
+  `pi-mcp-adapter:runtime-snapshot:v1`이 `3rdr-browser`를 가진 것이다. 이 수정 전 코드로는 이 실행이 `binding → failed`로 실패한다.
 - `run-pi-native-tests.py`: 실제 public launch service, Herdr/owned PTY, Pi fullscreen, MCP, CEF,
   폐기된 경로의 실제 HTTP upgrade 거부와 자연 종료. 기본 MCP/adapter 모두 별도 실행한다.
   private HOME의 `.zshrc`가 진짜 Pi의 폴더를 PATH 앞에 붙이므로, pane 셸에서 bare `pi`는 shim이 아니다.

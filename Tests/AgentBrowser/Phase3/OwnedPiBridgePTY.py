@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """One owned Pi TUI, private configuration, no prompt/model request/global input."""
-import errno, fcntl, json, os
+import errno, fcntl, json, os, shutil
 from pathlib import Path
 import select, signal, struct, subprocess, sys, termios, time
 config=json.loads(Path(sys.argv[1]).read_text())
 master,slave=os.openpty()
 fcntl.ioctl(slave,termios.TIOCSWINSZ,struct.pack('HHHH',40,120,0,0))
-config_home=Path(config['home']); agent=config_home/'pi-agent';agent.mkdir(mode=0o700)
+config_home=Path(config['home']); agent=config_home/'pi-agent'
+# An agent folder prepared by the runner (settings, packages, extensions), copied privately.
+if config.get('agentTemplate'):shutil.copytree(config['agentTemplate'],agent,symlinks=True);agent.chmod(0o700)
+else:agent.mkdir(mode=0o700)
 env={'HOME':str(config_home),'PATH':str(Path(config['node']).parent)+':/usr/bin:/bin','TERM':'xterm-256color','LANG':'en_US.UTF-8',
      'PI_CODING_AGENT_DIR':str(agent),'PI_CODING_AGENT_SESSION_DIR':config['sessions'],'PI_OFFLINE':'1','PI_SKIP_VERSION_CHECK':'1',
      'PI_TELEMETRY':'0','PI_IMAGE_PROTOCOL':'none',
