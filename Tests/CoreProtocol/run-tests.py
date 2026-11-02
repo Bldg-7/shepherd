@@ -32,8 +32,9 @@ env = {
     "LANG": "en_US.UTF-8",
 }
 sources = ["ShepherdKit/Sources/ShepherdKit/CoreKit/" + name for name in
-           ("CoreEventLines.swift", "CoreHandshake.swift", "CoreWire.swift")]
+           ("CoreEventLines.swift", "CoreHandshake.swift", "CoreWire.swift", "CoreRPC.swift")]
 tests = "Tests/CoreProtocol/CoreProtocolTests.swift"
+rpc_tests = "Tests/CoreProtocol/CoreRPCTests.swift"
 # First-party language modes must not silently drift back to Swift 5. Vendor
 # packages own their modes and are intentionally not rewritten by this project.
 import re
@@ -44,7 +45,7 @@ modes = re.findall(r"SWIFT_VERSION\s*=\s*([^;]+);", (ROOT / "shepherd.xcodeproj/
 assert modes and set(modes) == {"6.0"}, modes
 (out / "source-hashes.json").write_text(json.dumps({
     name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
-    for name in sources + [tests, str(Path(__file__).resolve().relative_to(ROOT))]
+    for name in sources + [tests, rpc_tests, str(Path(__file__).resolve().relative_to(ROOT))]
 }, indent=2))
 (out / "compiler.txt").write_text(subprocess.check_output(["xcrun", "swiftc", "--version"], env=env, text=True, timeout=30))
 
@@ -96,6 +97,16 @@ for raw, expected in zip(actual, rows):
     wire = bytes.fromhex(raw)
     ch, kind, length = struct.unpack("<IBI", wire[:9])
     assert (ch, kind, wire[9:]) == expected and length == len(wire[9:])
+
+rpc_binary = out / "rpc-tests-swift6"
+stage("rpc-build", 120, flags + sources + [rpc_tests, "-o", str(rpc_binary)])
+rpc_wire = out / "rpc-exact-integers.bin"
+stage("rpc-tests", 60, [str(rpc_binary), str(rpc_wire)])
+wire = rpc_wire.read_bytes()
+ch, kind, length = struct.unpack("<IBI", wire[:9])
+assert (ch, kind, length) == (0, 0, len(wire) - 9)
+request = json.loads(wire[9:])
+assert request == {"jsonrpc": "2.0", "id": (1 << 64) - 1, "method": "doc.set", "params": {"version": (1 << 64) - 1}}
 
 sdk = subprocess.check_output(["xcrun", "--sdk", "iphonesimulator", "--show-sdk-path"], env=env, text=True, timeout=30).strip()
 stage("ios-typecheck", 120, flags + ["-typecheck", "-sdk", sdk,

@@ -1,4 +1,4 @@
-# hc framed protocol foundation (SHPHRD-149)
+# hc framed protocol and RPC foundation (SHPHRD-149 / SHPHRD-150)
 
 ```sh
 python3 Tests/CoreProtocol/run-tests.py --output /tmp/shepherd-hc-wire-FRESH
@@ -26,6 +26,12 @@ Each subprocess has a deadline using the existing owned-stage runner.
   line and UTF-8 boundaries need not align with wire frames. It preserves bytes
   and leaves JSON/event validation to the future event reducer.
 
+- `CoreRPC.swift` (SHPHRD-150, first slice): exact UInt64 JSON-RPC IDs and typed
+  result decoding, request/response correlation, caller-supplied deadlines,
+  cancellation tombstones and connection epochs. Bounds both outstanding slots
+  and admitted payload bytes. Late replies retain their original method so a
+  future connection owner can clean up a late attach without guessing ownership.
+
 No runtime code calls these types yet. The existing app backend is unchanged.
 
 ## Coverage
@@ -52,6 +58,21 @@ package or Xcode target settings that drift to another language mode.
 It also typechecks the production sources against the iOS Simulator SDK for
 an iOS 17 deployment target. `validation.json`, source hashes and stage logs are
 retained in the output directory. This is not a full package/app build.
+
+## RPC coverage (SHPHRD-150)
+
+`CoreRPCTests.swift` checks out-of-order replies, null results, remote failures,
+unknown/duplicate IDs, stale connection epochs, deadlines before the timer fires,
+cancellation and exactly-once close drainage. Canceled/expired requests retain
+bounded tombstones until a late reply or connection close; a cancellation flood
+cannot grow an unbounded retired-ID list. Python independently unpacks the Swift
+request and verifies UInt64.max survives in both its request ID and params.
+
+This is only the routing state, NOT a working connection. The connection owner
+must supply actual timers, settle its waiters, close orphan attach channels,
+apply a separate outbound writer budget and arrange process/SSH I/O. Neither
+cancellation nor timeout implies that a remote command was rolled back. No
+mutating command is automatically retried here.
 
 ## Protocol baseline and remaining work
 

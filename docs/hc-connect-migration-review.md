@@ -295,12 +295,12 @@ A–D 통과 후 기존 pane/session socket API, attach CLI/PTY 경로, prefix �
 |---|---|---|
 | SHPHRD-148 | 전체 hc 단일 backend 전환 | 진행 중 |
 | SHPHRD-149 (A1) | bounded wire/event codec, hello 협상, 격리 테스트 | 구현·테스트 완료 |
-| SHPHRD-150 (A2) | local/SSH endpoint, RPC/attach/events/CREDIT, SwiftTerm 검증 | 대기 |
+| SHPHRD-150 (A2) | local/SSH endpoint, RPC/attach/events/CREDIT, SwiftTerm 검증 | 진행 중 — RPC 상태 관리 구현 |
 | SHPHRD-151 (B) | agent/session/process/screen 기능 동등성 | 대기 |
 | SHPHRD-152 (C) | workspace CAS 및 이벤트/알림 | 대기 |
 | SHPHRD-153 (D) | launch/browser/proxy/mobile 통합 | 대기 |
 | SHPHRD-154 (E) | 회귀 및 legacy 제거 | 대기 |
-| SHPHRD-155 | first-party Swift 6 통일 및 기반 코드 커밋 | 구현 완료 (검증 범위·제한 아래) |
+| SHPHRD-155 | first-party Swift 6 통일 및 기반 코드 커밋 | 완료 — `4e00351` |
 
 의존 관계: 149 → 150 → (151, 152) → 153 → 154.
 
@@ -322,6 +322,12 @@ Swift 6 전환에서 mutable SSH authentication delegate 공유를 없애고 imm
 - File drop: owned fixtures 9 stages 통과 (`/private/tmp/shepherd-swift6-drop.z2wMw9/run`).
 - File preview: remote reader/model/pane-state 테스트는 통과했으나 derived panel UI의 스크롤 유지 assertion에서 실패 (`/private/tmp/shepherd-swift6-preview.Z2pPdN/run`). 전체 suite 통과로 기록하지 않는다. HEAD `9f8c55a` 소스의 별도 비교 실행도 scroll restoration assertion에서 실패했으나 메시지는 달랐다 (`/var/folders/tt/vcy538pn26v6r2km0psjrg0h0000gn/T/shepherd-preview-head-baseline.7eegabab`). 같은 원인이라 단정하지 않고 Plane 후속 작업으로 조사한다.
 - 변경한 다른 장시간 runner와 실제 CEF browser self-test는 모두 실행한 것이 아니다. Debug self-test의 non-Sendable JSON continuation/Task 결과는 String 또는 Sendable scalar로 고쳤으며 제품 빌드로 컴파일을 검증했다.
+
+### A2 첫 구현: RPC 상관관계와 수명 상태
+
+`CoreRPC.swift`에 한 connection epoch의 요청 등록/응답 매칭, 정확한 UInt64 ID, typed result, deadline/cancel/close 처리를 구현했다. 취소·timeout된 요청의 metadata는 제한된 tombstone으로 유지하여 늦은 attach 응답도 원래 method와 연결한다. slot/payload quota와 ID 고갈을 처리하고, 잘못된 응답으로 active waiter 목록을 잃지 않는다. raw server message/hint는 error 상태에 노출하지 않는다.
+
+이 코드는 transport I/O·타이머·continuation·outbound writer·stream channel을 아직 소유하지 않는다. 실제 local/SSH 연결 및 attach, CREDIT 처리와 orphan channel 정리는 다음 구현 범위다. 요청 취소나 timeout을 원격 rollback으로 해석하지 않으며 자동 재시도하지 않는다. `CoreRPCTests.swift`와 Python UInt64 교차 검증을 기존 Swift 6 runner에 추가했다. Swift 6 테스트/빌드와 iOS 17 typecheck의 5 stages 및 macOS 앱 unsigned Debug build가 통과했다 (`/private/tmp/shepherd-hc-rpc.PC8W24/run/validation.json`). SHPHRD-150 전체를 완료 처리하지 않는다.
 
 ## 최종 권고
 
