@@ -5,7 +5,7 @@ import NIOConcurrencyHelpers
 
 // Authentication/validator seams only; the production uploader is unchanged.
 struct HostCredential: Sendable {
-    nonisolated func authenticationMethod(username: String) throws -> OwnedAuth { .init() }
+    nonisolated func authenticationFactory(username: String) throws -> @Sendable () -> OwnedAuth { { .init() } }
 }
 struct TOFUHostKeyValidator: OwnedValidator {
     let pinnedFingerprint: String?

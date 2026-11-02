@@ -6,6 +6,11 @@ both depend on it (docs/mobile-design.md, section 8).
 
 ## What is in it
 
+- `CoreKit/`: the new herdr-core generation-1 wire foundation (SHPHRD-149):
+  bounded frame/event-line codecs and plain-to-framed hello negotiation.
+  Foundation-only and not connected to the app yet; it does not replace the
+  legacy backend until transport and feature-parity gates pass. See
+  `Tests/CoreProtocol/README.md` and `docs/hc-connect-migration-review.md`.
 - `HerdrKit/`: everything that talks to herdr. `HerdrTransport` carries
   herdr's socket API, over the Unix socket on this Mac or over SSH, and
   `HerdrClient` wraps it in typed calls. The folder also holds three more
@@ -54,7 +59,7 @@ with `@_exported import ShepherdKit`. An exported import makes the package's
 types visible to every file of the importing module, so the app's other
 files need no import line of their own. The iOS app imports it the same way, in `ShepherdMobile/ShepherdKitImport.swift`.
 
-The package's compiler settings mirror the app targets'. They are Swift 5
+The package's compiler settings mirror the app targets'. They are Swift 6
 language mode, MainActor as the default isolation, and the upcoming-feature
 flags that Xcode's "approachable concurrency" setting turns on. See
 `Package.swift`.

@@ -138,10 +138,9 @@ for key in ['The bundled proxy could not be verified. Agents start without it.',
 
 # 1. The service, in the app's language mode.
 features = []
-for feature in ['MemberImportVisibility', 'NonisolatedNonsendingByDefault', 'InferIsolatedConformances', 'DisableOutwardActorInference',
-                'GlobalActorIsolatedTypesUsability', 'InferSendableFromCaptures']:
+for feature in ['MemberImportVisibility', 'NonisolatedNonsendingByDefault', 'InferIsolatedConformances']:
     features += ['-enable-upcoming-feature', feature]
-swiftc = ['xcrun', 'swiftc', '-target', platform.machine() + '-apple-macos26.6.2', '-swift-version', '5', '-default-isolation', 'MainActor',
+swiftc = ['xcrun', 'swiftc', '-target', platform.machine() + '-apple-macos26.6.2', '-swift-version', '6', '-default-isolation', 'MainActor',
           *features, '-parse-as-library']
 stage('service-build', 600, [*swiftc, *sources, '-o', str(out / 'app-service-tests')])
 service_log = stage('service-tests', 180, [*sandboxed, str(out / 'app-service-tests'), str(out / 'run')])

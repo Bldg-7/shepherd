@@ -29,8 +29,8 @@ def stage(name, args, seconds=120):
     record=json.loads(log.with_suffix('.stage.json').read_text()); records.append(record)
     (out/'stages.json').write_text(json.dumps(records,indent=2))
     assert result.returncode == 0 and record['naturalExitConfirmed'] and not record['signalsSent'], name+' failed'
-flags=['-swift-version','5','-parse-as-library','-default-isolation','MainActor','-module-cache-path',str(out/'cache')]
-for feature in ['MemberImportVisibility','NonisolatedNonsendingByDefault','InferIsolatedConformances','DisableOutwardActorInference','GlobalActorIsolatedTypesUsability','InferSendableFromCaptures']:
+flags=['-swift-version','6','-parse-as-library','-default-isolation','MainActor','-module-cache-path',str(out/'cache')]
+for feature in ['MemberImportVisibility','NonisolatedNonsendingByDefault','InferIsolatedConformances']:
     flags += ['-enable-upcoming-feature',feature]
 stub = out/'TransportSeam.swift'
 stub.write_text('import Foundation\npublic protocol HerdrTransport: Actor { func openLineStream(endpoint: HerdrLineEndpoint, request: Data) async throws -> HerdrLineStream }\n')
@@ -52,7 +52,7 @@ for mode,opt in [('debug','-Onone'),('release','-O')]:
 sdk=subprocess.check_output(['/usr/bin/xcrun','--sdk','iphonesimulator','--show-sdk-path'],text=True).strip()
 ios=out/'ios'; ios.mkdir()
 core_sources=sorted((ROOT/'AgentProxy/Sources/AgentProxyCore').glob('*.swift'))
-stage('ios-core-module',['/usr/bin/xcrun','swiftc','-swift-version','5','-parse-as-library','-emit-module','-module-name','AgentProxyCore',
+stage('ios-core-module',['/usr/bin/xcrun','swiftc','-swift-version','6','-parse-as-library','-emit-module','-module-name','AgentProxyCore',
     '-sdk',sdk,'-I',core/'ios','-target','arm64-apple-ios17.0-simulator','-module-cache-path',out/'cache',
     '-emit-module-path',ios/'AgentProxyCore.swiftmodule',*core_sources])
 stage('ios-client-typecheck',['/usr/bin/xcrun','swiftc',*flags,'-typecheck','-sdk',sdk,'-target','arm64-apple-ios17.0-simulator',

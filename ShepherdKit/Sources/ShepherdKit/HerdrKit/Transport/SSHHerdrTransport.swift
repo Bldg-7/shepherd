@@ -6,7 +6,10 @@ import Foundation
 // builds; StubHerdrTransport stands in there (see
 // `MachineStore.makeHerdrTransport`).
 #if canImport(Citadel)
-import Citadel
+// Citadel's pre-Swift-6 client has no Sendable contract. This actor owns
+// its connection; authentication delegates are made fresh by a Sendable factory.
+// Keep the compatibility annotation at the dependency boundary, not on our types.
+@preconcurrency import Citadel
 import Crypto
 import NIOCore
 import NIOConcurrencyHelpers
@@ -104,7 +107,7 @@ public actor SSHHerdrTransport: HerdrTransport {
             connectionHost = host
         }
 
-        let authMethod = try credential.authenticationMethod(username: username)
+        let authMethod = try credential.authenticationFactory(username: username)
 
         let observedFingerprint = NIOLockedValueBox<String?>(nil)
         let validator = TOFUHostKeyValidator(pinnedFingerprint: pinnedFingerprint, observedFingerprint: observedFingerprint)
@@ -112,7 +115,7 @@ public actor SSHHerdrTransport: HerdrTransport {
         let settings = SSHClientSettings(
             host: connectionHost,
             port: port,
-            authenticationMethod: { authMethod },
+            authenticationMethod: authMethod,
             hostKeyValidator: .custom(validator)
         )
         let client: SSHClient

@@ -67,7 +67,7 @@ assert dump.returncode == 0, 'AgentProxy/Package.swift could not be read; see ma
 manifest = json.loads(dump.stdout)
 (out / 'manifest.json').write_text(json.dumps(manifest, indent=2))
 assert [(x['platformName'], x['version']) for x in manifest['platforms']] == [('macos', '26.6'), ('ios', '17.0')], 'platforms'
-assert manifest.get('swiftLanguageVersions') == ['5'], 'Swift 5 language mode'
+assert manifest.get('swiftLanguageVersions') == ['6'], 'Swift 6 language mode'
 pins = {d['sourceControl'][0]['identity']: d['sourceControl'][0]['requirement']['range'][0]['lowerBound']
         for d in manifest['dependencies']}
 assert pins == {'swift-nio': '2.103.0', 'swift-nio-ssl': '2.36.0', 'swift-crypto': '3.12.3'}, f'dependencies: {pins}'
@@ -132,7 +132,7 @@ let package = Package(name: "AgentProxyTests", platforms: [.macOS("26.6")], prod
 %s
 ], targets: [
     %s
-], swiftLanguageModes: [.v5])
+], swiftLanguageModes: [.v6])
 ''' % (',\n    '.join('.%s(name: %s, targets: %s)' % ('executable' if 'executable' in x['type'] else 'library',
                                                            json.dumps(x['name']), json.dumps(x['targets']))
                        for x in manifest['products']),

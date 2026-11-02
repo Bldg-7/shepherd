@@ -70,13 +70,12 @@ profile.write_text('(version 1)\n(allow default)\n(deny network-outbound)\n'
 sandboxed = ['sandbox-exec', '-f', str(profile)]
 
 target = ['-target', platform.machine() + '-apple-macos26.6.2']
-# The app target's language mode: Swift 5 with approachable concurrency and
+# The app target's language mode: Swift 6 with approachable concurrency and
 # MainActor as the default isolation.
 features = []
-for feature in ['MemberImportVisibility', 'NonisolatedNonsendingByDefault', 'InferIsolatedConformances', 'DisableOutwardActorInference',
-                'GlobalActorIsolatedTypesUsability', 'InferSendableFromCaptures']:
+for feature in ['MemberImportVisibility', 'NonisolatedNonsendingByDefault', 'InferIsolatedConformances']:
     features += ['-enable-upcoming-feature', feature]
-swiftc = ['xcrun', 'swiftc', *target, '-swift-version', '5', '-default-isolation', 'MainActor', *features, '-parse-as-library']
+swiftc = ['xcrun', 'swiftc', *target, '-swift-version', '6', '-default-isolation', 'MainActor', *features, '-parse-as-library']
 
 kit_pairing = sorted(str(x.relative_to(ROOT)) for x in (ROOT / KIT / 'Pairing').glob('*.swift'))
 kit = [f'{KIT}/Resources.swift', f'{KIT}/Machines/Machine.swift', *kit_pairing, f'{KIT}/HerdrKit/Transport/SecureEnclaveSSHKey.swift']
@@ -105,7 +104,8 @@ stages.append('ssh-keygen-reads-the-written-line')
 
 # 2. The SSH server probe's half that goes through Citadel, without connecting.
 maps = sorted((derived / 'Build/Intermediates.noindex/GeneratedModuleMaps').glob('*.modulemap'))
-for base in [derived / 'SourcePackages/checkouts', ROOT / 'Vendor/Citadel', ROOT / 'Vendor/swift-nio-ssh']:
+checkouts = next((p for p in [derived / 'SourcePackages/checkouts', ROOT / 'build/SourcePackages/checkouts'] if p.is_dir()), derived / 'SourcePackages/checkouts')
+for base in [checkouts, ROOT / 'Vendor/Citadel', ROOT / 'Vendor/swift-nio-ssh']:
     maps += sorted(m for m in base.rglob('module.modulemap') if 'Benchmarks' not in m.parts)
 objects = sorted(str(o) for o in products.glob('*.o') if o.name not in ('SwiftTerm.o', 'ShepherdKit.o'))
 assert maps and any(o.endswith('/NIOSSH.o') for o in objects) and any(o.endswith('/Citadel.o') for o in objects), 'build the Shepherd scheme first'

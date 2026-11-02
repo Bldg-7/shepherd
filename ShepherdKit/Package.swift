@@ -6,7 +6,7 @@
 // contract the notifications are made from. The macOS app depends on it,
 // and so will the iOS app (docs/mobile-design.md, section 8).
 //
-// The compiler settings mirror the app target's: Swift 5 language mode with
+// The compiler settings mirror the app target's: Swift 6 language mode with
 // approachable concurrency, and MainActor as the default isolation — the
 // sources were written against those, and say `nonisolated` where they
 // mean it.
@@ -49,12 +49,9 @@ let package = Package(
                 .defaultIsolation(MainActor.self),
                 .enableUpcomingFeature("MemberImportVisibility"),
                 .enableUpcomingFeature("NonisolatedNonsendingByDefault"),
-                .enableUpcomingFeature("InferIsolatedConformances"),
-                .enableUpcomingFeature("DisableOutwardActorInference"),
-                .enableUpcomingFeature("GlobalActorIsolatedTypesUsability"),
-                .enableUpcomingFeature("InferSendableFromCaptures")
+                .enableUpcomingFeature("InferIsolatedConformances")
             ]
         )
     ],
-    swiftLanguageModes: [.v5]
+    swiftLanguageModes: [.v6]
 )

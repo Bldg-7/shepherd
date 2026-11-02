@@ -2,6 +2,7 @@ import Foundation
 import AgentProxyCore
 
 @main
+@MainActor
 struct CaptureTests {
     static var passed = 0
     static var failed = 0

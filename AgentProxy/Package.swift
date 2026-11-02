@@ -20,7 +20,7 @@
 //
 // The dependencies are the ones the app already resolves (swift-nio pinned at
 // 2.103.0, swift-nio-ssl and swift-crypto), so adding this package to the
-// project leaves Package.resolved as it is. Swift 5 language mode, like the
+// project leaves Package.resolved as it is. Swift 6 language mode, like the
 // app's other package; nothing here runs on the main actor.
 import PackageDescription
 
@@ -66,5 +66,5 @@ let package = Package(
             dependencies: ["AgentProxyForwarder", "AgentProxyProtocol"]
         )
     ],
-    swiftLanguageModes: [.v5]
+    swiftLanguageModes: [.v6]
 )

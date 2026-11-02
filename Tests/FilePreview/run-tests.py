@@ -162,7 +162,7 @@ if not args.static_contracts_only:
  marker=out/'TestNIO.swift';marker.write_text('public enum OwnedNIOMarker {}\n')
  helpers=out/'TestHelpers.swift';helpers.write_text('public final class NIOLockedValueBox<T>: @unchecked Sendable { public init(_ value: T) {} }\n')
  for module,file in [('NIOCore',marker),('NIOConcurrencyHelpers',helpers),('Citadel',ROOT/'Tests/FilePreview/OwnedSFTPModule.swift')]:
-  stage(module+'-owned-module',60,['xcrun','swiftc','-swift-version','6','-emit-library','-emit-module','-module-name',module,str(file),'-emit-module-path',str(modules/(module+'.swiftmodule')),'-o',str(modules/('lib'+module+'.dylib'))])
+  stage(module+'-owned-module',60,['xcrun','swiftc','-target',platform.machine()+'-apple-macos26.6.2','-swift-version','6','-emit-library','-emit-module','-module-name',module,str(file),'-emit-module-path',str(modules/(module+'.swiftmodule')),'-o',str(modules/('lib'+module+'.dylib'))])
  remote=['Shepherd/FilePreview/FilePreviewLink.swift','Shepherd/FilePreview/FilePreviewReader.swift','ShepherdKit/Sources/ShepherdKit/Machines/Machine.swift','Tests/FilePreview/RemoteReaderTests.swift']
  stage('remote-reader-build',90,['xcrun','swiftc','ShepherdKit/Sources/ShepherdKit/Resources.swift','-target',platform.machine()+'-apple-macos26.6.2','-swift-version','6','-default-isolation','MainActor','-parse-as-library','-I',str(modules),'-L',str(modules),'-lCitadel','-lNIOCore','-lNIOConcurrencyHelpers','-Xlinker','-rpath','-Xlinker',str(modules),*remote,'-o',str(out/'remote-reader-tests')])
  stage('remote-reader-tests',20,[str(out/'remote-reader-tests')])

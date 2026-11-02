@@ -116,12 +116,12 @@ enum BrowserSelfTest {
 
     private static func devTools(_ tab: BrowserTab, _ method: String, _ parameters: [String: Any]? = nil) async -> [String: Any]? {
         guard let page = tab.page else { return nil }
-        return await withCheckedContinuation { continuation in
+        let response: String? = await withCheckedContinuation { continuation in
             var finished = false
             page.runDevToolsMethod(method, parameters: parameters) { result, _ in
                 guard !finished else { return }
                 finished = true
-                continuation.resume(returning: result.flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any] })
+                continuation.resume(returning: result)
             }
             Task {
                 try? await Task.sleep(for: .seconds(15))
@@ -130,6 +130,14 @@ enum BrowserSelfTest {
                 continuation.resume(returning: nil)
             }
         }
+        // Only the response string crosses the continuation boundary. Decode
+        // Foundation's non-Sendable JSON objects back on MainActor.
+        return response.flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any] }
+    }
+
+    /// async-let child tasks return a Sendable scalar, never Foundation Any.
+    private static func evaluateScalar<Value: Sendable>(_ tab: BrowserTab, _ expression: String, as: Value.Type) async -> Value? {
+        await evaluate(tab, expression) as? Value
     }
 
     private static func evaluate(_ tab: BrowserTab, _ expression: String) async -> Any? {
@@ -245,27 +253,27 @@ enum BrowserSelfTest {
               "\(frameBefore ?? "nil") -> \(frameAfterNavigation ?? "nil")")
 
         // A9: JavaScript dialogs wait for the person.
-        async let confirmed = evaluate(tabA, "new Promise(r => setTimeout(() => r(confirm('Sure?')), 0))")
+        async let confirmed = evaluateScalar(tabA, "new Promise(r => setTimeout(() => r(confirm('Sure?')), 0))", as: Bool.self)
         let confirmShown = await wait { !tabA.prompts.isEmpty }
         tabA.prompts.first?.answer(.accept())
         let confirmResult = await confirmed
-        check("A9 confirm", confirmShown && (confirmResult as? Bool) == true)
-        async let typed = evaluate(tabA, "new Promise(r => setTimeout(() => r(prompt('Name?', 'x')), 0))")
+        check("A9 confirm", confirmShown && confirmResult == true)
+        async let typed = evaluateScalar(tabA, "new Promise(r => setTimeout(() => r(prompt('Name?', 'x')), 0))", as: String.self)
         let promptShown = await wait { !tabA.prompts.isEmpty }
         tabA.prompts.first?.answer(.accept(text: "shepherd"))
         let typedResult = await typed
-        check("A9 prompt", promptShown && (typedResult as? String) == "shepherd")
+        check("A9 prompt", promptShown && typedResult == "shepherd")
 
         // A10: a site asking for a permission waits for the person, and is
         // told no when that is the answer.
-        async let located = evaluate(tabA, "new Promise(r => navigator.geolocation.getCurrentPosition(() => r('granted'), e => r('error ' + e.code)))")
+        async let located = evaluateScalar(tabA, "new Promise(r => navigator.geolocation.getCurrentPosition(() => r('granted'), e => r('error ' + e.code)))", as: String.self)
         let permissionShown = await wait {
             if case .permissions(let asked, _)? = tabA.prompts.first?.kind { return asked.contains(.geolocation) }
             return false
         }
         tabA.prompts.first?.answer(.decline)
         let locationResult = await located
-        check("A10 permission prompt", permissionShown && (locationResult as? String) == "error 1", locationResult ?? "nil")
+        check("A10 permission prompt", permissionShown && locationResult == "error 1", locationResult ?? "nil")
 
         // A10: HTTP authentication asks for a user name and password.
         tabA.load("https://httpbin.org/basic-auth/shepherd/secret")
@@ -282,14 +290,14 @@ enum BrowserSelfTest {
         // as another user, since the first one's sign-in is remembered.
         tabA.load("https://httpbin.org/")
         _ = await loaded(tabA, containing: "httpbin")
-        async let fetched = evaluate(tabA, "fetch('/basic-auth/second/other').then(r => r.status, e => 'error ' + e)")
+        async let fetched = evaluateScalar(tabA, "fetch('/basic-auth/second/other').then(r => r.status, e => 'error ' + e)", as: Int.self)
         let fetchPromptShown = await wait(20) {
             if case .credentials? = tabA.prompts.first?.kind { return true }
             return false
         }
         tabA.prompts.first?.answer(.credentials(user: "second", password: "other"))
         let fetchStatus = await fetched
-        check("A10 sign-in prompt for a request", fetchPromptShown && (fetchStatus as? Int) == 200, "prompt \(fetchPromptShown), \(fetchStatus ?? "nil")")
+        check("A10 sign-in prompt for a request", fetchPromptShown && fetchStatus == 200, "prompt \(fetchPromptShown), \(fetchStatus.map(String.init) ?? "nil")")
         tabA.load("https://example.org/")
         _ = await loaded(tabA, containing: "example.org")
 

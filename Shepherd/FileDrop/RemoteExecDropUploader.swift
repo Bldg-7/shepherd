@@ -4,7 +4,10 @@ import Foundation
 // Vendor/), which ends the standard input of a command run with `withExec`.
 #if canImport(Citadel)
 import Darwin
-import Citadel
+// Citadel's pre-Swift-6 client has no Sendable contract. This actor owns
+// its connection; authentication delegates are made fresh by a Sendable factory.
+// Keep the compatibility annotation at the dependency boundary, not on our types.
+@preconcurrency import Citadel
 import NIOCore
 import NIOConcurrencyHelpers
 
@@ -74,9 +77,9 @@ actor RemoteExecDropUploader: TerminalDropUploading {
     private func connection() async throws -> SSHClient {
         if let client { return client }
         guard !closed else { throw CancellationError() }
-        let authMethod = try credential.authenticationMethod(username: username)
+        let authMethod = try credential.authenticationFactory(username: username)
         let validator = TOFUHostKeyValidator(pinnedFingerprint: pinnedFingerprint, observedFingerprint: NIOLockedValueBox<String?>(nil))
-        var settings = SSHClientSettings(host: host, port: port, authenticationMethod: { authMethod },
+        var settings = SSHClientSettings(host: host, port: port, authenticationMethod: authMethod,
                                          hostKeyValidator: .custom(validator))
         settings.connectTimeout = .seconds(10)
         let client = try await SSHClient.connect(to: settings)

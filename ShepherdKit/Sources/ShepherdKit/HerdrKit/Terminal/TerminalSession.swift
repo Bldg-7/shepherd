@@ -6,7 +6,10 @@ import Foundation
 // Guarded with `canImport` so the rest of the app keeps building before
 // that's wired up.
 #if canImport(Citadel)
-import Citadel
+// Citadel's pre-Swift-6 client has no Sendable contract. This actor owns
+// its connection; authentication delegates are made fresh by a Sendable factory.
+// Keep the compatibility annotation at the dependency boundary, not on our types.
+@preconcurrency import Citadel
 import NIOCore
 import NIOFoundationCompat
 import NIOConcurrencyHelpers
@@ -87,13 +90,13 @@ public actor TerminalSession: TerminalSessionProviding {
         hasStarted = true
         try throwIfStopRequested()
 
-        let authMethod = try credential.authenticationMethod(username: username)
+        let authMethod = try credential.authenticationFactory(username: username)
         let observedFingerprint = NIOLockedValueBox<String?>(nil)
         let validator = TOFUHostKeyValidator(pinnedFingerprint: pinnedFingerprint, observedFingerprint: observedFingerprint)
         let settings = SSHClientSettings(
             host: host,
             port: port,
-            authenticationMethod: { authMethod },
+            authenticationMethod: authMethod,
             hostKeyValidator: .custom(validator)
         )
         let client = try await SSHClient.connect(to: settings)
@@ -128,11 +131,11 @@ public actor TerminalSession: TerminalSessionProviding {
             self.readyContinuation = ready
             self.sessionTask = Task {
                 do {
-                    try await client.withPTY(ptyRequest, command: command) { inbound, outbound in
-                        self.sessionReady(outbound: outbound)
+                    try await client.withPTY(ptyRequest, command: command) { @Sendable inbound, outbound in
+                        await self.sessionReady(outbound: outbound)
                         for try await event in inbound {
                             if case .stdout(let buffer) = event {
-                                self.yield(buffer)
+                                await self.yield(buffer)
                             }
                         }
                     }

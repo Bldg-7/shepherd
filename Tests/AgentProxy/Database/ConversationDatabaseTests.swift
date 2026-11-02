@@ -5,6 +5,7 @@ import AgentProxyCore
 
 /// Synthetic records only, in a fresh private folder given on the command line.
 @main
+@MainActor
 struct ConversationDatabaseTests {
     typealias Record = ConversationStore.PersistentSnapshot.Record
     typealias Item = ConversationStore.PersistentSnapshot.Item

@@ -83,16 +83,16 @@ assert listed[2] == 'shepherd-mobile:0f1e2d3c:minsu-s-iphone-15', listed
 stages.append('ssh-keygen-reads-the-line')
 
 # 2. With the Citadel and swift-nio-ssh an app build made, in the package's
-# own language mode (Swift 5 with its upcoming features), since the
+# own language mode (Swift 6 with its upcoming features), since the
 # transport's sources are written against it.
 maps = sorted((derived / 'Build/Intermediates.noindex/GeneratedModuleMaps').glob('*.modulemap'))
-for base in [derived / 'SourcePackages/checkouts', ROOT / 'Vendor/Citadel', ROOT / 'Vendor/swift-nio-ssh']:
+checkouts = next((p for p in [derived / 'SourcePackages/checkouts', ROOT / 'build/SourcePackages/checkouts'] if p.is_dir()), derived / 'SourcePackages/checkouts')
+for base in [checkouts, ROOT / 'Vendor/Citadel', ROOT / 'Vendor/swift-nio-ssh']:
     maps += sorted(m for m in base.rglob('module.modulemap') if 'Benchmarks' not in m.parts)
 objects = sorted(str(o) for o in products.glob('*.o') if o.name not in ('SwiftTerm.o', 'ShepherdKit.o'))
 assert maps and any(o.endswith('/NIOSSH.o') for o in objects) and any(o.endswith('/Citadel.o') for o in objects), 'build the Shepherd scheme first'
 features = []
-for feature in ['MemberImportVisibility', 'NonisolatedNonsendingByDefault', 'InferIsolatedConformances', 'DisableOutwardActorInference',
-                'GlobalActorIsolatedTypesUsability', 'InferSendableFromCaptures']:
+for feature in ['MemberImportVisibility', 'NonisolatedNonsendingByDefault', 'InferIsolatedConformances']:
     features += ['-enable-upcoming-feature', feature]
 transport = sorted(str(x.relative_to(ROOT)) for x in (ROOT / KIT / 'HerdrKit/Transport').glob('*.swift'))
 models = sorted(str(x.relative_to(ROOT)) for x in (ROOT / KIT / 'HerdrKit/Models').glob('*.swift'))
@@ -100,7 +100,7 @@ ssh = [f'{KIT}/Resources.swift', f'{KIT}/Agents/AgentKind.swift', f'{KIT}/Machin
        f'{KIT}/Machines/MachineStore+Transport.swift', f'{KIT}/Machines/KeychainStore.swift', *pairing, *transport, *models,
        f'{KIT}/HerdrKit/Terminal/HerdrExecutable.swift', f'{KIT}/HerdrKit/Terminal/ShellQuoting.swift', f'{KIT}/HerdrKit/Terminal/LocalCommand.swift',
        'Tests/Pairing/PairingSSHTests.swift']
-stage('ssh-build', 600, ['xcrun', 'swiftc', *target, '-swift-version', '5', '-default-isolation', 'MainActor', *features, '-parse-as-library',
+stage('ssh-build', 600, ['xcrun', 'swiftc', *target, '-swift-version', '6', '-default-isolation', 'MainActor', *features, '-parse-as-library',
                          '-I', str(products), *[a for m in maps for a in ('-Xcc', f'-fmodule-map-file={m}')], *ssh, *objects,
                          '-o', str(out / 'pairing-ssh-tests')])
 ssh_result = stage('ssh-tests', 120, [*sandboxed, str(out / 'pairing-ssh-tests')])
@@ -109,7 +109,7 @@ ssh_result = stage('ssh-tests', 120, [*sandboxed, str(out / 'pairing-ssh-tests')
 read = lambda n: (ROOT / n).read_text()
 transport_source = read(f'{KIT}/HerdrKit/Transport/SSHHerdrTransport.swift')
 connect = transport_source[transport_source.index('public func connect() async throws {'):transport_source.index('private func resolveRemoteHome')]
-assert connect.index('addressResolver.resolve(hostname: host, kind: addressKind)') < connect.index('credential.authenticationMethod') < connect.index('SSHClient.connect(')
+assert connect.index('addressResolver.resolve(hostname: host, kind: addressKind)') < connect.index('credential.authenticationFactory') < connect.index('SSHClient.connect(')
 assert 'host: connectionHost,' in connect and 'host: host,' not in connect
 assert 'catch is HostKeyValidationError where addressKind?.isLAN == true' in connect
 assert 'addressKind: current.addressKind' in read(f'{KIT}/Machines/MachineStore+Transport.swift')

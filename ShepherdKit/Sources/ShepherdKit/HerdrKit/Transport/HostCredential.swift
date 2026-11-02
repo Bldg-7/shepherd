@@ -10,7 +10,7 @@ import Citadel
 /// a key the iOS app made for a paired Mac (`SecureEnclaveSSHKey`).
 /// `MachineStore` stores each as opaque bytes under one Keychain tag;
 /// `Machine.authMethod` says which this is.
-public enum HostCredential: Sendable {
+public nonisolated enum HostCredential: Sendable {
     case privateKey(String)
     case password(String)
     /// `SecureEnclaveSSHKey.storedRepresentation`.
@@ -25,13 +25,20 @@ public enum HostCredential: Sendable {
     }
 
     public nonisolated func authenticationMethod(username: String) throws -> SSHAuthenticationMethod {
+        try authenticationFactory(username: username)()
+    }
+
+    /// Citadel's authentication delegate is mutable and not Sendable. Its
+    /// factory crosses executors, never a shared, already-used delegate.
+    public nonisolated func authenticationFactory(username: String) throws -> @Sendable () -> SSHAuthenticationMethod {
         switch self {
         case .privateKey(let pem):
-            return try OpenSSHPrivateKey.authenticationMethod(username: username, pem: pem)
+            return try OpenSSHPrivateKey.authenticationFactory(username: username, pem: pem)
         case .password(let password):
-            return .passwordBased(username: username, password: password)
+            return { .passwordBased(username: username, password: password) }
         case .secureEnclaveKey(let stored):
-            return try SecureEnclaveSSHKey(storedRepresentation: stored).authenticationMethod(username: username)
+            let key = try SecureEnclaveSSHKey(storedRepresentation: stored)
+            return { key.authenticationMethod(username: username) }
         }
     }
 }

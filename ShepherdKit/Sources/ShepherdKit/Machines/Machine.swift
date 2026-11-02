@@ -5,7 +5,7 @@ import Foundation
 /// (local vs. SSH) lives one level down from this.
 /// The credential itself (private key or password, per `authMethod`) lives
 /// in the Keychain under `keychainTag`, never here.
-public struct Machine: Identifiable, Codable, Hashable, Sendable {
+public nonisolated struct Machine: Identifiable, Codable, Hashable, Sendable {
     public enum AuthMethod: String, Codable, Sendable {
         case key
         case password

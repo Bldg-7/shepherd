@@ -1,7 +1,10 @@
 import Foundation
 import Darwin
 #if canImport(Citadel)
-import Citadel
+// Citadel's pre-Swift-6 client has no Sendable contract. This actor owns
+// its connection; authentication delegates are made fresh by a Sendable factory.
+// Keep the compatibility annotation at the dependency boundary, not on our types.
+@preconcurrency import Citadel
 import NIOCore
 import NIOConcurrencyHelpers
 #endif
@@ -56,10 +59,10 @@ actor FilePreviewReader {
         #if canImport(Citadel)
         guard let pin = machine.pinnedHostKeyFingerprint else { throw FilePreviewError.needsHostKey }
         guard let secret else { throw MachineStore.EditError.missingCredential }
-        let auth = try HostCredential(authMethod: machine.authMethod, secretData: secret).authenticationMethod(username: machine.username)
+        let auth = try HostCredential(authMethod: machine.authMethod, secretData: secret).authenticationFactory(username: machine.username)
         let observed = NIOLockedValueBox<String?>(nil)
         var settings = SSHClientSettings(host: machine.hostname, port: machine.port,
-            authenticationMethod: { auth }, hostKeyValidator: .custom(TOFUHostKeyValidator(pinnedFingerprint: pin, observedFingerprint: observed)))
+            authenticationMethod: auth, hostKeyValidator: .custom(TOFUHostKeyValidator(pinnedFingerprint: pin, observedFingerprint: observed)))
         settings.connectTimeout = .seconds(10)
         let connection = try await SSHClient.connect(to: settings)
         // An SSH handshake can finish after its owner disappeared. Close the

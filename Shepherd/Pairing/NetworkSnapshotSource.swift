@@ -217,8 +217,9 @@ nonisolated enum NetworkSnapshotSource {
 /// The dynamic store's callback, on the main queue the store was given.
 private nonisolated func networkStoreChanged(_ store: SCDynamicStore, _ keys: CFArray, _ info: UnsafeMutableRawPointer?) {
     guard let info else { return }
-    MainActor.assumeIsolated {
-        Unmanaged<NetworkChangeWatcher>.fromOpaque(info).takeUnretainedValue().changed()
-    }
+    // Resolve the C context on its callback queue before entering the actor;
+    // only the MainActor-isolated object, not a raw pointer, crosses the boundary.
+    let watcher = Unmanaged<NetworkChangeWatcher>.fromOpaque(info).takeUnretainedValue()
+    MainActor.assumeIsolated { watcher.changed() }
 }
 #endif

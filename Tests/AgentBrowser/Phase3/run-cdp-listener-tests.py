@@ -20,9 +20,8 @@ sources = ['Shepherd/Browser/CDPListener.swift', 'Shepherd/Browser/CDPPolicy.swi
 hashes = {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in sources}
 (out / 'source-hashes.json').write_text(json.dumps(hashes, indent=2))
 for name in sources: shutil.copy2(ROOT / name, out / 'package/Sources/Listener' / Path(name).name)
-# The app target's Swift 5 mode, default isolation and upcoming features.
-features = ['DisableOutwardActorInference', 'GlobalActorIsolatedTypesUsability', 'InferIsolatedConformances',
-            'InferSendableFromCaptures', 'MemberImportVisibility', 'NonisolatedNonsendingByDefault']
+# The app target's Swift 6 mode, default isolation and upcoming features.
+features = ['InferIsolatedConformances', 'MemberImportVisibility', 'NonisolatedNonsendingByDefault']
 flags = ['-default-isolation', 'MainActor'] + [x for f in features for x in ('-enable-upcoming-feature', f)]
 package = '''// swift-tools-version: 6.0
 import PackageDescription
@@ -31,7 +30,7 @@ let package = Package(name: "Listener", platforms: [.macOS("26.0")], dependencie
 ], targets: [.executableTarget(name: "Listener", dependencies: [
     .product(name: "NIOCore", package: "swift-nio"), .product(name: "NIOPosix", package: "swift-nio"),
     .product(name: "NIOHTTP1", package: "swift-nio"), .product(name: "NIOWebSocket", package: "swift-nio")
-], swiftSettings: [.swiftLanguageMode(.v5), .unsafeFlags(%s)])])
+], swiftSettings: [.swiftLanguageMode(.v6), .unsafeFlags(%s)])])
 ''' % (a.dependencies.resolve() / 'swift-nio', json.dumps(flags))
 (out / 'package/Package.swift').write_text(package)
 records = []

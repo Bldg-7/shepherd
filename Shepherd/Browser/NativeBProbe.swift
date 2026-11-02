@@ -5,7 +5,7 @@ import AppKit
     var lease: BrowserNativeLease!
     var messages: [[String: Any]] = []
     var recordMessages = true
-    var pending: [Int: CheckedContinuation<[String: Any], Error>] = [:]
+    var pending: [Int: CheckedContinuation<String, Error>] = [:]
     var closed = false
     var eventReceived: (([String: Any]) -> Void)?
     init(page: BrowserPage) {
@@ -14,7 +14,7 @@ import AppKit
                   let message = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
             if self.recordMessages { self.messages.append(message) }
             if message["method"] != nil { self.eventReceived?(message) }
-            if let id = message["id"] as? Int { self.pending.removeValue(forKey: id)?.resume(returning: message) }
+            if let id = message["id"] as? Int { self.pending.removeValue(forKey: id)?.resume(returning: text) }
         }
     }
     func call(_ method: String, _ params: [String: Any] = [:], session: String? = nil) async throws -> [String: Any] {
@@ -22,11 +22,17 @@ import AppKit
         var message: [String: Any] = ["id": id, "method": method, "params": params]
         if let session { message["sessionId"] = session }
         let data = try JSONSerialization.data(withJSONObject: message)
-        return try await withCheckedThrowingContinuation { continuation in
+        let response: String = try await withCheckedThrowingContinuation { continuation in
             pending[id] = continuation
             if !lease.sendMessage(String(decoding: data, as: UTF8.self)) { pending.removeValue(forKey: id)?.resume(throwing: ProxyError("Native send failed")) }
             Task { try? await Task.sleep(for: .seconds(10)); self.pending.removeValue(forKey: id)?.resume(throwing: ProxyError("Native timeout: " + method)) }
         }
+        // Pass immutable text through the continuation, not a JSON object
+        // also retained in the probe's message history.
+        guard let reply = try JSONSerialization.jsonObject(with: Data(response.utf8)) as? [String: Any] else {
+            throw ProxyError("Invalid native reply")
+        }
+        return reply
     }
     func sendNoReply(_ method: String, params: [String: Any]) {
         if let data = try? JSONSerialization.data(withJSONObject: ["id": BrowserEngine.nextDevToolsMessageID(), "method": method, "params": params]) {
@@ -61,7 +67,7 @@ import AppKit
         try await Task.sleep(for: .milliseconds(200))
         let paused = client.messages.last { $0["method"] as? String == "Target.attachedToTarget" && $0["sessionId"] as? String == session }
         e["pausedChild"] = paused
-        let late = Task { try? await client.call("Runtime.evaluate", ["expression": "new Promise(r=>setTimeout(()=>r('OLD-SCOPED-PENDING'),700))", "awaitPromise": true, "returnByValue": true], session: session) }
+        let late = Task { _ = try? await client.call("Runtime.evaluate", ["expression": "new Promise(r=>setTimeout(()=>r('OLD-SCOPED-PENDING'),700))", "awaitPromise": true, "returnByValue": true], session: session) }
         try await Task.sleep(for: .milliseconds(100))
         e["detachOwner"] = try await client.call("Target.detachFromTarget", ["sessionId": scope ?? session])
         let count = client.messages.count
@@ -91,7 +97,7 @@ import AppKit
         e["scriptAfterDetach"] = try await client.call("Runtime.evaluate", ["expression": "window.scopedMarker??null", "returnByValue": true], session: newSession)
         _ = try await client.call("Emulation.setScriptExecutionDisabled", ["value": true], session: newSession)
         e["fetchEnabled"] = try await client.call("Fetch.enable", ["patterns": [["urlPattern": "*", "requestStage": "Request"]]], session: newSession)
-        let pausedFetch = Task { try? await client.call("Page.navigate", ["url": base + "/paused-fetch"], session: newSession) }
+        let pausedFetch = Task { _ = try? await client.call("Page.navigate", ["url": base + "/paused-fetch"], session: newSession) }
         for _ in 0..<100 {
             if client.messages.contains(where: { $0["method"] as? String == "Fetch.requestPaused" && $0["sessionId"] as? String == newSession }) { break }
             try await Task.sleep(for: .milliseconds(30))
@@ -170,7 +176,7 @@ import AppKit
                 evidence["pausedBeforeRemoval"] = paused
                 _ = try await client.call("Page.addScriptToEvaluateOnNewDocument", ["source": "window.nativeLeaseMarker='old-client-script'"])
                 let old = client
-                let late = Task { try? await old.call("Runtime.evaluate", ["expression": "new Promise(r=>setTimeout(()=>r('OLD-PENDING-RESULT'),700))", "awaitPromise": true, "returnByValue": true]) }
+                let late = Task { _ = try? await old.call("Runtime.evaluate", ["expression": "new Promise(r=>setTimeout(()=>r('OLD-PENDING-RESULT'),700))", "awaitPromise": true, "returnByValue": true]) }
                 try await Task.sleep(for: .milliseconds(100))
                 old.invalidate()
                 client = NativeProbeClient(page: page)
@@ -189,7 +195,7 @@ import AppKit
                 let zeroAttach = client.messages.last { $0["method"] as? String == "Target.attachedToTarget" }
                 evidence["zeroPausedBeforeRemoval"] = zeroAttach
                 let zeroOld = client
-                let zeroLate = Task { try? await zeroOld.call("Runtime.evaluate", ["expression": "new Promise(r=>setTimeout(()=>r('ZERO-OLD-PENDING'),700))", "awaitPromise": true, "returnByValue": true]) }
+                let zeroLate = Task { _ = try? await zeroOld.call("Runtime.evaluate", ["expression": "new Promise(r=>setTimeout(()=>r('ZERO-OLD-PENDING'),700))", "awaitPromise": true, "returnByValue": true]) }
                 try await Task.sleep(for: .milliseconds(100))
                 client.invalidate()
                 client = NativeProbeClient(page: page)

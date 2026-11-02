@@ -102,7 +102,10 @@ public nonisolated struct ConversationUpdates: AsyncSequence, Sendable {
         let conversationID: String
         let epoch: String
         var initial = true
-        public mutating func next() async throws -> ConversationPage? {
+        // The iOS 17 AsyncThrowingStream iterator uses the generic executor.
+        // Keep this value-owned iterator there too; don't send an actor-isolated
+        // stored iterator out of a caller-inheriting next() under Swift 6.
+        @concurrent public mutating func next() async throws -> ConversationPage? {
             guard let line = try await inner.next() else { return nil }
             try Task.checkCancellation()
             let result: ConversationPage

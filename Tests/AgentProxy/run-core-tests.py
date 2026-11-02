@@ -67,14 +67,14 @@ core = next(t for t in manifest['targets'] if t['name'] == 'AgentProxyCore')
 assert core['type'] == 'regular'
 assert [d.get('byName', [None])[0] for d in core['dependencies']] == ['AgentProxyProtocol'], 'core has only local protocol dependency'
 assert any(p['name'] == 'AgentProxyCore' and p['targets'] == ['AgentProxyCore'] for p in manifest['products'])
-assert manifest.get('swiftLanguageVersions') == ['5']
+assert manifest.get('swiftLanguageVersions') == ['6']
 
 for mode, optimization in [('debug', '-Onone'), ('release', '-O')]:
     build = out / mode
     build.mkdir()
     module = build / 'AgentProxyCore.swiftmodule'
     library = build / 'libAgentProxyCore.dylib'
-    common = ['/usr/bin/xcrun', 'swiftc', '-swift-version', '5', optimization, '-parse-as-library',
+    common = ['/usr/bin/xcrun', 'swiftc', '-swift-version', '6', optimization, '-parse-as-library',
               '-module-cache-path', str(out / 'cache')]
     stage(mode + '-protocol-build', common + ['-emit-module', '-emit-library', '-module-name', 'AgentProxyProtocol',
                                             '-emit-module-path', str(build / 'AgentProxyProtocol.swiftmodule'),
@@ -92,11 +92,11 @@ sdk = subprocess.check_output(['/usr/bin/xcrun', '--sdk', 'iphonesimulator', '--
                               cwd=ROOT, env=env, text=True, timeout=30).strip()
 ios = out / 'ios'
 ios.mkdir()
-stage('ios-protocol-module', ['/usr/bin/xcrun', 'swiftc', '-swift-version', '5', '-parse-as-library',
+stage('ios-protocol-module', ['/usr/bin/xcrun', 'swiftc', '-swift-version', '6', '-parse-as-library',
                                '-emit-module', '-module-name', 'AgentProxyProtocol', '-sdk', sdk,
                                '-target', 'arm64-apple-ios17.0-simulator', '-module-cache-path', str(out / 'cache'),
                                '-emit-module-path', str(ios / 'AgentProxyProtocol.swiftmodule'), *map(str, protocol_sources)])
-stage('ios-core-typecheck', ['/usr/bin/xcrun', 'swiftc', '-swift-version', '5', '-parse-as-library',
+stage('ios-core-typecheck', ['/usr/bin/xcrun', 'swiftc', '-swift-version', '6', '-parse-as-library',
                              '-typecheck', '-module-name', 'AgentProxyCore', '-sdk', sdk, '-I', str(ios),
                              '-target', 'arm64-apple-ios17.0-simulator', '-module-cache-path', str(out / 'cache'),
                              *map(str, sources)])

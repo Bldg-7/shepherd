@@ -41,6 +41,12 @@ public enum OpenSSHKeyError: Error, LocalizedError {
 /// signing, which is out of scope here.
 public enum OpenSSHPrivateKey {
     public nonisolated static func authenticationMethod(username: String, pem: String) throws -> SSHAuthenticationMethod {
+        try authenticationFactory(username: username, pem: pem)()
+    }
+
+    /// Parse once, then make a fresh mutable authentication delegate on the
+    /// connection's event loop. Only immutable signing keys cross executors.
+    public nonisolated static func authenticationFactory(username: String, pem: String) throws -> @Sendable () -> SSHAuthenticationMethod {
         let parsed = try openPrivateSection(pem: pem)
         let keyType = parsed.keyType
         var privateSection = parsed.privateSection
@@ -48,16 +54,16 @@ public enum OpenSSHPrivateKey {
         switch keyType {
         case "ssh-ed25519":
             let signingKey = try parseEd25519(from: &privateSection)
-            return .ed25519(username: username, privateKey: signingKey)
+            return { .ed25519(username: username, privateKey: signingKey) }
         case "ecdsa-sha2-nistp256":
             let signingKey = try P256.Signing.PrivateKey(rawRepresentation: parseECDSAScalar(from: &privateSection, scalarByteCount: 32))
-            return .p256(username: username, privateKey: signingKey)
+            return { .p256(username: username, privateKey: signingKey) }
         case "ecdsa-sha2-nistp384":
             let signingKey = try P384.Signing.PrivateKey(rawRepresentation: parseECDSAScalar(from: &privateSection, scalarByteCount: 48))
-            return .p384(username: username, privateKey: signingKey)
+            return { .p384(username: username, privateKey: signingKey) }
         case "ecdsa-sha2-nistp521":
             let signingKey = try P521.Signing.PrivateKey(rawRepresentation: parseECDSAScalar(from: &privateSection, scalarByteCount: 66))
-            return .p521(username: username, privateKey: signingKey)
+            return { .p521(username: username, privateKey: signingKey) }
         case "ssh-rsa":
             throw OpenSSHKeyError.unsupportedKeyType("RSA (legacy ssh-rsa/SHA-1 signing isn't supported by modern SSH servers — see comment above)")
         default:

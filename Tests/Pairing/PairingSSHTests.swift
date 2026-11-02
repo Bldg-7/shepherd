@@ -148,7 +148,9 @@ func testDeviceKey() throws {
 
     // Through HostCredential, as MachineStore hands it to the transport.
     let credential = HostCredential(authMethod: .secureEnclaveKey, secretData: key.storedRepresentation)
-    let method = try credential.authenticationMethod(username: "minsu")
+    let factory = try credential.authenticationFactory(username: "minsu")
+    let method = factory()
+    expect(method !== factory(), "each connection gets a fresh authentication delegate")
     let loop = EmbeddedEventLoop()
     var offered: Result<NIOSSHUserAuthenticationOffer?, any Error>?
     let first = loop.makePromise(of: NIOSSHUserAuthenticationOffer?.self)

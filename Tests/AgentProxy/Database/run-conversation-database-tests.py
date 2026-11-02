@@ -26,7 +26,7 @@ def stage(name, command, seconds=180):
         raise RuntimeError(name + ' failed; see ' + str(log))
 for name, opt in [('debug', '-Onone'), ('optimized', '-O')]:
     build = out/name; build.mkdir(mode=0o700)
-    common = ['/usr/bin/sandbox-exec', '-f', str(profile), '/usr/bin/xcrun', 'swiftc', '-swift-version', '5', opt, '-parse-as-library', '-module-cache-path', str(out/'cache')]
+    common = ['/usr/bin/sandbox-exec', '-f', str(profile), '/usr/bin/xcrun', 'swiftc', '-swift-version', '6', opt, '-parse-as-library', '-module-cache-path', str(out/'cache')]
     stage(name+'-protocol', common+['-emit-module', '-emit-library', '-module-name', 'AgentProxyProtocol', '-emit-module-path', str(build/'AgentProxyProtocol.swiftmodule'),
                                     '-o', str(build/'libAgentProxyProtocol.dylib'), *map(str, protocol)])
     stage(name+'-core', common+['-emit-module', '-emit-library', '-module-name', 'AgentProxyCore', '-I', str(build), '-L', str(build), '-lAgentProxyProtocol',
