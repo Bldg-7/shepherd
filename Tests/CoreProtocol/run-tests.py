@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Pure hc wire/hello tests. No installed core, app, SSH, accounts or network.
+"""hc wire/RPC tests and an owned local pipe peer. No installed core, app, SSH,
+accounts or network.
 
 Produces independent Python struct.pack vectors and cross-checks Swift output.
 Compile in the package's Swift 6 isolation mode and typecheck production sources
@@ -32,9 +33,12 @@ env = {
     "LANG": "en_US.UTF-8",
 }
 sources = ["ShepherdKit/Sources/ShepherdKit/CoreKit/" + name for name in
-           ("CoreEventLines.swift", "CoreHandshake.swift", "CoreWire.swift", "CoreRPC.swift")]
+           ("CoreEventLines.swift", "CoreHandshake.swift", "CoreWire.swift", "CoreRPC.swift",
+            "CoreByteTransport.swift", "CoreProcessTransport.swift", "CoreRPCConnection.swift")]
 tests = "Tests/CoreProtocol/CoreProtocolTests.swift"
 rpc_tests = "Tests/CoreProtocol/CoreRPCTests.swift"
+connection_tests = "Tests/CoreProtocol/CoreConnectionTests.swift"
+peer = "Tests/CoreProtocol/fixture-core.py"
 # First-party language modes must not silently drift back to Swift 5. Vendor
 # packages own their modes and are intentionally not rewritten by this project.
 import re
@@ -45,7 +49,7 @@ modes = re.findall(r"SWIFT_VERSION\s*=\s*([^;]+);", (ROOT / "shepherd.xcodeproj/
 assert modes and set(modes) == {"6.0"}, modes
 (out / "source-hashes.json").write_text(json.dumps({
     name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
-    for name in sources + [tests, rpc_tests, str(Path(__file__).resolve().relative_to(ROOT))]
+    for name in sources + [tests, rpc_tests, connection_tests, peer, str(Path(__file__).resolve().relative_to(ROOT))]
 }, indent=2))
 (out / "compiler.txt").write_text(subprocess.check_output(["xcrun", "swiftc", "--version"], env=env, text=True, timeout=30))
 
@@ -108,12 +112,22 @@ assert (ch, kind, length) == (0, 0, len(wire) - 9)
 request = json.loads(wire[9:])
 assert request == {"jsonrpc": "2.0", "id": (1 << 64) - 1, "method": "doc.set", "params": {"version": (1 << 64) - 1}}
 
+connection_binary = out / "connection-tests-swift6"
+stage("connection-build", 120, flags + sources + [connection_tests, "-o", str(connection_binary)])
+profile = out / "no-network.sb"
+profile.write_text("(version 1)\n(allow default)\n(deny network*)\n")
+env["CORE_UNEXPECTED_PARENT_ENV"] = "must-not-reach-child"
+stage("connection-tests", 60, ["/usr/bin/sandbox-exec", "-f", str(profile), str(connection_binary),
+                               sys.executable, str(ROOT / peer), str(out / "owned child home")])
+
 sdk = subprocess.check_output(["xcrun", "--sdk", "iphonesimulator", "--show-sdk-path"], env=env, text=True, timeout=30).strip()
 stage("ios-typecheck", 120, flags + ["-typecheck", "-sdk", sdk,
                                    "-target", platform.machine() + "-apple-ios17.0-simulator", *sources])
+for name, digest in json.loads((out / "source-hashes.json").read_text()).items():
+    assert hashlib.sha256((ROOT / name).read_bytes()).hexdigest() == digest, "source changed during validation: " + name
 (out / "validation.json").write_text(json.dumps({
     "passed": True, "stages": stages, "independentPythonVectors": len(vectors),
-    "realCore": False, "ssh": False, "network": False, "app": False,
+    "realCore": False, "ownedStdioPeer": True, "ssh": False, "network": False, "app": False,
     "swiftTermInterop": "NOTRUN", "coreVersionInterop": "NOTRUN",
 }, indent=2))
 print(f"PASS CoreProtocol: {len(stages)} stages; artifacts: {out}")

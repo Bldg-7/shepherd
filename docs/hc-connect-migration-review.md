@@ -295,7 +295,7 @@ A–D 통과 후 기존 pane/session socket API, attach CLI/PTY 경로, prefix �
 |---|---|---|
 | SHPHRD-148 | 전체 hc 단일 backend 전환 | 진행 중 |
 | SHPHRD-149 (A1) | bounded wire/event codec, hello 협상, 격리 테스트 | 구현·테스트 완료 |
-| SHPHRD-150 (A2) | local/SSH endpoint, RPC/attach/events/CREDIT, SwiftTerm 검증 | 진행 중 — RPC 상태 관리 구현 |
+| SHPHRD-150 (A2) | local/SSH endpoint, RPC/attach/events/CREDIT, SwiftTerm 검증 | 로컬 channel-0 RPC 구현·검증, SSH/stream 대기 |
 | SHPHRD-151 (B) | agent/session/process/screen 기능 동등성 | 대기 |
 | SHPHRD-152 (C) | workspace CAS 및 이벤트/알림 | 대기 |
 | SHPHRD-153 (D) | launch/browser/proxy/mobile 통합 | 대기 |
@@ -306,7 +306,7 @@ A–D 통과 후 기존 pane/session socket API, attach CLI/PTY 경로, prefix �
 
 A1은 `ShepherdKit/Sources/ShepherdKit/CoreKit/`의 세 파일이며 기존 app backend에는 연결하지 않았다. 사용자 요청에 따라 SHPHRD-155에서 first-party 앱 타깃과 ShepherdKit/AgentProxy package 및 관련 runner를 Swift 6로 통일한다. Vendor 패키지의 언어 모드는 그대로 둔다. `Tests/CoreProtocol/run-tests.py`는 현재 Swift 6(패키지와 동일 upcoming flags) 빌드·실행과 iOS 17 Simulator 대상 typecheck만 수행한다. Python 독립 wire vectors 12개와 18개 테스트 그룹을 검증한다. 소비 ACK와 실제 채널 routing은 A2에 남아 있으며, codec이 CREDIT를 자동 전송하지 않는다.
 
-최초 Swift 5/6 양쪽 모드 검증 artifact는 `/private/tmp/shepherd-hc-wire.wWY6A3/run/validation.json`이며 역사적 결과다. Swift 6 전용 runner 통과 artifact: `/private/tmp/shepherd-swift6-wire.RxRZYz/run/validation.json`. 실제 hc/SSH/SwiftTerm 상호운용은 아직 검증하지 않았다. 재현 방법과 상세 범위: `Tests/CoreProtocol/README.md`.
+최초 Swift 5/6 양쪽 모드 검증 artifact는 `/private/tmp/shepherd-hc-wire.wWY6A3/run/validation.json`이며 역사적 결과다. Swift 6 전용 runner 통과 artifact: `/private/tmp/shepherd-swift6-wire.RxRZYz/run/validation.json`. 당시 실제 hc/SSH/SwiftTerm 상호운용은 미검증이었다. 이후 로컬 hc 검증은 아래 A2 추가 구현 절에 구분한다. 재현 방법과 상세 범위: `Tests/CoreProtocol/README.md`.
 
 Swift 6 전환에서 mutable SSH authentication delegate 공유를 없애고 immutable key/password를 캡처하는 Sendable factory로 바꾼다. Citadel의 legacy 비-Sendable async API는 연결을 소유하는 네 actor 파일에서만 `@preconcurrency import Citadel` 경계를 명시한다. 이는 Citadel 전체가 Sendable이라는 선언이 아니며 vendor의 모든 동시성 경고가 해소됐다는 뜻도 아니다. 앱/패키지의 Swift 6 검사 수준은 낮추지 않는다.
 
@@ -327,7 +327,27 @@ Swift 6 전환에서 mutable SSH authentication delegate 공유를 없애고 imm
 
 `CoreRPC.swift`에 한 connection epoch의 요청 등록/응답 매칭, 정확한 UInt64 ID, typed result, deadline/cancel/close 처리를 구현했다. 취소·timeout된 요청의 metadata는 제한된 tombstone으로 유지하여 늦은 attach 응답도 원래 method와 연결한다. slot/payload quota와 ID 고갈을 처리하고, 잘못된 응답으로 active waiter 목록을 잃지 않는다. raw server message/hint는 error 상태에 노출하지 않는다.
 
-이 코드는 transport I/O·타이머·continuation·outbound writer·stream channel을 아직 소유하지 않는다. 실제 local/SSH 연결 및 attach, CREDIT 처리와 orphan channel 정리는 다음 구현 범위다. 요청 취소나 timeout을 원격 rollback으로 해석하지 않으며 자동 재시도하지 않는다. `CoreRPCTests.swift`와 Python UInt64 교차 검증을 기존 Swift 6 runner에 추가했다. Swift 6 테스트/빌드와 iOS 17 typecheck의 5 stages 및 macOS 앱 unsigned Debug build가 통과했다 (`/private/tmp/shepherd-hc-rpc.PC8W24/run/validation.json`). SHPHRD-150 전체를 완료 처리하지 않는다.
+이 첫 구현의 `CoreRPC.swift` 자체는 순수 상태 관리다. 이후 추가한 live local 연결은 다음 절과 같으며, SSH/attach/CREDIT/orphan channel 정리는 여전히 다음 구현 범위다. 요청 취소나 timeout을 원격 rollback으로 해석하지 않으며 자동 재시도하지 않는다. `CoreRPCTests.swift`와 Python UInt64 교차 검증을 기존 Swift 6 runner에 추가했다. Swift 6 테스트/빌드와 iOS 17 typecheck의 5 stages 및 macOS 앱 unsigned Debug build가 통과했다 (`/private/tmp/shepherd-hc-rpc.PC8W24/run/validation.json`). SHPHRD-150 전체를 완료 처리하지 않는다.
+
+### A2 추가 구현: 실제 local process 연결
+
+- `CoreByteTransport`는 single-use transport 계약이다. local 구현은 `CoreProcessTransport`, live channel-0 소유자는 `CoreRPCConnection`이다.
+- 로컬 child를 POSIX spawn + 비차단 stdin/stdout pipe로 실행한다. PTY나 shell을 거치지 않고 caller가 지정한 환경/cwd만 전달한다. stderr는 별도 경로에서 제한된 양씩 읽어 버리며 내용은 로그에 노출하지 않는다.
+- stdout은 consumer의 read 요청이 있을 때만 읽는다. writer의 bytes/count admission은 GCD 큐에 넣기 전 lock으로 제한하고, frame 단위 쓰기를 직렬화한다.
+- hello/RPC continuation, deadline, cancel, EOF/프로토콜 실패, 명시적 close를 연결했다. 미전송 큐의 취소/만료 요청은 제거한다. 이미 전송을 시작한 frame은 개별 RPC 취소로 끊지 않으며 remote rollback이나 자동 재시도를 가정하지 않는다.
+- 종료는 해당 미회수 connect child에 한정한다. PID/start evidence를 재검사하고 fd close와 waitpid 회수까지 기다린다. process group이나 core daemon은 kill하지 않는다. 종료 확인이 안 되면 supervisionLost를 반환한다.
+- `terminal.attach`/`events.subscribe`는 현재 generic RPC에서 전송 전에 명시적으로 거부한다. 별도 stream ownership 없이 임의 nonzero 채널을 받아들이지 않는다.
+- Python 독립 peer를 실제 pipe child로 실행하여 split hello, 역순 응답, late cancel/timeout, stderr flood, 마지막 응답/EOF, malformed payload, EPIPE, blocked writer, SIGTERM/EOF 무시 child의 회수를 검증한다. 네트워크는 sandbox로 금지한다.
+- 실제 `herdr-core 0.1.16` macOS ARM64 배포 archive를 checksum 검증 후 임시 폴더에만 추출하는 opt-in runner를 추가했다. 별도 HOME/XDG/HC_SESSION/HC_SOCKET과 private Unix socket만 허용하는 sandbox를 사용한다. TCP 거부는 owned ephemeral listener로 검증한다. archive hash는 무결성 확인이지 독립 서명 검증은 아니다.
+- 실제 core smoke는 hello/status/list, doc CAS와 conflict, Double 정밀도를 넘는 UInt64, connect child를 닫아도 core PID/document가 유지되는 재접속, 해당 isolated core의 stop 및 소켓 제거·daemon 종료를 확인한다. 사용자 core/설정/agent/자격증명과 installed hc는 사용하지 않는다.
+
+검증 결과:
+
+- fixture suite: 7 stages 통과. wire/hello 2,397 assertions, RPC 67 assertions, 실제 pipe child 연결 65 assertions. Swift 6 및 iOS 17 typecheck 포함 (`/private/tmp/shepherd-hc-local.praDMn/run/validation.json`).
+- 실제 0.1.16 core: 별도 smoke 통과. private core stop 응답, daemon 종료, connect child 회수, socket 제거 확인 (`/private/tmp/hc-real.3JlKCh/run/validation.json`). 같은 폴더에 archive/binary hash, 소스 hash 및 core-report 보존.
+- macOS `Shepherd` 및 iOS Simulator `Shepherd Mobile` unsigned Debug build 통과. 코드 변경 후 최종 검증과 현재 source hash 일치 확인.
+
+실행 방법과 검증 artifact 형식은 `Tests/CoreProtocol/README.md`에 기록했다. 앱 UI의 기존 backend는 아직 그대로다. **SSH endpoint, attach/events 다중화, early-stream/orphan 정리, 소비 후 CREDIT, SwiftTerm 실증이 남아 있으므로 SHPHRD-150 전체는 완료가 아니다.**
 
 ## 최종 권고
 

@@ -173,6 +173,16 @@ public nonisolated struct CoreRPCRequests: Sendable {
         return entry.context
     }
 
+    /// Only the writer's owner may call this, after proving the frame has
+    /// never left its local queue. Unlike cancellation, no remote reply can
+    /// exist, so no tombstone is needed. The issued ID is still never reused.
+    @discardableResult
+    public mutating func discardUnsent(_ token: Token) -> Context? {
+        guard !closed, token.epoch == epoch, let entry = entries.removeValue(forKey: token.id) else { return nil }
+        pendingPayloadBytes -= entry.context.payloadBytes
+        return entry.context
+    }
+
     /// The owner calls this at its next deadline; returned calls should fail
     /// their waiters once, without removing the metadata needed by late replies.
     public mutating func expire(at now: ContinuousClock.Instant) -> [Context] {

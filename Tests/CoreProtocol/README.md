@@ -7,7 +7,9 @@ python3 Tests/CoreProtocol/run-tests.py --output /tmp/shepherd-hc-wire-FRESH
 The output directory must not exist. The runner uses a private HOME, temp and
 module cache; it does not launch `hc`, herdr, the app, an agent, SSH or a browser.
 It neither installs packages nor reads account credentials. Xcode is required.
-Each subprocess has a deadline using the existing owned-stage runner.
+Each subprocess has a deadline using the existing owned-stage runner. The local
+transport tests launch only `fixture-core.py` with isolated Python and explicit
+environment/cwd, over real non-PTY pipes, inside a network-denying sandbox.
 
 ## Production code
 
@@ -32,7 +34,18 @@ Each subprocess has a deadline using the existing owned-stage runner.
   and admitted payload bytes. Late replies retain their original method so a
   future connection owner can clean up a late attach without guessing ownership.
 
-No runtime code calls these types yet. The existing app backend is unchanged.
+- `CoreByteTransport.swift`: single-use byte transport contract and errors.
+- `CoreProcessTransport.swift`: macOS POSIX-spawned local pipe child with bounded
+  nonblocking writes, demand-driven reads, separately discarded stderr, and
+  confirmed fd retirement/child reaping. Write admission is locked BEFORE GCD
+  enqueueing. No PTY, global signal policy or process-group kill. Close signals
+  only the owned, unreaped child (PID/start evidence), not a core daemon.
+- `CoreRPCConnection.swift`: actor-owned live hello/RPC loop, continuations,
+  deadlines, a separately bounded serialized writer, local cancel and teardown.
+  Never starts an expired queued request; never interrupts an in-flight frame
+  for an individual RPC cancellation. No automatic reconnect or retry.
+
+These types are not yet wired into the app UI. The existing app backend is unchanged.
 
 ## Coverage
 
@@ -68,11 +81,46 @@ bounded tombstones until a late reply or connection close; a cancellation flood
 cannot grow an unbounded retired-ID list. Python independently unpacks the Swift
 request and verifies UInt64.max survives in both its request ID and params.
 
-This is only the routing state, NOT a working connection. The connection owner
-must supply actual timers, settle its waiters, close orphan attach channels,
-apply a separate outbound writer budget and arrange process/SSH I/O. Neither
-cancellation nor timeout implies that a remote command was rolled back. No
-mutating command is automatically retried here.
+`CoreRPC.swift` remains pure routing state; `CoreRPCConnection` now supplies the
+live connection owner for channel-0 calls. Neither cancellation nor timeout
+implies that a remote command was rolled back. No mutating command is retried.
+
+## Local connection coverage
+
+`CoreConnectionTests.swift` talks to an independent Python protocol peer over
+real process pipes. It covers split hello, reversed/coalesced replies, late
+cancel/timeout replies, method admission, stderr floods, the last reply before
+exit, malformed replies, partial EOF, missing executables, stdin EPIPE without
+SIGPIPE, and a non-reading peer. Closing must retire fds and reap the connect
+child. A fixture ignoring both EOF and SIGTERM exercises SIGKILL escalation;
+no unrelated PID or process group is signaled. A fresh connection uses a new
+epoch. Writer quotas remain charged for timed-out but still-writing frames.
+
+## Opt-in real core smoke
+
+Download the **0.1.16 macOS ARM64 archive** from
+`https://releases.herdr.dev/core/0.1.16/herdr-core-macos-aarch64.tar.gz`, then run:
+
+```sh
+python3 Tests/CoreProtocol/run-real-core-tests.py \
+  --archive /tmp/herdr-core-macos-aarch64.tar.gz \
+  --output /tmp/hc-real-FRESH
+```
+
+The runner pins archive SHA-256
+`698d8f0c44f4e4b15fec174d52a39d57a014cfd71added44b53a0753b469d0fd`,
+extracts only the regular `herdr-core` member to a private temp directory and
+runs no installer. This checks integrity against the release manifest, **not**
+an independent signature. It uses explicit private HOME/XDG/HC_SESSION/HC_SOCKET
+and a sandbox allowing network operations only under its private Unix-socket
+folder. It does not use installed `hc`, user settings, agents or SSH.
+
+The smoke verifies real hello/status/list, doc CAS/conflict, UInt64 values above
+Double precision, and a new connection to the same still-running core after
+closing the first connect child. It stops only that isolated core, confirms
+stop acknowledgement, connect-child reaping, daemon exit and socket removal.
+`provenance.json`, `core-report.json`, source hashes and `validation.json` retain
+the evidence; no binary is added to the repository.
 
 ## Protocol baseline and remaining work
 
@@ -81,11 +129,14 @@ Reference: herdr-core `5a9de29b2f9b6690388a1c297a7ca8d73df7d3e2`,
 written against the documented protocol, not copied from the Rust client.
 The HEAD-only observer resize option is not assumed to exist in 0.1.16.
 
-This layer deliberately does NOT claim transport or product compatibility:
+Local channel-0 RPC is implemented and tested, but A2 is NOT complete:
 
-- **SHPHRD-150**: actual local pipes/SSH exec, deadlines, RPC and stream routing,
-  cancellation/late replies, bounded channel admission, consumption-based CREDIT,
-  attach lifetime, reconnection epochs and SwiftTerm interoperability.
+- **SHPHRD-150 remaining**: SSH exec endpoint, attach/event stream routing,
+  bounded early/channel admission, consumption-based CREDIT, orphan attach
+  cleanup, reconnect orchestration and SwiftTerm interoperability.
+- `terminal.attach` and `events.subscribe` are explicitly refused by the current
+  live connection BEFORE writing. Receiving a nonzero channel fails closed.
+  Do not route them through generic RPC until stream ownership is implemented.
 - CREDIT must be sent after consumer processing, not at decoder receipt or
   AsyncStream enqueue time. This codec emits no automatic CREDIT.
 - A complete frame callback is not proof of initial-screen completion, and a

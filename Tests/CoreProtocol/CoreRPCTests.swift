@@ -147,6 +147,14 @@ private struct CoreRPCTests {
         }
         try check(flood.occupiedSlots == 0 && flood.pendingPayloadBytes == 0)
         try check(try flood.begin(method: "terminal.list", deadline: deadline).context.token.id == 9)
+        var unsent = try CoreRPCRequests()
+        let neverWritten = try unsent.begin(method: "terminal.run", deadline: now)
+        _ = unsent.expire(at: now)
+        try check(unsent.discardUnsent(neverWritten.context.token)?.token == neverWritten.context.token)
+        try check(unsent.pendingPayloadBytes == 0 && unsent.occupiedSlots == 0)
+        try check(unsent.discardUnsent(neverWritten.context.token) == nil)
+        try fails(.unexpectedReply) { _ = try unsent.receive(reply(neverWritten.context.token.id), from: unsent.epoch, at: now) }
+        try check(try unsent.begin(method: "terminal.list", deadline: deadline).context.token.id == 2)
         print("PASS CoreRPC: \(checks) assertions (no transport I/O or timers)")
     }
 }
