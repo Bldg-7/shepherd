@@ -1,8 +1,8 @@
 import Foundation
 
-/// Live channel-0 connection for bounded request/response RPCs. Owns one
-/// transport and one epoch; no reconnect or retry. Streaming methods are
-/// explicitly refused until attach/event channel ownership is implemented.
+/// One multiplexed connection epoch: RPC, terminal and event channels.
+/// No reconnect or mutation replay. Open channels are installed on the reader
+/// actor before exposing their RPC replies to callers.
 public actor CoreRPCConnection {
     public enum State: Sendable { case idle, connecting, ready, closed }
     public struct Snapshot: Sendable {
@@ -10,6 +10,8 @@ public actor CoreRPCConnection {
         public let awaitingReplies: Int
         public let occupiedRequestSlots: Int
         public let queuedWriteBytes: Int
+        public let streams: Int
+        public let bufferedStreamBytes: Int
     }
     public private(set) var state: State = .idle
     public private(set) var hello: CoreHello?
@@ -21,14 +23,22 @@ public actor CoreRPCConnection {
     private var handshake: CheckedContinuation<CoreHello, Error>?
     private var handshakeDeadline: ContinuousClock.Instant?
     private var waiters: [UInt64: CheckedContinuation<CoreRPCReply, Error>] = [:]
-    private struct Write: Sendable {
+    struct Write: Sendable {
         let bytes: Data
         let token: CoreRPCRequests.Token?
         let deadline: ContinuousClock.Instant
+        var channel: UInt32? = nil
+        var priority = false
     }
-    private var writes: [Write] = []
+    var writes: [Write] = []
     private var inFlight: Write?
-    private var queuedWriteBytes = 0
+    var queuedWriteBytes = 0
+    var streams: [UInt32: CoreStreamState] = [:]
+    var opening: [UInt64: CoreStreamOpen] = [:]
+    var usedChannels = CoreChannelIDs()
+    var bufferedStreamBytes = 0
+    let maximumStreams: Int
+    let maximumStreamBytes: Int
     private var starter: Task<Void, Never>?
     private var reader: Task<Void, Never>?
     private var writer: Task<Void, Never>?
@@ -37,8 +47,10 @@ public actor CoreRPCConnection {
 
     public init(transport: any CoreByteTransport, requiredMethods: Set<String> = ["terminal.list"],
                 maximumRequests: Int = 64, maximumPendingPayloadBytes: Int = 1 << 20,
-                maximumQueuedWriteBytes: Int = 2 << 20) throws {
-        guard (1...(32 << 20)).contains(maximumQueuedWriteBytes) else { throw CoreRPCFailure.invalidLimits }
+                maximumQueuedWriteBytes: Int = 2 << 20, maximumStreams: Int = 32) throws {
+        guard (1...(32 << 20)).contains(maximumQueuedWriteBytes), (1...64).contains(maximumStreams) else { throw CoreRPCFailure.invalidLimits }
+        self.maximumStreams = maximumStreams
+        maximumStreamBytes = maximumStreams * CoreWire.initialStreamCredit
         self.transport = transport
         self.maximumQueuedWriteBytes = maximumQueuedWriteBytes
         requests = try CoreRPCRequests(maximumRequests: maximumRequests, maximumPendingPayloadBytes: maximumPendingPayloadBytes)
@@ -83,25 +95,31 @@ public actor CoreRPCConnection {
     /// A mutating command may already have run; it is never replayed here.
     public func call(_ method: String, parameters: Data = Data("{}".utf8),
                      timeout: Duration = .seconds(30)) async throws -> CoreRPCReply {
+        guard method != "terminal.attach", method != "events.subscribe" else { throw CoreConnectionFailure.streamingNotSupported }
+        return try await request(method, parameters: parameters, timeout: timeout, stream: nil)
+    }
+
+    func request(_ method: String, parameters: Data, timeout: Duration, stream: CoreStreamOpen?) async throws -> CoreRPCReply {
         try Task.checkCancellation(); try validate(timeout)
         guard state == .ready, let hello else { throw CoreConnectionFailure.notReady }
         guard method != "hello" else { throw CoreConnectionFailure.reservedMethod }
-        guard method != "terminal.attach", method != "events.subscribe" else { throw CoreConnectionFailure.streamingNotSupported }
         guard hello.methods.contains(method) else { throw CoreConnectionFailure.methodUnavailable }
+        if stream != nil, streams.count + opening.count >= maximumStreams { throw CoreStreamFailure.limitExceeded }
         let request = try requests.begin(method: method, parameters: parameters, deadline: .now.advanced(by: timeout))
         let token = request.context.token
+        if let stream { opening[token.id] = stream }
         return try await withTaskCancellationHandler {
             do {
                 return try await withCheckedThrowingContinuation { c in
                     if Task.isCancelled {
-                        requests.discardUnsent(token); c.resume(throwing: CancellationError()); return
+                        requests.discardUnsent(token); opening[token.id] = nil; c.resume(throwing: CancellationError()); return
                     }
                     waiters[token.id] = c
                     do {
                         try enqueue(Write(bytes: request.frame.encoded(), token: token, deadline: request.context.deadline))
                         scheduleTimer()
                     } catch {
-                        requests.discardUnsent(token)
+                        requests.discardUnsent(token); opening[token.id] = nil
                         waiters.removeValue(forKey: token.id)?.resume(throwing: error)
                     }
                 }
@@ -119,10 +137,11 @@ public actor CoreRPCConnection {
 
     public func snapshot() -> Snapshot {
         Snapshot(state: state, awaitingReplies: waiters.count,
-                 occupiedRequestSlots: requests.occupiedSlots, queuedWriteBytes: queuedWriteBytes)
+                 occupiedRequestSlots: requests.occupiedSlots, queuedWriteBytes: queuedWriteBytes,
+                 streams: streams.count, bufferedStreamBytes: bufferedStreamBytes)
     }
 
-    private func validate(_ timeout: Duration) throws {
+    func validate(_ timeout: Duration) throws {
         guard timeout > .zero, timeout <= .seconds(3600) else { throw CoreConnectionFailure.invalidTimeout }
     }
     private func transportStarted() {
@@ -140,9 +159,11 @@ public actor CoreRPCConnection {
         do { try enqueue(Write(bytes: decoder.request(), token: nil, deadline: handshakeDeadline ?? .now)) }
         catch { fail(error) }
     }
-    private func enqueue(_ write: Write) throws {
-        guard write.bytes.count <= maximumQueuedWriteBytes - queuedWriteBytes else { throw CoreConnectionFailure.writeLimitExceeded }
-        writes.append(write); queuedWriteBytes += write.bytes.count
+    func enqueue(_ write: Write) throws {
+        guard writes.count < 512, write.bytes.count <= maximumQueuedWriteBytes - queuedWriteBytes else { throw CoreConnectionFailure.writeLimitExceeded }
+        if write.priority { writes.insert(write, at: writes.firstIndex(where: { !$0.priority }) ?? writes.endIndex) }
+        else { writes.append(write) }
+        queuedWriteBytes += write.bytes.count
         guard writer == nil else { return }
         let transport = transport
         writer = Task.detached { [weak self] in
@@ -160,12 +181,12 @@ public actor CoreRPCConnection {
             if next.deadline <= .now {
                 queuedWriteBytes -= next.bytes.count
                 if let token = next.token {
-                    requests.discardUnsent(token)
+                    requests.discardUnsent(token); opening[token.id] = nil
                     waiters.removeValue(forKey: token.id)?.resume(throwing: CoreConnectionFailure.requestTimedOut)
                     scheduleTimer()
                     continue
                 }
-                fail(CoreConnectionFailure.handshakeTimedOut); return nil
+                fail(next.channel == nil ? CoreConnectionFailure.handshakeTimedOut : CoreConnectionFailure.requestTimedOut); return nil
             }
             inFlight = next
             return next
@@ -180,7 +201,7 @@ public actor CoreRPCConnection {
     private func removeQueued(_ token: CoreRPCRequests.Token) -> Bool {
         guard let index = writes.firstIndex(where: { $0.token == token }) else { return false }
         queuedWriteBytes -= writes.remove(at: index).bytes.count
-        requests.discardUnsent(token)
+        requests.discardUnsent(token); opening[token.id] = nil
         return true
     }
     private func cancel(_ token: CoreRPCRequests.Token) {
@@ -190,9 +211,10 @@ public actor CoreRPCConnection {
         // Never cancel the writer for one RPC: finish an in-flight frame.
         scheduleTimer()
     }
-    private func scheduleTimer() {
+    func scheduleTimer() {
         timer?.cancel(); timer = nil
-        guard let deadline = state == .connecting ? handshakeDeadline : requests.nextDeadline, state != .closed else { return }
+        let deadlines = [requests.nextDeadline, nextStreamDeadline].compactMap { $0 }
+        guard let deadline = state == .connecting ? handshakeDeadline : deadlines.min(), state != .closed else { return }
         timer = Task.detached { [weak self] in
             do { try await Task.sleep(until: deadline, clock: .continuous) }
             catch { return }
@@ -208,6 +230,7 @@ public actor CoreRPCConnection {
             _ = removeQueued(context.token)
             waiters.removeValue(forKey: context.token.id)?.resume(throwing: CoreConnectionFailure.requestTimedOut)
         }
+        expireStreams(at: now)
         scheduleTimer()
     }
     private func receive(_ bytes: Data) {
@@ -227,12 +250,17 @@ public actor CoreRPCConnection {
         } catch { fail(error) }
     }
     private func receiveFrame(_ frame: CoreFrame) throws {
-        guard frame.channel == 0 else { throw CoreConnectionFailure.streamingNotSupported }
+        guard frame.channel == 0 else { try receiveStream(frame); return }
         switch try requests.receive(frame, from: epoch, at: .now) {
         case .reply(let context, let reply):
+            if let options = opening.removeValue(forKey: context.token.id), reply.error == nil {
+                try installStream(reply, options: options, orphaned: false)
+            }
             waiters.removeValue(forKey: context.token.id)?.resume(returning: reply)
-        case .late(let context, _, let reason):
-            // Only non-streaming RPCs can be issued by this connection yet.
+        case .late(let context, let reply, let reason):
+            if let options = opening.removeValue(forKey: context.token.id), reply.error == nil {
+                try installStream(reply, options: options, orphaned: true)
+            }
             let error: any Error = reason == .cancelled ? CancellationError() : CoreConnectionFailure.requestTimedOut
             waiters.removeValue(forKey: context.token.id)?.resume(throwing: error)
         }
@@ -243,11 +271,14 @@ public actor CoreRPCConnection {
         catch { fail(error) }
     }
     private func transportFailed(_ error: any Error) {
-        if error is CancellationError { fail(CancellationError()) }
-        else if let error = error as? CoreProcessFailure { fail(error) }
-        else { fail(CoreConnectionFailure.transportFailed) }
+        if error is CancellationError { fail(CancellationError()); return }
+        if let error = error as? CoreProcessFailure { fail(error); return }
+        #if canImport(NIOSSH) && canImport(Crypto) && canImport(Citadel)
+        if let error = error as? CoreSSHFailure { fail(error); return }
+        #endif
+        fail(CoreConnectionFailure.transportFailed)
     }
-    private func fail(_ error: any Error) {
+    func fail(_ error: any Error) {
         guard state != .closed else { return }
         state = .closed; hello = nil
         decoder = CoreHandshakeDecoder(requiredMethods: decoder.requiredMethods)
@@ -256,6 +287,11 @@ public actor CoreRPCConnection {
         handshake?.resume(throwing: error); handshake = nil; handshakeDeadline = nil
         for c in waiters.values { c.resume(throwing: error) }
         waiters.removeAll(); _ = requests.close()
+        for slot in streams.values {
+            slot.reader?.resume(throwing: error)
+            for closer in slot.closers { closer.resume(throwing: error) }
+        }
+        streams.removeAll(); opening.removeAll(); bufferedStreamBytes = 0
         writes.removeAll(); inFlight = nil; queuedWriteBytes = 0
         let transport = transport
         cleanup = Task.detached { try await transport.close() }

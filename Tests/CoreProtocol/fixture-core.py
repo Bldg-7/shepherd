@@ -59,7 +59,7 @@ if mode == "partial-hello":
     sys.exit(0)
 methods = ["terminal.list", "terminal.attach", "events.subscribe", "fixture.echo", "fixture.reverse",
            "fixture.slow", "fixture.slowBarrier", "fixture.flush", "fixture.fail", "fixture.last",
-           "fixture.partial", "fixture.invalid", "fixture.stderr"]
+           "fixture.partial", "fixture.invalid", "fixture.stderr", "fixture.streamStats"]
 response = json.dumps({"jsonrpc": "2.0", "id": hello["id"], "result": {
     "core": {"id": "owned-process-fixture", "name": "fixture"}, "generation": 1,
     "version": "0.1.16", "methods": methods, "features": [], "framed": True,
@@ -77,19 +77,79 @@ if mode == "no-read":
 reverse = []
 slow = []
 barriers = []
+channels = {}
+late_streams = []
+next_channel = 1
+closed_channels = []
+
+def stream_frame(channel, kind, body=b""):
+    return struct.pack("<IBI", channel, kind, len(body)) + body
+
+def pump(channel):
+    s = channels[channel]
+    while s['remaining'] and s['credit']:
+        n = min(s['remaining'], s['credit'], 16384)
+        emit(stream_frame(channel, 0, b'x' * n))
+        s['remaining'] -= n; s['credit'] -= n
+    if s['burst'] and not s['remaining'] and not s['ended']:
+        s['ended'] = True; emit(stream_frame(channel, 2, b'{"reason":"exited"}'))
+
+def open_stream(request_id, channel, params, events=False):
+    name = params.get('terminal', 'normal')
+    s = channels[channel] = {'credit': 262144, 'acks': 0, 'remaining': 600000 if name == 'burst' else 0,
+                              'burst': name == 'burst', 'ended': False, 'name': name, 'input': '', 'size': None}
+    notify_resize = params.get('resize_notifications', False)
+    result = {'channel': channel, 'resize_notifications': notify_resize, 'seq': 1, 'terminals': []}
+    first = b'{"method":"heartbeat","params":{"seq":1}}\n' if events else b'initial'
+    if name == 'before': emit(stream_frame(channel, 0, first))
+    prefix = encoded(request_id, result)
+    if notify_resize: prefix += stream_frame(channel, 3, struct.pack('<HH', 90, 25))
+    if name == 'overflow': emit(prefix + stream_frame(channel, 0, b'x' * 262145)); return
+    if not s['burst']:
+        s['credit'] -= len(first)
+        prefix += stream_frame(channel, 0, first)
+    emit(prefix); pump(channel)
+
 while True:
     header = read_exact(9)
     if header is None:
         sys.exit(0)
     channel, kind, length = struct.unpack("<IBI", header)
-    assert channel == 0 and kind == 0 and length <= 16 << 20
+    assert length <= 16 << 20
     body = read_exact(length)
     if body is None:
         sys.exit(0)
+    if channel:
+        s = channels[channel]
+        if kind == 1:
+            credit = struct.unpack('<I', body)[0]
+            s['acks'] += credit; s['credit'] += credit; pump(channel)
+        elif kind == 2:
+            if s['name'] != 'hangclose':
+                closed_channels.append(channel); emit(stream_frame(channel, 2))
+        elif kind == 0:
+            s['input'] = body.decode('utf-8'); out = b'echo:' + body
+            assert len(out) <= s['credit']; s['credit'] -= len(out); emit(stream_frame(channel, 0, out))
+        elif kind == 3: s['size'] = list(struct.unpack('<HH', body))
+        elif kind == 4: s['focused'] = body[0]
+        elif kind == 5: s['facts'] = json.loads(body)
+        else: raise AssertionError('invalid stream control')
+        continue
+    assert kind == 0
     call = json.loads(body)
     request_id, method, params = call["id"], call["method"], call["params"]
-    assert method not in ("hello", "terminal.attach", "events.subscribe"), "connection must reject reserved/streaming methods before writing"
-    if method == "terminal.list":
+    assert method != 'hello'
+    if method in ('terminal.attach', 'events.subscribe'):
+        channel = 1 if params.get('terminal') == 'reuse' else next_channel
+        next_channel += 1
+        if params.get('terminal') == 'late':
+            late_streams.append((request_id, channel, params))
+            for barrier in barriers: emit(encoded(barrier, {}))
+            barriers.clear()
+        else: open_stream(request_id, channel, params, method == 'events.subscribe')
+    elif method == 'fixture.streamStats':
+        emit(encoded(request_id, {'closed': closed_channels, 'channels': channels}))
+    elif method == "terminal.list":
         emit(encoded(request_id, {"terminals": [], "hidden_finished": 0,
                                  "inherited_marker": "CORE_UNEXPECTED_PARENT_ENV" in os.environ, "cwd": os.getcwd()}))
     elif method == "fixture.reverse":
@@ -103,11 +163,13 @@ while True:
             emit(encoded(barrier, {}))
         barriers.clear()
     elif method == "fixture.slowBarrier":
-        if slow:
+        if slow or late_streams:
             emit(encoded(request_id, {}))
         else:
             barriers.append(request_id)
     elif method == "fixture.flush":
+        for delayed in late_streams: open_stream(*delayed)
+        late_streams.clear()
         emit(b"".join(encoded(i, p) for i, p in slow) + encoded(request_id, {}))
         slow.clear()
     elif method == "fixture.fail":

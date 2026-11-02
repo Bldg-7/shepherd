@@ -7,7 +7,7 @@ nonisolated struct FixtureList: Decodable, Sendable { let terminals: [String]; l
 nonisolated enum ConnectionTestError: Error { case failed(String) }
 
 @main @MainActor
-private struct CoreConnectionTests {
+struct CoreConnectionTests {
     static var checks = 0
     static var python = ""
     static var fixture = ""
@@ -21,13 +21,13 @@ private struct CoreConnectionTests {
         catch let actual as CoreConnectionFailure { try check(actual == expected, "wrong connection error") }
     }
     static func make(_ mode: String = "normal", writeLimit: Int = 2 << 20,
-                     connectionLimit: Int = 2 << 20) throws -> (CoreProcessTransport, CoreRPCConnection) {
+                     connectionLimit: Int = 2 << 20, maximumStreams: Int = 32) throws -> (CoreProcessTransport, CoreRPCConnection) {
         let endpoint = try CoreProcessTransport(configuration: .init(
             executable: URL(fileURLWithPath: python), arguments: ["-I", fixture, mode],
             environment: ["PATH": "/usr/bin:/bin", "HOME": work, "TMPDIR": work, "LANG": "en_US.UTF-8"],
             directory: URL(fileURLWithPath: work), maximumWriteBytes: writeLimit))
         let connection = try CoreRPCConnection(transport: endpoint, maximumPendingPayloadBytes: 3 << 20,
-                                               maximumQueuedWriteBytes: connectionLimit)
+                                               maximumQueuedWriteBytes: connectionLimit, maximumStreams: maximumStreams)
         return (endpoint, connection)
     }
     static func retired(_ endpoint: CoreProcessTransport, _ connection: CoreRPCConnection, spawned: Bool = true) async throws {
@@ -44,6 +44,7 @@ private struct CoreConnectionTests {
         try await failedConnections(); print("PASS handshake/EOF/error/cleanup failures")
         try await blockedWriter(); print("PASS blocked writer quotas and queued timeout")
         try await cancellationAndClose(); print("PASS cancellation, close and fresh epoch")
+        try await streamsAndCredit(); print("PASS stream ownership, CREDIT, events and late opens")
         print("PASS CoreConnection: \(checks) assertions, real owned pipe children; no installed hc/SSH/app")
     }
     static func normal() async throws {

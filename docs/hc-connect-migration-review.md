@@ -295,16 +295,17 @@ A–D 통과 후 기존 pane/session socket API, attach CLI/PTY 경로, prefix �
 |---|---|---|
 | SHPHRD-148 | 전체 hc 단일 backend 전환 | 진행 중 |
 | SHPHRD-149 (A1) | bounded wire/event codec, hello 협상, 격리 테스트 | 구현·테스트 완료 |
-| SHPHRD-150 (A2) | local/SSH endpoint, RPC/attach/events/CREDIT, SwiftTerm 검증 | 로컬 channel-0 RPC 구현·검증, SSH/stream 대기 |
+| SHPHRD-150 (A2) | local/SSH endpoint, RPC/attach/events/CREDIT, SwiftTerm 검증 | 구현됨; 실제 OSC8 first paint 호환성은 SHPHRD-157에 차단 |
 | SHPHRD-151 (B) | agent/session/process/screen 기능 동등성 | 대기 |
 | SHPHRD-152 (C) | workspace CAS 및 이벤트/알림 | 대기 |
 | SHPHRD-153 (D) | launch/browser/proxy/mobile 통합 | 대기 |
 | SHPHRD-154 (E) | 회귀 및 legacy 제거 | 대기 |
 | SHPHRD-155 | first-party Swift 6 통일 및 기반 코드 커밋 | 완료 — `4e00351` |
+| SHPHRD-157 | core/libghostty VT first paint의 OSC8 cell metadata 보존 | upstream/core 변경 필요; 150의 blocker |
 
 의존 관계: 149 → 150 → (151, 152) → 153 → 154.
 
-A1은 `ShepherdKit/Sources/ShepherdKit/CoreKit/`의 세 파일이며 기존 app backend에는 연결하지 않았다. 사용자 요청에 따라 SHPHRD-155에서 first-party 앱 타깃과 ShepherdKit/AgentProxy package 및 관련 runner를 Swift 6로 통일한다. Vendor 패키지의 언어 모드는 그대로 둔다. `Tests/CoreProtocol/run-tests.py`는 현재 Swift 6(패키지와 동일 upcoming flags) 빌드·실행과 iOS 17 Simulator 대상 typecheck만 수행한다. Python 독립 wire vectors 12개와 18개 테스트 그룹을 검증한다. 소비 ACK와 실제 채널 routing은 A2에 남아 있으며, codec이 CREDIT를 자동 전송하지 않는다.
+A1은 `ShepherdKit/Sources/ShepherdKit/CoreKit/`의 세 파일이며 기존 app backend에는 연결하지 않았다. 사용자 요청에 따라 SHPHRD-155에서 first-party 앱 타깃과 ShepherdKit/AgentProxy package 및 관련 runner를 Swift 6로 통일한다. Vendor 패키지의 언어 모드는 그대로 둔다. `Tests/CoreProtocol/run-tests.py`는 현재 Swift 6(패키지와 동일 upcoming flags) 빌드·실행과 iOS 17 Simulator 대상 typecheck만 수행한다. Python 독립 wire vectors 12개와 18개 테스트 그룹을 검증한다. 이후 A2에서 채널 routing과 소비 후 ACK를 구현했다. byte codec 자체는 여전히 CREDIT를 자동 전송하지 않는다.
 
 최초 Swift 5/6 양쪽 모드 검증 artifact는 `/private/tmp/shepherd-hc-wire.wWY6A3/run/validation.json`이며 역사적 결과다. Swift 6 전용 runner 통과 artifact: `/private/tmp/shepherd-swift6-wire.RxRZYz/run/validation.json`. 당시 실제 hc/SSH/SwiftTerm 상호운용은 미검증이었다. 이후 로컬 hc 검증은 아래 A2 추가 구현 절에 구분한다. 재현 방법과 상세 범위: `Tests/CoreProtocol/README.md`.
 
@@ -327,7 +328,7 @@ Swift 6 전환에서 mutable SSH authentication delegate 공유를 없애고 imm
 
 `CoreRPC.swift`에 한 connection epoch의 요청 등록/응답 매칭, 정확한 UInt64 ID, typed result, deadline/cancel/close 처리를 구현했다. 취소·timeout된 요청의 metadata는 제한된 tombstone으로 유지하여 늦은 attach 응답도 원래 method와 연결한다. slot/payload quota와 ID 고갈을 처리하고, 잘못된 응답으로 active waiter 목록을 잃지 않는다. raw server message/hint는 error 상태에 노출하지 않는다.
 
-이 첫 구현의 `CoreRPC.swift` 자체는 순수 상태 관리다. 이후 추가한 live local 연결은 다음 절과 같으며, SSH/attach/CREDIT/orphan channel 정리는 여전히 다음 구현 범위다. 요청 취소나 timeout을 원격 rollback으로 해석하지 않으며 자동 재시도하지 않는다. `CoreRPCTests.swift`와 Python UInt64 교차 검증을 기존 Swift 6 runner에 추가했다. Swift 6 테스트/빌드와 iOS 17 typecheck의 5 stages 및 macOS 앱 unsigned Debug build가 통과했다 (`/private/tmp/shepherd-hc-rpc.PC8W24/run/validation.json`). SHPHRD-150 전체를 완료 처리하지 않는다.
+이 첫 구현의 `CoreRPC.swift` 자체는 순수 상태 관리다. 이후 추가한 live local 연결은 다음 절과 같으며, 그 뒤 SSH/attach/CREDIT/orphan channel 정리까지 추가했다(아래 검증 절). 요청 취소나 timeout을 원격 rollback으로 해석하지 않으며 자동 재시도하지 않는다. `CoreRPCTests.swift`와 Python UInt64 교차 검증을 기존 Swift 6 runner에 추가했다. Swift 6 테스트/빌드와 iOS 17 typecheck의 5 stages 및 macOS 앱 unsigned Debug build가 통과했다 (`/private/tmp/shepherd-hc-rpc.PC8W24/run/validation.json`). SHPHRD-150 전체를 완료 처리하지 않는다.
 
 ### A2 추가 구현: 실제 local process 연결
 
@@ -347,7 +348,25 @@ Swift 6 전환에서 mutable SSH authentication delegate 공유를 없애고 imm
 - 실제 0.1.16 core: 별도 smoke 통과. private core stop 응답, daemon 종료, connect child 회수, socket 제거 확인 (`/private/tmp/hc-real.3JlKCh/run/validation.json`). 같은 폴더에 archive/binary hash, 소스 hash 및 core-report 보존.
 - macOS `Shepherd` 및 iOS Simulator `Shepherd Mobile` unsigned Debug build 통과. 코드 변경 후 최종 검증과 현재 source hash 일치 확인.
 
-실행 방법과 검증 artifact 형식은 `Tests/CoreProtocol/README.md`에 기록했다. 앱 UI의 기존 backend는 아직 그대로다. **SSH endpoint, attach/events 다중화, early-stream/orphan 정리, 소비 후 CREDIT, SwiftTerm 실증이 남아 있으므로 SHPHRD-150 전체는 완료가 아니다.**
+실행 방법과 검증 artifact 형식은 `Tests/CoreProtocol/README.md`에 기록했다. 앱 UI의 기존 backend는 아직 그대로다. 이 시점 이후의 SSH/stream 구현 및 실제 호환성 gate는 다음 절에 기록한다.
+
+### A2 SSH/stream 구현과 실제 호환성 차단
+
+- `CoreSSHTransport`: SwiftNIO/NIOSSH의 실제 SSH authentication/exec. 명시적 host-key pin과 fresh auth factory, no PTY, shell-quoted 환경/실행 파일, inherited core terminal identity 제거. 저장된 자격증명이나 SSH config를 직접 읽지 않는다. paired address policy는 기존 machine factory에서 적용한 뒤 전달해야 한다.
+- 채널 initializer의 lifetime guard로 취소 후 늦은 TCP/session 완료가 권한을 되살리지 못하게 한다. read demand와 `autoRead=false`, event-loop에서의 동기 bounded queue로 중간 unbounded AsyncStream을 만들지 않는다. close는 idempotent이며 shutdown한 EventLoop에 deinit이 다시 작업을 보내지 않는다.
+- `CoreStream`/`CoreRPCStreams`: RPC 응답을 caller에 노출하기 전에 채널을 원자적으로 등록. reply+DATA가 한 read로 와도 보존하며 실제 wire 계약을 어기는 pre-reply data는 fail-closed. 최대 stream/packet/byte 수, 압축된 used-channel interval 상한, epoch/nonce 검사.
+- DATA 처리 후 명시적 receipt ACK에만 CREDIT 반환. 중복/다른 채널 receipt 거부. 600,000-byte 출력과 stalled stream 중 RPC 처리 검증. RESIZE/FOCUS/FACTS/CLOSE, observer input 차단, late timeout/cancel open의 CLOSE, read/close deadline 처리.
+- 새 SSH connection/epoch에서 reattach해 기존 terminal의 first paint를 받고 옛 handle의 입력을 거부한다. 변이 요청이나 브라우저/credential 권한을 자동 재생하지 않는다.
+- 독립 fixture 최종 run: 7 stages 통과, wire/hello 2,397 + RPC 67 + connection/stream 110 assertions (`/private/tmp/hc-streams.xrhvot/run/validation.json`).
+- macOS 및 iOS Simulator 앱 unsigned Debug build 통과. 제품 UI backend는 아직 전환하지 않았다.
+
+실제 통합은 `run-ssh-stream-tests.py`로 검증했다. 임시 localhost SSH server + pinned 공식 core + 실제 SwiftTerm view를 사용한다. 서버는 생성한 host key/fixture password를 쓰고, 오직 미리 정한 quoted exec 명령만 private shell에서 실행한다. 외부 사용자 서버/계정/agent에 접속하지 않는다.
+
+**실제 통합 전체 gate는 실패다.** `/private/tmp/hc-ssh.p4YctX/run/validation.json`은 `passed: false`, `blocker: SHPHRD-157`이다. SSH, 취소, CJK/emoji, SGR, 실시간 OSC8, IME, kitty Ctrl+B, raw Ctrl+B-q, SGR mouse, resize, display query, 대량 출력 CREDIT, events, observer 제한, reconnect 및 cleanup의 나머지 31 checks는 완료했다. 테스트 core 종료와 socket 제거, SSH worker 정리도 확인했다.
+
+실패 원인: official core 0.1.16의 first paint에는 링크 label만 있고 OSC8 destination이 없다. git tag `v0.1.16` (`e07c2a1bedd62cf4787ee026ee23ee79c7d95491`)의 Ghostty gitlink `1e5cdb865807abc990181efb8ebfa9122955cce2`를 확인했고, 해당 formatter는 per-cell hyperlink를 HTML에만 출력한다. VT cursor의 active hyperlink 복원 옵션으로는 이를 보존할 수 없다. 실시간 OSC8는 동일 경로에서 통과한다.
+
+상세 재현·source 근거·수정 조건: [hc-osc8-first-paint-blocker.md](hc-osc8-first-paint-blocker.md). 이 assertion은 삭제하지 않고 다른 체크/정리 후에도 최종 nonzero exit로 유지했다. **core/formatter 수정과 재검증 전에는 SHPHRD-150을 완료하거나 UI를 새 backend로 전환하지 않는다.** upstream 수정/배포 또는 관리할 patched-core 선택이 필요하다. 사용자 core를 임의로 교체하지 않았다.
 
 ## 최종 권고
 

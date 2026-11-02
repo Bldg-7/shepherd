@@ -43,7 +43,17 @@ environment/cwd, over real non-PTY pipes, inside a network-denying sandbox.
 - `CoreRPCConnection.swift`: actor-owned live hello/RPC loop, continuations,
   deadlines, a separately bounded serialized writer, local cancel and teardown.
   Never starts an expired queued request; never interrupts an in-flight frame
-  for an individual RPC cancellation. No automatic reconnect or retry.
+  for an individual RPC cancellation. No automatic reconnect or mutation retry.
+- `CoreRPCStreams.swift` / `CoreStream.swift`: atomic channel registration before
+  open replies are exposed, bounded per-stream queues and initial credit,
+  explicit post-consumption receipts, DATA/RESIZE/FOCUS/FACTS/CLOSE, read and close
+  deadlines, observer protection and late-open cleanup. Channel IDs are tracked
+  as bounded intervals rather than an unbounded retired-ID set.
+- `CoreSSHTransport.swift`: pinned-host-key SSH authentication and exec through
+  SwiftNIO/NIOSSH, without a PTY or unbounded Citadel AsyncStreams. autoRead=false
+  and a synchronous bounded byte queue provide backpressure. Cancellation guards
+  in channel initializers prevent late connect/exec publication. Remote environment
+  and executable values are quoted, with inherited core terminal identity removed.
 
 These types are not yet wired into the app UI. The existing app backend is unchanged.
 
@@ -122,6 +132,54 @@ stop acknowledgement, connect-child reaping, daemon exit and socket removal.
 `provenance.json`, `core-report.json`, source hashes and `validation.json` retain
 the evidence; no binary is added to the repository.
 
+## Owned SSH and native SwiftTerm integration
+
+After building the macOS Debug app/package products:
+
+```sh
+python3 Tests/CoreProtocol/run-ssh-stream-tests.py --archive /tmp/herdr-core-macos-aarch64.tar.gz --products build/DerivedData/Build/Products/Debug --output /tmp/hc-ssh-FRESH
+```
+
+This runner creates a fresh ephemeral loopback SSH server with generated host
+key and a random per-run password kept only in memory. It accepts only its precomputed command, executes
+that quoted command against a private pinned core, and rejects PTY requests.
+No saved keys, SSH configuration, external machines or user core are used.
+The native SwiftTerm view is in a never-shown window. The workload is a small
+owned Python terminal program, not a real agent. Failures preserve logs and
+attempt cleanup of only the explicitly private core/socket.
+
+`CoreStreamTests.swift` independently exercises same-read reply+initial DATA,
+CREDIT withheld until ACK, duplicate/cross-channel receipts, stalled-stream RPC
+progress, >256 KiB output, late timed-out/canceled opens, observer protection,
+resize negotiation, stream limits, invalid/reused/pre-reply channel IDs and
+missing CLOSE acknowledgement. The live SSH runner exercises the real core and
+native terminal alongside authentication, cancellation and reconnect.
+
+## Qualification blocker: SHPHRD-157
+
+The official 0.1.16 first paint drops OSC8 link metadata for cells whose hyperlink
+was closed before attach. The label is present but the URI is absent from raw
+DATA. Live OSC8 works through the same SSH/core/SwiftTerm path. This cannot be
+recovered from the label without inventing a URL or changing the link policy.
+
+The pinned Ghostty formatter explicitly supports per-cell links only for HTML:
+[formatter.zig](https://github.com/ghostty-org/ghostty/blob/1e5cdb865807abc990181efb8ebfa9122955cce2/src/terminal/formatter.zig#L1471-L1510).
+Its VT `extra.hyperlink` restores the cursor's active hyperlink, not all cell
+links. A fix must include VT hyperlink transitions, open/close encoding and the
+ASCII-run fast path, with safe URI/id handling and wrapped/selected row tests.
+
+The integration test continues after recording this failure to exercise IME,
+kitty keys, mouse, resize, display queries, >256 KiB CREDIT flow, events,
+reconnect and cleanup. It **still exits nonzero** at the end. The runner writes
+`validation.json` with `passed: false` and `blocker: SHPHRD-157`; this is not an
+expected-failure success or permission to cut over the app. A patched/upgraded
+core and a complete passing run are required before closing SHPHRD-150.
+
+The test extracts text via SwiftTerm's character provider and skips wide-cell
+continuations. Its simpler `getBufferAsData()` helper does not resolve stored
+graphemes; it is not a valid emoji/CJK rendering oracle. Input uses the real
+`TerminalViewDelegate`, not the terminal-engine response callback.
+
 ## Protocol baseline and remaining work
 
 Reference: herdr-core `5a9de29b2f9b6690388a1c297a7ca8d73df7d3e2`,
@@ -129,14 +187,16 @@ Reference: herdr-core `5a9de29b2f9b6690388a1c297a7ca8d73df7d3e2`,
 written against the documented protocol, not copied from the Rust client.
 The HEAD-only observer resize option is not assumed to exist in 0.1.16.
 
-Local channel-0 RPC is implemented and tested, but A2 is NOT complete:
-
-- **SHPHRD-150 remaining**: SSH exec endpoint, attach/event stream routing,
-  bounded early/channel admission, consumption-based CREDIT, orphan attach
-  cleanup, reconnect orchestration and SwiftTerm interoperability.
-- `terminal.attach` and `events.subscribe` are explicitly refused by the current
-  live connection BEFORE writing. Receiving a nonzero channel fails closed.
-  Do not route them through generic RPC until stream ownership is implemented.
+- `terminal.attach` and `events.subscribe` use `openStream`, not generic `call`.
+  The reader actor installs the channel before resuming the opener, including
+  when DATA immediately follows the reply in the same read. Actual pre-reply
+  DATA violates the core wire contract and fails closed instead of being cached
+  without an owner. Late successful opens are closed even after the caller left.
+- Reconnect is explicit: create a fresh connection/epoch and reattach using the
+  latest terminal identity. Old handles cannot send input to the replacement.
+  No mutating request or credential/browser authority is automatically replayed.
+- UI backend cutover, agent authority, workspace document synchronization and
+  mobile conversation behavior belong to SHPHRD-151–154, not this transport layer.
 - CREDIT must be sent after consumer processing, not at decoder receipt or
   AsyncStream enqueue time. This codec emits no automatic CREDIT.
 - A complete frame callback is not proof of initial-screen completion, and a

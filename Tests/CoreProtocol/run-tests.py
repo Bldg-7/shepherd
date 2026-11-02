@@ -34,7 +34,8 @@ env = {
 }
 sources = ["ShepherdKit/Sources/ShepherdKit/CoreKit/" + name for name in
            ("CoreEventLines.swift", "CoreHandshake.swift", "CoreWire.swift", "CoreRPC.swift",
-            "CoreByteTransport.swift", "CoreProcessTransport.swift", "CoreRPCConnection.swift")]
+            "CoreByteTransport.swift", "CoreProcessTransport.swift", "CoreRPCConnection.swift",
+            "CoreStream.swift", "CoreRPCStreams.swift", "CoreSSHTransport.swift")]
 tests = "Tests/CoreProtocol/CoreProtocolTests.swift"
 rpc_tests = "Tests/CoreProtocol/CoreRPCTests.swift"
 connection_tests = "Tests/CoreProtocol/CoreConnectionTests.swift"
@@ -49,7 +50,7 @@ modes = re.findall(r"SWIFT_VERSION\s*=\s*([^;]+);", (ROOT / "shepherd.xcodeproj/
 assert modes and set(modes) == {"6.0"}, modes
 (out / "source-hashes.json").write_text(json.dumps({
     name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
-    for name in sources + [tests, rpc_tests, connection_tests, peer, str(Path(__file__).resolve().relative_to(ROOT))]
+    for name in sources + [tests, rpc_tests, connection_tests, "Tests/CoreProtocol/CoreStreamTests.swift", peer, str(Path(__file__).resolve().relative_to(ROOT))]
 }, indent=2))
 (out / "compiler.txt").write_text(subprocess.check_output(["xcrun", "swiftc", "--version"], env=env, text=True, timeout=30))
 
@@ -113,7 +114,7 @@ request = json.loads(wire[9:])
 assert request == {"jsonrpc": "2.0", "id": (1 << 64) - 1, "method": "doc.set", "params": {"version": (1 << 64) - 1}}
 
 connection_binary = out / "connection-tests-swift6"
-stage("connection-build", 120, flags + sources + [connection_tests, "-o", str(connection_binary)])
+stage("connection-build", 120, flags + sources + [connection_tests, "Tests/CoreProtocol/CoreStreamTests.swift", "-o", str(connection_binary)])
 profile = out / "no-network.sb"
 profile.write_text("(version 1)\n(allow default)\n(deny network*)\n")
 env["CORE_UNEXPECTED_PARENT_ENV"] = "must-not-reach-child"
