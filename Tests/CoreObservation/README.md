@@ -106,12 +106,25 @@ The synthetic grid emits an explicit end marker for its assertions. **Real CLI
 initial snapshot completion and empty-composer readiness remain unqualified.**
 Neither this fixture nor a DATA boundary supplies native ownership or readiness.
 
+## Authorized real CLI measurements
+
+A later explicitly authorized run starts installed Claude 2.1.317, Codex 0.166.0
+and Pi 1.4.0 in private hc PTYs with OS privacy/network restrictions. Pi's TUI,
+automatic idle report, resize and `/new` lifecycle are observed; its session ID
+changes without changing the kernel process. Claude is blocked by network/onboarding,
+and Codex by managed-preference synchronization under the restrictions (also
+reproduced without hc). These are **not** all-CLI readiness passes. See
+[CLI-README.md](CLI-README.md) for exact invocations, boundary limitations and
+result semantics. No real credentials, parent descriptor or browser authority
+are used. Existing user configuration and product backend remain unchanged.
+
 ## Still required before backend cutover
 
 1. Connect this evidence to the new launch identity/epoch and the existing native
    bridge, without promoting OSC status, labels or displayed app names to proof.
-2. Preserve managed/unmanaged CLI readiness and native session detection. No real
-   coding-agent/provider session has been launched by this fixture.
+2. Preserve managed/unmanaged CLI readiness and native session detection. Real
+   CLI startup/lifecycle measurements are now separate in [CLI-README.md](CLI-README.md);
+   no account login or model prompt was used, and authenticated readiness remains unqualified.
 3. Qualify passive attributed-screen observation, initial snapshot completion and
    resize ordering. Official 0.1.16 does not negotiate observer resize frames;
    cross-channel size events or an arbitrary DATA boundary are not such proof.

@@ -408,6 +408,19 @@ Swift 6 전환에서 mutable SSH authentication delegate 공유를 없애고 imm
 
 아직 앱 backend/launch coordinator에는 연결하지 않았다. 실제 agent readiness/session, native owner integration, 초기 attributed snapshot의 완료 증거와 safe resume, remote/multi-hop 전체 및 배포는 별도 검증이다. synthetic fixture의 PAINT-DONE marker를 실제 CLI에도 있다고 가정하지 않는다. B는 계속 진행 중이다.
 
+### B 실제 CLI 시작·세션 관찰 (명시적 허용 후)
+
+기존 계정/자격증명/부모 descriptor 없이 별도 HOME과 OS sandbox에서 설치된 CLI를 실제 실행했다. 버전은 Claude Code 2.1.317, Codex 0.166.0, Pi 1.4.0이며 예전 2.1.288/0.154.0의 동작 증거를 그대로 승계하지 않는다. 모델 프롬프트·로그인·약관 확인·브라우저 권한 부여는 하지 않았다. Pi에는 문서화된 로컬 `/new` 명령만 보냈다.
+
+- 파일/네트워크 canary와 버전/help 6회 검증 통과. 원래 설정 내용과 keychain/pasteboard 서비스는 차단했다. core/CLI가 동일 정책을 상속하며 private Unix socket과 PTY 생성만 예외로 둔다. 이는 모든 same-user tty나 악성 바이너리에 대한 완전한 VM 격리 주장이 아니다.
+- Claude 일반 모드는 Anthropic 서비스 접속 불가로 exit 1. `--bare`는 온보딩 테마 화면과 resize까지만 관찰했고, 준비 완료로 간주하지 않았다. 이 private terminal은 cancel keys 뒤 명시적 kill이 필요했다.
+- Codex `--no-daemon`은 관리형 환경설정 동기화에서 중단됐다. hc 없는 별도 owned PTY에서도 같은 오류를 재현했으므로 hc 회귀로 단정하지 않는다. 정책/보안 서비스 접근을 풀거나 기존 관리자 설정을 우회하지 않았다.
+- Pi는 실제 TUI와 자동 OSC7501 idle, resize, 정상 종료를 관찰했다. native session_start → before_switch → old shutdown → new session_start의 ID 변화가 있었지만 kernel PID/start와 core terminal은 그대로였다. **core/PID/idle만으로 이전 native/browser lease를 유지하면 안 된다는 실증**이다. ctx.model 객체 존재도 사용 가능한 모델/인증을 뜻하지 않았다.
+
+최종 artifact: `/private/tmp/hc-cli-final.m6lBLZ/{inventory,startup,control}/`. 관찰과 Pi lifecycle smoke는 통과했고 전체 agent parity/authenticated readiness는 false로 유지했다. 모든 owned 프로세스/소켓 정리 완료. 상세 경계·재현·제약: `Tests/CoreObservation/CLI-README.md`.
+
+이 허용 범위로는 Claude의 온라인 시작 및 인증된 작업 상태, Codex의 정상 managed-preference 경로, 각 CLI의 safe resume/생산 native bridge binding을 완료 처리할 수 없다. B는 계속 진행 중이며 앱 backend와 사용자 core는 변경하지 않았다.
+
 ## 최종 권고
 
 장기 목표는 **hc 단일 backend + 앱 소유 workspace + 독립적인 agent observation/authority**로 정한다. 이전 데이터 마이그레이션을 하지 않는 조건은 이 방향을 단순하게 만든다.
