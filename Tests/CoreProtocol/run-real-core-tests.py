@@ -92,11 +92,11 @@ finally:
                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
         (out / "cleanup-status.json").write_text(json.dumps({"exitCode": stopped.returncode}))
     result = json.loads(report.read_text()) if report.exists() else {}
-    pid = result.get("corePID")
+    pids = result.get("ownedPIDs", [result["corePID"]] if result.get("corePID") else [])
     deadline = time.monotonic() + 5
     while True:
         alive = False
-        if pid:
+        for pid in pids:
             try:
                 os.kill(pid, 0)  # Liveness query only, never a terminating signal.
                 alive = True
@@ -113,6 +113,6 @@ for name, expected in json.loads((out / "source-hashes.json").read_text()).items
 (out / "validation.json").write_text(json.dumps({"passed": True, "realCore": artifact["version"], "launchdLifecycleQualified": False, "artifactVariant": artifact["variant"],
     "officialRelease": artifact["officialRelease"], "suite": "workspaceCAS" if a.workspace_tests else "protocol",
     "checks": result.get("checks"), "ownCoreStopped": True,
-    "ownSocketRemoved": True, "isolatedHomeAndSession": True, "externalNetworkDenied": True,
+    "ownSocketRemoved": True, "ownedProcessesExited": bool(pids), "isolatedHomeAndSession": True, "externalNetworkDenied": True,
     "userCoreOrConfigTouched": False, "ssh": "NOTRUN", "attachAndSwiftTerm": "NOTRUN"}, indent=2))
 print("PASS isolated real-core smoke; artifacts:", out)

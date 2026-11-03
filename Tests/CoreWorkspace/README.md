@@ -10,14 +10,15 @@ python3 Tests/CoreWorkspace/run-tests.py --output "$(mktemp -d /tmp/hc-workspace
 The runner builds and executes Debug and optimized Swift 6 tests, then typechecks
 both production files for iOS. It preserves source hashes and stage/cleanup logs.
 
-Current validation: **88 codec/edit/CAS checks and 32 RPC-owner checks in each
-build mode**, plus iOS Swift 6 typechecking (nine stages).
-Evidence: `/private/tmp/hc-owner-final.7YBFUc/unit`.
-The same directory's `real` gate passes 23 checks against official hc 0.1.17,
-including the production store, automatic cross-client refresh and layout edits.
-Both connect children/core/socket retire. Protocol regression: seven stages at
-`/private/tmp/hc-owner-protocol.8akAt8/run`. Unsigned macOS/iOS app builds pass
-at `/private/tmp/hc-owner-build.OSQg6g/{macos,ios}.log`.
+Current validation: **88 codec/edit/CAS + 32 RPC-owner + 49 focus/recovery/
+notification checks per build mode**, plus iOS Swift 6 typechecking (13 stages).
+Evidence: `/private/tmp/hc-remaining.LWk5Hp/unit`.
+The same directory's `real` gate passes 34 checks against official hc 0.1.17,
+including the production store, cross-client refresh, and a deliberately retained
+lost-launch orphan that is never label-adopted or auto-killed; all owned PIDs
+retire on stop. Protocol regression (seven stages) passes at
+`/private/tmp/hc-remaining-protocol.E9LJqK/run`; unsigned macOS/iOS builds pass
+at `/private/tmp/hc-remaining-build.OF4lRF/{macos,ios}.log`.
 
 The document preflight and typed decoder consume the same normalized JSON object;
 they cannot disagree about which repeated-key value to validate and persist.
@@ -116,7 +117,38 @@ schema/events, a dropped write ACK, no mutation replay, stale caller versions,
 bounded subscribers and close/late-response behavior. The owned-core integration
 also exercises the production owner and automatic cross-client event refresh.
 
-Still to implement in C: product UI/local focus, explicit rebase policy,
-gateway remote-document routing, run/document and close/kill partial-success
-reconciliation, and seen/notification dedup. Native launch authority and installer
-UI remain D.
+## Device focus, recovery and notification dedup
+
+`CoreWorkspaceFocus` keeps workspace/tab/pane selection and zoom per device/window
+and restores from caller-selected local storage scoped to a core ID. It is never
+in the shared document, never a core focus command, seen mark or launch authority.
+A remote edit does not move another device's selection; deleted panes fall back
+and clear stale zoom. Unavailable (nil snapshot) retains selections; a confirmed
+missing document clears them.
+
+`CoreWorkspaceRecovery` journals non-atomic run/document and close/kill outcomes
+and persists **before** any dispatch ticket is exposed. It is correlation bookkeeping,
+not launch authority. A missing/failed run reply is uncertain and never re-run; only
+a successful run reply supplies a known terminal reference. Close plans use canonical
+generation-1 terminal IDs (names can retarget), keep shared views and mark foreign
+origins for their own routing. Layout application and stop attempts are explicit
+post-review steps, not automatic retries; lost doc/kill ACKs are reconciled by a
+fresh read. Journal restore promotes in-flight states to uncertain and rejects wrong
+origin IDs. Forgetting metadata is an explicit UI action and never kills a program.
+
+The dispatch labels are correlation hints only — matching one label is not proof of
+ownership. The real-core integration creates a lost-launch orphan for review and
+never adopts or auto-kills it by label.
+
+`CoreAttentionFeed` derives blocked/done/unexpected-working-exit candidates from
+direct-origin full snapshots, with connection-epoch and sequence guards. The first
+snapshot, missed snapshots and sequence gaps are baselines; restarts and incarnation
+changes reset instead of replaying catch-up alerts. Candidates are confirmed against
+a fresh record on the same connection before presentation, bounded to 128 pending,
+and suppressed once delivered/viewed. Core's private parent `seen` is not UI seen,
+and status/PID/turn never authorize input or termination.
+
+Still to implement in C: product UI/local focus wiring, explicit rebase policy and
+gateway remote-document routing (the document/feed foundations above cover the local
+origin), and run/kill integration with native launch authority and the installer
+(D). The three foundations here are tested in isolation and against an owned core.

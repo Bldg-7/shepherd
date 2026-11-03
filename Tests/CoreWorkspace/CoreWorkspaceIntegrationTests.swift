@@ -1,6 +1,10 @@
 import Foundation
 
-private nonisolated struct Status: Decodable, Sendable { let pid: UInt32; let live: Int }
+private nonisolated struct Status: Decodable, Sendable {
+    struct Holder: Decodable, Sendable { let pid: UInt32 }
+    let pid: UInt32; let live: Int; let holders: [Holder]
+}
+private nonisolated struct RunReceipt: Decodable, Sendable { let address: String; let pid: UInt32? }
 private nonisolated struct Stored: Decodable, Sendable {
     // The fixture writes these exact values. Production storage decoding must
     // use the strict document codec, not this fixture-only wire convenience.
@@ -60,6 +64,66 @@ private nonisolated struct Notice: Decodable, Sendable {
             try await Task.sleep(for: .milliseconds(5))
         }
     }
+    static func recovery(_ rpc: CoreRPCConnection, _ store: CoreWorkspaceStore, _ other: CoreWorkspaceStore,
+                         home: URL, report: URL, ownedPIDs: inout [UInt32]) async throws {
+        let file = home.appending(path: "recovery.json")
+        let journal = try CoreWorkspaceRecovery(coreID: store.originCoreID, epoch: rpc.epoch, persist: { try $0.write(to: file, options: .atomic) })
+        let initial = await store.view(), doc = initial.snapshot!.document!, tab = doc.workspaces[0].tabs[0], pane = tab.layout!.panes[0]
+        func run(_ ticket: CoreWorkspaceRecovery.Ticket) async throws -> RunReceipt {
+            let params = try JSONSerialization.data(withJSONObject: ["argv":["/usr/bin/python3","-I","-S","-B","-c","import time; time.sleep(60)"],
+                "cwd":home.path,"keep":false,"no_parent":true,"no_notify":true,"labels":ticket.label])
+            return try await rpc.call("terminal.run", parameters: params).result()
+        }
+        func track(_ receipt: RunReceipt) async throws {
+            let status: Status = try await rpc.call("server.status").result()
+            ownedPIDs = Array(Set(ownedPIDs + status.holders.map(\.pid) + [receipt.pid].compactMap { $0 }))
+            try JSONSerialization.data(withJSONObject: ["corePID":status.pid,"ownedPIDs":ownedPIDs]).write(to: report, options: .atomic)
+        }
+        let lost = try await journal.beginLaunch(paneID: pane.id, document: doc)
+        let orphan = try await run(lost); try await track(orphan)
+        try await journal.finishLaunch(lost, terminal: nil) // Deliberately ignore the run ACK for recovery, not for fixture cleanup.
+        do { _ = try await journal.beginLaunch(paneID: pane.id, document: doc); throw CoreWorkspaceFailure.invalidDocument }
+        catch CoreWorkspaceRecoveryFailure.busy { checks += 1 }
+        let sibling = CoreWorkspaceDocument.Pane()
+        _ = try await store.edit(.splitPane(pane.id, axis: .horizontal, ratio: 0.5, newPane: sibling), expectedVersion: 6)
+        try await current(store, version: 7); try await current(other, version: 7)
+        let unbound = await store.view().snapshot!
+        let known = try await journal.beginLaunch(paneID: sibling.id, document: unbound.document!)
+        let started = try await run(known); try await track(started)
+        let ref = CoreWorkspaceDocument.TerminalReference(coreID: store.originCoreID, terminalID: started.address)
+        try await journal.finishLaunch(known, terminal: ref)
+        let attempt = try await journal.prepareLayoutAfterReview(known, snapshot: unbound)!
+        _ = try await other.edit(.renameTab(tab.id, "concurrent edit"), expectedVersion: 7)
+        try await current(store, version: 8)
+        do { _ = try await store.edit(attempt.edit, expectedVersion: attempt.expectedVersion); throw CoreWorkspaceFailure.invalidDocument }
+        catch CoreWorkspaceStoreFailure.staleRevision { checks += 1 }
+        try await journal.finishLayout(attempt, result: .conflict)
+        let reviewed = try await journal.prepareLayoutAfterReview(known, snapshot: await store.view().snapshot!)!
+        _ = try await store.edit(reviewed.edit, expectedVersion: reviewed.expectedVersion)
+        try await journal.finishLayout(reviewed, result: .uncertain) // Simulated lost doc ACK, no retry.
+        try await current(store, version: 9)
+        try await journal.reconcileLayout(operationID: known.operationID, snapshot: await store.view().snapshot!)
+        let live: Status = try await rpc.call("server.status").result()
+        try check(live.live == 2, "CAS conflict/recovery did not duplicate either program")
+        let close = try await journal.beginClose(tabID: tab.id, document: await store.view().snapshot!.document!, endPrograms: true)
+        let remove = try await journal.prepareLayoutAfterReview(close, snapshot: await store.view().snapshot!)!
+        let ack = try await store.edit(remove.edit, expectedVersion: remove.expectedVersion)
+        try await journal.finishLayout(remove, result: ack)
+        try await current(store, version: 10)
+        let closedDocument = await store.view().snapshot!.document!
+        let stop = try await journal.beginStop(close, terminal: ref, currentDocument: closedDocument)!
+        let params = try JSONSerialization.data(withJSONObject: ["terminal":started.address])
+        _ = try await rpc.call("terminal.kill", parameters: params) // Only the exact program created by this private fixture.
+        try await journal.finishStop(stop, confirmedEnded: false)
+        do { _ = try await journal.beginStop(close, terminal: ref, currentDocument: closedDocument); throw CoreWorkspaceFailure.invalidDocument }
+        catch CoreWorkspaceRecoveryFailure.requiresReview { checks += 1 }
+        let ended: CoreAttentionRecord = try await rpc.call("terminal.get", parameters: params).result()
+        try await journal.confirmStoppedAfterRead(operationID: close.operationID, terminal: ended)
+        let left: Status = try await rpc.call("server.status").result()
+        try check(left.live == 1, "unknown run retained for review, never auto-killed or label-adopted")
+        try check(await journal.snapshot().first(where: { $0.id == close.operationID })!.complete, "partial close reconciled by fresh finished read")
+        // Final server.stop below owns and cleans the deliberately retained test orphan.
+    }
     static func main() async throws {
         let args = CommandLine.arguments
         guard args.count == 5 else { throw CoreWorkspaceFailure.invalidDocument }
@@ -72,10 +136,10 @@ private nonisolated struct Notice: Decodable, Sendable {
         let ta = try CoreProcessTransport(configuration: config), tb = try CoreProcessTransport(configuration: config)
         let required: Set<String> = ["doc.get","doc.set","events.subscribe","server.status","server.stop"]
         let a = try CoreRPCConnection(transport: ta, requiredMethods: required), b = try CoreRPCConnection(transport: tb, requiredMethods: required)
-        var streams: [CoreStream] = [], stores: [CoreWorkspaceStore] = [], pid: UInt32?, failure: (any Error)?
+        var streams: [CoreStream] = [], stores: [CoreWorkspaceStore] = [], pid: UInt32?, ownedPIDs: [UInt32] = [], failure: (any Error)?
         do {
             let ha = try await a.connect(), hb = try await b.connect()
-            let status: Status = try await a.call("server.status").result(); pid = status.pid
+            let status: Status = try await a.call("server.status").result(); pid = status.pid; ownedPIDs = [status.pid]
             try JSONSerialization.data(withJSONObject: ["corePID":status.pid]).write(to: report, options: .atomic)
             try check(ha.version == args[4] && hb.core.id == ha.core.id && status.live == 0, "two clients one fresh pinned core")
             var sa = try CoreWorkspaceCAS(originCoreID: ha.core.id, epoch: a.epoch), sb = try CoreWorkspaceCAS(originCoreID: hb.core.id, epoch: b.epoch)
@@ -142,6 +206,9 @@ private nonisolated struct Notice: Decodable, Sendable {
             try check(remainingA.streams == 1 && remainingB.streams == 1, "owners close only own subscriptions")
             let closed = await ownerA.view()
             try check(!closed.canWrite && closed.snapshot?.version == 6, "retired owner keeps read-only cache")
+            let lifecycle = try await CoreWorkspaceStore(connection: a), competitor = try await CoreWorkspaceStore(connection: b)
+            stores += [lifecycle, competitor]; _ = try await lifecycle.start(); _ = try await competitor.start()
+            try await recovery(a, lifecycle, competitor, home: home, report: report, ownedPIDs: &ownedPIDs)
         } catch { failure = error }
         for store in stores { try? await store.close() }
         for stream in streams { try? await stream.close() }
@@ -152,6 +219,7 @@ private nonisolated struct Notice: Decodable, Sendable {
         var result: [String: Any] = ["passed":passed,"checks":checks,"stopAcknowledged":stop?.stopped == true,
                                    "connectChildrenReaped":aa.reaped && bb.reaped,"noMutationReplay":true]
         if let pid { result["corePID"] = pid }
+        result["ownedPIDs"] = ownedPIDs
         if let failure { result["failure"] = String(describing: failure) }
         try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys]).write(to: report, options: .atomic)
         guard passed else { throw failure ?? CoreWorkspaceSyncFailure.refreshRequired }

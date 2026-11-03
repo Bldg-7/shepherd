@@ -466,6 +466,18 @@ UI observer는 최대 8개·각 newest-one full view로 제한한다. close는 �
 
 최종 검증 `/private/tmp/hc-owner-final.7YBFUc/`: Debug/optimized 각각 codec·편집·CAS 88 + 실제 framed RPC owner 32 checks, iOS typecheck 통과. 공식 0.1.17 private core의 두 client 통합 23 checks로 자동 갱신·stale edit 거부·split collapse·소유 구독만 종료를 확인했다. 기존 protocol 7단계 회귀와 macOS/iOS unsigned build(`/private/tmp/hc-owner-build.OSQg6g/`)도 통과했다.
 
+### C 추가 구현: device focus, 부분 실패 복구, 알림 중복 방지
+
+기기별 focus/zoom은 공유 문서와 store 밖의 presentation 전용 상태로 두었다(`CoreWorkspaceFocus`). 원격 편집이 다른 기기의 선택을 바꾸지 않고, 삭제된 pane은 fallback·zoom 해제, unavailable과 confirmed missing을 구분한다. core ID 범위로만 복원한다.
+
+run/doc과 close/kill의 비원자적 결과는 dispatch 전에 영속하는 journal로 기록한다(`CoreWorkspaceRecovery`). run 응답 손실은 불확정이지 재실행 허가가 아니며, 성공 응답만 terminal 참조를 제공한다. close 계획은 canonical generation-1 terminal ID만 취급(names는 재대상화 가능), shared view 유지, foreign origin 별도 routing, kill 재시도는 명시적 review 뒤로 제한한다. lost doc/kill ACK는 재전송 대신 fresh read로 조정한다. journal 복원은 inflight를 uncertain으로 승격하고 origin 불일치를 거부한다. dispatch label은 correlation일 뿐 소유 증명이 아니다.
+
+알림은 direct-origin 전체 snapshot에서 blocked/done/unexpected-working-exit를 유도하고 epoch·sequence로 보호한다(`CoreAttentionFeed`). 첫 snapshot/missed/gap은 baseline, 재시작·incarnation 변경은 reset. 후보는 같은 연결의 fresh record로 재확인하고 128 pending bound, 전달/열람 뒤 억제한다. core의 private parent `seen`과 UI seen을 혼동하지 않는다.
+
+실제 owned core 통합에서 lost-launch orphan을 생성해 review용으로 남기고 label로 입양하거나 자동 kill하지 않았으며, CAS 충돌/부분 kill 뒤 fresh read로 조정함을 확인한다. 순수 unit은 세 기반을 각각 검증한다. 남은 것은 실제 UI/local focus 배선, explicit rebase 정책, gateway 원격 doc routing, native launch authority/설치(D) 결합이다.
+
+최종 검증 `/private/tmp/hc-remaining.LWk5Hp/`: Debug/optimized 각각 codec·편집·CAS 88 + RPC owner 32 + focus/복구/알림 49 checks, iOS typecheck(13 stages). 공식 0.1.17 owned core 통합 34 checks에서 lost-launch orphan 미입양/미자동kill 및 전체 owned PID 정리를 확인. protocol 회귀 7단계(`/private/tmp/hc-remaining-protocol.E9LJqK/run`), macOS/iOS unsigned build(`/private/tmp/hc-remaining-build.OF4lRF/`) 통과.
+
 ## 최종 권고
 
 장기 목표는 **hc 단일 backend + 앱 소유 workspace + 독립적인 agent observation/authority**로 정한다. 이전 데이터 마이그레이션을 하지 않는 조건은 이 방향을 단순하게 만든다.
