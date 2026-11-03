@@ -27,6 +27,7 @@ def add_arguments(parser):
     choice = parser.add_mutually_exclusive_group(required=True)
     choice.add_argument("--archive", type=Path, help="official 0.1.16 ARM64 archive (fixed checksum)")
     choice.add_argument("--build-receipt", type=Path, help="explicit locally qualified backport build receipt")
+    return choice
 
 
 def select(archive=None, build_receipt=None):

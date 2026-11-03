@@ -35,7 +35,7 @@ env = {
 sources = ["ShepherdKit/Sources/ShepherdKit/CoreKit/" + name for name in
            ("CoreEventLines.swift", "CoreHandshake.swift", "CoreWire.swift", "CoreRPC.swift",
             "CoreByteTransport.swift", "CoreProcessTransport.swift", "CoreRPCConnection.swift",
-            "CoreStream.swift", "CoreRPCStreams.swift", "CoreSSHTransport.swift", "CoreLocalForeground.swift")]
+            "CoreStream.swift", "CoreRPCStreams.swift", "CoreSSHTransport.swift", "CoreLocalForeground.swift", "CorePassiveScreenSequence.swift")]
 tests = "Tests/CoreProtocol/CoreProtocolTests.swift"
 rpc_tests = "Tests/CoreProtocol/CoreRPCTests.swift"
 connection_tests = "Tests/CoreProtocol/CoreConnectionTests.swift"

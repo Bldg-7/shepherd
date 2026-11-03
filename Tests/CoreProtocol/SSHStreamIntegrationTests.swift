@@ -153,6 +153,10 @@ private struct SSHStreamIntegrationTests {
     static func run() async throws -> Bool {
         let bin = CommandLine.arguments[1], home = CommandLine.arguments[2], peer = CommandLine.arguments[3]
         let report = URL(fileURLWithPath: CommandLine.arguments[4])
+        guard CommandLine.arguments.count == 6, ["resize-enabled", "resize-disabled"].contains(CommandLine.arguments[5]) else {
+            throw IntegrationFailure.failed("missing pinned artifact capability expectation")
+        }
+        let expectsObserverResize = CommandLine.arguments[5] == "resize-enabled"
         try FileManager.default.createDirectory(atPath: home, withIntermediateDirectories: true)
         var environment = ["PATH":"/usr/bin:/bin", "HOME":home, "XDG_STATE_HOME":home+"/state", "XDG_CONFIG_HOME":home+"/config",
                            "XDG_RUNTIME_DIR":home+"/runtime", "HC_SESSION":"owned", "HC_SOCKET":home+"/c.sock", "DO_NOT_TRACK":"1", "LANG":"en_US.UTF-8"]
@@ -321,7 +325,7 @@ private struct SSHStreamIntegrationTests {
         try check(events > 0, "real event subscription")
         // Separate observer cannot type or resize the active viewer.
         let observe = try await remote.openStream("terminal.attach", parameters: params(["terminal":terminal,"cols":91,"rows":27,"observe":true,"resize_notifications":true]))
-        try check(!observe.resizeNotifications, "0.1.16 must not advertise HEAD-only resize notifications")
+        try check(observe.resizeNotifications == expectsObserverResize, "observer resize must match the pinned artifact, not its version string")
         do { try await observe.send(Data([1])); throw IntegrationFailure.failed("observer input") }
         catch CoreStreamFailure.readOnly { checks += 1 }
         try await observe.close()

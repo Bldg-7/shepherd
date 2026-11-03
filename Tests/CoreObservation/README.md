@@ -1,7 +1,7 @@
 # Core observation parity (SHPHRD-151)
 
-This is the first local process-observation slice, **not completed agent parity
-or browser admission**. The product still uses the existing backend.
+These are local process and passive-screen observation slices, **not completed
+agent parity or browser admission**. The product still uses the existing backend.
 
 ```sh
 python3 Tests/CoreObservation/run-tests.py --output "$(mktemp -d /tmp/hc-observation.XXXXXX)/run"
@@ -60,6 +60,52 @@ PID or a copied OS-looking JSON record.
   builds pass. LSP does not support Swift in this workspace; actual compiler and
   runtime results are used instead.
 
+## Passive attributed-screen slice
+
+`CorePassiveScreenSequence` requires negotiated observer resize notifications and
+an authoritative RESIZE before any DATA. Packets now carry an internal stream
+identity (epoch/channel/nonce) and ordinal, including controls without CREDIT
+receipts. Wrong-stream, replayed/out-of-order, zero/oversized grid and retired
+packets fail closed. Limits are 2,048 per dimension and 262,144 visible cells.
+These are grid limits, not a complete parser/image/scrollback memory policy.
+
+The type emits resize/data/closed instructions only. It does not expose a
+snapshot-complete, ready, empty-editor or permission flag. DATA is acknowledged
+only after the renderer consumes it; all generated responses are discarded.
+
+A **separate** pinned candidate adds existing upstream observer negotiation
+(`5a9de29`) and Ghostty #14725 on top of #14711, without importing unrelated HEAD
+changes. Reproduction and licensing: [backport/README.md](backport/README.md).
+The prior OSC8-only artifact remains intact and is a failing passive-observer
+negative control, not a fallback silently accepted by this gate.
+
+Evidence:
+
+- Candidate receipt: `/private/tmp/hc-parity.GSdG2o/qualified/candidate-receipt.json`.
+  Binary SHA256: `155712b7609d180742e0332ee953d41c2559c8fd11de568b0803ad259d591046`.
+- Formatter 321 tests; Rust VT 10; core library 95 passed/1 ignored (its isolated
+  child helper also runs). All builder stages and unchanged notices pass.
+- `/private/tmp/candidate-passive-final.SoWGIV/run/validation.json`: 33 native
+  headless SwiftTerm checks pass. Correct initial/changed/headless grid,
+  blank gaps, background-only row, dim attribute, CJK/emoji and OSC8 are retained.
+  Program input stays zero; no scroll-history read or renderer reply is sent.
+- `/private/tmp/baseline-passive-negative.YKeITx/run/validation.json`: original
+  #14711 artifact fails with `unsupported`, resize negotiation false, exit 1;
+  owned process/socket cleanup succeeds. The earlier Swift top-level-throw
+  experiment was replaced with a controlled nonzero exit, not a skipped check.
+- Full SSH/native SwiftTerm regression: 34 checks pass for **both** the candidate
+  (`/private/tmp/candidate-full-ssh.GRvVHt/run`) and original OSC8 artifact
+  (`/private/tmp/osc8-baseline-full-ssh.8gb8zK/run`). Expected resize support is
+  pinned by artifact selection; the common 0.1.16 string does not select it.
+- `/private/tmp/hc-passive-sequence.2kBsdn/run`: protocol seven stages pass,
+  connection/stream assertions increase to 140; Swift 6 and iOS 17 typecheck.
+- Candidate receipt tests: eight pass; the original artifact tests: 14 pass.
+- `/private/tmp/hc-passive-build.hzsR70/{macos,ios}.log`: unsigned Debug builds pass.
+
+The synthetic grid emits an explicit end marker for its assertions. **Real CLI
+initial snapshot completion and empty-composer readiness remain unqualified.**
+Neither this fixture nor a DATA boundary supplies native ownership or readiness.
+
 ## Still required before backend cutover
 
 1. Connect this evidence to the new launch identity/epoch and the existing native
@@ -69,7 +115,8 @@ PID or a copied OS-looking JSON record.
 3. Qualify passive attributed-screen observation, initial snapshot completion and
    resize ordering. Official 0.1.16 does not negotiate observer resize frames;
    cross-channel size events or an arbitrary DATA boundary are not such proof.
-4. Evaluate existing upstream observer-resize support and Ghostty #14725's
-   blank/background/wrap restoration in separate pinned experiments.
+4. Extend the candidate's tested geometry/attribute behavior to actual supported
+   CLI renderings and bound parser/image/scrollback resources. Candidate tests
+   are not proof of arbitrary agent compatibility.
 5. Preserve remote inspection, safe rename/resume and non-invasive mobile output;
    do not replace missing capabilities with synthetic `interactiveReady=true`.

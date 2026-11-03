@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "variant": "hc-0.1.16-passive-candidate",
+  "coreCommit": "e07c2a1bedd62cf4787ee026ee23ee79c7d95491",
+  "ghosttyCommit": "1e5cdb865807abc990181efb8ebfa9122955cce2",
+  "corePatchCommit": "5a9de29b2f9b6690388a1c297a7ca8d73df7d3e2",
+  "corePatchSHA256": "99c3f32a36853a246964e35cee06a64626d9160a7f2cd8a612a7eb8885a30cb7",
+  "ghostty14725Commit": "152bdbc68075ee4bc5b4745fb908598a16fc628c",
+  "ghostty14725SHA256": "03d817c069e83b3fb62664e9639e62b6dc1f235afa852cde3c724d234b3b0c08",
+  "baseRecipeSHA256": "ff7a121b90e307694f3537afa6e74b1afb0abc9ebc4652c3f1f218227b327d58",
+  "cargoLockSHA256": "6d2edb74e292e719283c027d8054666d0c5ba34126ec202d6655bceeb942125c",
+  "formatterSHA256": "64e8dfa9b385d8a65ba24bb4d68b0bd012610caf68d1aa1f29e64fea5ab8e7c3",
+  "coreFiles": {
+    "crates/herdr-core/src/api.rs": "6480ec7dcb968b83c2c53b0965f469640bede169c0cfc37a68adfa7abc8f0957",
+    "crates/herdr-core/src/api/types.rs": "8449c70b76476056e1603328dffeb69c6c460c5b5c9e0556480d51844c2aa50a",
+    "crates/herdr-core/src/remote.rs": "8f3e9e2ceb89f42944a93b6aaddd974411e3c877ba2641bd9aadef6c5a976f66",
+    "crates/herdr-core/src/remote/tests.rs": "eb19216c116a9e45677d9a0f213e25da77205857174b29d668bea72f3e9a80d6",
+    "crates/herdr-core/src/runtime.rs": "a1702c4886cf2e336728aa7b4d144b299d966b662e3f14f4acf05e7b6cf2b7a0",
+    "crates/herdr-core/src/server.rs": "a88b26ababba39e401d73ff51de505518315e8063016e2111164cc094b98a967",
+    "crates/herdr-core/src/viewers.rs": "2af73ea3626994969c314efb8994a45d12d46a1a2e963413c8676e1e43838515",
+    "crates/herdr-core/src/viewers/tests.rs": "331f261aa9f37a87149af576cf38f9e90a37ff083d0326b0e39fd2823f70b2b2",
+    "crates/herdr-core/src/wire.rs": "988fcbd641162f130ef1b9808a8da31e0e3e52490ce7f20f6283150881317c44",
+    "crates/herdr-core/tests/m2.rs": "baeb7303e39cc3bc15b73666307fafced8c1b2a25e7c5a620bed820952062543",
+    "crates/herdr-core/tests/remote.rs": "697735e668b7aea2b5ccda8b0b0081d45fadda9548b286ca7f61497e00e690dc",
+    "crates/herdr-core/tests/resize_compat.rs": "0c220726e7a55f8a8a4c6e998e0d7e5cda3e7bb721dfc8f6cc8bf6c5a6e8f86d",
+    "crates/herdr-core/tests/resize_negotiation.rs": "28dd7429cd55e884f1cb439c77f8e1d9bed8326cc89ee1f713cb92e6749b1953",
+    "schema/README.md": "3a7070863d6ecffa7c4b1628aadf2c788461ce44ba53d96ecb6335bd6a45d8d7",
+    "schema/hc.openrpc.json": "7e10f641b8d1797de696e824216f88498027577402ab47bb0f3401ff20d48872"
+  },
+  "notOfficialRelease": true
+}

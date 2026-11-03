@@ -76,6 +76,8 @@ extension CoreRPCConnection {
     }
     private func deliverStream(_ slot: CoreStreamState) {
         guard !slot.closing, let reader = slot.reader, !slot.packets.isEmpty, slot.outstanding == nil else { return }
+        guard slot.packetOrdinal < UInt64.max else { fail(CoreStreamFailure.limitExceeded); return }
+        slot.packetOrdinal += 1
         let frame = slot.packets.removeFirst()
         var receipt: CoreCreditReceipt?
         if frame.kind == .data {
@@ -86,7 +88,7 @@ extension CoreRPCConnection {
         }
         slot.reader = nil; slot.readDeadline = nil
         if frame.kind == .close { streams[slot.id.channel] = nil }
-        reader.resume(returning: CoreStreamPacket(frame: frame, receipt: receipt))
+        reader.resume(returning: CoreStreamPacket(stream: slot.id, ordinal: slot.packetOrdinal, frame: frame, receipt: receipt))
     }
     func acknowledgeStream(_ id: CoreStreamID, receipt: CoreCreditReceipt) throws {
         let slot = try streamSlot(id)

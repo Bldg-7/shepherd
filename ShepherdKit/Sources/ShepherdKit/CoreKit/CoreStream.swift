@@ -15,6 +15,10 @@ public nonisolated struct CoreCreditReceipt: Hashable, Sendable {
     public let bytes: Int
 }
 public nonisolated struct CoreStreamPacket: Sendable {
+    // Local provenance for every packet, including controls without a CREDIT
+    // receipt. Channel numbers alone can be reused on a new connection.
+    let stream: CoreStreamID
+    let ordinal: UInt64
     public let frame: CoreFrame
     public let receipt: CoreCreditReceipt?
 }
@@ -82,6 +86,7 @@ nonisolated final class CoreStreamState {
     var dataBytes = 0
     var credit = CoreWire.initialStreamCredit
     var sequence: UInt64 = 0
+    var packetOrdinal: UInt64 = 0
     var outstanding: CoreCreditReceipt?
     var reader: CheckedContinuation<CoreStreamPacket?, Error>?
     var readDeadline: ContinuousClock.Instant?

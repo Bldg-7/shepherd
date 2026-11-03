@@ -1,0 +1,1239 @@
+From 5a9de29b2f9b6690388a1c297a7ca8d73df7d3e2 Mon Sep 17 00:00:00 2001
+From: Ogulcan Celik <ogulcancelik@gmail.com>
+Date: Sun, 1 Nov 2026 21:40:26 +0000
+Subject: [PATCH] fix(attach): notify observers when the terminal size changes
+
+---
+ crates/herdr-core/src/api.rs                  |   9 +-
+ crates/herdr-core/src/api/types.rs            |  10 ++
+ crates/herdr-core/src/remote.rs               |  69 ++++++++--
+ crates/herdr-core/src/remote/tests.rs         | 119 ++++++++++++++++
+ crates/herdr-core/src/runtime.rs              |   7 +-
+ crates/herdr-core/src/server.rs               |  12 +-
+ crates/herdr-core/src/viewers.rs              |  54 +++++++-
+ crates/herdr-core/src/viewers/tests.rs        |  93 +++++++++++++
+ crates/herdr-core/src/wire.rs                 | 128 +++++++++++++++++-
+ crates/herdr-core/tests/m2.rs                 |  63 +++++++++
+ crates/herdr-core/tests/remote.rs             |  46 +++++++
+ crates/herdr-core/tests/resize_compat.rs      | 115 ++++++++++++++++
+ crates/herdr-core/tests/resize_negotiation.rs |  41 ++++++
+ schema/README.md                              |  20 ++-
+ schema/hc.openrpc.json                        |  30 +++-
+ 15 files changed, 785 insertions(+), 31 deletions(-)
+ create mode 100644 crates/herdr-core/src/viewers/tests.rs
+ create mode 100644 crates/herdr-core/tests/resize_compat.rs
+ create mode 100644 crates/herdr-core/tests/resize_negotiation.rs
+
+diff --git a/crates/herdr-core/src/api.rs b/crates/herdr-core/src/api.rs
+index e4406f4..3f6a8f7 100644
+--- a/crates/herdr-core/src/api.rs
++++ b/crates/herdr-core/src/api.rs
+@@ -13,7 +13,7 @@ use std::sync::Arc;
+ use std::time::Duration;
+ 
+ pub const GENERATION: u32 = 1;
+-pub const FEATURES: &[&str] = &["framed", "attach", "events", "status", "shell"];
++pub const FEATURES: &[&str] = &["framed", "attach", "events", "status", "shell", "resize_notifications"];
+ pub const FINISHED_LINES: usize = 1000;
+ /// A terminal's identity: fixed at start from whoever starts it.
+ pub const IDENTITY_VARS: &[&str] = &["TERM", "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "COLORTERM"];
+@@ -425,13 +425,18 @@ async fn terminal_attach(core: Ctx<'_>, p: AttachParams) -> Result<AttachResult,
+     }
+     let req = crate::viewers::AttachRequest {
+         observe: p.observe,
++        resize_notifications: p.resize_notifications,
+         history: p.history,
+         size: (p.cols, p.rows),
+         display: p.display,
+         resumed: p.resumed,
+     };
+     let channel = core.attach(conn, id, req)?;
+-    Ok(AttachResult { channel, terminal: Public(record(core, id)?) })
++    Ok(AttachResult {
++        channel,
++        terminal: Public(record(core, id)?),
++        resize_notifications: p.observe && p.resize_notifications,
++    })
+ }
+ 
+ async fn terminal_send(core: Ctx<'_>, p: SendParams) -> Result<SendResult, RpcError> {
+diff --git a/crates/herdr-core/src/api/types.rs b/crates/herdr-core/src/api/types.rs
+index 8cc2668..b71cdd7 100644
+--- a/crates/herdr-core/src/api/types.rs
++++ b/crates/herdr-core/src/api/types.rs
+@@ -107,6 +107,9 @@ pub struct HelloParams {
+     pub core: Option<CoreInfo>,
+     /// What that core calls this one (`rohan`), so news about `t7` reaches it as `rohan/t7`.
+     pub calls_you: Option<String>,
++    /// Features supported by a core dialing in, including relaying size notifications.
++    #[serde(default)]
++    pub features: Vec<String>,
+ }
+ 
+ #[derive(Serialize, JsonSchema)]
+@@ -358,6 +361,10 @@ pub struct AttachParams {
+     #[arg(long)]
+     #[serde(default)]
+     pub observe: bool,
++    /// Observer understands core-to-viewer RESIZE before replacement paints.
++    #[arg(skip)]
++    #[serde(default)]
++    pub resize_notifications: bool,
+     /// Scrollback lines to show first (main screen only).
+     #[arg(long, default_value_t = 0)]
+     #[serde(default)]
+@@ -387,6 +394,9 @@ pub struct AttachResult {
+     /// RESIZE, FOCUS, FACTS, CREDIT and CLOSE frames control it.
+     pub channel: u32,
+     pub terminal: Public,
++    /// True only when the entire path sends RESIZE before replacement paints.
++    /// False or absent means the observer must track size changes separately.
++    pub resize_notifications: bool,
+ }
+ 
+ #[derive(clap::Args, Serialize, Deserialize, JsonSchema, Default)]
+diff --git a/crates/herdr-core/src/remote.rs b/crates/herdr-core/src/remote.rs
+index dfc0aec..3cbcc6e 100644
+--- a/crates/herdr-core/src/remote.rs
++++ b/crates/herdr-core/src/remote.rs
+@@ -19,8 +19,8 @@ use tokio::sync::{mpsc, oneshot};
+ 
+ /// A viewer here that a stream there goes to: its connection and channel.
+ type Sink = (Arc<Conn>, u32);
+-/// A call waiting for its reply, and where a stream it opens goes.
+-type Waiting = (oneshot::Sender<Value>, Option<Sink>);
++/// A pending reply, its stream sink and whether resize support is required.
++type Waiting = (oneshot::Sender<Value>, Option<(Sink, bool)>);
+ 
+ #[cfg(test)]
+ mod tests;
+@@ -58,10 +58,18 @@ impl Line {
+     }
+ 
+     /// A reply to one of our calls: to whoever waits for it.
+-    fn take_reply(&self, reply: Value) {
++    fn take_reply(&self, mut reply: Value) {
+         let Some((waiter, sink)) = reply["id"].as_u64().and_then(|id| lock(&self.pending).remove(&id)) else { return };
+-        if let (Some(sink), Some(there)) = (sink, reply["result"]["channel"].as_u64()) {
+-            lock(&self.streams).insert(there as u32, sink);
++        if let (Some((sink, require_resize)), Some(there)) = (sink, reply["result"]["channel"].as_u64()) {
++            if require_resize && reply["result"]["resize_notifications"] != true {
++                let _ = self.frames.send(wire::encode(there as u32, wire::CLOSE, b""));
++                reply = crate::rpc::response(
++                    reply["id"].clone(),
++                    Err(RpcError::new("unavailable", RESIZE_LOST, "attach again")),
++                );
++            } else {
++                lock(&self.streams).insert(there as u32, sink);
++            }
+         }
+         let _ = waiter.send(reply);
+     }
+@@ -88,7 +96,7 @@ impl Line {
+         machine: &str,
+         method: &str,
+         params: Value,
+-        sink: Option<Sink>,
++        sink: Option<(Sink, bool)>,
+         deadline: Duration,
+     ) -> Result<Value, RpcError> {
+         let id = self.next.fetch_add(1, Ordering::Relaxed);
+@@ -243,7 +251,7 @@ async fn supervise(core: Arc<Core>, id: String) {
+             st.lines.insert(id.clone(), state);
+             core.changed.notify_waiters();
+         };
+-        let hello = json!({"framed": true, "core": core.info, "calls_you": m.name});
++        let hello = json!({"framed": true, "core": core.info, "calls_you": m.name, "features": crate::api::FEATURES});
+         match crate::machines::dial(&core.paths, m.reach(), m.session.as_deref(), hello).await {
+             Ok(d) if d.hello["core"]["id"] != m.id.as_str() => {
+                 down(&mut core.lock(), format!("a different core answers there ({})", d.hello["core"]["id"]));
+@@ -285,6 +293,9 @@ pub struct Relayed {
+     pub params: Value,
+ }
+ 
++/// Why an opted-in stream was refused: a hop on the way lost resize support.
++const RESIZE_LOST: &str = "resize notifications lost";
++
+ /// Viewers left waiting by a dropped line to `m` get their terminal back.
+ async fn reattach(core: Arc<Core>, m: Machine, line: Arc<Line>) {
+     let waiting: Vec<((usize, u32), Relayed)> = core
+@@ -299,8 +310,11 @@ async fn reattach(core: Arc<Core>, m: Machine, line: Arc<Line>) {
+         let mut params = r.params.clone();
+         params["history"] = 0.into();
+         params["resumed"] = true.into();
++        negotiate_resize(&line, &mut params);
+         let deadline = deadline_for(&core, "terminal.attach", &params);
+-        let reply = line.call_into(&m.name, "terminal.attach", params, Some((r.conn.clone(), here)), deadline).await;
++        let sink = ((r.conn.clone(), here), r.params["resize_notifications"] == true);
++        let reply = line.call_into(&m.name, "terminal.attach", params, Some(sink), deadline).await;
++        let lost_resize = matches!(&reply, Err(e) if e.message == RESIZE_LOST);
+         let mut st = core.lock();
+         // Gone meanwhile (the viewer detached): nothing to resume.
+         if !st.relayed.contains_key(&(key, here)) {
+@@ -312,7 +326,13 @@ async fn reattach(core: Arc<Core>, m: Machine, line: Arc<Line>) {
+             }
+             None => {
+                 st.relayed.remove(&(key, here));
+-                r.conn.with(|out| out.finish(here, b""));
++                // A downgraded path must not deliver paints sized for the old
++                // contract; any other failure still hands over what arrived.
++                if lost_resize {
++                    r.conn.with(|out| out.close(here, b""));
++                } else {
++                    r.conn.with(|out| out.finish(here, b""));
++                }
+             }
+         }
+     }
+@@ -392,6 +412,11 @@ async fn hold(core: &Arc<Core>, m: &Machine, mut d: crate::machines::Dialed) {
+                     });
+                 }
+             }
++            (there, wire::RESIZE) if payload.len() == 4 => {
++                if let Some((conn, here)) = lock(&line.streams).get(&there) {
++                    conn.with(|out| out.ordered_resize(*here, &payload));
++                }
++            }
+             (there, wire::CLOSE) => {
+                 if let Some((conn, here)) = lock(&line.streams).remove(&there) {
+                     core.lock().relayed.remove(&(conn_key(&conn), here));
+@@ -610,7 +635,7 @@ fn save_peers(core: &Core, st: &State) {
+ pub fn peer_joined(core: &Arc<Core>, conn: &Arc<Conn>, hello: &Value) {
+     let (Some(id), Some(name)) = (hello["core"]["id"].as_str(), hello["core"]["name"].as_str()) else { return };
+     let (frames, mut out) = mpsc::unbounded_channel::<Vec<u8>>();
+-    let line = Line::new(frames, &Value::Null); // it only calls back here, never runs
++    let line = Line::new(frames, hello);
+     let c = conn.clone();
+     tokio::spawn(async move {
+         while let Some(frame) = out.recv().await {
+@@ -638,7 +663,8 @@ pub fn from_peer(core: &Core, conn: Option<&Arc<Conn>>, mut params: Value) -> Va
+     let Some(conn) = conn else { return params };
+     let st = core.lock();
+     let key = conn_key(conn);
+-    let Some(id) = st.peer_lines.iter().find(|(_, (k, _))| *k == key).map(|(id, _)| id) else { return params };
++    let Some((id, (_, line))) = st.peer_lines.iter().find(|(_, (k, _))| *k == key) else { return params };
++    negotiate_resize(line, &mut params);
+     if let (Some(rest), Some(peer)) =
+         (params["caller"].as_str().and_then(|c| c.strip_prefix(&format!("{id}/"))), st.peers.get(id))
+     {
+@@ -741,16 +767,31 @@ pub fn conn_key(conn: &Arc<Conn>) -> usize {
+     Arc::as_ptr(conn) as usize
+ }
+ 
++fn negotiate_resize(line: &Line, params: &mut Value) {
++    if params["resize_notifications"] == true && !line.features.iter().any(|f| f == "resize_notifications") {
++        params["resize_notifications"] = false.into();
++    }
++}
++
+ /// Opens a viewer here on a terminal there: the stream channel there is
+ /// relayed to a new channel on this connection, both ways.
+-pub async fn attach(core: &Core, conn: &Arc<Conn>, m: &Machine, params: Value) -> Result<Value, RpcError> {
++pub async fn attach(core: &Core, conn: &Arc<Conn>, m: &Machine, mut params: Value) -> Result<Value, RpcError> {
+     let line = line(core, m).await?;
++    negotiate_resize(&line, &mut params);
+     let here = conn.new_channel();
+-    conn.with(|out| out.open(here));
++    conn.with(|out| out.open_paused(here));
+     let deadline = deadline_for(core, "terminal.attach", &params);
+-    match line.call_into(&m.name, "terminal.attach", params.clone(), Some((conn.clone(), here)), deadline).await {
++    match line
++        .call_into(&m.name, "terminal.attach", params.clone(), Some(((conn.clone(), here), false)), deadline)
++        .await
++    {
+         Ok(mut r) => {
+             let there = r["channel"].as_u64().unwrap_or_default() as u32;
++            let enabled = params["observe"] == true
++                && params["resize_notifications"] == true
++                && r["resize_notifications"] == true;
++            r["resize_notifications"] = enabled.into();
++            params["resize_notifications"] = enabled.into();
+             let viewer = Relayed { line, there, conn: conn.clone(), machine: m.id.clone(), params };
+             core.lock().relayed.insert((conn_key(conn), here), viewer);
+             r["channel"] = here.into();
+diff --git a/crates/herdr-core/src/remote/tests.rs b/crates/herdr-core/src/remote/tests.rs
+index fc8094d..6490a8f 100644
+--- a/crates/herdr-core/src/remote/tests.rs
++++ b/crates/herdr-core/src/remote/tests.rs
+@@ -3,6 +3,125 @@ use crate::events::{Filter, Sink};
+ use crate::paths::Paths;
+ use std::sync::atomic::AtomicBool;
+ 
++#[tokio::test]
++async fn reconnect_rejects_downgrade_before_mapping_fallback_data() {
++    for stalled in [false, true] {
++        // The immediate relay is capable, but its deeper path has downgraded.
++        let (frames, mut rx) = mpsc::unbounded_channel();
++        let line = Line::new(frames, &json!({"features": ["resize_notifications"]}));
++        let conn = Arc::new(Conn::default());
++        conn.with(|out| {
++            out.open(7);
++            if stalled {
++                out.data(7, &vec![120; wire::WINDOW]);
++                while out.next_frame().is_some() {}
++            }
++        });
++        let calling = line.clone();
++        let sink = conn.clone();
++        let task = tokio::spawn(async move {
++            calling
++                .call_into(
++                    "relay",
++                    "terminal.attach",
++                    json!({"observe": true, "resumed": true, "resize_notifications": true}),
++                    Some(((sink, 7), true)),
++                    Duration::from_secs(1),
++                )
++                .await
++        });
++        let request = rx.recv().await.unwrap();
++        let request: Value = serde_json::from_slice(&request[wire::HEADER..]).unwrap();
++        line.take_reply(json!({"id": request["id"], "result": {"channel": 9, "resize_notifications": false}}));
++        // Model buffered DATA consumed before the awakened caller can run.
++        if let Some((sink, here)) = lock(&line.streams).get(&9) {
++            sink.with(|out| {
++                out.data(*here, b"unsupported fallback paint");
++            });
++        }
++        assert!(task.await.unwrap().is_err(), "downgraded reattach must be rejected");
++        conn.with(|out| {
++            assert_eq!(out.queued(7), 0, "rejected fallback DATA must not enter the downstream queue");
++            out.close(7, b"");
++            let frame = out.next_frame().expect("CLOSE must not wait for credit");
++            assert_eq!(wire::decode_header(frame[..wire::HEADER].try_into().unwrap()).unwrap().1, wire::CLOSE);
++            assert!(out.next_frame().is_none());
++        });
++        assert!(!lock(&line.streams).contains_key(&9), "rejected stream must never be mapped");
++    }
++}
++
++#[tokio::test]
++async fn failed_reattach_drains_pending_data_before_close() {
++    let root = std::path::PathBuf::from(format!(
++        "/var/tmp/hc-reattach-drain-{}-{}",
++        std::process::id(),
++        crate::platform::random_hex()
++    ));
++    let paths = Paths {
++        socket: root.join("core.sock"),
++        holder_socket: root.join("holder.sock"),
++        state: root.clone(),
++        config: root.join("config.toml"),
++    };
++    paths.create_dirs().unwrap();
++    let core = Core::start(paths, crate::api::CoreInfo { id: "here".into(), name: "here".into() }).unwrap();
++    let machine = Machine {
++        name: "away".into(),
++        target: "away".into(),
++        via: false,
++        temporary: false,
++        session: None,
++        id: "remote".into(),
++        host: "away".into(),
++        version: "test".into(),
++    };
++    let conn = Arc::new(Conn::default());
++    conn.with(|out| {
++        out.open(7);
++        assert!(out.data(7, &vec![b'x'; wire::WINDOW]));
++        while out.next_frame().is_some() {}
++        assert!(out.data(7, b"last output before the line dropped"));
++        assert!(out.next_frame().is_none(), "pending output must wait for credit");
++    });
++    let (old_frames, old_rx) = mpsc::unbounded_channel();
++    let old_line = Line::new(old_frames, &json!({}));
++    core.lock().relayed.insert(
++        (conn_key(&conn), 7),
++        Relayed {
++            line: old_line,
++            there: 9,
++            conn: conn.clone(),
++            machine: machine.id.clone(),
++            params: json!({"terminal": "t1"}),
++        },
++    );
++    drop(old_rx); // The viewer survives its old line.
++    let (frames, mut rx) = mpsc::unbounded_channel();
++    let line = Line::new(frames, &json!({}));
++    let task = tokio::spawn(reattach(core.clone(), machine, line.clone()));
++    let request = rx.recv().await.unwrap();
++    let request: Value = serde_json::from_slice(&request[wire::HEADER..]).unwrap();
++    assert_eq!(request["method"], "terminal.attach");
++    line.take_reply(crate::rpc::response(
++        request["id"].clone(),
++        Err(RpcError::new("finished", "terminal finished", "")),
++    ));
++    task.await.unwrap();
++    assert!(core.lock().relayed.is_empty());
++    conn.with(|out| {
++        out.credit(7, wire::WINDOW);
++        let data = out.next_frame().expect("queued output before CLOSE");
++        assert_eq!(wire::decode_header(data[..wire::HEADER].try_into().unwrap()).unwrap().1, wire::DATA);
++        assert_eq!(&data[wire::HEADER..], b"last output before the line dropped");
++        let close = out.next_frame().expect("CLOSE after queued output");
++        assert_eq!(wire::decode_header(close[..wire::HEADER].try_into().unwrap()).unwrap().1, wire::CLOSE);
++        assert!(out.next_frame().is_none());
++    });
++    drop(core);
++    std::fs::remove_dir_all(root).unwrap();
++}
++
+ #[test]
+ fn remote_misses_and_renames_keep_subscribers_on_the_current_machine() {
+     let root = std::path::PathBuf::from(format!(
+diff --git a/crates/herdr-core/src/runtime.rs b/crates/herdr-core/src/runtime.rs
+index 0e66b7d..3adee47 100644
+--- a/crates/herdr-core/src/runtime.rs
++++ b/crates/herdr-core/src/runtime.rs
+@@ -708,12 +708,13 @@ impl Core {
+             let _ = self.jobs.send(crate::notes::Job::Orphaned(id));
+             crate::remote::orphaned_afar(self, st, id); // before `--rm` forgets where it reached
+         }
+-        for v in st.viewers.remove(&id).unwrap_or_default() {
+-            v.conn.with(|out| out.finish(v.channel, end.to_string().as_bytes()));
+-        }
+         if let (Some(relay), Some(screen)) = (st.relays.get_mut(&id), st.screens.get_mut(&id)) {
+             relay.flush(screen);
+         }
++        self.queue_resize_paints(st, id, None);
++        for v in st.viewers.remove(&id).unwrap_or_default() {
++            v.conn.with(|out| out.finish(v.channel, end.to_string().as_bytes()));
++        }
+         st.relays.remove(&id);
+         if let Some(snapshot) = st.screens.remove(&id).and_then(|s| s.snapshot())
+             && let Err(e) = write_atomic(&self.snapshot_path(id), &snapshot)
+diff --git a/crates/herdr-core/src/server.rs b/crates/herdr-core/src/server.rs
+index 201ac2b..ef44574 100644
+--- a/crates/herdr-core/src/server.rs
++++ b/crates/herdr-core/src/server.rs
+@@ -181,7 +181,7 @@ async fn connection(core: Arc<Core>, read: platform::AsyncRead, mut write: Write
+         }
+     }
+     let conn = Arc::new(Conn::default());
+-    let mut writer = tokio::spawn(write_frames(conn.clone(), write));
++    let mut writer = tokio::spawn(write_frames(core.clone(), conn.clone(), write));
+     // Another core dialing in says who it is in its hello.
+     let hello: Value = serde_json::from_str(&line).unwrap_or_default();
+     crate::remote::peer_joined(&core, &conn, &hello["params"]);
+@@ -284,9 +284,10 @@ pub fn heartbeat(core: Arc<Core>, conn: Arc<Conn>, channel: u32) {
+ }
+ 
+ /// Sends whatever the outbox hands out: control first, then streams by credit.
+-async fn write_frames(conn: Arc<Conn>, mut write: Writer) -> io::Result<()> {
++async fn write_frames(core: Arc<Core>, conn: Arc<Conn>, mut write: Writer) -> io::Result<()> {
+     loop {
+         conn.wake.notified().await;
++        core.prepare_repaints(&conn);
+         loop {
+             let next = conn.outbox().next_frame();
+             match next {
+@@ -326,7 +327,12 @@ async fn read_frames(core: &Arc<Core>, conn: &Arc<Conn>, read: &mut Reader) -> i
+                 let task = tokio::spawn(async move {
+                     let handled = handle(&core, Some(&conn), None, &payload).await;
+                     if let Some(reply) = &handled.reply {
+-                        conn.with(|out| out.control(wire::encode(0, wire::DATA, reply.to_string().as_bytes())));
++                        conn.with(|out| {
++                            out.control(wire::encode(0, wire::DATA, reply.to_string().as_bytes()));
++                            if let Some(channel) = reply["result"]["channel"].as_u64() {
++                                out.resume(channel as u32);
++                            }
++                        });
+                     }
+                     if handled.stop {
+                         // Give the writer a moment to put the reply on the wire before we exit.
+diff --git a/crates/herdr-core/src/viewers.rs b/crates/herdr-core/src/viewers.rs
+index 9e9890e..f6927cc 100644
+--- a/crates/herdr-core/src/viewers.rs
++++ b/crates/herdr-core/src/viewers.rs
+@@ -12,6 +12,9 @@ use serde::{Deserialize, Serialize};
+ use std::sync::Arc;
+ use std::time::Instant;
+ 
++#[cfg(test)]
++mod tests;
++
+ /// What a viewer's own terminal looks like, reported by the client.
+ #[derive(Serialize, Deserialize, JsonSchema, Clone, Default, Debug, PartialEq)]
+ pub struct Display {
+@@ -29,6 +32,8 @@ pub struct Viewer {
+     pub conn: Arc<Conn>,
+     pub channel: u32,
+     pub observe: bool,
++    resize_notifications: bool,
++    repaint_pending: bool,
+     size: (u16, u16),
+     /// None: not active since it came back after a dropped line.
+     active_at: Option<Instant>,
+@@ -45,6 +50,7 @@ fn rgb(hex: &Option<String>) -> Option<Rgb> {
+ 
+ pub struct AttachRequest {
+     pub observe: bool,
++    pub resize_notifications: bool,
+     pub history: usize,
+     pub size: (u16, u16),
+     pub display: Display,
+@@ -71,6 +77,8 @@ impl Core {
+             conn: conn.clone(),
+             channel,
+             observe: req.observe,
++            resize_notifications: req.observe && req.resize_notifications,
++            repaint_pending: false,
+             size: req.size,
+             active_at: (!req.resumed).then(Instant::now),
+             display: req.display,
+@@ -78,8 +86,14 @@ impl Core {
+         });
+         self.apply_size(&mut st, id);
+         let paint = first_paint(&st, id, req.history);
++        st.viewers.get_mut(&id).unwrap().last_mut().unwrap().repaint_pending = false;
+         conn.with(|out| {
+-            out.open(channel);
++            out.open_paused(channel);
++            if req.observe && req.resize_notifications {
++                let t = &st.reg.terminals[&id];
++                let size = [t.cols.to_le_bytes(), t.rows.to_le_bytes()].concat();
++                out.resize(channel, &size);
++            }
+             out.data(channel, &paint);
+         });
+         Ok(channel)
+@@ -127,6 +141,9 @@ impl Core {
+         });
+         let mut behind = Vec::new();
+         for (index, v) in st.viewers.get_mut(&id).into_iter().flatten().enumerate().filter(|_| !scrolling) {
++            if v.repaint_pending {
++                continue;
++            }
+             let bytes = if v.recovering {
+                 let Some(paint) = &recovered else { continue };
+                 v.recovering = false;
+@@ -306,10 +323,43 @@ impl Core {
+         if let Some(link) = st.link(id) {
+             link.send(&proto::json_frame(proto::RESIZE, id, &proto::Size { cols, rows }));
+         }
++        let size = [cols.to_le_bytes(), rows.to_le_bytes()].concat();
++        for v in st.viewers.get_mut(&id).into_iter().flatten().filter(|v| v.resize_notifications) {
++            v.repaint_pending = true;
++            v.conn.with(|out| out.resize(v.channel, &size));
++        }
+         self.save_soon();
+         self.emit(st, "size", id, serde_json::json!({"cols": cols, "rows": rows}));
+     }
+ 
++    /// Serialize only the latest grid, when a viewer has credit to receive it.
++    pub fn prepare_repaints(&self, conn: &Arc<Conn>) {
++        let mut st = self.lock();
++        let ids: Vec<u32> = st.viewers.keys().copied().collect();
++        for id in ids {
++            self.queue_resize_paints(&mut st, id, Some(conn));
++        }
++    }
++
++    /// On exit there will be no later writer pass over this screen.
++    pub(crate) fn queue_resize_paints(&self, st: &mut State, id: u32, conn: Option<&Arc<Conn>>) {
++        let ready = |v: &Viewer| {
++            v.repaint_pending && conn.is_none_or(|conn| Arc::ptr_eq(&v.conn, conn) && conn.outbox().can_send(v.channel))
++        };
++        if !st.viewers.get(&id).into_iter().flatten().any(ready) {
++            return;
++        }
++        let paint = first_paint(st, id, 0);
++        let recovering = st.screens[&id].continuation().is_none();
++        for v in st.viewers.get_mut(&id).into_iter().flatten().filter(|v| ready(v)) {
++            v.conn.with(|out| {
++                out.data(v.channel, &paint);
++            });
++            v.repaint_pending = false;
++            v.recovering = recovering;
++        }
++    }
++
+     fn apply_display(&self, st: &mut State, id: u32, display: Option<&Display>) {
+         let Some(screen) = st.screens.get_mut(&id) else { return };
+         if let Some(d) = display {
+@@ -328,6 +378,8 @@ impl Core {
+ /// must see them too; a viewer repainted after falling behind gets the mode
+ /// either way).
+ pub(crate) fn first_paint(st: &State, id: u32, history: usize) -> Vec<u8> {
++    #[cfg(test)]
++    tests::PAINTS.with(|n| n.set(n.get() + 1));
+     let screen = &st.screens[&id];
+     let mut paint = paint_state(st, id, screen.paint(history));
+     if let Some(continuation) = screen.continuation() {
+diff --git a/crates/herdr-core/src/viewers/tests.rs b/crates/herdr-core/src/viewers/tests.rs
+new file mode 100644
+index 0000000..c7ab9f6
+--- /dev/null
++++ b/crates/herdr-core/src/viewers/tests.rs
+@@ -0,0 +1,93 @@
++use super::*;
++use crate::wire;
++use std::cell::Cell;
++
++thread_local! {
++    pub(super) static PAINTS: Cell<usize> = const { Cell::new(0) };
++}
++
++#[test]
++fn resize_drags_serialize_nothing_without_observers_and_only_latest_when_stalled() {
++    let root = std::path::PathBuf::from(format!("/var/tmp/hc-resize-{}", crate::platform::random_hex()));
++    let paths = crate::paths::Paths {
++        socket: root.join("core.sock"),
++        holder_socket: root.join("holder.sock"),
++        state: root.clone(),
++        config: root.join("config.toml"),
++    };
++    paths.create_dirs().unwrap();
++    let core = Core::start(paths, crate::api::CoreInfo { id: "test".into(), name: "test".into() }).unwrap();
++    let id = {
++        let mut st = core.lock();
++        let id = st
++            .reg
++            .create(
++                crate::terminals::NewTerminal { argv: vec!["sh".into()], cols: 80, rows: 24, ..Default::default() },
++                0,
++            )
++            .unwrap();
++        st.screens.insert(id, ghostty_vt::Terminal::new(80, 24, 1 << 20));
++        id
++    };
++    let leader = Arc::new(Conn::default());
++    let request = |observe, resize_notifications| AttachRequest {
++        observe,
++        resize_notifications,
++        history: 0,
++        size: (80, 24),
++        display: Display::default(),
++        resumed: false,
++    };
++    let channel = core.attach(&leader, id, request(false, false)).unwrap();
++    PAINTS.set(0);
++    for cols in 81..100 {
++        core.viewer_resize(&leader, channel, cols, 24);
++    }
++    assert_eq!(PAINTS.get(), 0, "desktop-only drags must not serialize paints");
++    let observer = Arc::new(Conn::default());
++    let observed = core.attach(&observer, id, request(true, true)).unwrap();
++    observer.with(|out| {
++        out.resume(observed);
++        out.data(observed, &vec![b'x'; wire::WINDOW]);
++        while out.next_frame().is_some() {}
++    });
++    PAINTS.set(0);
++    for cols in 100..200 {
++        core.viewer_resize(&leader, channel, cols, 24);
++        core.prepare_repaints(&observer);
++    }
++    assert_eq!(PAINTS.get(), 0, "no serialization while credit stalled");
++    observer.with(|out| {
++        assert_eq!(out.queued(observed), 0, "no obsolete paints accumulated");
++        assert!(out.next_frame().is_none());
++        out.credit(observed, wire::WINDOW);
++    });
++    core.prepare_repaints(&observer);
++    assert_eq!(PAINTS.get(), 1);
++    observer.with(|out| {
++        let frame = out.next_frame().unwrap();
++        assert_eq!(frame[4], wire::RESIZE);
++        assert_eq!(&frame[wire::HEADER..], &[199, 0, 24, 0]);
++        let frame = out.next_frame().unwrap();
++        assert_eq!(frame[4], wire::DATA);
++        assert_eq!(frame[wire::HEADER], 0x18, "cancel a partial old-grid sequence");
++    });
++    core.prepare_repaints(&observer);
++    assert_eq!(PAINTS.get(), 1, "unchanged grid is not repainted twice");
++    // Exit before the writer next wakes must still deliver the final screen.
++    core.viewer_resize(&leader, channel, 200, 24);
++    core.record_finish(&mut core.lock(), id, proto::Exit { code: Some(0), signal: None }, "exited");
++    observer.with(|out| {
++        let size = out.next_frame().expect("final resize");
++        assert_eq!(size[4], wire::RESIZE);
++        assert_eq!(&size[wire::HEADER..], &[200, 0, 24, 0]);
++        assert_eq!(out.next_frame().unwrap()[4], wire::DATA);
++        while let Some(frame) = out.next_frame() {
++            if frame[4] == wire::CLOSE {
++                break;
++            }
++        }
++    });
++    drop(core);
++    std::fs::remove_dir_all(root).unwrap();
++}
+diff --git a/crates/herdr-core/src/wire.rs b/crates/herdr-core/src/wire.rs
+index 20f4687..999027a 100644
+--- a/crates/herdr-core/src/wire.rs
++++ b/crates/herdr-core/src/wire.rs
+@@ -13,7 +13,7 @@ pub const DATA: u8 = 0;
+ pub const CREDIT: u8 = 1;
+ /// The channel is over (JSON reason from the core, empty from a client).
+ pub const CLOSE: u8 = 2;
+-/// Viewer → core: u16 LE cols, u16 LE rows.
++/// u16 LE cols, u16 LE rows: viewer → core, core → observer.
+ pub const RESIZE: u8 = 3;
+ /// Viewer → core: 1 = gained focus, 0 = lost it.
+ pub const FOCUS: u8 = 4;
+@@ -144,6 +144,8 @@ impl Conn {
+ 
+ struct Stream {
+     pending: VecDeque<u8>,
++    resizes: VecDeque<(usize, Vec<u8>)>,
++    paused: bool,
+     credit: usize,
+     /// The program ended: CLOSE (with this reason) once `pending` is out.
+     ending: Option<Vec<u8>>,
+@@ -176,7 +178,43 @@ impl Outbox {
+     }
+ 
+     pub fn open(&mut self, channel: u32) {
+-        self.streams.insert(channel, Stream { pending: VecDeque::new(), credit: WINDOW, ending: None });
++        self.streams.insert(
++            channel,
++            Stream { pending: VecDeque::new(), resizes: VecDeque::new(), paused: false, credit: WINDOW, ending: None },
++        );
++    }
++
++    /// Attach output must wait until the reply installs the receiver's channel mapping.
++    pub fn open_paused(&mut self, channel: u32) {
++        self.open(channel);
++        self.streams.get_mut(&channel).unwrap().paused = true;
++    }
++
++    pub fn resume(&mut self, channel: u32) {
++        if let Some(s) = self.streams.get_mut(&channel) {
++            s.paused = false;
++        }
++    }
++
++    pub fn can_send(&self, channel: u32) -> bool {
++        self.streams.get(&channel).is_some_and(|s| !s.paused && s.credit > 0)
++    }
++
++    /// Supersede pending output with a new grid and an authoritative repaint.
++    /// A partly delivered escape sequence is cancelled by the repaint's CAN.
++    pub fn resize(&mut self, channel: u32, size: &[u8]) {
++        if let Some(s) = self.streams.get_mut(&channel) {
++            s.pending.clear();
++            s.resizes.clear();
++            s.resizes.push_back((0, size.to_vec()));
++        }
++    }
++
++    /// Relay boundaries keep bytes already charged to the upstream credit window.
++    pub fn ordered_resize(&mut self, channel: u32, size: &[u8]) {
++        if let Some(s) = self.streams.get_mut(&channel) {
++            s.resizes.push_back((s.pending.len(), size.to_vec()));
++        }
+     }
+ 
+     /// Ends a stream now (the viewer detached): whatever is queued is dropped.
+@@ -200,6 +238,11 @@ impl Outbox {
+         let Some(s) = self.streams.get_mut(&channel) else { return true };
+         if s.pending.len() + bytes.len() > MAX_PENDING {
+             s.pending.clear();
++            let latest = s.resizes.pop_back();
++            s.resizes.clear();
++            if let Some((_, size)) = latest {
++                s.resizes.push_back((0, size));
++            }
+             return false;
+         }
+         s.pending.extend(bytes);
+@@ -235,16 +278,30 @@ impl Outbox {
+             self.control_bytes -= frame.len();
+             return Some(frame);
+         }
+-        if let Some((&channel, _)) = self.streams.iter().find(|(_, s)| s.ending.is_some() && s.pending.is_empty()) {
++        if let Some((&channel, _)) =
++            self.streams.iter().find(|(_, s)| !s.paused && s.ending.is_some() && s.pending.is_empty())
++        {
+             let reason = self.streams.remove(&channel).and_then(|s| s.ending).unwrap_or_default();
+             return Some(encode(channel, CLOSE, &reason));
+         }
+-        let ready: Vec<u32> =
+-            self.streams.iter().filter(|(_, s)| s.credit > 0 && !s.pending.is_empty()).map(|(ch, _)| *ch).collect();
++        let ready: Vec<u32> = self
++            .streams
++            .iter()
++            .filter(|(_, s)| !s.paused && s.credit > 0 && !s.pending.is_empty())
++            .map(|(ch, _)| *ch)
++            .collect();
+         let channel = *ready.iter().find(|ch| **ch > self.turn).or(ready.first())?;
+         self.turn = channel;
+         let s = self.streams.get_mut(&channel).expect("ready stream");
+-        let n = s.pending.len().min(s.credit).min(CHUNK);
++        if s.resizes.front().is_some_and(|(at, _)| *at == 0) {
++            let (_, size) = s.resizes.pop_front().unwrap();
++            return Some(encode(channel, RESIZE, &size));
++        }
++        let boundary = s.resizes.front().map_or(usize::MAX, |(at, _)| *at);
++        let n = s.pending.len().min(s.credit).min(CHUNK).min(boundary);
++        for (at, _) in &mut s.resizes {
++            *at -= n;
++        }
+         s.credit -= n;
+         let chunk: Vec<u8> = s.pending.drain(..n).collect();
+         Some(encode(channel, DATA, &chunk))
+@@ -255,6 +312,65 @@ impl Outbox {
+ mod tests {
+     use super::*;
+ 
++    #[test]
++    fn resize_replaces_stalled_and_partially_sent_paints_atomically() {
++        let mut out = Outbox::default();
++        out.open(1);
++        out.data(1, &vec![b'a'; WINDOW + 10]);
++        while out.next_frame().is_some() {}
++        out.resize(1, &[80, 0, 24, 0]);
++        out.data(1, b"paint A");
++        out.resize(1, &[90, 0, 30, 0]);
++        out.data(1, &vec![b'b'; CHUNK * 2]);
++        assert!(out.next_frame().is_none(), "no size transition ahead of stalled DATA");
++        out.credit(1, CHUNK);
++        let size = out.next_frame().unwrap();
++        assert_eq!(size[4], RESIZE);
++        assert_eq!(&size[HEADER..], &[90, 0, 30, 0]);
++        assert_eq!(out.next_frame().unwrap()[4], DATA);
++        out.resize(1, &[100, 0, 40, 0]);
++        assert!(!out.data(1, &vec![0; MAX_PENDING + 1]));
++        out.data(1, b"\x18latest");
++        assert!(out.next_frame().is_none());
++        out.credit(1, 100);
++        let size = out.next_frame().unwrap();
++        assert_eq!(size[4], RESIZE);
++        assert_eq!(&size[HEADER..], &[100, 0, 40, 0]);
++        assert_eq!(&out.next_frame().unwrap()[HEADER..], b"\x18latest");
++        assert!(out.next_frame().is_none());
++    }
++
++    #[test]
++    fn a_relay_keeps_charged_bytes_before_their_resize_boundary() {
++        let mut out = Outbox::default();
++        out.open(1);
++        out.data(1, &vec![b'a'; WINDOW + 10]);
++        while out.next_frame().is_some() {}
++        out.ordered_resize(1, &[90, 0, 30, 0]);
++        out.data(1, b"paint");
++        assert_eq!(out.queued(1), 15, "upstream bytes must not lose their eventual CREDIT");
++        assert!(out.next_frame().is_none());
++        out.credit(1, 15);
++        assert_eq!(&out.next_frame().unwrap()[HEADER..], &[b'a'; 10]);
++        assert_eq!(out.next_frame().unwrap()[4], RESIZE);
++        assert_eq!(&out.next_frame().unwrap()[HEADER..], b"paint");
++        assert!(out.next_frame().is_none());
++    }
++
++    #[test]
++    fn attach_stream_waits_for_its_reply_before_announcing_the_grid() {
++        let mut out = Outbox::default();
++        out.open_paused(1);
++        out.resize(1, &[80, 0, 24, 0]);
++        out.data(1, b"paint");
++        assert!(out.next_frame().is_none());
++        out.control(encode(0, DATA, b"attach reply"));
++        out.resume(1);
++        assert_eq!(&out.next_frame().unwrap()[HEADER..], b"attach reply");
++        assert_eq!(out.next_frame().unwrap()[4], RESIZE);
++        assert_eq!(out.next_frame().unwrap()[4], DATA);
++    }
++
+     #[test]
+     fn round_trips_and_rejects_oversized_frames() {
+         let frame = encode(7, DATA, b"hi");
+diff --git a/crates/herdr-core/tests/m2.rs b/crates/herdr-core/tests/m2.rs
+index 7b13fe0..db585b9 100644
+--- a/crates/herdr-core/tests/m2.rs
++++ b/crates/herdr-core/tests/m2.rs
+@@ -179,6 +179,69 @@ fn size_follows_the_last_active_typing_viewer() {
+     drop(observer);
+ }
+ 
++#[test]
++fn observers_receive_the_terminal_grid_and_a_repaint_when_it_changes() {
++    let s = Session::new();
++    let t = run(&s, &["sh", "-c", "echo retained; exec sleep 100"]);
++    wait_until("retained", || text(&s, &t).contains("retained"));
++    let mut observer = Viewer::attach(&s, &t, 40, 10, json!({"observe": true, "resize_notifications": true}));
++    let mut initial: Vec<_> = observer.conn.stash.drain(..).collect();
++    while let Some(frame) = observer.conn.read(Duration::from_millis(200)) {
++        initial.push(frame);
++    }
++    let mut active = Viewer::attach(&s, &t, 60, 20, json!({}));
++
++    let mut check = |cols: u16, rows: u16| {
++        wait_until("terminal resized", || size(&s, &t) == (cols.into(), rows.into()));
++        let mut frames = Vec::new();
++        while let Some(frame) = observer.conn.read(Duration::from_millis(200)) {
++            frames.push(frame);
++        }
++        let payload = [cols.to_le_bytes(), rows.to_le_bytes()].concat();
++        eprintln!(
++            "terminal {cols}x{rows}; observer frames: {:?}",
++            frames.iter().map(|(_, k, p)| (*k, p.len())).collect::<Vec<_>>()
++        );
++        let resize = frames
++            .iter()
++            .position(|(ch, kind, p)| *ch == observer.channel && *kind == wire::RESIZE && *p == payload)
++            .expect("observer must learn the terminal's size");
++        let paint: Vec<_> = frames[resize + 1..]
++            .iter()
++            .filter(|(ch, kind, _)| *ch == observer.channel && *kind == wire::DATA)
++            .flat_map(|(_, _, p)| p.iter().copied())
++            .collect();
++        let mut screen = ghostty_vt::Terminal::new(cols, rows, 1 << 20);
++        screen.write(&paint);
++        assert!(screen.plain_text().contains("retained"), "observer needs a fresh paint");
++    };
++    check(60, 20);
++    active.conn.send(active.channel, wire::RESIZE, &[100, 0, 30, 0]);
++    check(100, 30);
++    drop(active);
++    check(200, 120);
++    assert!(
++        initial.iter().any(|(_, kind, p)| *kind == wire::RESIZE && p == &[200, 0, 120, 0]),
++        "first paint must also announce the actual grid"
++    );
++}
++
++#[test]
++fn legacy_observers_do_not_receive_unsolicited_resize_paints() {
++    let s = Session::new();
++    let t = run(&s, &["sh", "-c", "echo retained; exec sleep 100"]);
++    wait_until("retained", || text(&s, &t).contains("retained"));
++    let mut observer = Viewer::attach(&s, &t, 40, 10, json!({"observe": true}));
++    observer.conn.stash.clear();
++    while observer.conn.read(Duration::from_millis(100)).is_some() {}
++    let _active = Viewer::attach(&s, &t, 60, 20, json!({}));
++    wait_until("terminal resized", || size(&s, &t) == (60, 20));
++    assert!(
++        observer.conn.read(Duration::from_millis(200)).is_none(),
++        "legacy mobile ignores RESIZE and must not paint before its size event"
++    );
++}
++
+ #[test]
+ fn display_facts_do_not_take_size_leadership_from_an_active_viewer() {
+     let s = Session::new();
+diff --git a/crates/herdr-core/tests/remote.rs b/crates/herdr-core/tests/remote.rs
+index 51efdb6..3d9e051 100644
+--- a/crates/herdr-core/tests/remote.rs
++++ b/crates/herdr-core/tests/remote.rs
+@@ -396,6 +396,52 @@ fn attaching_to_a_terminal_on_another_machine() {
+     v.until("the end", |v| v.closed.is_some());
+ }
+ 
++#[test]
++fn remote_observer_receives_grid_and_paint_including_after_reconnect() {
++    use herdr_core::wire;
++    use std::time::Duration;
++    let (rohan, s) = with_rohan();
++    let t = run(&s, &["--on", "rohan", "sh", "-c", "echo retained; exec sleep 100"]);
++    wait_until("retained", || text(&rohan, "t1").contains("retained"));
++    let _leader = Viewer::attach(&rohan, "t1", 80, 24, json!({}));
++    let mut observer = Viewer::attach(&s, &t, 40, 10, json!({"observe": true, "resize_notifications": true}));
++    let mut check = |cols: u16, rows: u16| {
++        let mut frames: Vec<_> = observer.conn.stash.drain(..).collect();
++        let until = std::time::Instant::now() + Duration::from_secs(5);
++        let mut screen = ghostty_vt::Terminal::new(cols, rows, 1 << 20);
++        let mut sized = false;
++        loop {
++            for (ch, kind, payload) in frames.drain(..) {
++                if ch != observer.channel {
++                    continue;
++                }
++                if kind == wire::RESIZE {
++                    assert_eq!(payload, [cols.to_le_bytes(), rows.to_le_bytes()].concat());
++                    sized = true;
++                } else if kind == wire::DATA && sized {
++                    screen.write(&payload);
++                }
++            }
++            if sized && screen.plain_text().contains("retained") {
++                break;
++            }
++            assert!(std::time::Instant::now() < until, "missing remote grid or paint");
++            if let Some(frame) = observer.conn.read(Duration::from_millis(100)) {
++                frames.push(frame);
++            }
++        }
++    };
++    check(80, 24);
++    std::fs::write(s.root.join("down"), "").unwrap();
++    rohan.json(&["server", "restart"]);
++    wait_until("remote disconnected", || s.json(&["machine", "ls"])["machines"][0]["state"] == "unreachable");
++    let mut leader = Viewer::attach(&rohan, "t1", 90, 30, json!({}));
++    std::fs::remove_file(s.root.join("down")).unwrap();
++    check(90, 30);
++    leader.conn.send(leader.channel, wire::RESIZE, &[100, 0, 40, 0]);
++    check(100, 40);
++}
++
+ #[test]
+ fn a_viewer_there_keeps_up_past_one_window_of_output() {
+     let (_rohan, s) = with_rohan();
+diff --git a/crates/herdr-core/tests/resize_compat.rs b/crates/herdr-core/tests/resize_compat.rs
+new file mode 100644
+index 0000000..70b76a5
+--- /dev/null
++++ b/crates/herdr-core/tests/resize_compat.rs
+@@ -0,0 +1,115 @@
++#![cfg(unix)]
++
++mod common;
++
++use common::framed::{Framed, Viewer};
++use common::*;
++use herdr_core::wire;
++use serde_json::json;
++use std::time::{Duration, Instant};
++
++#[test]
++#[ignore = "set HC_OLD_CORE to the released 0.1.16 herdr-core binary"]
++fn capable_stream_closes_if_the_remote_is_downgraded_on_reconnect() {
++    let mut far = Session::new();
++    let t = run(&far, &["sleep", "100"]);
++    let mut near = Session::new();
++    near.env.push(fake_ssh(&near, &[("far", &far)]));
++    near.env.push(("HC_RECONNECT_MS".into(), "200".into()));
++    near.json(&["machine", "add", "far"]);
++    let mut conn = Framed::open(&near);
++    let reply = conn.call(
++        "terminal.attach",
++        json!({
++            "terminal": format!("far/{t}"), "cols": 80, "rows": 24,
++            "observe": true, "resize_notifications": true
++        }),
++    );
++    assert_eq!(reply["result"]["resize_notifications"], true);
++    let channel = reply["result"]["channel"].as_u64().unwrap() as u32;
++    while conn.read(Duration::from_millis(100)).is_some() {}
++    std::fs::write(near.root.join("down"), "").unwrap();
++    far.bin = std::env::var("HC_OLD_CORE").expect("HC_OLD_CORE").into();
++    far.json(&["server", "restart"]);
++    wait_until("disconnected", || near.json(&["machine", "ls"])["machines"][0]["state"] == "unreachable");
++    // Drain the line-loss notice before reconnecting: no stream data is valid after this point.
++    while conn.read(Duration::from_millis(100)).is_some() {}
++    let hello = far.connect().call(1, "hello", json!({}));
++    assert!(!hello["result"]["features"].as_array().unwrap().contains(&json!("resize_notifications")));
++    let _ = fake_ssh(&near, &[("far", &far)]);
++    std::fs::remove_file(near.root.join("down")).unwrap();
++    let until = Instant::now() + Duration::from_secs(5);
++    loop {
++        if let Some((ch, kind, _)) = conn.read(Duration::from_millis(100))
++            && ch == channel
++        {
++            assert_ne!(kind, wire::DATA, "downgraded path must not deliver fallback paint before CLOSE");
++            if kind == wire::CLOSE {
++                break;
++            }
++        }
++        assert!(Instant::now() < until, "downgraded path must close its opted-in stream");
++    }
++    let mut leader = Viewer::attach(&far, &t, 80, 24, json!({}));
++    fallback(&near, &format!("far/{t}"), &mut leader);
++}
++
++fn fallback(s: &Session, terminal: &str, leader: &mut Viewer) {
++    let mut conn = Framed::open(s);
++    let reply = conn.call(
++        "terminal.attach",
++        json!({
++            "terminal": terminal, "cols": 40, "rows": 10,
++            "observe": true, "resize_notifications": true
++        }),
++    );
++    assert_eq!(reply["result"]["resize_notifications"], false, "{reply}");
++    let channel = reply["result"]["channel"].as_u64().unwrap() as u32;
++    // Drain the first paint before changing an otherwise idle terminal's grid.
++    while conn.read(Duration::from_millis(100)).is_some() {}
++    let cols = if get(s, terminal)["cols"] == 90 { 100 } else { 90 };
++    leader.conn.send(leader.channel, wire::RESIZE, &[cols, 0, 30, 0]);
++    wait_until("leader resized", || get(s, terminal)["cols"] == cols);
++    let until = Instant::now() + Duration::from_millis(300);
++    while Instant::now() < until {
++        if let Some((ch, kind, _)) = conn.read(Duration::from_millis(50)) {
++            assert!(!(ch == channel && matches!(kind, wire::DATA | wire::RESIZE)), "fallback must not inject paints");
++        }
++    }
++}
++
++#[test]
++#[ignore = "set HC_OLD_CORE to the released 0.1.16 herdr-core binary"]
++fn mixed_version_observers_fall_back_without_replacement_paints() {
++    let old = std::env::var("HC_OLD_CORE").expect("HC_OLD_CORE");
++    // New local -> old owner.
++    let mut far = Session::new();
++    far.bin = old.clone().into();
++    let t = run(&far, &["sleep", "100"]);
++    let mut leader = Viewer::attach(&far, &t, 80, 24, json!({}));
++    let mut near = Session::new();
++    near.env.push(fake_ssh(&near, &[("far", &far)]));
++    near.json(&["machine", "add", "far"]);
++    fallback(&near, &format!("far/{t}"), &mut leader);
++
++    // New local -> new relay -> old owner: fallback propagates end-to-end.
++    let mut front = Session::new();
++    front.env.push(fake_ssh(&front, &[("near", &near)]));
++    front.json(&["machine", "add", "near"]);
++    fallback(&front, &format!("near/far/{t}"), &mut leader);
++
++    // New local -> old relay -> new owner: don't let the old relay lose RESIZE
++    // while forwarding replacement paints from the new owner.
++    let owner = Session::new();
++    let t = run(&owner, &["sleep", "100"]);
++    let mut leader = Viewer::attach(&owner, &t, 80, 24, json!({}));
++    let mut relay = Session::new();
++    relay.bin = old.into();
++    relay.env.push(fake_ssh(&relay, &[("owner", &owner)]));
++    relay.json(&["machine", "add", "owner"]);
++    fallback(&relay, &format!("owner/{t}"), &mut leader);
++    let mut client = Session::new();
++    client.env.push(fake_ssh(&client, &[("relay", &relay)]));
++    client.json(&["machine", "add", "relay"]);
++    fallback(&client, &format!("relay/owner/{t}"), &mut leader);
++}
+diff --git a/crates/herdr-core/tests/resize_negotiation.rs b/crates/herdr-core/tests/resize_negotiation.rs
+new file mode 100644
+index 0000000..09c39a8
+--- /dev/null
++++ b/crates/herdr-core/tests/resize_negotiation.rs
+@@ -0,0 +1,41 @@
++#![cfg(unix)]
++
++mod common;
++
++use common::framed::{Framed, Viewer};
++use common::*;
++use herdr_core::wire;
++use serde_json::json;
++use std::time::Duration;
++
++#[test]
++fn attach_confirms_size_notifications_locally_and_through_two_relays() {
++    let owner = Session::new();
++    let t = run(&owner, &["sleep", "100"]);
++    let _leader = Viewer::attach(&owner, &t, 80, 24, json!({}));
++    let mut relay = Session::new();
++    relay.env.push(fake_ssh(&relay, &[("owner", &owner)]));
++    relay.json(&["machine", "add", "owner"]);
++    let mut client = Session::new();
++    client.env.push(fake_ssh(&client, &[("relay", &relay)]));
++    client.json(&["machine", "add", "relay"]);
++    for (session, terminal) in [(&owner, t.clone()), (&client, format!("relay/owner/{t}"))] {
++        for (observe, requested) in [(true, true), (true, false), (false, true)] {
++            let mut conn = Framed::open(session);
++            let reply = conn.call(
++                "terminal.attach",
++                json!({
++                    "terminal": terminal, "cols": 80, "rows": 24,
++                    "observe": observe, "resize_notifications": requested
++                }),
++            );
++            let enabled = observe && requested;
++            assert_eq!(reply["result"]["resize_notifications"], enabled, "{reply}");
++            if enabled {
++                let channel = reply["result"]["channel"].as_u64().unwrap() as u32;
++                assert!(conn.stash.is_empty(), "reply must precede stream frames");
++                assert_eq!(conn.read(Duration::from_secs(5)), Some((channel, wire::RESIZE, vec![80, 0, 24, 0])));
++            }
++        }
++    }
++}
+diff --git a/schema/README.md b/schema/README.md
+index 701f6f8..5324d10 100644
+--- a/schema/README.md
++++ b/schema/README.md
+@@ -52,7 +52,7 @@ most 16 MiB.
+ | 0 | DATA | channel 0: one JSON-RPC message; other channels: stream bytes |
+ | 1 | CREDIT | u32 LE: bytes the receiver consumed |
+ | 2 | CLOSE | the channel is over; from the core, a JSON reason |
+-| 3 | RESIZE | viewer → core: u16 LE cols, u16 LE rows |
++| 3 | RESIZE | u16 LE cols, u16 LE rows: viewer → core, core → observer |
+ | 4 | FOCUS | viewer → core: 1 gained focus, 0 lost it |
+ | 5 | FACTS | viewer → core: JSON display facts (`Display` in the schema) |
+ 
+@@ -69,6 +69,24 @@ keys: a viewer that honors 9001 sends key events in that format itself.
+ The viewer sends keys as DATA on the same channel, and RESIZE,
+ FOCUS and FACTS as it changes. The last active viewer sets the size
+ (active: it typed, resized, gained focus or sent FACTS); `observe` viewers never type or resize.
++Observers may opt in with `resize_notifications: true` on `terminal.attach`:
++the client must apply incoming RESIZE before consuming subsequent DATA.
++The reply confirms `resize_notifications: true` only when every core on the path
++supports it. False or an absent field means the client must track size through
++size events instead; no replacement paints are injected for this request.
++Cores advertise `resize_notifications` in both hello requests and replies, so an
++older intermediate relay cannot silently drop the grid announcements. If a
++previously capable path loses support on reconnect, its stream closes; attach
++again to negotiate the fallback.
++These confirmed observers receive the terminal's actual grid before their first paint.
++When that grid changes, pending output is superseded by RESIZE followed by an
++authoritative paint (starting with CAN to cancel any unfinished sequence).
++Size/paint pairs share stream ordering and wait for DATA credit; RESIZE itself
++does not consume credit. Intermediate unsent grids are coalesced, and a paint is
++serialized only when the observer has credit. The attach reply precedes stream
++frames, including on core-to-core relays and reconnects.
++Without this opt-in, existing event-driven observers keep their previous output
++behavior: no additional resize paints or RESIZE frames.
+ 
+ Flow control: a stream starts with 256 KiB of credit. The viewer sends
+ CREDIT for the bytes it has written out. A viewer that falls more than
+diff --git a/schema/hc.openrpc.json b/schema/hc.openrpc.json
+index 61d0b6d..025fc8d 100644
+--- a/schema/hc.openrpc.json
++++ b/schema/hc.openrpc.json
+@@ -9,13 +9,18 @@
+             "minimum": 0,
+             "type": "integer"
+           },
++          "resize_notifications": {
++            "description": "True only when the entire path sends RESIZE before replacement paints.\nFalse or absent means the observer must track size changes separately.",
++            "type": "boolean"
++          },
+           "terminal": {
+             "$ref": "#/components/schemas/Terminal"
+           }
+         },
+         "required": [
+           "channel",
+-          "terminal"
++          "terminal",
++          "resize_notifications"
+         ],
+         "type": "object"
+       },
+@@ -1434,6 +1439,19 @@
+             "description": "Another core dialing in: who it is. Its terminals may then be parents\nof terminals here, and hear from them."
+           }
+         },
++        {
++          "description": "Features supported by a core dialing in, including relaying size notifications.",
++          "name": "features",
++          "required": false,
++          "schema": {
++            "default": [],
++            "description": "Features supported by a core dialing in, including relaying size notifications.",
++            "items": {
++              "type": "string"
++            },
++            "type": "array"
++          }
++        },
+         {
+           "description": "Switch this connection to framed mode after the reply.",
+           "name": "framed",
+@@ -2245,6 +2263,16 @@
+             "type": "boolean"
+           }
+         },
++        {
++          "description": "Observer understands core-to-viewer RESIZE before replacement paints.",
++          "name": "resize_notifications",
++          "required": false,
++          "schema": {
++            "default": false,
++            "description": "Observer understands core-to-viewer RESIZE before replacement paints.",
++            "type": "boolean"
++          }
++        },
+         {
+           "description": "Back after a dropped line: sets the size only once active again.",
+           "name": "resumed",

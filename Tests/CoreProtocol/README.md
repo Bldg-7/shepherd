@@ -189,6 +189,22 @@ continuations. Its simpler `getBufferAsData()` helper does not resolve stored
 graphemes; it is not a valid emoji/CJK rendering oracle. Input uses the real
 `TerminalViewDelegate`, not the terminal-engine response callback.
 
+## Passive observer extension (SHPHRD-151)
+
+`CoreStreamPacket` includes internal epoch/channel/nonce provenance and a delivery
+ordinal for **all** packets, not just DATA. `CorePassiveScreenSequence` uses that
+metadata to reject stale/replayed control packets, requires negotiated RESIZE
+before DATA and bounds the announced viewport. It never claims initial snapshot
+completion or grants agent/browser authority. CoreStream's original DATA receipt
+and post-consumption CREDIT contract is unchanged.
+
+A separate `--candidate-receipt` mode in the SSH runner validates the pinned
+observer/background candidate described in `Tests/CoreObservation/backport/`.
+`--archive`, `--build-receipt`, and `--candidate-receipt` are mutually exclusive.
+Official archive and original OSC8 artifact validation remain strict. The fixture
+checks the exact selected artifact's resize expectation instead of assuming all
+binaries reporting 0.1.16 have the same capabilities.
+
 ## Protocol baseline and remaining work
 
 Reference: herdr-core `5a9de29b2f9b6690388a1c297a7ca8d73df7d3e2`,

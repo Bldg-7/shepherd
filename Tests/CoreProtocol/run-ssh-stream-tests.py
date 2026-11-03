@@ -6,8 +6,10 @@ starts the app, reads credentials, or uses an external SSH server.
 from pathlib import Path
 import argparse, hashlib, json, os, platform, shutil, socket, subprocess, sys, time
 import core_test_artifact as artifacts
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'CoreObservation'))
+import candidate_artifact
 ROOT=Path(__file__).resolve().parents[2]
-p=argparse.ArgumentParser();artifacts.add_arguments(p);p.add_argument('--products',type=Path,required=True);p.add_argument('--output',type=Path,required=True)
+p=argparse.ArgumentParser();choice=artifacts.add_arguments(p);choice.add_argument('--candidate-receipt',type=Path);p.add_argument('--products',type=Path,required=True);p.add_argument('--output',type=Path,required=True)
 a=p.parse_args();out=a.output.resolve();products=a.products.resolve()
 assert platform.system()=='Darwin' and platform.machine()=='arm64'
 def digest(path):
@@ -15,11 +17,20 @@ def digest(path):
  with path.open('rb') as f:
   while b:=f.read(1<<20):h.update(b)
  return h.hexdigest()
-artifact=artifacts.select(a.archive,a.build_receipt)
+if a.candidate_receipt:
+ candidate_binary, candidate_receipt=candidate_artifact.select(a.candidate_receipt)
+ artifact={'variant':candidate_receipt['variant'],'officialRelease':False}
+else:
+ artifact=artifacts.select(a.archive,a.build_receipt)
 out.mkdir(mode=0o700,parents=True,exist_ok=False)
 for n in ['home','tmp','cache','bin','core home']:(out/n).mkdir(mode=0o700)
 binary=out/'bin/herdr-core'
-provenance=artifacts.extract(artifact,binary)
+if a.candidate_receipt:
+ with candidate_binary.open('rb') as src,binary.open('xb') as dst:shutil.copyfileobj(src,dst)
+ candidate_artifact.require(digest(binary)==candidate_receipt['binarySHA256'],'copied candidate changed')
+ binary.chmod(0o700);provenance=candidate_receipt
+else:
+ provenance=artifacts.extract(artifact,binary)
 core=out/'core home';sock=core/'c.sock';assert len(str(sock).encode())<104
 core_env={'PATH':'/usr/bin:/bin','HOME':str(core),'XDG_STATE_HOME':str(core/'state'),'XDG_CONFIG_HOME':str(core/'config'),
  'XDG_RUNTIME_DIR':str(core/'runtime'),'HC_SESSION':'owned','HC_SOCKET':str(sock),'LANG':'en_US.UTF-8','DO_NOT_TRACK':'1'}
@@ -31,7 +42,7 @@ profile.write_text('(version 1)\n(allow default)\n(deny network*)\n(allow networ
  '(deny network-outbound (literal "/private/var/run/mDNSResponder"))\n')
 sandbox=['/usr/bin/sandbox-exec','-f',str(profile)]
 sources=['Tests/CoreProtocol/SSHStreamIntegrationTests.swift','Tests/CoreProtocol/terminal-peer.py']
-tracked=sources+['Tests/CoreProtocol/core_test_artifact.py',str(Path(__file__).resolve().relative_to(ROOT))]+[str(p.relative_to(ROOT)) for p in (ROOT/'ShepherdKit/Sources/ShepherdKit/CoreKit').glob('*.swift')]
+tracked=sources+['Tests/CoreObservation/candidate_artifact.py','Tests/CoreProtocol/core_test_artifact.py',str(Path(__file__).resolve().relative_to(ROOT))]+[str(p.relative_to(ROOT)) for p in (ROOT/'ShepherdKit/Sources/ShepherdKit/CoreKit').glob('*.swift')]
 hashes={n:digest(ROOT/n) for n in tracked};(out/'source-hashes.json').write_text(json.dumps(hashes,indent=2))
 # Retain the actual linked artifact provenance; build products are not rebuilt
 # by this runner. Reject products older than these production sources.
@@ -62,7 +73,7 @@ stage('build',180,flags+[sources[0],*objects,'-framework','AppKit','-framework',
 report=out/'report.json'
 failure=None
 try:
- stage('ssh-streams',90,sandbox+[str(exe),str(binary),str(core),str(ROOT/sources[1]),str(report)])
+ stage('ssh-streams',90,sandbox+[str(exe),str(binary),str(core),str(ROOT/sources[1]),str(report),'resize-enabled' if a.candidate_receipt else 'resize-disabled'])
 except AssertionError as error:
  failure=error
 finally:

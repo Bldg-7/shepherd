@@ -395,6 +395,19 @@ Swift 6 전환에서 mutable SSH authentication delegate 공유를 없애고 imm
 
 다음은 managed/unmanaged readiness/session, passive attributed screen 및 observer resize/초기 snapshot 경계다. 공식 0.1.16의 size event를 stream 순서 보장으로 간주하지 않는다. B 전체는 미완료다. 자세한 검증·제약은 `Tests/CoreObservation/README.md`에 기록한다.
 
+### B 추가 구현: passive attributed-screen 후보
+
+`CorePassiveScreenSequence`에 observer resize 협상, 초기 RESIZE 선행, packet epoch/channel/nonce와 순서, zero/oversized viewport 거부를 구현했다. control frame에도 provenance/ordinal을 붙여 연결이 바뀐 뒤 같은 channel 번호의 오래된 RESIZE를 받아들이지 않는다. 최대 dimension 2,048 / visible cells 262,144다. 이는 전체 parser/image/scrollback 메모리 상한이나 snapshot-complete/ready/empty-editor 증거가 아니다.
+
+별도 후보에는 기존 upstream `5a9de29`의 observer resize/repaint 순서와 Ghostty #14725를 원본 그대로 추가했다. 기존 최소 OSC8 artifact는 보존했고 launchd 등 무관한 HEAD 변경은 가져오지 않았다. `Tests/CoreObservation/backport/`의 source-file hash recipe와 builder/validator/log hash receipt로 구분한다.
+
+- formatter 321, Rust VT 10, core library 95 passed/1 ignored 및 notice 재생성 통과.
+- 실제 passive SwiftTerm 33 checks 통과: initial/resize/headless geometry, blank gap, background-only row, dim, CJK/emoji, OSC8, program input=0 (`/private/tmp/candidate-passive-final.SoWGIV/run`).
+- 원래 #14711-only build는 passive gate에서 resize 협상 부재로 exit 1을 유지하며 cleanup 완료 (`/private/tmp/baseline-passive-negative.YKeITx/run`).
+- 후보와 기존 OSC8 build 모두 전체 SSH/SwiftTerm 34 checks 재통과. 독립 protocol 7 stages / connection-stream 140 assertions, macOS/iOS unsigned build도 통과.
+
+아직 앱 backend/launch coordinator에는 연결하지 않았다. 실제 agent readiness/session, native owner integration, 초기 attributed snapshot의 완료 증거와 safe resume, remote/multi-hop 전체 및 배포는 별도 검증이다. synthetic fixture의 PAINT-DONE marker를 실제 CLI에도 있다고 가정하지 않는다. B는 계속 진행 중이다.
+
 ## 최종 권고
 
 장기 목표는 **hc 단일 backend + 앱 소유 workspace + 독립적인 agent observation/authority**로 정한다. 이전 데이터 마이그레이션을 하지 않는 조건은 이 방향을 단순하게 만든다.

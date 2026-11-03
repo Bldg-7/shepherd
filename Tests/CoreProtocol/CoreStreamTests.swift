@@ -10,6 +10,48 @@ extension CoreConnectionTests {
         guard let packet = try await stream.next(timeout: .seconds(3)) else { throw ConnectionTestError.failed("missing stream packet") }
         return packet
     }
+    static func passiveSequenceCases(stream: CoreStream, data: CoreStreamPacket) throws {
+        func resize(_ cols: UInt16, _ rows: UInt16, ordinal: UInt64 = 1, origin: CoreStreamID? = nil) throws -> CoreStreamPacket {
+            let payload = Data([UInt8(truncatingIfNeeded: cols), UInt8(truncatingIfNeeded: cols >> 8),
+                                UInt8(truncatingIfNeeded: rows), UInt8(truncatingIfNeeded: rows >> 8)])
+            return CoreStreamPacket(stream: origin ?? stream.id, ordinal: ordinal,
+                                    frame: try CoreFrame(channel: stream.channel, kind: .resize, payload: payload), receipt: nil)
+        }
+        func reject(_ failure: CorePassiveScreenFailure, _ packet: CoreStreamPacket) throws {
+            var sequence = try CorePassiveScreenSequence(stream: stream)
+            do { _ = try sequence.consume(packet); throw ConnectionTestError.failed("passive sequence accepted invalid input") }
+            catch let error as CorePassiveScreenFailure { try check(error == failure) }
+            try check(sequence.isRetired && sequence.columns == nil && sequence.rows == nil, "bad packet must invalidate geometry")
+        }
+        try reject(.outOfOrder, resize(80, 24, ordinal: 2))
+        try reject(.invalidPacket, resize(0, 24))
+        try reject(.invalidPacket, resize(80, 0))
+        try reject(.gridTooLarge, resize(UInt16.max, UInt16.max))
+        try reject(.gridTooLarge, resize(1024, 1024))
+        try reject(.wrongStream, resize(80, 24, origin: CoreStreamID(epoch: UUID(), channel: stream.channel)))
+        try reject(.wrongStream, resize(80, 24, origin: CoreStreamID(epoch: stream.id.epoch, channel: stream.channel)))
+        try reject(.missingInitialGrid, CoreStreamPacket(stream: stream.id, ordinal: 1, frame: data.frame, receipt: data.receipt))
+        try reject(.invalidPacket, CoreStreamPacket(stream: stream.id, ordinal: 1,
+            frame: try CoreFrame(channel: stream.channel, kind: .focus, payload: Data([1])), receipt: nil))
+        let size = try resize(512, 512)
+        try reject(.invalidPacket, CoreStreamPacket(stream: stream.id, ordinal: 1, frame: size.frame, receipt: data.receipt))
+        var sequence = try CorePassiveScreenSequence(stream: stream)
+        _ = try sequence.consume(size)
+        try check(sequence.columns == 512 && sequence.rows == 512, "exact cell budget")
+        do { _ = try sequence.consume(size); throw ConnectionTestError.failed("duplicate control applied") }
+        catch CorePassiveScreenFailure.outOfOrder { checks += 1 }
+        try check(sequence.isRetired && sequence.columns == nil)
+        do { _ = try sequence.consume(data); throw ConnectionTestError.failed("retired sequence revived") }
+        catch CorePassiveScreenFailure.retired { checks += 1 }
+        var closed = try CorePassiveScreenSequence(stream: stream)
+        let close = CoreStreamPacket(stream: stream.id, ordinal: 1,
+                                     frame: try CoreFrame(channel: stream.channel, kind: .close), receipt: nil)
+        let end = try closed.consume(close)
+        try check(end == .closed && closed.isRetired && closed.rows == nil)
+        var lost = try CorePassiveScreenSequence(stream: stream)
+        _ = try lost.consume(resize(80, 24)); lost.retire()
+        try check(lost.isRetired && lost.columns == nil, "connection loss invalidates geometry")
+    }
     static func streamsAndCredit() async throws {
         let (endpoint, c) = try make()
         _ = try await c.connect()
@@ -36,9 +78,15 @@ extension CoreConnectionTests {
 
         let observer = try await c.openStream("terminal.attach", parameters: Data("{\"terminal\":\"normal\",\"observe\":true,\"resize_notifications\":true}".utf8))
         try check(observer.resizeNotifications && observer.observesOnly)
+        var passive = try CorePassiveScreenSequence(stream: observer)
         let resize = try await packet(observer)
         try check(resize.frame.kind == .resize && resize.receipt == nil)
+        let resizeUpdate = try passive.consume(resize)
+        try check(resizeUpdate == .resize(columns: 90, rows: 25))
         let observed = try await packet(observer)
+        let dataUpdate = try passive.consume(observed)
+        try check(dataUpdate == .data(Data("initial".utf8)))
+        try passiveSequenceCases(stream: observer, data: observed)
         do { _ = try await a.acknowledge(observed); throw ConnectionTestError.failed("cross-channel CREDIT") }
         catch CoreStreamFailure.invalidReceipt { checks += 1 }
         try await observer.acknowledge(observed)
@@ -47,6 +95,10 @@ extension CoreConnectionTests {
         try await observer.close()
         let legacy = try await c.openStream("terminal.attach", parameters: Data("{\"terminal\":\"normal\",\"observe\":true}".utf8))
         try check(!legacy.resizeNotifications, "absence is not support for resize notifications")
+        do { _ = try CorePassiveScreenSequence(stream: legacy); throw ConnectionTestError.failed("legacy observer accepted as ordered replica") }
+        catch CorePassiveScreenFailure.unsupported { checks += 1 }
+        do { _ = try CorePassiveScreenSequence(stream: a); throw ConnectionTestError.failed("typing stream accepted as passive") }
+        catch CorePassiveScreenFailure.unsupported { checks += 1 }
         try await legacy.close()
 
         let events = try await c.openStream("events.subscribe")
