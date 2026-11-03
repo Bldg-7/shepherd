@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[2]
 p = argparse.ArgumentParser()
 artifacts.add_arguments(p)
 p.add_argument("--output", type=Path, required=True)
+p.add_argument("--workspace-tests", action="store_true", help="run two-client app-owned workspace CAS integration instead")
 a = p.parse_args()
 assert platform.system() == "Darwin" and platform.machine() == "arm64", "pinned archive is macOS ARM64 only"
 artifact = artifacts.select(a.archive, a.build_receipt, official_017_archive=a.official_017_archive)
@@ -60,7 +61,7 @@ with socket.socket() as listener:
                             env=core_env, capture_output=True, timeout=10)
     assert result.returncode == 0, "TCP denial canary failed"
 sources = sorted(str(path.relative_to(ROOT)) for path in (ROOT / "ShepherdKit/Sources/ShepherdKit/CoreKit").glob("*.swift"))
-test = "Tests/CoreProtocol/CoreRealProcessTests.swift"
+test = "Tests/CoreWorkspace/CoreWorkspaceIntegrationTests.swift" if a.workspace_tests else "Tests/CoreProtocol/CoreRealProcessTests.swift"
 (out / "source-hashes.json").write_text(json.dumps({name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
                                                    for name in sources + [test, "Tests/CoreProtocol/core_test_artifact.py", str(Path(__file__).resolve().relative_to(ROOT))]}, indent=2))
 (out / "provenance.json").write_text(json.dumps(provenance, indent=2))
@@ -110,7 +111,8 @@ assert result.get("passed") and result.get("stopAcknowledged") and result.get("c
 for name, expected in json.loads((out / "source-hashes.json").read_text()).items():
     assert digest(ROOT / name) == expected, "source changed during validation: " + name
 (out / "validation.json").write_text(json.dumps({"passed": True, "realCore": artifact["version"], "launchdLifecycleQualified": False, "artifactVariant": artifact["variant"],
-    "officialRelease": artifact["officialRelease"], "ownCoreStopped": True,
+    "officialRelease": artifact["officialRelease"], "suite": "workspaceCAS" if a.workspace_tests else "protocol",
+    "checks": result.get("checks"), "ownCoreStopped": True,
     "ownSocketRemoved": True, "isolatedHomeAndSession": True, "externalNetworkDenied": True,
     "userCoreOrConfigTouched": False, "ssh": "NOTRUN", "attachAndSwiftTerm": "NOTRUN"}, indent=2))
 print("PASS isolated real-core smoke; artifacts:", out)

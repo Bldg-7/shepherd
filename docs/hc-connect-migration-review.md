@@ -306,7 +306,7 @@ A–D 통과 후 기존 pane/session socket API, attach CLI/PTY 경로, prefix �
 | SHPHRD-149 (A1) | bounded wire/event codec, hello 협상, 격리 테스트 | 구현·테스트 완료 |
 | SHPHRD-150 (A2) | local/SSH endpoint, RPC/attach/events/CREDIT, SwiftTerm 검증 | 고정 #14711 백포트로 검증 완료; 공식 0.1.16은 여전히 부적합 |
 | SHPHRD-151 (B) | agent/session/process/screen 기능 동등성 | 진행 중 — 로컬 kernel foreground 관찰 검증; 전체 parity 미완료 |
-| SHPHRD-152 (C) | workspace CAS 및 이벤트/알림 | 대기 |
+| SHPHRD-152 (C) | workspace CAS 및 이벤트/알림 | 진행 중 — bounded 문서·CAS reducer 구현, 앱 연결/알림은 남음 |
 | SHPHRD-153 (D) | launch/browser/proxy/mobile 통합 | 대기 |
 | SHPHRD-154 (E) | 회귀 및 legacy 제거 | 대기 |
 | SHPHRD-155 | first-party Swift 6 통일 및 기반 코드 커밋 | 완료 — `4e00351` |
@@ -441,6 +441,18 @@ Swift 6 전환에서 mutable SSH authentication delegate 공유를 없애고 imm
 - 이 검증은 명시적 `SSH_CONNECTION=owned-fixture-no-launchd`로 direct/SSH 시작 경로를 사용했다. 전역 launchd job 생성·청소를 피하며, 0.1.17의 launchd 앱 생존성 수정까지 검증했다고 주장하지 않는다. 모든 테스트 소유 프로세스/소켓은 정리했다.
 
 hc 탐색→사용자 승인 설치→재검증/연결, 버전 호환성·실패/재시도 안내를 SHPHRD-153 완료 조건으로 추가했다. 전역 설치나 앱 backend 전환은 하지 않았다. VM/실제 계정/유료 모델 호출을 독립적인 workspace 구현의 선행 조건으로 두지 않는다.
+
+### C 첫 구현: 앱 소유 workspace 문서와 CAS admission
+
+`CoreWorkspaceDocument`는 자체 `3rdr-workspace-v1` namespace, workspace/tab/pane UUID, binary split layout, origin core/terminal 참조를 저장한다. focus/zoom/route alias/credential/lease는 공유 문서에 넣지 않는다. 1 MiB·깊이 32·항목 4096·문자열 길이, UUID 중복, ratio·reference를 검증하며 미래 schema/알 수 없는 필드를 조용히 버리지 않는다. 기존 앱 문서나 legacy 데이터를 자동 이관하지 않는다.
+
+`CoreWorkspaceCAS`는 origin ID/connection epoch 확인, subscribe-before-read, unavailable과 confirmed missing 구별, event/missed로 pending read 퇴역, exact UInt64 CAS, 단일 write admission, ACK/conflict/uncertain 뒤 재조회, 이전 epoch reply 거부를 담당하는 순수 reducer다. 응답 손실을 실패 확정으로 해석하거나 mutation을 자동 재전송하지 않는다. 실행·종료·브라우저 권한·UI focus 변경은 하지 않는다.
+
+실제 공식 0.1.17의 private core에 두 client를 연결하는 fixture도 추가했다. 동일 baseline CAS 충돌, 승자 재조회, doc 이벤트, 성공 응답을 의도적으로 무시한 뒤 재조회(실제 network loss를 주입했다는 뜻은 아님), 삭제 tombstone version 보존을 검증한다. 사용자 core나 다른 앱 문서는 건드리지 않는다.
+
+최종 검증: `/private/tmp/hc-workspace-final.gZVGU2/` — Swift 6 Debug/optimized 각 62 checks, iOS typecheck, 공식 0.1.17 두 client 실제 CAS 11 checks, macOS/iOS unsigned build 통과. core/접속 child/socket 정리 확인. 기존 protocol 회귀 7단계도 통과했다.
+
+C 전체 완료는 아니다. 실제 앱의 RPC/event owner, 편집/rebase, local focus, run/doc 및 close/kill 부분 성공 조정, 알림 dedup이 남는다. 상세: `Tests/CoreWorkspace/README.md`.
 
 ## 최종 권고
 
