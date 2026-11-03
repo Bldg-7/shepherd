@@ -117,8 +117,62 @@ typealias Doc = CoreWorkspaceDocument
         try check(!state.canWrite && state.lastWriteResult == .uncertain, "bad ack fail closed")
         let exhausted = try state.beginRead(); try state.accept(exhausted, version: UInt64.max, document: doc)
         try rejects("version overflow") { _ = try state.beginWrite(empty) }
+        try codecEventsAndEdits(doc, empty: empty)
         let report = ["passed": true, "checks": checks, "network": false, "userCoreUsed": false] as [String: Any]
         try JSONSerialization.data(withJSONObject: report, options: [.sortedKeys]).write(to: URL(fileURLWithPath: CommandLine.arguments[1]))
         print("PASS workspace schema/CAS: \(checks) checks")
+    }
+    static func codecEventsAndEdits(_ doc: Doc, empty: Doc) throws {
+        let bytes = try doc.encoded(), raw = String(decoding: bytes, as: UTF8.self)
+        let reply = Data("{\"version\":18446744073709551615,\"value\":\(raw)}".utf8)
+        let decoded = try JSONDecoder().decode(CoreWorkspaceReadResult.self, from: reply)
+        try check(decoded.version == UInt64.max && decoded.document == doc, "strict nested codec preserves outer UInt64")
+        for bad in ["{\"version\":0}", "{\"version\":0,\"value\":{\"schemaVersion\":1,\"workspaces\":[],\"future\":true}}", "{\"version\":0,\"value\":[]}"] {
+            try rejects("invalid nested doc result") { _ = try JSONDecoder().decode(CoreWorkspaceReadResult.self, from: Data(bad.utf8)) }
+        }
+        let missing = try JSONDecoder().decode(CoreWorkspaceReadResult.self, from: Data("{\"version\":9,\"value\":null}".utf8))
+        try check(missing.version == 9 && missing.document == nil, "tombstone envelope")
+        let huge = Data(("{\"version\":0,\"value\":{\"padding\":\"" + String(repeating: "x", count: Doc.maximumBytes + 1) + "\"}}").utf8)
+        try rejects("bounded raw value capture") { _ = try JSONDecoder().decode(CoreWorkspaceReadResult.self, from: huge) }
+        func notice(_ method: String, _ seq: UInt64, _ extra: String = "") -> Data {
+            Data("{\"jsonrpc\":\"2.0\",\"method\":\"\(method)\",\"params\":{\(extra)\"seq\":\(seq)}}".utf8)
+        }
+        var events = CoreWorkspaceEvents(sequence: 0)
+        try check(try !events.consume(notice("heartbeat", 0)).refresh, "quiet heartbeat")
+        let change = "\"type\":\"doc\",\"data\":{\"name\":\"3rdr-workspace-v1\",\"version\":18446744073709551615},"
+        let effect = try events.consume(notice("event", 1, change))
+        try check(effect.refresh && effect.minimumVersion == UInt64.max, "event version exact")
+        try check(try events.consume(notice("missed", 3)).refresh, "missed forces doc read")
+        try check(try !events.consume(notice("event", 2, change)).refresh, "events below missed baseline ignored")
+        try check(try !events.consume(notice("event", 4, "\"machine\":\"other\"," + change)).refresh, "remote doc not local doc")
+        try check(try !events.consume(notice("event", 5, change.replacingOccurrences(of: "3rdr-workspace-v1", with: "other-doc"))).refresh, "other namespace ignored")
+        try check(try events.consume(notice("heartbeat", 7)).refresh, "sequence gap triggers read")
+        try check(try !events.consume(notice("event", 8, "\"type\":\"title\",\"data\":{\"version\":\"unrelated\"},")).refresh, "unrelated event data not decoded as document")
+        try rejects("regressed heartbeat") { _ = try events.consume(notice("heartbeat", 1)) }
+        try rejects("invalid event JSON") { _ = try events.consume(Data("!".utf8)) }
+        let pane = Doc.Pane(), tab = Doc.Tab(name: "t", layout: .leaf(pane))
+        let workspace = Doc.Workspace(name: "w", tabs: [tab])
+        let initial = try CoreWorkspaceEdit.appendWorkspace(workspace).applying(to: empty)
+        let renamed = try CoreWorkspaceEdit.renameWorkspace(workspace.id, "renamed").applying(to: initial)
+        try check(renamed.workspaces[0].name == "renamed" && initial.workspaces[0].name == "w", "immutable rename")
+        let sibling = Doc.Pane()
+        let split = try CoreWorkspaceEdit.splitPane(pane.id, axis: .vertical, ratio: 0.5, newPane: sibling).applying(to: initial)
+        let collapsed = try CoreWorkspaceEdit.removePane(sibling.id).applying(to: split)
+        try check(collapsed == initial, "remove collapses only sibling split")
+        let unbound = try CoreWorkspaceEdit.removePane(pane.id).applying(to: initial)
+        try check(unbound.workspaces[0].tabs[0].layout == nil, "last pane leaves empty tab, no launch")
+        let removed = try CoreWorkspaceEdit.removeTab(tab.id).applying(to: initial)
+        try check(removed.workspaces[0].tabs.isEmpty, "layout-only remove tab")
+        let ref = Doc.TerminalReference(coreID: "c1", terminalID: "t1")
+        let bound = try CoreWorkspaceEdit.bindPane(pane.id, expected: nil, replacement: ref).applying(to: initial)
+        try check(bound != initial, "explicit bind records reference")
+        try rejects("bind precondition") { _ = try CoreWorkspaceEdit.bindPane(pane.id, expected: nil, replacement: ref).applying(to: bound) }
+        try rejects("duplicate append") { _ = try CoreWorkspaceEdit.appendWorkspace(workspace).applying(to: initial) }
+        try rejects("missing edit target") { _ = try CoreWorkspaceEdit.renameTab(UUID(), "x").applying(to: initial) }
+        try rejects("edit retains ratio validation") { _ = try CoreWorkspaceEdit.splitPane(pane.id, axis: .vertical, ratio: 0, newPane: sibling).applying(to: initial) }
+        let epoch = UUID(); var cas = try CoreWorkspaceCAS(originCoreID: "c1", epoch: epoch)
+        try cas.didSubscribe(coreID: "c1", epoch: epoch); try cas.invalidate(epoch: epoch, minimumVersion: 5)
+        let read = try cas.beginRead()
+        try rejects("event floor rejects stale result") { try cas.accept(read, version: 4, document: empty) }
     }
 }

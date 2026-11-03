@@ -10,12 +10,14 @@ python3 Tests/CoreWorkspace/run-tests.py --output "$(mktemp -d /tmp/hc-workspace
 The runner builds and executes Debug and optimized Swift 6 tests, then typechecks
 both production files for iOS. It preserves source hashes and stage/cleanup logs.
 
-The pure suite passes **62 checks in each build mode**, plus iOS Swift 6
-typechecking. Final evidence: `/private/tmp/hc-workspace-final.gZVGU2/unit`.
-The same directory's `real` gate passes 11 checks with official hc 0.1.17 and
-confirms both connect children/core/socket cleanup. `macos.log` and `ios.log`
-record passing unsigned app builds. Protocol regression: seven stages at
-`/private/tmp/hc-workspace-protocol.VCkHPv/run`.
+Current validation: **88 codec/edit/CAS checks and 32 RPC-owner checks in each
+build mode**, plus iOS Swift 6 typechecking (nine stages).
+Evidence: `/private/tmp/hc-owner-final.7YBFUc/unit`.
+The same directory's `real` gate passes 23 checks against official hc 0.1.17,
+including the production store, automatic cross-client refresh and layout edits.
+Both connect children/core/socket retire. Protocol regression: seven stages at
+`/private/tmp/hc-owner-protocol.8akAt8/run`. Unsigned macOS/iOS app builds pass
+at `/private/tmp/hc-owner-build.OSQg6g/{macos,ios}.log`.
 
 The document preflight and typed decoder consume the same normalized JSON object;
 they cannot disagree about which repeated-key value to validate and persist.
@@ -75,6 +77,46 @@ The eventual connection owner serializes calls to it and performs the actual RPC
 - Same-version/different-content and regressed snapshots fail closed. Recovering
   an actual server state rollback requires a separate explicit product decision.
 
-Still to implement in C: RPC/event subscription owner, editing/rebase operations,
-device-local focus, run/document and close/kill partial-success reconciliation,
-and seen/notification dedup. Native launch authority and installer UI remain D.
+## RPC/event owner and explicit edits
+
+`CoreWorkspaceStore` owns one unfiltered event subscription on an already
+negotiated **direct origin connection** (local or direct SSH). It does not own the
+core/connection, use gateway `on` aliases, or grant any process/browser authority.
+It subscribes before `doc.get`, decodes the outer UInt64 version separately from
+the strict layout codec, and consumes/acknowledges bounded event lines.
+
+Doc changes, missed snapshots and sequence gaps invalidate a pending read and
+schedule a coalesced read. Document event versions establish a minimum read
+version. Old events covered by a missed snapshot are ignored per the protocol;
+remote-machine or other-namespace doc events do not become local documents.
+At most one refresh job and three read attempts run per batch. Errors leave the
+cached view read-only, with a public error kind rather than raw server messages.
+
+`commit` and `edit` require the exact version the caller edited. A newer background
+refresh never authorizes an older proposed replacement. Writes are sent once;
+conflicts, timeouts/cancellation and unexpected ACKs require a read, not replay.
+An invalid stream or a 45-second event/heartbeat stall retires the store.
+Reconnect creates a new store; old views and
+subscriptions cannot become writable again.
+
+Full-view UI subscriptions use newest-one buffering with at most eight observers.
+Explicit close awaits shared cleanup, cancels background reads, and closes only
+its event stream. Late canceled opens remain under the connection's existing
+orphan-stream cleanup. Closing a view does not prove that an in-flight remote
+mutation was canceled or that its shared connection/core has stopped.
+
+`CoreWorkspaceEdit` supports workspace/tab additions and renames, tab removal,
+pane split/removal (including split collapse), and expected-reference binding.
+All edits return a newly validated immutable document. Removal is **layout-only**:
+it never kills a terminal or changes device-local focus. No automatic rebase.
+
+The in-memory framed peer tests the production owner through real RPC routing:
+subscribe-before-read, held/stale reads, missed events, read failures, malformed
+schema/events, a dropped write ACK, no mutation replay, stale caller versions,
+bounded subscribers and close/late-response behavior. The owned-core integration
+also exercises the production owner and automatic cross-client event refresh.
+
+Still to implement in C: product UI/local focus, explicit rebase policy,
+gateway remote-document routing, run/document and close/kill partial-success
+reconciliation, and seen/notification dedup. Native launch authority and installer
+UI remain D.

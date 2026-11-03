@@ -66,8 +66,9 @@ public nonisolated struct CoreWorkspaceCAS: Sendable {
     }
     /// A doc event, missed event, or relevant remote reconnect invalidates a
     /// pending read too. A delayed old snapshot cannot erase a newer event.
-    public mutating func invalidate(epoch: UUID) throws {
+    public mutating func invalidate(epoch: UUID, minimumVersion: UInt64? = nil) throws {
         guard epoch == self.epoch else { throw CoreWorkspaceSyncFailure.staleOperation }
+        if let minimumVersion { minimumKnownVersion = max(minimumKnownVersion, minimumVersion) }
         refreshRequired = true; reading = nil
     }
     public mutating func beginRead() throws -> Read {

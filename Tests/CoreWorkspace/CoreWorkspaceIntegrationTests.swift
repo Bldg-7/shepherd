@@ -51,6 +51,15 @@ private nonisolated struct Notice: Decodable, Sendable {
         }
         checks += 1
     }
+    static func current(_ store: CoreWorkspaceStore, version: UInt64) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while true {
+            let view = await store.view()
+            if view.canWrite && view.snapshot?.version == version { checks += 1; return }
+            guard ContinuousClock.now < deadline else { throw CoreWorkspaceSyncFailure.refreshRequired }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+    }
     static func main() async throws {
         let args = CommandLine.arguments
         guard args.count == 5 else { throw CoreWorkspaceFailure.invalidDocument }
@@ -63,7 +72,7 @@ private nonisolated struct Notice: Decodable, Sendable {
         let ta = try CoreProcessTransport(configuration: config), tb = try CoreProcessTransport(configuration: config)
         let required: Set<String> = ["doc.get","doc.set","events.subscribe","server.status","server.stop"]
         let a = try CoreRPCConnection(transport: ta, requiredMethods: required), b = try CoreRPCConnection(transport: tb, requiredMethods: required)
-        var streams: [CoreStream] = [], pid: UInt32?, failure: (any Error)?
+        var streams: [CoreStream] = [], stores: [CoreWorkspaceStore] = [], pid: UInt32?, failure: (any Error)?
         do {
             let ha = try await a.connect(), hb = try await b.connect()
             let status: Status = try await a.call("server.status").result(); pid = status.pid
@@ -104,7 +113,37 @@ private nonisolated struct Notice: Decodable, Sendable {
             try sb.invalidate(epoch: b.epoch); try await read(b, &sb)
             let recreate = try sb.beginWrite(first)
             try check(recreate.expectedVersion == 3 && sb.snapshot?.document == nil, "recreate uses tombstone version, not zero")
+
+            // Exercise the production owner, not the manual fixture reducer.
+            let ownerA = try await CoreWorkspaceStore(connection: a), ownerB = try await CoreWorkspaceStore(connection: b)
+            stores = [ownerA, ownerB]
+            let started = try await ownerA.start(); _ = try await ownerB.start()
+            try check(started.canWrite && started.snapshot?.version == 3, "production owner subscribed/read")
+            let pane = CoreWorkspaceDocument.Pane(), tabID = UUID()
+            let workspace = CoreWorkspaceDocument.Workspace(name: "owner", tabs: [.init(id: tabID, name: "t", layout: .leaf(pane))])
+            let saved = try await ownerA.edit(.appendWorkspace(workspace), expectedVersion: 3)
+            try check(saved == .acknowledged(version: 4), "owner explicit create uses tombstone")
+            try await current(ownerB, version: 4)
+            do { _ = try await ownerB.edit(.renameWorkspace(workspace.id, "stale"), expectedVersion: 3); throw CoreWorkspaceFailure.invalidDocument }
+            catch CoreWorkspaceStoreFailure.staleRevision { checks += 1 }
+            try await current(ownerA, version: 4)
+            let sibling = CoreWorkspaceDocument.Pane()
+            _ = try await ownerA.edit(.splitPane(pane.id, axis: .horizontal, ratio: 0.4, newPane: sibling), expectedVersion: 4)
+            try await current(ownerA, version: 5)
+            _ = try await ownerA.edit(.removePane(sibling.id), expectedVersion: 5)
+            try await current(ownerB, version: 6)
+            try await current(ownerA, version: 6)
+            let collapsed = await ownerB.view()
+            try check(collapsed.snapshot?.document?.workspaces.first?.tabs.first?.layout == .leaf(pane), "automatic event read and split collapse")
+            let live: Status = try await a.call("server.status").result()
+            try check(live.live == 0, "layout edits never launch or kill programs")
+            try await ownerA.close(); try await ownerB.close()
+            let remainingA = await a.snapshot(), remainingB = await b.snapshot()
+            try check(remainingA.streams == 1 && remainingB.streams == 1, "owners close only own subscriptions")
+            let closed = await ownerA.view()
+            try check(!closed.canWrite && closed.snapshot?.version == 6, "retired owner keeps read-only cache")
         } catch { failure = error }
+        for store in stores { try? await store.close() }
         for stream in streams { try? await stream.close() }
         let stop: Stopped? = try? await a.call("server.stop").result()
         try await a.close(); try await b.close()

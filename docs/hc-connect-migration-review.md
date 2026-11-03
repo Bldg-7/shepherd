@@ -306,7 +306,7 @@ A–D 통과 후 기존 pane/session socket API, attach CLI/PTY 경로, prefix �
 | SHPHRD-149 (A1) | bounded wire/event codec, hello 협상, 격리 테스트 | 구현·테스트 완료 |
 | SHPHRD-150 (A2) | local/SSH endpoint, RPC/attach/events/CREDIT, SwiftTerm 검증 | 고정 #14711 백포트로 검증 완료; 공식 0.1.16은 여전히 부적합 |
 | SHPHRD-151 (B) | agent/session/process/screen 기능 동등성 | 진행 중 — 로컬 kernel foreground 관찰 검증; 전체 parity 미완료 |
-| SHPHRD-152 (C) | workspace CAS 및 이벤트/알림 | 진행 중 — bounded 문서·CAS reducer 구현, 앱 연결/알림은 남음 |
+| SHPHRD-152 (C) | workspace CAS 및 이벤트/알림 | 진행 중 — 문서·CAS·RPC/event owner·편집 연산 구현, UI/복구/알림은 남음 |
 | SHPHRD-153 (D) | launch/browser/proxy/mobile 통합 | 대기 |
 | SHPHRD-154 (E) | 회귀 및 legacy 제거 | 대기 |
 | SHPHRD-155 | first-party Swift 6 통일 및 기반 코드 커밋 | 완료 — `4e00351` |
@@ -452,7 +452,19 @@ hc 탐색→사용자 승인 설치→재검증/연결, 버전 호환성·실패
 
 최종 검증: `/private/tmp/hc-workspace-final.gZVGU2/` — Swift 6 Debug/optimized 각 62 checks, iOS typecheck, 공식 0.1.17 두 client 실제 CAS 11 checks, macOS/iOS unsigned build 통과. core/접속 child/socket 정리 확인. 기존 protocol 회귀 7단계도 통과했다.
 
-C 전체 완료는 아니다. 실제 앱의 RPC/event owner, 편집/rebase, local focus, run/doc 및 close/kill 부분 성공 조정, 알림 dedup이 남는다. 상세: `Tests/CoreWorkspace/README.md`.
+이 첫 단계에서는 C 전체 완료가 아니며 RPC/event owner와 편집 연산이 남아 있었다. 이어진 구현은 아래에 기록한다. 상세: `Tests/CoreWorkspace/README.md`.
+
+### C 추가 구현: RPC/event owner와 명시적 편집
+
+`CoreWorkspaceStore`를 추가했다. 협상된 direct origin 연결에서 unfiltered events.subscribe 이후 doc.get을 수행한다. doc/missed/sequence gap으로 읽기 token을 퇴역하고, 하나의 refresh job에서 최대 3회 읽기만 재시도한다. doc event version은 재조회 version의 하한이다. 알 수 없는 schema/읽기 오류는 캐시를 지우지 않고 read-only로 유지한다. 45초 event/heartbeat 정지는 store를 퇴역시킨다.
+
+`CoreWorkspaceReadResult`는 CAS UInt64 version을 layout JSON 변환과 분리하고 모든 layout key를 bounded capture하여 strict codec에 전달한다. `CoreWorkspaceEvents`는 snapshot/missed baseline, 오래된 event 무시, 다른 namespace/remote-machine doc 분리를 처리한다.
+
+편집은 호출자가 실제 편집한 baseline version을 요구한다. 배경 갱신으로 version이 바뀌었다고 오래된 replacement를 새 version으로 저장하지 않는다. workspace/tab 추가·rename, tab 제거, pane split/제거/기대 reference 기반 binding은 immutable document를 다시 검증하며 terminal launch/kill이나 focus 변경을 하지 않는다. 충돌/timeout/취소는 mutation replay 없이 재조회한다.
+
+UI observer는 최대 8개·각 newest-one full view로 제한한다. close는 동일 cleanup task를 기다리고 자기 event stream/background read만 퇴역시킨다. close 중 늦은 open은 CoreRPCConnection의 기존 orphan cleanup으로 처리하며 공유 연결/core를 임의 중단하지 않는다. 실제 UI/local focus, explicit rebase, gateway 원격 doc routing, run/doc·close/kill 부분 성공, 알림 dedup은 아직 남는다.
+
+최종 검증 `/private/tmp/hc-owner-final.7YBFUc/`: Debug/optimized 각각 codec·편집·CAS 88 + 실제 framed RPC owner 32 checks, iOS typecheck 통과. 공식 0.1.17 private core의 두 client 통합 23 checks로 자동 갱신·stale edit 거부·split collapse·소유 구독만 종료를 확인했다. 기존 protocol 7단계 회귀와 macOS/iOS unsigned build(`/private/tmp/hc-owner-build.OSQg6g/`)도 통과했다.
 
 ## 최종 권고
 
