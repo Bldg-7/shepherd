@@ -226,6 +226,12 @@ private struct SSHStreamIntegrationTests {
         let ownedPIDs = [status.pid] + running.holders.map(\.pid) + [launched.pid].compactMap { $0 }
         try params(["corePID":status.pid, "ownedPIDs":ownedPIDs]).write(to:report,options:.atomic)
         _ = try await remote.call("terminal.wait", parameters: params(["terminal":terminal, "timeout":5]))
+        // This SSH server is our explicitly owned loopback process, not a user
+        // remote endpoint. Never interpret a real remote PID as a local one.
+        guard let pid = launched.pid, let localPID = Int32(exactly: pid) else { throw IntegrationFailure.failed("owned run has no local PID") }
+        let localAnchor = try CoreLocalForeground.anchor(programPID: localPID)
+        let localForeground = try CoreLocalForeground.snapshot(for: localAnchor)
+        try check(localForeground.isAnchorOnlyForeground, "kernel observation anchors the owned hc PTY session")
         let stream = try await remote.openStream("terminal.attach", parameters: params([
             "terminal":terminal, "cols":90, "rows":25, "history":200,
             "display":["fg":"#123456", "bg":"#000000", "cell":[8,16]]]))
@@ -329,6 +335,8 @@ private struct SSHStreamIntegrationTests {
         _ = try await reconnected.connect()
         let snapshot: ReadTerminal = try await reconnected.call("terminal.read", parameters:params(["terminal":terminal,"lines":0])).result()
         try check(snapshot.text.contains("BURST-DONE"), "terminal survives SSH detach")
+        let retainedForeground = try CoreLocalForeground.snapshot(for: localAnchor)
+        try check(retainedForeground.isAnchorOnlyForeground, "same kernel process instance after SSH reconnect")
         let restored = try await reconnected.openStream("terminal.attach", parameters:params(["terminal":terminal,"cols":91,"rows":27,"resumed":true,"history":10]))
         let restoredView = View(frame:NSRect(x:0,y:0,width:900,height:500))
         restoredView.bind(); restoredView.getTerminal().resize(cols:91,rows:27)

@@ -296,7 +296,7 @@ A–D 통과 후 기존 pane/session socket API, attach CLI/PTY 경로, prefix �
 | SHPHRD-148 | 전체 hc 단일 backend 전환 | 진행 중 |
 | SHPHRD-149 (A1) | bounded wire/event codec, hello 협상, 격리 테스트 | 구현·테스트 완료 |
 | SHPHRD-150 (A2) | local/SSH endpoint, RPC/attach/events/CREDIT, SwiftTerm 검증 | 고정 #14711 백포트로 검증 완료; 공식 0.1.16은 여전히 부적합 |
-| SHPHRD-151 (B) | agent/session/process/screen 기능 동등성 | 대기 |
+| SHPHRD-151 (B) | agent/session/process/screen 기능 동등성 | 진행 중 — 로컬 kernel foreground 관찰 검증; 전체 parity 미완료 |
 | SHPHRD-152 (C) | workspace CAS 및 이벤트/알림 | 대기 |
 | SHPHRD-153 (D) | launch/browser/proxy/mobile 통합 | 대기 |
 | SHPHRD-154 (E) | 회귀 및 legacy 제거 | 대기 |
@@ -382,6 +382,18 @@ Swift 6 전환에서 mutable SSH authentication delegate 공유를 없애고 imm
 상세 hash·범위: [hc-osc8-first-paint-blocker.md](hc-osc8-first-paint-blocker.md). 버전 문자열은 여전히 0.1.16이므로 검증된 binary hash/receipt 또는 향후 검증한 공식 고정 릴리스로 구분해야 한다. 임의의 installed 0.1.16을 승인하지 않는다. 제품 backend와 사용자 daemon은 교체하지 않았다.
 
 관련 Ghostty #14725는 blank gap/erased background/wrap 복원 개선으로 검토했으나 최소 OSC8 백포트에는 포함하지 않았다. 해당 TUI 보존 사례는 B의 화면·에이전트 기능 동등성 검증에 포함해야 한다. A2 완료를 B–E나 배포 완료로 해석하지 않는다.
+
+### B 첫 구현: 로컬 foreground 그룹 관찰
+
+`CoreLocalForeground.swift`는 명시적으로 지정한 This Mac의 PTY/session leader를 kernel PID/start/parent/session/tty로 고정하고 foreground process group 전체를 조회한다. 최대 256개, 이중 membership/fingerprint 검사, 변경·초과·소멸 시 fail-closed. argv/environment나 전체 프로세스 목록은 읽지 않고, tty를 열거나 signal/job-control을 변경하지 않는다. 단일 leader로 full foreground list를 꾸미지 않으며 leader가 종료된 그룹도 실제 남은 구성원을 반환한다.
+
+이는 관찰이지 권한 부여가 아니다. PID/start가 같은 exec도 가능하므로 `isShellForeground` 대신 `isAnchorOnlyForeground`로 명명했다. 기존 native peer/정확한 argv/session/exec-exit watcher 검증은 그대로 필요하다. iOS/원격 PID에는 이 inspector를 적용하지 않는다. 아직 앱의 기존 launch coordinator를 교체하지 않았다.
+
+- 격리 PTY의 두 worker·leader 종료·그룹 복귀·anchor 소멸·위조 start/session/tty·quota를 Debug/optimized 각각 27 checks로 검증 (`/private/tmp/hc-observation.r1zTVw/run`).
+- 실제 owned hc의 run PID도 anchor 생성과 SSH 재접속 후 동일 인스턴스 관찰 통과. 기존 OSC8 포함 전체 34 checks 통과 (`/private/tmp/hc-native-ssh.WYDBW2/run`).
+- macOS/iOS Simulator unsigned Debug build 통과 (`/private/tmp/hc-observation-build.OFDajs/`). 사용자 core/agent/자격증명/전역 설정은 변경하지 않았다.
+
+다음은 managed/unmanaged readiness/session, passive attributed screen 및 observer resize/초기 snapshot 경계다. 공식 0.1.16의 size event를 stream 순서 보장으로 간주하지 않는다. B 전체는 미완료다. 자세한 검증·제약은 `Tests/CoreObservation/README.md`에 기록한다.
 
 ## 최종 권고
 
