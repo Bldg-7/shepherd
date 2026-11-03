@@ -29,6 +29,8 @@ while True:
     emit('\r\nRXALL:' + received.hex() + '\r\n')
     if b'L' in part:
         emit('\r\n\033]8;;https://example.invalid/live\007live-link\033]8;;\007\r\n')
+    if b'R' in part:
+        emit('\r\n\033]8;id=reconnect;https://example.invalid/reconnect\007reconnect-link\033]8;;\007\r\n')
     if b'Q' in part:
         emit('\033]10;?\007')
     if b'B' in part:

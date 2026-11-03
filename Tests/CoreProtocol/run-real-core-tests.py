@@ -14,17 +14,16 @@ import platform
 import socket
 import subprocess
 import sys
-import tarfile
 import time
+import core_test_artifact as artifacts
 
 ROOT = Path(__file__).resolve().parents[2]
-SHA256 = "698d8f0c44f4e4b15fec174d52a39d57a014cfd71added44b53a0753b469d0fd"
 p = argparse.ArgumentParser()
-p.add_argument("--archive", type=Path, required=True)
+artifacts.add_arguments(p)
 p.add_argument("--output", type=Path, required=True)
 a = p.parse_args()
 assert platform.system() == "Darwin" and platform.machine() == "arm64", "pinned archive is macOS ARM64 only"
-archive = a.archive.resolve()
+artifact = artifacts.select(a.archive, a.build_receipt)
 
 def digest(path):
     value = hashlib.sha256()
@@ -33,20 +32,12 @@ def digest(path):
             value.update(block)
     return value.hexdigest()
 
-assert digest(archive) == SHA256, "archive differs from pinned release"
 out = a.output.resolve()
 out.mkdir(mode=0o700, parents=True, exist_ok=False)
 for name in ("home", "tmp", "cache", "bin", "core"):
     (out / name).mkdir(mode=0o700)
 binary = out / "bin/herdr-core"
-with tarfile.open(archive, "r:gz") as package:
-    item = package.getmember("herdr-core")
-    assert item.isfile() and item.size <= 128 << 20
-    # Do not extract untrusted archive paths or symlinks.
-    with package.extractfile(item) as src, binary.open("wb") as dst:
-        while block := src.read(1 << 20):
-            dst.write(block)
-binary.chmod(0o700)
+provenance = artifacts.extract(artifact, binary)
 home = out / "core"
 sock = home / "c.sock"
 assert len(str(sock).encode()) < 104, "use a shorter /tmp output path"
@@ -70,10 +61,8 @@ with socket.socket() as listener:
 sources = sorted(str(path.relative_to(ROOT)) for path in (ROOT / "ShepherdKit/Sources/ShepherdKit/CoreKit").glob("*.swift"))
 test = "Tests/CoreProtocol/CoreRealProcessTests.swift"
 (out / "source-hashes.json").write_text(json.dumps({name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
-                                                   for name in sources + [test, str(Path(__file__).resolve().relative_to(ROOT))]}, indent=2))
-(out / "provenance.json").write_text(json.dumps({"release": "0.1.16", "generation": 1, "archiveSHA256": SHA256,
-    "binarySHA256": digest(binary),
-    "manifest": "https://releases.herdr.dev/core/0.1.16/manifest.json", "independentSignatureVerified": False}, indent=2))
+                                                   for name in sources + [test, "Tests/CoreProtocol/core_test_artifact.py", str(Path(__file__).resolve().relative_to(ROOT))]}, indent=2))
+(out / "provenance.json").write_text(json.dumps(provenance, indent=2))
 
 
 def stage(name, seconds, args):
@@ -119,7 +108,8 @@ finally:
 assert result.get("passed") and result.get("stopAcknowledged") and result.get("connectChildrenReaped")
 for name, expected in json.loads((out / "source-hashes.json").read_text()).items():
     assert digest(ROOT / name) == expected, "source changed during validation: " + name
-(out / "validation.json").write_text(json.dumps({"passed": True, "realCore": "0.1.16", "ownCoreStopped": True,
+(out / "validation.json").write_text(json.dumps({"passed": True, "realCore": "0.1.16", "artifactVariant": artifact["variant"],
+    "officialRelease": artifact["officialRelease"], "ownCoreStopped": True,
     "ownSocketRemoved": True, "isolatedHomeAndSession": True, "externalNetworkDenied": True,
     "userCoreOrConfigTouched": False, "ssh": "NOTRUN", "attachAndSwiftTerm": "NOTRUN"}, indent=2))
 print("PASS isolated real-core smoke; artifacts:", out)

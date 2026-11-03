@@ -2,7 +2,9 @@
 
 ## Decision / impact
 
-**Do not mark SHPHRD-150 or the backend cutover complete against official hc 0.1.16.**
+**Resolved for the explicitly pinned #14711 source backport; official hc 0.1.16 remains incompatible.**
+The A2 transport qualification now passes against that private build. This is not
+approval for product cutover, arbitrary installed 0.1.16 binaries, or deployment.
 The local/SSH transport and stream implementation works, but an already-printed
 OSC8 link loses its destination when attached/repainted. This breaks the existing
 explicit-file-link preview policy: an arbitrary visible label cannot reconstruct
@@ -77,10 +79,12 @@ paint. Consequently, the extra flag does not fix the lost links after an OSC8
 close. The live stream is unaffected because the core forwards the original
 program bytes.
 
-## Required fix and acceptance
+## Fix and acceptance
 
-The change belongs in the VT formatter or a core snapshot representation that
-actually carries the missing metadata. Required work:
+The earlier conclusion that a new upstream implementation was needed was premature.
+[Ghostty #14711](https://github.com/ghostty-org/ghostty/pull/14711) was already merged
+on 2026-10-15: `510b253dbc52d77b9f842ab6b8cba9ef046cea11`. Its unmodified patch applies
+to the release-pinned Ghostty. The following acceptance requirements are retained:
 
 - Emit per-cell OSC8 transitions in VT, preserving URI/id semantics and safely
   handling control characters; keep cursor-state restoration independent.
@@ -93,6 +97,61 @@ actually carries the missing metadata. Required work:
   `passed: true`, including reconnect and cleanup. Do not change the visible
   labels or remove the assertion to manufacture a passing result.
 
-No patched daemon has been installed or distributed. Publishing an upstream PR
-or adopting a maintained fork is a separate external/dependency decision; the
-client cannot recover a destination that was never transmitted.
+## Backport qualification result
+
+Only `formatter.zig` changes; no Rust source, dependency lockfile, C ABI or wire
+protocol change. The recipe, original upstream patch and license, isolated builder
+and reproduction commands are in `Tests/CoreProtocol/backport/`. Rust 1.95.0 and
+Zig 0.16.0 were installed only inside the scratch directory, not globally.
+
+| Check | Pinned backport | Official 0.1.16 control |
+|---|---|---|
+| Initial OSC8 cell link | preserved | missing |
+| Live OSC8 | preserved | preserved |
+| Fresh SSH reconnect OSC8 cell link | preserved | missing |
+| Other native integration checks | 32 passed | 32 completed |
+| Entire qualification | passed, exit 0 | failed, exit 1 |
+| Owned processes exited / socket removed | yes | yes |
+
+The reconnect fixture emits and closes an explicit-ID hyperlink before detach.
+Both the original BURST-DONE rendering assertion and the added reconnect URI
+assertion remain. No URL is reconstructed from text, no redraw is requested, and
+no failure is waived. Both runs have zero supervisor signals.
+
+Final evidence (local scratch artifacts, not durable download links):
+
+- Build receipt and full logs: `/private/tmp/shp-hc-backport.PfyX5A/qualified/`.
+- Backport SSH/SwiftTerm: `/private/tmp/qualified-backport-ssh.TbWItL/run/validation.json`.
+- Backport local RPC: `/private/tmp/qualified-backport-rpc.F0pbDe/run/validation.json`.
+- Official negative control: `/private/tmp/final-official-ssh-negative.oVTIqW/run/validation.json`.
+- Independent Swift 6 protocol fixtures: `/private/tmp/hc-backport-fixtures.1sI5OJ/run/validation.json` (7 stages).
+- Zig formatter tests: 309 passed (147 + 162 across the two test roots).
+- Rust VT library: 10 passed. Core library outer harness: 89 passed, 1 ignored;
+  its subprocess helper separately ran 1 test. This is not all upstream daemon integration tests.
+- Artifact selection/extraction: 14 Python tests passed, including rejection of
+  changed receipts/logs, zero tests, wrong hashes, unsafe tar members and overwrite.
+- Upstream notice regeneration leaves `THIRD-PARTY-NOTICES` unchanged.
+
+Hashes of the qualified artifact:
+
+- Binary: `e5b63cfa1f4440c14ca87a9d2b8b9ba8c2669a5865931bb587593e32b5d3715f`.
+- Archive: `0d716c310e7a3df4c56c1216044415d021359be9c472cf4690b6d883df87cd73`.
+- Patch: `35d3b2bce1f61865b282c2c40b25dde6337c66862e163d20d8f5a99a421c5f47`.
+- Patched formatter: `46d49949dd4f1d82e882c83de856c47050abc54f40f2d0cb853c6fa39fe4206e`.
+
+## Remaining product boundary
+
+The backport still reports version `0.1.16`; **a version string is insufficient to
+select it**. The test runners require the exact recipe/build receipt and artifact
+hashes via explicit `--build-receipt`. Official `--archive` mode keeps its original
+fixed checksum and red result. Receipts are consistency evidence, not signatures.
+
+[Ghostty #14725](https://github.com/ghostty-org/ghostty/pull/14725), merged 2026-10-19,
+was reviewed too. It addresses separate blank-gap/erased-background/wrap fidelity,
+not the missing per-cell OSC8 emission itself. It is not included in this minimal
+backport. Those broader TUI cases remain part of SHPHRD-151 parity qualification.
+
+No patched daemon has been installed, pushed or distributed, and the app still
+uses its existing backend. SHPHRD-151–154, production artifact selection and any
+maintained patched-core distribution remain separate gates. The unrelated
+FilePreview regression tracked in SHPHRD-156 is not resolved by this work.

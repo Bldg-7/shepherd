@@ -295,13 +295,13 @@ A–D 통과 후 기존 pane/session socket API, attach CLI/PTY 경로, prefix �
 |---|---|---|
 | SHPHRD-148 | 전체 hc 단일 backend 전환 | 진행 중 |
 | SHPHRD-149 (A1) | bounded wire/event codec, hello 협상, 격리 테스트 | 구현·테스트 완료 |
-| SHPHRD-150 (A2) | local/SSH endpoint, RPC/attach/events/CREDIT, SwiftTerm 검증 | 구현됨; 실제 OSC8 first paint 호환성은 SHPHRD-157에 차단 |
+| SHPHRD-150 (A2) | local/SSH endpoint, RPC/attach/events/CREDIT, SwiftTerm 검증 | 고정 #14711 백포트로 검증 완료; 공식 0.1.16은 여전히 부적합 |
 | SHPHRD-151 (B) | agent/session/process/screen 기능 동등성 | 대기 |
 | SHPHRD-152 (C) | workspace CAS 및 이벤트/알림 | 대기 |
 | SHPHRD-153 (D) | launch/browser/proxy/mobile 통합 | 대기 |
 | SHPHRD-154 (E) | 회귀 및 legacy 제거 | 대기 |
 | SHPHRD-155 | first-party Swift 6 통일 및 기반 코드 커밋 | 완료 — `4e00351` |
-| SHPHRD-157 | core/libghostty VT first paint의 OSC8 cell metadata 보존 | upstream/core 변경 필요; 150의 blocker |
+| SHPHRD-157 | core/libghostty VT first paint의 OSC8 cell metadata 보존 | 기존 upstream #14711 백포트로 해결·검증; 전역 설치/배포 없음 |
 
 의존 관계: 149 → 150 → (151, 152) → 153 → 154.
 
@@ -367,6 +367,21 @@ Swift 6 전환에서 mutable SSH authentication delegate 공유를 없애고 imm
 실패 원인: official core 0.1.16의 first paint에는 링크 label만 있고 OSC8 destination이 없다. git tag `v0.1.16` (`e07c2a1bedd62cf4787ee026ee23ee79c7d95491`)의 Ghostty gitlink `1e5cdb865807abc990181efb8ebfa9122955cce2`를 확인했고, 해당 formatter는 per-cell hyperlink를 HTML에만 출력한다. VT cursor의 active hyperlink 복원 옵션으로는 이를 보존할 수 없다. 실시간 OSC8는 동일 경로에서 통과한다.
 
 상세 재현·source 근거·수정 조건: [hc-osc8-first-paint-blocker.md](hc-osc8-first-paint-blocker.md). 이 assertion은 삭제하지 않고 다른 체크/정리 후에도 최종 nonzero exit로 유지했다. **core/formatter 수정과 재검증 전에는 SHPHRD-150을 완료하거나 UI를 새 backend로 전환하지 않는다.** upstream 수정/배포 또는 관리할 patched-core 선택이 필요하다. 사용자 core를 임의로 교체하지 않았다.
+
+### A2 차단 해소: 기존 upstream OSC8 수정 백포트
+
+새 upstream 구현이 필요하다는 초기 판단은 정정한다. Ghostty #14711은 이미 2026-10-15에 머지됐으며, release-pinned Ghostty에 원본 patch가 그대로 적용된다. `formatter.zig` 하나만 변경하고 Rust/C ABI/wire/Cargo.lock은 유지했다. 격리된 Rust 1.95.0·Zig 0.16.0으로 빌드했다.
+
+- `Tests/CoreProtocol/backport/`: 고정 recipe, upstream patch/라이선스, build/test receipt 생성과 재현 절차.
+- 백포트 실제 SSH/core/SwiftTerm: 최초 attach·live·새 SSH 재접속의 OSC8 URI 모두 보존, 전체 gate 통과. 기존 32 checks와 BURST-DONE 재표시 검사 유지 (`/private/tmp/qualified-backport-ssh.TbWItL/run/validation.json`).
+- 공식 0.1.16 대조군: 최초 attach/재접속 링크 모두 실패하고 최종 exit 1 유지 (`/private/tmp/final-official-ssh-negative.oVTIqW/run/validation.json`).
+- 양쪽 모두 owned core/holder/terminal 종료와 소켓 제거 확인. 사용자 core/자격증명/전역 설정은 사용하지 않았다.
+- upstream formatter 309 tests, Rust VT 10 tests, core library 89 passed/1 ignored(별도 child helper 1 test 실행), artifact 검증 14 tests 통과. 독립 Swift 6 fixture 7 stages와 iOS 17 typecheck 재통과.
+- 백포트 local RPC smoke도 통과 (`/private/tmp/qualified-backport-rpc.F0pbDe/run/validation.json`).
+
+상세 hash·범위: [hc-osc8-first-paint-blocker.md](hc-osc8-first-paint-blocker.md). 버전 문자열은 여전히 0.1.16이므로 검증된 binary hash/receipt 또는 향후 검증한 공식 고정 릴리스로 구분해야 한다. 임의의 installed 0.1.16을 승인하지 않는다. 제품 backend와 사용자 daemon은 교체하지 않았다.
+
+관련 Ghostty #14725는 blank gap/erased background/wrap 복원 개선으로 검토했으나 최소 OSC8 백포트에는 포함하지 않았다. 해당 TUI 보존 사례는 B의 화면·에이전트 기능 동등성 검증에 포함해야 한다. A2 완료를 B–E나 배포 완료로 해석하지 않는다.
 
 ## 최종 권고
 

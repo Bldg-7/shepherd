@@ -155,7 +155,7 @@ resize negotiation, stream limits, invalid/reused/pre-reply channel IDs and
 missing CLOSE acknowledgement. The live SSH runner exercises the real core and
 native terminal alongside authentication, cancellation and reconnect.
 
-## Qualification blocker: SHPHRD-157
+## OSC8 qualification: SHPHRD-157
 
 The official 0.1.16 first paint drops OSC8 link metadata for cells whose hyperlink
 was closed before attach. The label is present but the URI is absent from raw
@@ -172,8 +172,17 @@ The integration test continues after recording this failure to exercise IME,
 kitty keys, mouse, resize, display queries, >256 KiB CREDIT flow, events,
 reconnect and cleanup. It **still exits nonzero** at the end. The runner writes
 `validation.json` with `passed: false` and `blocker: SHPHRD-157`; this is not an
-expected-failure success or permission to cut over the app. A patched/upgraded
-core and a complete passing run are required before closing SHPHRD-150.
+expected-failure success or permission to cut over the app.
+
+The already-merged Ghostty #14711 fix now passes this gate in a private, pinned
+0.1.16 source build. Initial and fresh-reconnect cell links are checked, in
+addition to live OSC8 and the original reattach rendering check. The official
+archive remains a failing negative control. See [backport/README.md](backport/README.md)
+for the exact recipe, build and `--build-receipt` opt-in commands. This option is
+mutually exclusive with `--archive` and does not weaken its official checksum.
+Results identify the artifact variant and official/nonofficial status explicitly.
+A2 qualification is complete for this backport, not for arbitrary 0.1.16 binaries
+and not for the overall product migration.
 
 The test extracts text via SwiftTerm's character provider and skips wide-cell
 continuations. Its simpler `getBufferAsData()` helper does not resolve stored

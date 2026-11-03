@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "id": "hc-0.1.16-ghostty-14711",
+  "version": "0.1.16",
+  "platform": "macos-aarch64",
+  "coreRepository": "https://github.com/herdrdev/herdr-core.git",
+  "coreCommit": "e07c2a1bedd62cf4787ee026ee23ee79c7d95491",
+  "cargoLockSHA256": "6d2edb74e292e719283c027d8054666d0c5ba34126ec202d6655bceeb942125c",
+  "ghosttyCommit": "1e5cdb865807abc990181efb8ebfa9122955cce2",
+  "upstreamPR": "https://github.com/ghostty-org/ghostty/pull/14711",
+  "upstreamCommit": "510b253dbc52d77b9f842ab6b8cba9ef046cea11",
+  "patchFile": "ghostty-14711.patch",
+  "patchSHA256": "35d3b2bce1f61865b282c2c40b25dde6337c66862e163d20d8f5a99a421c5f47",
+  "patchedFormatterSHA256": "46d49949dd4f1d82e882c83de856c47050abc54f40f2d0cb853c6fa39fe4206e",
+  "zigVersion": "0.16.0",
+  "zigArchiveURL": "https://ziglang.org/download/0.16.0/zig-aarch64-macos-0.16.0.tar.xz",
+  "zigArchiveSHA256": "b23d70deaa879b5c2d486ed3316f7eaa53e84acf6fc9cc747de152450d401489",
+  "zigBinarySHA256": "e6cd688d25664983833aae272f501d4bceeae304875b8f1741209d15fd13a4ec",
+  "zigBuildOptions": ["-j4", "-Demit-xcframework=false", "-Demit-macos-app=false"],
+  "archiveName": "herdr-core-backport.tar.gz",
+  "notOfficialRelease": true
+}

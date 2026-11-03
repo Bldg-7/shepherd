@@ -304,6 +304,8 @@ private struct SSHStreamIntegrationTests {
         try await waitScreen("1b5d31303b7267623a")
         try await stream.send(Data("B".utf8))
         try await waitScreen("BURST-DONE") // >256 KiB: requires actual CREDIT flow
+        try await stream.send(Data("R".utf8))
+        try await waitScreen("reconnect-link")
         var lines = try CoreEventLines(); var events = 0
         while events == 0 {
             guard let packet = try await subscription.next(timeout:.seconds(3)) else { break }
@@ -330,11 +332,16 @@ private struct SSHStreamIntegrationTests {
         let restored = try await reconnected.openStream("terminal.attach", parameters:params(["terminal":terminal,"cols":91,"rows":27,"resumed":true,"history":10]))
         let restoredView = View(frame:NSRect(x:0,y:0,width:900,height:500))
         restoredView.bind(); restoredView.getTerminal().resize(cols:91,rows:27)
-        while !text(of: restoredView).contains("BURST-DONE") {
+        while !text(of: restoredView).contains("BURST-DONE") || !text(of: restoredView).contains("reconnect-link") {
             guard let packet = try await restored.next(timeout:.seconds(3)) else { throw IntegrationFailure.failed("reattach EOF") }
             if packet.frame.kind == .data { restoredView.feed(byteArray:Array(packet.frame.payload)[...]); try await restored.acknowledge(packet) }
         }
         try check(true, "reconnected first paint reaches SwiftTerm")
+        let restoredRow = (0..<restoredView.getTerminal().rows).first { row in
+            restoredView.getTerminal().getLine(row:row)?.translateToString(trimRight:true).contains("reconnect-link") == true
+        }!
+        let reconnectLinkPreserved = restoredView.getTerminal().link(at:.screen(Position(col:1,row:restoredRow)),mode:.explicitOnly) == "https://example.invalid/reconnect"
+        let allLinksPreserved = firstPaintLinkPreserved && reconnectLinkPreserved
         do { try await stream.send(Data([1])); throw IntegrationFailure.failed("old epoch accepted input") }
         catch CoreConnectionFailure.closed { checks += 1 }
         try await restored.close()
@@ -350,10 +357,10 @@ private struct SSHStreamIntegrationTests {
         try await group.shutdownGracefully()
         let counts = state.counts()
         try check(counts.0 == 3 && counts.1 == 0 && counts.2 == 0, "exec/no-PTY/owned-child cleanup")
-        try params(["passed":firstPaintLinkPreserved,"corePID":status.pid,"ownedPIDs":ownedPIDs,"checks":checks,"stopAcknowledged":true,"ssh":true,"swiftTerm":true,
-                    "osc8FirstPaint":firstPaintLinkPreserved,"osc8Live":true]).write(to:report,options:.atomic)
-        if !firstPaintLinkPreserved {
-            FileHandle.standardError.write(Data("BLOCKER SHPHRD-157: hc 0.1.16 first paint loses OSC8 hyperlink metadata; all other checks and cleanup completed\n".utf8))
+        try params(["passed":allLinksPreserved,"corePID":status.pid,"ownedPIDs":ownedPIDs,"checks":checks,"stopAcknowledged":true,"ssh":true,"swiftTerm":true,
+                    "osc8FirstPaint":firstPaintLinkPreserved,"osc8Live":true,"osc8Reconnect":reconnectLinkPreserved]).write(to:report,options:.atomic)
+        if !allLinksPreserved {
+            FileHandle.standardError.write(Data("BLOCKER SHPHRD-157: core snapshot lost OSC8 at initial attach or reconnect; other checks and cleanup completed\n".utf8))
             return false // Red qualification gate, never an expected-failure pass.
         }
         print("PASS real SSH + hc + SwiftTerm: \(checks) checks; only owned localhost/Unix endpoints")
