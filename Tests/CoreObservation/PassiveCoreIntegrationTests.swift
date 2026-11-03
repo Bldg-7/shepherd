@@ -29,6 +29,10 @@ private enum PassiveFailure: Error { case assertion(String) }
         }
     }
     static func run() async throws {
+        guard CommandLine.arguments.count == 6, ["0.1.16", "0.1.17"].contains(CommandLine.arguments[5]) else {
+            throw PassiveFailure.assertion("missing pinned core version")
+        }
+        let expectedVersion = CommandLine.arguments[5]
         let binary = URL(fileURLWithPath: CommandLine.arguments[1]), home = URL(fileURLWithPath: CommandLine.arguments[2])
         let peer = CommandLine.arguments[3], report = URL(fileURLWithPath: CommandLine.arguments[4])
         for part in ["", "state", "config", "runtime"] {
@@ -36,6 +40,7 @@ private enum PassiveFailure: Error { case assertion(String) }
         }
         let env = ["PATH":"/usr/bin:/bin", "HOME":home.path, "XDG_STATE_HOME":home.appending(path:"state").path,
                    "XDG_CONFIG_HOME":home.appending(path:"config").path, "XDG_RUNTIME_DIR":home.appending(path:"runtime").path,
+                   "SSH_CONNECTION":"owned-fixture-no-launchd", // Direct startup, deliberately no launchd qualification.
                    "HC_SESSION":"owned", "HC_SOCKET":home.appending(path:"c.sock").path, "DO_NOT_TRACK":"1", "LANG":"en_US.UTF-8"]
         let transport = try CoreProcessTransport(configuration: .init(executable: binary, environment: env, directory: home))
         let connection = try CoreRPCConnection(transport: transport)
@@ -49,11 +54,11 @@ private enum PassiveFailure: Error { case assertion(String) }
         }
         var negotiated = false
         do {
-            _ = try await connection.connect()
+            let hello = try await connection.connect()
             let fresh: PassiveStatus = try await connection.call("server.status").result()
             owned = [fresh.pid]
             try params(["ownedPIDs":owned,"corePID":fresh.pid]).write(to: report, options: .atomic)
-            try check(fresh.live == 0, "fresh private core")
+            try check(fresh.live == 0 && hello.version == expectedVersion, "fresh pinned private core")
             let run: PassiveRun = try await connection.call("terminal.run", parameters: params([
                 "argv":["/usr/bin/python3","-I","-S","-B",peer],"cwd":home.path,"keep":false,
                 "env":["TERM":"xterm-256color","TERM_PROGRAM":"3rdr-fixture"]])).result()

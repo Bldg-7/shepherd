@@ -20,6 +20,10 @@ private struct CoreRealProcessTests {
         guard value else { throw RealCoreFailure.assertion(name) }
     }
     static func main() async throws {
+        guard CommandLine.arguments.count == 5, ["0.1.16", "0.1.17"].contains(CommandLine.arguments[4]) else {
+            throw RealCoreFailure.assertion("missing pinned core version")
+        }
+        let expectedVersion = CommandLine.arguments[4]
         let executable = URL(fileURLWithPath: CommandLine.arguments[1])
         let home = URL(fileURLWithPath: CommandLine.arguments[2])
         let report = URL(fileURLWithPath: CommandLine.arguments[3])
@@ -28,12 +32,13 @@ private struct CoreRealProcessTests {
         }
         let env = ["PATH": "/usr/bin:/bin", "HOME": home.path, "XDG_STATE_HOME": home.appending(path: "state").path,
                    "XDG_CONFIG_HOME": home.appending(path: "config").path, "XDG_RUNTIME_DIR": home.appending(path: "runtime").path,
+                   "SSH_CONNECTION": "owned-fixture-no-launchd", // Avoid machine-wide launchd; not a lifecycle test.
                    "HC_SESSION": "owned", "HC_SOCKET": home.appending(path: "c.sock").path, "LANG": "en_US.UTF-8", "DO_NOT_TRACK": "1"]
         let configuration = CoreProcessTransport.Configuration(executable: executable, environment: env, directory: home)
         let transport = try CoreProcessTransport(configuration: configuration)
         let connection = try CoreRPCConnection(transport: transport, requiredMethods: ["terminal.list", "server.status", "doc.get", "doc.set", "server.stop"])
         let hello = try await connection.connect()
-        try require(hello.version == "0.1.16", "unexpected core version")
+        try require(hello.version == expectedVersion, "unexpected core version")
         let status: OwnedCoreStatus = try await connection.call("server.status").result()
         try require(status.core.id == hello.core.id && status.live == 0 && status.pid > 1, "core must be fresh and empty")
         // Record only owned identity for cleanup on a later assertion failure.
@@ -73,7 +78,7 @@ private struct CoreRealProcessTests {
         try JSONSerialization.data(withJSONObject: ["passed": true, "corePID": status.pid, "coreID": hello.core.id,
                                                     "version": hello.version, "stopAcknowledged": true, "connectChildrenReaped": true])
             .write(to: report, options: .atomic)
-        print("PASS real herdr-core 0.1.16: hello/status/list/CAS/UInt64/reconnect/stop; isolated state only")
+        print("PASS real herdr-core \(expectedVersion): hello/status/list/CAS/UInt64/reconnect/stop; isolated state only")
     }
 }
 #endif

@@ -19,9 +19,9 @@ def digest(path):
  return h.hexdigest()
 if a.candidate_receipt:
  candidate_binary, candidate_receipt=candidate_artifact.select(a.candidate_receipt)
- artifact={'variant':candidate_receipt['variant'],'officialRelease':False}
+ artifact={'variant':candidate_receipt['variant'],'officialRelease':False,'version':'0.1.16','resizeNotifications':True}
 else:
- artifact=artifacts.select(a.archive,a.build_receipt)
+ artifact=artifacts.select(a.archive,a.build_receipt,official_017_archive=a.official_017_archive)
 out.mkdir(mode=0o700,parents=True,exist_ok=False)
 for n in ['home','tmp','cache','bin','core home']:(out/n).mkdir(mode=0o700)
 binary=out/'bin/herdr-core'
@@ -33,6 +33,7 @@ else:
  provenance=artifacts.extract(artifact,binary)
 core=out/'core home';sock=core/'c.sock';assert len(str(sock).encode())<104
 core_env={'PATH':'/usr/bin:/bin','HOME':str(core),'XDG_STATE_HOME':str(core/'state'),'XDG_CONFIG_HOME':str(core/'config'),
+ 'SSH_CONNECTION':'owned-fixture-no-launchd', # Skip machine-wide launchd jobs; not a lifecycle qualification.
  'XDG_RUNTIME_DIR':str(core/'runtime'),'HC_SESSION':'owned','HC_SOCKET':str(sock),'LANG':'en_US.UTF-8','DO_NOT_TRACK':'1'}
 env={'PATH':os.environ.get('PATH','/usr/bin:/bin'),'DEVELOPER_DIR':os.environ.get('DEVELOPER_DIR','/Applications/Xcode.app/Contents/Developer'),
  'HOME':str(out/'home'),'CFFIXED_USER_HOME':str(out/'home'),'TMPDIR':str(out/'tmp'),'CLANG_MODULE_CACHE_PATH':str(out/'cache'),'LANG':'en_US.UTF-8'}
@@ -73,7 +74,7 @@ stage('build',180,flags+[sources[0],*objects,'-framework','AppKit','-framework',
 report=out/'report.json'
 failure=None
 try:
- stage('ssh-streams',90,sandbox+[str(exe),str(binary),str(core),str(ROOT/sources[1]),str(report),'resize-enabled' if a.candidate_receipt else 'resize-disabled'])
+ stage('ssh-streams',90,sandbox+[str(exe),str(binary),str(core),str(ROOT/sources[1]),str(report),'resize-enabled' if artifact.get('resizeNotifications',False) else 'resize-disabled',artifact['version']])
 except AssertionError as error:
  failure=error
 finally:
@@ -94,7 +95,7 @@ assert hashes=={n:digest(ROOT/n) for n in tracked},'sources changed during valid
 runtime_log=(out/'ssh-streams.log').read_text(errors='replace')
 assert 'Cannot schedule tasks on an EventLoop that has already shut down' not in runtime_log, 'late work after SSH cleanup'
 passed=failure is None and result.get('passed') is True and result.get('stopAcknowledged') is True
-(out/'validation.json').write_text(json.dumps({'passed':passed,'ssh':'owned-loopback','nativeSwiftTerm':True,'realCore':'0.1.16','artifactVariant':artifact['variant'],'officialRelease':artifact['officialRelease'],
+(out/'validation.json').write_text(json.dumps({'passed':passed,'ssh':'owned-loopback','nativeSwiftTerm':True,'realCore':artifact['version'],'launchdLifecycleQualified':False,'artifactVariant':artifact['variant'],'officialRelease':artifact['officialRelease'],
  'userCoreOrCredentialsTouched':False,'checks':result.get('checks'),'coreStopped':True,'socketRemoved':True,'ownedProcessesExited':bool(result.get('ownedPIDs')),
  'osc8FirstPaint':result.get('osc8FirstPaint'),'osc8Live':result.get('osc8Live'),'osc8Reconnect':result.get('osc8Reconnect'),
  'blocker':'SHPHRD-157' if result.get('osc8FirstPaint') is False or result.get('osc8Reconnect') is False else None},indent=2))

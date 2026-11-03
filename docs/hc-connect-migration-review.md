@@ -278,6 +278,15 @@ A 통과는 연결 가능성 검증이지 제품 전환 완료가 아님.
 
 ### D. launch/browser/proxy/mobile 통합
 
+hc 감지·설치·호환성 안내도 필수 완료 조건이다(SHPHRD-153):
+
+- GUI PATH 및 일반 설치 위치 탐색 → 실행/hello 호환성 확인 → 기존 호환 core 재사용.
+- 미설치 시 앱 설치 안내·사용자 승인 → 공식 설치 경로 → 재탐색·검증·연결.
+- core가 너무 오래됐거나 기능 부족이면 core 업데이트, 지원보다 새 API generation이면 앱 업데이트 안내.
+- 실패/오프라인 시 오류·재시도·직접 설치 경로. package-manager 설치를 덮어쓰거나 기존 core/agent를 임의 종료하지 않음.
+- 설치/업데이트와 실행 중 core 재시작은 분리. 기존 원격 setup에도 연결하며 iOS에 로컬 hc를 설치하지 않음.
+- 독자적인 대형 설치 시스템이 아니라 공식 경로 재사용. 아래 통합 작업과 함께 검증하며 아직 미구현.
+
 - 예약→terminal→process/session→MCP 순서의 owner proof.
 - 이전 lease/route 재사용 차단, core가 terminal ID를 유지한 채 shell을 복구하는 경우.
 - child rewrite, native session naming, proxy conversation mapping.
@@ -420,6 +429,18 @@ Swift 6 전환에서 mutable SSH authentication delegate 공유를 없애고 imm
 최종 artifact: `/private/tmp/hc-cli-final.m6lBLZ/{inventory,startup,control}/`. 관찰과 Pi lifecycle smoke는 통과했고 전체 agent parity/authenticated readiness는 false로 유지했다. 모든 owned 프로세스/소켓 정리 완료. 상세 경계·재현·제약: `Tests/CoreObservation/CLI-README.md`.
 
 이 허용 범위로는 Claude의 온라인 시작 및 인증된 작업 상태, Codex의 정상 managed-preference 경로, 각 CLI의 safe resume/생산 native bridge binding을 완료 처리할 수 없다. B는 계속 진행 중이며 앱 backend와 사용자 core는 변경하지 않았다.
+
+### 공식 0.1.17 재검증 및 설치 UX 범위 명시
+
+공식 manifest/tag 확인 후 macOS ARM64 archive를 별도 SHA256 `cedbd4d4d9ba1385588198dd4d3c67d2654478f33add5b6445d4d0eb9da5fcf3`로 고정해 임시 경로에서 재검증했다. 기존 0.1.16 pin/negative control은 그대로 유지한다.
+
+- 로컬 hello/RPC/doc CAS/UInt64/reconnect/stop: 통과 (`/private/tmp/hc017-rpc.ekeZX7/run`).
+- SSH/native SwiftTerm: live OSC8는 통과하지만 initial/reconnect OSC8는 여전히 실패 (`/private/tmp/hc017-ssh.mGBQVx/run`). 실패를 정상 성공으로 바꾸지 않았고 exit 1 유지.
+- passive: observer resize 협상은 true로 개선됐다. 그러나 빈 칸이 앞선 배경색을 물려받는 formatter 문제에서 실패 (`/private/tmp/hc017-grid.yXOfxm/run`).
+- 같은 수정된 harness에서 기존 고정 패치 candidate의 SSH/passive positive control은 통과. 즉 observer 백포트는 0.1.17에서 불필요하지만 Ghostty formatter 수정은 아직 필요하다.
+- 이 검증은 명시적 `SSH_CONNECTION=owned-fixture-no-launchd`로 direct/SSH 시작 경로를 사용했다. 전역 launchd job 생성·청소를 피하며, 0.1.17의 launchd 앱 생존성 수정까지 검증했다고 주장하지 않는다. 모든 테스트 소유 프로세스/소켓은 정리했다.
+
+hc 탐색→사용자 승인 설치→재검증/연결, 버전 호환성·실패/재시도 안내를 SHPHRD-153 완료 조건으로 추가했다. 전역 설치나 앱 backend 전환은 하지 않았다. VM/실제 계정/유료 모델 호출을 독립적인 workspace 구현의 선행 조건으로 두지 않는다.
 
 ## 최종 권고
 

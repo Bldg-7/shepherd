@@ -106,6 +106,20 @@ The synthetic grid emits an explicit end marker for its assertions. **Real CLI
 initial snapshot completion and empty-composer readiness remain unqualified.**
 Neither this fixture nor a DATA boundary supplies native ownership or readiness.
 
+## Official 0.1.17 rendering check
+
+Both `run-passive-core-tests.py` and `../CoreProtocol/run-ssh-stream-tests.py`
+accept `--official-017-archive /path/to/herdr-core-macos-aarch64.tar.gz`.
+This is a separate fixed checksum, not a relaxation of the 0.1.16 control.
+Actual 0.1.17 negotiates observer resize, but fails the passive gap-background
+assertion; SSH initial/reconnect OSC8 is also still lost. Both gates remain
+nonzero failures after owned cleanup. The retained patched candidate still
+passes 33 passive and 34 SSH checks with the same harness.
+
+Fixtures explicitly set `SSH_CONNECTION=owned-fixture-no-launchd` to exercise
+owned direct/SSH startup without machine-wide launchd registration or stale-job
+cleanup. This does not qualify macOS app-quit survival through launchd.
+
 ## Authorized real CLI measurements
 
 A later explicitly authorized run starts installed Claude 2.1.317, Codex 0.166.0

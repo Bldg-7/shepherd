@@ -65,6 +65,22 @@ class ArtifactTests(unittest.TestCase):
         with self.assertRaises(ValueError): artifacts.extract(value, self.root / "core")
         self.assertFalse((self.root / "core").exists())
 
+    def test_official_017_has_separate_fixed_pin_and_capabilities(self):
+        old = artifacts.select(archive=self.archive)
+        new = artifacts.select(official_017_archive=self.archive)
+        self.assertEqual(old['version'], '0.1.16')
+        self.assertEqual(old['archiveSHA256'], artifacts.OFFICIAL_SHA256)
+        self.assertEqual(new['version'], '0.1.17')
+        self.assertEqual(new['archiveSHA256'], 'cedbd4d4d9ba1385588198dd4d3c67d2654478f33add5b6445d4d0eb9da5fcf3')
+        self.assertNotEqual(old['archiveSHA256'], new['archiveSHA256'])
+        self.assertTrue(new['officialRelease'] and new['resizeNotifications'])
+        with self.assertRaises(ValueError): artifacts.extract(new, self.root / 'core')
+        self.assertFalse((self.root / 'core').exists())
+
+    def test_official_017_cannot_mix_modes(self):
+        with self.assertRaises(ValueError): artifacts.select(archive=self.archive, official_017_archive=self.archive)
+        with self.assertRaises(ValueError): artifacts.select(build_receipt=self.path, official_017_archive=self.archive)
+
     def test_exactly_one_mode(self):
         with self.assertRaises(ValueError): artifacts.select()
         with self.assertRaises(ValueError): artifacts.select(self.archive, self.path)

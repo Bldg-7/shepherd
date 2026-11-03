@@ -12,6 +12,7 @@ p=argparse.ArgumentParser()
 g=p.add_mutually_exclusive_group(required=True)
 g.add_argument('--candidate-receipt',type=Path)
 g.add_argument('--baseline-receipt',type=Path)
+g.add_argument('--official-017-archive',type=Path)
 p.add_argument('--products',type=Path,required=True)
 p.add_argument('--output',type=Path,required=True)
 a=p.parse_args(); out=a.output.resolve(); products=a.products.resolve()
@@ -24,12 +25,13 @@ if a.candidate_receipt:
     candidate.require(candidate.digest(binary)==provenance['binarySHA256'],'copied binary changed')
     binary.chmod(0o700)
 else:
-    selected=baseline.select(build_receipt=a.baseline_receipt)
+    selected=baseline.select(build_receipt=a.baseline_receipt,official_017_archive=a.official_017_archive)
     provenance=baseline.extract(selected,binary)
 (out/'provenance.json').write_text(json.dumps(provenance,indent=2))
 core=out/'core'; sock=core/'c.sock'
 candidate.require(len(str(sock).encode())<104,'use a shorter output path')
 core_env={'PATH':'/usr/bin:/bin','HOME':str(core),'XDG_STATE_HOME':str(core/'state'),'XDG_CONFIG_HOME':str(core/'config'),
+          'SSH_CONNECTION':'owned-fixture-no-launchd', # No machine-wide launchd jobs in a rendering gate.
           'XDG_RUNTIME_DIR':str(core/'runtime'),'HC_SOCKET':str(sock),'HC_SESSION':'owned','DO_NOT_TRACK':'1','LANG':'en_US.UTF-8'}
 env={'PATH':'/usr/bin:/bin:/usr/sbin:/sbin','HOME':str(out/'home'),'CFFIXED_USER_HOME':str(out/'home'),
      'TMPDIR':str(out/'tmp'),'CLANG_MODULE_CACHE_PATH':str(out/'cache'),'LANG':'en_US.UTF-8',
@@ -61,7 +63,7 @@ def stage(name,seconds,args):
 stage('build',180,flags+[test,*objects,'-framework','AppKit','-framework','Security','-framework','CoreText','-framework','QuartzCore','-lz','-lsqlite3','-o',exe])
 failure=None
 try:
-    stage('passive',90,sandbox+[exe,binary,core,ROOT/peer,report])
+    stage('passive',90,sandbox+[exe,binary,core,ROOT/peer,report,'0.1.17' if a.official_017_archive else '0.1.16'])
 except Exception as error:
     failure=error
 finally:
@@ -81,7 +83,7 @@ finally:
 candidate.require(hashes=={n:candidate.digest(ROOT/n) for n in tracked},'source changed during test')
 passed=failure is None and result.get('passed') is True and bool(result.get('ownedPIDs'))
 (out/'validation.json').write_text(json.dumps({'passed':passed,'variant':provenance['variant'],'resizeNegotiated':result.get('resizeNegotiated'),
-    'checks':result.get('checks'),'failure':result.get('failure'),'ownedProcessesExited':bool(result.get('ownedPIDs')),
+    'launchdLifecycleQualified':False,'checks':result.get('checks'),'failure':result.get('failure'),'ownedProcessesExited':bool(result.get('ownedPIDs')),
     'socketRemoved':True,'userCoreOrCredentialsUsed':False,'fullAgentParityQualified':False},indent=2))
 if failure:raise failure
 candidate.require(passed,'passive test did not pass')

@@ -153,19 +153,22 @@ private struct SSHStreamIntegrationTests {
     static func run() async throws -> Bool {
         let bin = CommandLine.arguments[1], home = CommandLine.arguments[2], peer = CommandLine.arguments[3]
         let report = URL(fileURLWithPath: CommandLine.arguments[4])
-        guard CommandLine.arguments.count == 6, ["resize-enabled", "resize-disabled"].contains(CommandLine.arguments[5]) else {
+        guard CommandLine.arguments.count == 7, ["resize-enabled", "resize-disabled"].contains(CommandLine.arguments[5]),
+              ["0.1.16", "0.1.17"].contains(CommandLine.arguments[6]) else {
             throw IntegrationFailure.failed("missing pinned artifact capability expectation")
         }
         let expectsObserverResize = CommandLine.arguments[5] == "resize-enabled"
+        let expectedVersion = CommandLine.arguments[6]
         try FileManager.default.createDirectory(atPath: home, withIntermediateDirectories: true)
         var environment = ["PATH":"/usr/bin:/bin", "HOME":home, "XDG_STATE_HOME":home+"/state", "XDG_CONFIG_HOME":home+"/config",
+                           "SSH_CONNECTION":"owned-fixture-no-launchd", // Exercise direct/SSH startup, not machine-wide launchd jobs.
                            "XDG_RUNTIME_DIR":home+"/runtime", "HC_SESSION":"owned", "HC_SOCKET":home+"/c.sock", "DO_NOT_TRACK":"1", "LANG":"en_US.UTF-8"]
         let localConfig = CoreProcessTransport.Configuration(executable: URL(fileURLWithPath: bin), environment: environment, directory: URL(fileURLWithPath: home))
         let controlTransport = try CoreProcessTransport(configuration: localConfig)
         let control = try CoreRPCConnection(transport: controlTransport)
         let hello = try await control.connect()
         let status: IntegrationStatus = try await control.call("server.status").result()
-        try check(status.live == 0 && hello.version == "0.1.16", "fresh pinned core")
+        try check(status.live == 0 && hello.version == expectedVersion, "fresh pinned core")
         try params(["corePID":status.pid]).write(to: report, options: .atomic)
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 2)
         let key = Curve25519.Signing.PrivateKey()

@@ -23,7 +23,7 @@ artifacts.add_arguments(p)
 p.add_argument("--output", type=Path, required=True)
 a = p.parse_args()
 assert platform.system() == "Darwin" and platform.machine() == "arm64", "pinned archive is macOS ARM64 only"
-artifact = artifacts.select(a.archive, a.build_receipt)
+artifact = artifacts.select(a.archive, a.build_receipt, official_017_archive=a.official_017_archive)
 
 def digest(path):
     value = hashlib.sha256()
@@ -43,6 +43,7 @@ sock = home / "c.sock"
 assert len(str(sock).encode()) < 104, "use a shorter /tmp output path"
 core_env = {"PATH": "/usr/bin:/bin", "HOME": str(home), "XDG_STATE_HOME": str(home / "state"),
             "XDG_CONFIG_HOME": str(home / "config"), "XDG_RUNTIME_DIR": str(home / "runtime"),
+            "SSH_CONNECTION": "owned-fixture-no-launchd",
             "HC_SESSION": "owned", "HC_SOCKET": str(sock), "LANG": "en_US.UTF-8", "DO_NOT_TRACK": "1"}
 env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"),
        "DEVELOPER_DIR": os.environ.get("DEVELOPER_DIR", "/Applications/Xcode.app/Contents/Developer"),
@@ -81,7 +82,7 @@ exe = out / "real-core-tests"
 stage("build", 120, flags + sources + [test, "-o", str(exe)])
 report = out / "core-report.json"
 try:
-    stage("real-core", 60, sandbox + [str(exe), str(binary), str(home), str(report)])
+    stage("real-core", 60, sandbox + [str(exe), str(binary), str(home), str(report), artifact["version"]])
 finally:
     # Only this test's private socket/environment. Never `hc stop` on PATH and
     # never a signal to an unverified daemon PID or a whole process group.
@@ -108,7 +109,7 @@ finally:
 assert result.get("passed") and result.get("stopAcknowledged") and result.get("connectChildrenReaped")
 for name, expected in json.loads((out / "source-hashes.json").read_text()).items():
     assert digest(ROOT / name) == expected, "source changed during validation: " + name
-(out / "validation.json").write_text(json.dumps({"passed": True, "realCore": "0.1.16", "artifactVariant": artifact["variant"],
+(out / "validation.json").write_text(json.dumps({"passed": True, "realCore": artifact["version"], "launchdLifecycleQualified": False, "artifactVariant": artifact["variant"],
     "officialRelease": artifact["officialRelease"], "ownCoreStopped": True,
     "ownSocketRemoved": True, "isolatedHomeAndSession": True, "externalNetworkDenied": True,
     "userCoreOrConfigTouched": False, "ssh": "NOTRUN", "attachAndSwiftTerm": "NOTRUN"}, indent=2))

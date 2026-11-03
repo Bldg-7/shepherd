@@ -12,6 +12,9 @@ import tarfile
 
 HERE = Path(__file__).resolve().parent
 OFFICIAL_SHA256 = "698d8f0c44f4e4b15fec174d52a39d57a014cfd71added44b53a0753b469d0fd"
+# Independently selected, not a replacement of the retained 0.1.16 control.
+# https://releases.herdr.dev/core/0.1.17/manifest.json (macos-aarch64)
+OFFICIAL_017_SHA256 = "cedbd4d4d9ba1385588198dd4d3c67d2654478f33add5b6445d4d0eb9da5fcf3"
 RECIPE = HERE / "backport/recipe.json"
 CHECKS = {"formatter-format", "formatter-tests", "core-build", "rust-vt-tests", "rust-core-unit-tests"}
 
@@ -26,12 +29,18 @@ def digest(path):
 def add_arguments(parser):
     choice = parser.add_mutually_exclusive_group(required=True)
     choice.add_argument("--archive", type=Path, help="official 0.1.16 ARM64 archive (fixed checksum)")
+    choice.add_argument("--official-017-archive", type=Path, help="official 0.1.17 ARM64 archive (separate fixed checksum)")
     choice.add_argument("--build-receipt", type=Path, help="explicit locally qualified backport build receipt")
     return choice
 
 
-def select(archive=None, build_receipt=None):
-    if (archive is None) == (build_receipt is None): raise ValueError("select exactly one artifact mode")
+def select(archive=None, build_receipt=None, *, official_017_archive=None):
+    if sum(v is not None for v in (archive, build_receipt, official_017_archive)) != 1:
+        raise ValueError("select exactly one artifact mode")
+    if official_017_archive is not None:
+        return {"archive": Path(official_017_archive).resolve(), "archiveSHA256": OFFICIAL_017_SHA256,
+                "version": "0.1.17", "variant": "official-0.1.17", "officialRelease": True,
+                "resizeNotifications": True}
     if archive is not None:
         return {"archive": Path(archive).resolve(), "archiveSHA256": OFFICIAL_SHA256,
                 "version": "0.1.16", "variant": "official-0.1.16", "officialRelease": True}
