@@ -287,6 +287,20 @@ hc 감지·설치·호환성 안내도 필수 완료 조건이다(SHPHRD-153):
 - 설치/업데이트와 실행 중 core 재시작은 분리. 기존 원격 setup에도 연결하며 iOS에 로컬 hc를 설치하지 않음.
 - 독자적인 대형 설치 시스템이 아니라 공식 경로 재사용. 아래 통합 작업과 함께 검증하며 아직 미구현.
 
+#### 주입 레이어 제거 설계 근거: 전역 MCP 등록 검증 (2026-11-03)
+
+session-only 제약(사용자 전역 설정 불허)을 풀면 in-process 주입(JS 런타임·plugin·skill·hook)을 대부분 외부 MCP 서버로 대체할 수 있다. 사설 HOME/환경에서 실제 설치 CLI로 확인했다.
+
+- 세 CLI 모두 user-level stdio MCP 등록 명령과 같은 형태(command+args, 토큰 미포함)의 설정 파일을 가진다:
+  - Claude `claude mcp add -s user <name> -- <cmd> [args]` → `CLAUDE_CONFIG_DIR/.claude.json`의 `mcpServers`.
+  - Codex `codex mcp add <name> -- <cmd> [args]` → `CODEX_HOME/config.toml`의 `[mcp_servers.<name>]`.
+  - Pi `pi mcp add <name> -- <cmd> [args]` → `PI_CODING_AGENT_DIR/mcp.json`의 `mcpServers`.
+- pane 토큰은 설정에 넣지 않고, hc가 에이전트 env로 주입한 뒤 MCP 서버가 상속받는다. **Claude·Pi는 실제로 MCP 서버 프로세스에 자기 env를 전달함을 확인**(probe 서버가 `THRDR_PANE_TOKEN` 수신).
+- 무토큰 graceful no-op 확인: 토큰이 없으면 서버가 tool 0개를 반환해도 Pi는 정상 연결(`connected, 0 tools`).
+- Pi는 tool 노출 확인: `mcp__3rdr_browser__browser_pane`로 모델 namespace에 도달.
+- Codex env 상속은 미검증(`mcp list`/`get`/`doctor`는 stdio 서버를 spawn하지 않음; 세션 실행은 인증 필요). 현재 코드가 이미 Codex용 descriptor별 per-launch MCP 설정을 쓰므로 fallback이 존재하고, `codex mcp add --env`/`-c` override도 있다.
+- 이는 SHPHRD-153의 설계 결정이며 아직 구현하지 않았다. 전역 등록은 사용자 일반 세션에도 도구가 보이는 사용자 가시적 변화라 제품 결정이 필요하다. 자식 상속은 전역 설정+env 전파로 hook 없이 얻을 수 있음.
+
 - 예약→terminal→process/session→MCP 순서의 owner proof.
 - 이전 lease/route 재사용 차단, core가 terminal ID를 유지한 채 shell을 복구하는 경우.
 - child rewrite, native session naming, proxy conversation mapping.
