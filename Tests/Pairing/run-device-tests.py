@@ -76,7 +76,9 @@ target = ['-target', platform.machine() + '-apple-macos26.6.2']
 features = []
 for feature in ['MemberImportVisibility', 'NonisolatedNonsendingByDefault', 'InferIsolatedConformances']:
     features += ['-enable-upcoming-feature', feature]
-swiftc = ['xcrun', 'swiftc', *target, '-swift-version', '6', '-default-isolation', 'MainActor', *features, '-parse-as-library']
+sdk_path = subprocess.check_output(['xcrun', '--sdk', 'macosx', '--show-sdk-path'], env=env, text=True).strip()
+plugins = Path(env['DEVELOPER_DIR']) / 'Platforms/MacOSX.platform/Developer/usr'
+swiftc = ['xcrun', 'swiftc', *target, '-swift-version', '6', '-default-isolation', 'MainActor', *features, '-parse-as-library', '-sdk', sdk_path, '-external-plugin-path', str(plugins / 'lib/swift/host/plugins') + '#' + str(plugins / 'bin/swift-plugin-server')]
 
 kit_pairing = sorted(str(x.relative_to(ROOT)) for x in (ROOT / KIT / 'Pairing').glob('*.swift'))
 kit = [f'{KIT}/Resources.swift', f'{KIT}/Machines/Machine.swift', f'{KIT}/Machines/MachineStore.swift', f'{KIT}/Machines/KeychainStore.swift',
@@ -112,7 +114,8 @@ objects = sorted(str(o) for o in products.glob('*.o') if o.name not in ('SwiftTe
 assert maps and any(o.endswith('/NIOSSH.o') for o in objects) and any(o.endswith('/Citadel.o') for o in objects), 'build the Shepherd scheme first'
 transport = sorted(str(x.relative_to(ROOT)) for x in (ROOT / KIT / 'HerdrKit/Transport').glob('*.swift'))
 models = sorted(str(x.relative_to(ROOT)) for x in (ROOT / KIT / 'HerdrKit/Models').glob('*.swift'))
-ssh = [f'{KIT}/Resources.swift', f'{KIT}/Agents/AgentKind.swift', f'{KIT}/Machines/Machine.swift', f'{KIT}/Machines/MachineStore.swift',
+hc = sorted(str(x.relative_to(ROOT)) for x in (ROOT / KIT / 'CoreKit').glob('*.swift'))
+ssh = hc + [f'{KIT}/Resources.swift', f'{KIT}/Agents/AgentKind.swift', f'{KIT}/Machines/Machine.swift', f'{KIT}/Machines/MachineStore.swift',
        f'{KIT}/Machines/MachineStore+Transport.swift', f'{KIT}/Machines/KeychainStore.swift', *kit_pairing, *transport, *models,
        f'{KIT}/HerdrKit/HerdrClient.swift', f'{KIT}/HerdrKit/Terminal/HerdrExecutable.swift', f'{KIT}/HerdrKit/Terminal/ShellQuoting.swift',
        f'{KIT}/HerdrKit/Terminal/LocalCommand.swift', *mobile, *ssh_only, 'Tests/Pairing/PairingDeviceSSHTests.swift']
@@ -131,8 +134,8 @@ assert 'nonisolated static let responseTimeout: Duration = .seconds(150)' in cli
 move = client[client.index('    func moveAddress('):client.index('enum PairingClientError')]
 assert move.index('checker.check(moved') < move.index('guard check.succeeded') < move.index('store.updatePairedAddress(')
 checker = read(f'{MOBILE}/SSHPairedMacChecker.swift')
-for wired in ['pinnedFingerprint: machine.pinnedHostKeyFingerprint,', 'addressKind: machine.addressKind,',
-              'addressResolver: PairingAddressResolver(resolver: ResolvedPairingName(address: address))', 'client.listPanes()']:
+for wired in ['CoreSSHTransport', 'host: address.description', 'pinnedFingerprint: pin', 'kind.allows(address)',
+              'HcTerminalBoard(connection: rpc).list()', 'HcConnectionPolicy.requiredMethods']:
     assert wired in checker, wired
 link = read(f'{MOBILE}/PairingLink.swift')
 assert 'NWConnection(host: .ipv4(' in link and 'func open(_ address: PairingIPv4, port: UInt16)' in link
@@ -141,10 +144,11 @@ assert 'PairingClient(resolver: PairingAddressResolver(), dialer: NetworkPairing
 assert 'makeDeviceKey: { try SecureEnclaveSSHKey.makeForThisDevice() }, checker: SSHPairedMacChecker())' in sheet
 machines = read('ShepherdMobile/MachinesView.swift')
 assert 'Label("Scan Mac\'s QR Code", systemImage: "qrcode.viewfinder")' in machines and 'PairingSheet(machineStore: machineStore)' in machines
-transport_source = read(f'{KIT}/HerdrKit/Transport/SSHHerdrTransport.swift')
-assert 'catch SSHClientError.allAuthenticationOptionsFailed where usesPairedKey {' in transport_source
-assert 'throw PairedConnectionError.accessRemoved' in transport_source
-assert 'PairedConnectionError.accessRemoved:\n            return true' in read(f'{KIT}/Machines/MachineMonitor.swift')
+transport_source = read(f'{KIT}/CoreKit/CoreSSHTransport.swift')
+assert 'CoreSSHHostPin(config.pinnedFingerprint)' in transport_source
+assert 'hostKeyApprovalRequired' in transport_source
+assert 'HerdrClient(' not in checker and 'SSHHerdrTransport(' not in checker
+assert 'HcMobileBoardView(' in machines and 'MobileAgentListCache' not in read('ShepherdMobile/ShepherdMobileApp.swift')
 plist = read('Config/Info-iOS.plist')
 assert '<key>NSCameraUsageDescription</key>' in plist and '<key>NSLocalNetworkUsageDescription</key>' in plist
 info_strings = json.loads(read('ShepherdMobile/InfoPlist.xcstrings'))['strings']

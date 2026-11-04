@@ -52,6 +52,12 @@ public nonisolated final class CoreStream: Sendable {
     /// Acceptance into the bounded writer, NOT confirmation that the program
     /// processed the input. Later transport failure is delivered by next().
     public func send(_ bytes: Data) async throws { try await connection.sendStream(id, kind: .data, payload: bytes) }
+    /// Wait for the transport writer before a short-lived attach is closed.
+    /// This is NOT a program-processing ACK. A canceled/timed-out in-flight
+    /// frame may still arrive and must never be automatically resent.
+    public func sendAndFlush(_ bytes: Data, timeout: Duration = .seconds(10)) async throws {
+        try await connection.sendStreamAndFlush(id, payload: bytes, timeout: timeout)
+    }
     public func resize(columns: UInt16, rows: UInt16) async throws {
         let bytes = [UInt8(truncatingIfNeeded: columns), UInt8(truncatingIfNeeded: columns >> 8),
                      UInt8(truncatingIfNeeded: rows), UInt8(truncatingIfNeeded: rows >> 8)]

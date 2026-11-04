@@ -1,43 +1,34 @@
 import Foundation
 
-/// `PairedMacChecking` over SSH: `SSHHerdrTransport` to the address the
-/// pairing resolved, held to the machine's address kind and pinned host key
-/// like every connection to the Mac, logging in with the device's key, then
-/// herdr's pane list over a direct-streamlocal channel to herdr.sock.
+/// Paired Mac health check over the new pinned SSH session/exec hc protocol.
+/// The resolved numeric address is range-checked again, never re-resolved.
+/// `herdrReached` remains the v1 pairing report's wire field for core health;
+/// it no longer causes a legacy herdr socket request.
 struct SSHPairedMacChecker: PairedMacChecking {
-    /// For the key exchange and the login; the Mac waits a minute for the
-    /// report of this and the herdr request together.
     var connectTimeout: Duration = .seconds(25)
     var herdrTimeout: Duration = .seconds(15)
 
     func check(_ machine: Machine, credential: Data, at address: PairingIPv4) async -> PairingConnectionCheck {
-        let transport = SSHHerdrTransport(
-            host: machine.hostname,
-            port: machine.port,
-            username: machine.username,
-            credential: HostCredential(authMethod: machine.authMethod, secretData: credential),
-            sessionName: machine.sessionName,
-            pinnedFingerprint: machine.pinnedHostKeyFingerprint,
-            addressKind: machine.addressKind,
-            // Not looked up again: the address the pairing went to.
-            addressResolver: PairingAddressResolver(resolver: ResolvedPairingName(address: address))
-        )
-        let client = HerdrClient(transport: transport)
+        var connection: CoreRPCConnection?
+        var beganRPC = false
         do {
-            try await PairingDeadline.run(connectTimeout) { try await client.connect() }
+            guard let pin = machine.pinnedHostKeyFingerprint, let kind = machine.addressKind else { throw CoreSSHFailure.invalidConfiguration }
+            _ = try PairingAddress(kind: kind, hostname: machine.hostname)
+            guard kind.allows(address) else { throw PairingAddressResolutionError.noAddressInRange(kind, name: machine.hostname, found: [address]) }
+            let factory = try HostCredential(authMethod: machine.authMethod, secretData: credential).authenticationFactory(username: machine.username)
+            let transport = CoreSSHTransport(configuration: try .init(host: address.description, port: machine.port,
+                pinnedFingerprint: pin, discoverExecutable: true, session: HcConnectionPolicy.session(machine.sessionName)), authentication: { factory() })
+            let rpc = try CoreRPCConnection(transport: transport, requiredMethods: HcConnectionPolicy.requiredMethods)
+            connection = rpc; beganRPC = true
+            _ = try await PairingDeadline.run(connectTimeout) { try await rpc.connect() }
+            _ = try await PairingDeadline.run(herdrTimeout) { try await HcTerminalBoard(connection: rpc).list() }
+            try await rpc.close()
+            return PairingConnectionCheck(sshConnected: true, herdrReached: true)
         } catch {
-            await client.disconnect()
-            return PairingConnectionCheck(sshConnected: false, herdrReached: false, failure: Self.describe(error),
-                                          keyRefused: (error as? PairedConnectionError) == .accessRemoved)
+            try? await connection?.close()
+            let sshReached = beganRPC && !(error is CoreSSHFailure) && !(error is PairingDeadline.Missed)
+            return PairingConnectionCheck(sshConnected: sshReached, herdrReached: false, failure: Self.describe(error), keyRefused: false)
         }
-        do {
-            try await PairingDeadline.run(herdrTimeout) { _ = try await client.listPanes() }
-        } catch {
-            await client.disconnect()
-            return PairingConnectionCheck(sshConnected: true, herdrReached: false, failure: Self.describe(error))
-        }
-        await client.disconnect()
-        return PairingConnectionCheck(sshConnected: true, herdrReached: true)
     }
 
     private static func describe(_ error: any Error) -> String {

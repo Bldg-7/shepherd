@@ -210,6 +210,6 @@ import Observation
         if !check.sshConnected {
             return String(localized: "\(macName) was added, but connecting to it failed: \(reason)")
         }
-        return String(localized: "\(macName) was added, but its herdr didn't answer: \(reason) Check that herdr is running on the Mac.")
+        return String(localized: "\(macName) was added, but its hc core didn't answer: \(reason) Check that hc is installed and available on the Mac.")
     }
 }

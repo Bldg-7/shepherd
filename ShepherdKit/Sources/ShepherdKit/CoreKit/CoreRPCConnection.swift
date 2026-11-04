@@ -24,6 +24,7 @@ public actor CoreRPCConnection {
     private var handshakeDeadline: ContinuousClock.Instant?
     private var waiters: [UInt64: CheckedContinuation<CoreRPCReply, Error>] = [:]
     struct Write: Sendable {
+        let id = UUID()
         let bytes: Data
         let token: CoreRPCRequests.Token?
         let deadline: ContinuousClock.Instant
@@ -31,6 +32,8 @@ public actor CoreRPCConnection {
         var priority = false
     }
     var writes: [Write] = []
+    var flushWaiters: [UUID: CheckedContinuation<Void, Error>] = [:]
+    var flushDeadlines: [UUID: ContinuousClock.Instant] = [:]
     private var inFlight: Write?
     var queuedWriteBytes = 0
     var streams: [UInt32: CoreStreamState] = [:]
@@ -180,6 +183,10 @@ public actor CoreRPCConnection {
             // expired queued operation. In-flight frames still finish intact.
             if next.deadline <= .now {
                 queuedWriteBytes -= next.bytes.count
+                if flushWaiters[next.id] != nil {
+                    cancelFlushedWrite(next.id, error: CoreConnectionFailure.requestTimedOut)
+                    continue
+                }
                 if let token = next.token {
                     requests.discardUnsent(token); opening[token.id] = nil
                     waiters.removeValue(forKey: token.id)?.resume(throwing: CoreConnectionFailure.requestTimedOut)
@@ -197,6 +204,16 @@ public actor CoreRPCConnection {
     private func written(_ item: Write) {
         guard state != .closed else { return }
         queuedWriteBytes -= item.bytes.count; inFlight = nil
+        flushWaiters.removeValue(forKey: item.id)?.resume()
+        flushDeadlines[item.id] = nil; scheduleTimer()
+    }
+    func cancelFlushedWrite(_ id: UUID, error: any Error = CancellationError()) {
+        guard let waiter = flushWaiters.removeValue(forKey: id) else { return }
+        flushDeadlines[id] = nil
+        if let index = writes.firstIndex(where: { $0.id == id }) { queuedWriteBytes -= writes.remove(at: index).bytes.count }
+        // An in-flight frame must finish intact. Cancellation/timeout cannot
+        // establish that its input did not reach the program; never replay it.
+        waiter.resume(throwing: error); scheduleTimer()
     }
     private func removeQueued(_ token: CoreRPCRequests.Token) -> Bool {
         guard let index = writes.firstIndex(where: { $0.token == token }) else { return false }
@@ -213,7 +230,7 @@ public actor CoreRPCConnection {
     }
     func scheduleTimer() {
         timer?.cancel(); timer = nil
-        let deadlines = [requests.nextDeadline, nextStreamDeadline].compactMap { $0 }
+        let deadlines = [requests.nextDeadline, nextStreamDeadline, flushDeadlines.values.min()].compactMap { $0 }
         guard let deadline = state == .connecting ? handshakeDeadline : deadlines.min(), state != .closed else { return }
         timer = Task.detached { [weak self] in
             do { try await Task.sleep(until: deadline, clock: .continuous) }
@@ -230,6 +247,7 @@ public actor CoreRPCConnection {
             _ = removeQueued(context.token)
             waiters.removeValue(forKey: context.token.id)?.resume(throwing: CoreConnectionFailure.requestTimedOut)
         }
+        for (id, deadline) in Array(flushDeadlines) where deadline <= now { cancelFlushedWrite(id, error: CoreConnectionFailure.requestTimedOut) }
         expireStreams(at: now)
         scheduleTimer()
     }
@@ -292,6 +310,8 @@ public actor CoreRPCConnection {
             for closer in slot.closers { closer.resume(throwing: error) }
         }
         streams.removeAll(); opening.removeAll(); bufferedStreamBytes = 0
+        for waiter in flushWaiters.values { waiter.resume(throwing: error) }
+        flushWaiters.removeAll(); flushDeadlines.removeAll()
         writes.removeAll(); inFlight = nil; queuedWriteBytes = 0
         let transport = transport
         cleanup = Task.detached { try await transport.close() }

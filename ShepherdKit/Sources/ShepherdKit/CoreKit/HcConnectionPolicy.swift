@@ -5,7 +5,7 @@ import Foundation
 /// hc connect may start hc's service; disconnect closes only our connect child.
 public nonisolated enum HcConnectionPolicy {
     private static func shellQuoted(_ value: String) -> String { "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'" }
-    public static let requiredMethods: Set<String> = ["terminal.list", "terminal.get", "terminal.run", "terminal.attach", "terminal.kill", "events.subscribe", "doc.get", "doc.set"]
+    public static let requiredMethods: Set<String> = ["terminal.list", "terminal.get", "terminal.run", "terminal.attach", "terminal.kill", "terminal.read", "terminal.send", "terminal.keys", "events.subscribe", "doc.get", "doc.set"]
     public enum Failure: Error, Equatable, Sendable { case invalidSession, invalidHome, noExecutable, sshUnavailable, localUnavailable }
 
     public static func session(_ value: String) throws -> String {
@@ -31,6 +31,15 @@ public nonisolated enum HcConnectionPolicy {
         result["PATH"] = paths.filter { $0.hasPrefix("/") && !$0.utf8.contains(0) && seen.insert($0).inserted }.joined(separator: ":")
         return result
     }
+
+    #if os(macOS)
+    public static func localTransport(session: String = "") throws -> CoreProcessTransport {
+        let home = HcExecutable.homeDirectory()
+        let environment = try localEnvironment(home: home, session: session, source: ProcessInfo.processInfo.environment)
+        guard let binary = HcExecutable.resolve(candidates: HcExecutable.candidates(home: home, environment: environment)) else { throw Failure.noExecutable }
+        return try CoreProcessTransport(configuration: .init(executable: binary, environment: environment, directory: URL(fileURLWithPath: home)))
+    }
+    #endif
 
     /// Lookup runs in a POSIX shell, even when the SSH account uses fish. No
     /// interactive rc, eval, install or fallback to legacy herdr. All dynamic

@@ -112,6 +112,24 @@ extension CoreRPCConnection {
         try enqueue(Write(bytes: frame.encoded(), token: nil, deadline: .now.advanced(by: .seconds(30)),
                           channel: id.channel, priority: kind != .data))
     }
+    func sendStreamAndFlush(_ id: CoreStreamID, payload: Data, timeout: Duration) async throws {
+        try Task.checkCancellation(); try validate(timeout)
+        let slot = try streamSlot(id)
+        guard !slot.closing, !slot.ended else { throw CoreStreamFailure.closed }
+        guard slot.options.method == "terminal.attach", !slot.options.observe else { throw CoreStreamFailure.readOnly }
+        guard flushWaiters.count < 128 else { throw CoreStreamFailure.limitExceeded }
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        let frame = try CoreFrame(channel: id.channel, kind: .data, payload: payload)
+        let write = Write(bytes: frame.encoded(), token: nil, deadline: deadline, channel: id.channel)
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, Error>) in
+                if Task.isCancelled { c.resume(throwing: CancellationError()); return }
+                flushWaiters[write.id] = c; flushDeadlines[write.id] = deadline
+                do { try enqueue(write); scheduleTimer() }
+                catch { flushWaiters[write.id] = nil; flushDeadlines[write.id] = nil; c.resume(throwing: error) }
+            }
+        } onCancel: { Task { await self.cancelFlushedWrite(write.id) } }
+    }
     func closeStream(_ id: CoreStreamID) async throws {
         guard id.epoch == epoch else { throw CoreStreamFailure.staleEpoch }
         if state == .closed { try await close(); return }
@@ -143,7 +161,10 @@ extension CoreRPCConnection {
     private func discardStreamWrites(_ channel: UInt32) {
         writes.removeAll { item in
             guard item.channel == channel else { return false }
-            queuedWriteBytes -= item.bytes.count; return true
+            queuedWriteBytes -= item.bytes.count
+            flushWaiters.removeValue(forKey: item.id)?.resume(throwing: CoreStreamFailure.closed)
+            flushDeadlines[item.id] = nil
+            return true
         }
     }
     private func beginStreamClose(_ slot: CoreStreamState) throws {

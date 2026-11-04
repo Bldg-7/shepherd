@@ -8,7 +8,7 @@ import ShepherdKit
 /// the open-source licenses.
 struct MachinesView: View {
     let machineStore: MachineStore
-    let agentListCache: MobileAgentListCache
+    let cache: HcMobileCache
     @State private var path = NavigationPath()
     @State private var isAdding = false
     @State private var isPairing = false
@@ -25,7 +25,7 @@ struct MachinesView: View {
                     ContentUnavailableView {
                         Label("No Machines", systemImage: "server.rack")
                     } description: {
-                        Text("Add a machine running herdr to see its agents.")
+                        Text("Add a machine running hc to see its terminals and workspaces.")
                     } actions: {
                         Button("Scan Mac's QR Code") { isPairing = true }
                             .buttonStyle(.borderedProminent)
@@ -48,10 +48,7 @@ struct MachinesView: View {
             }
             .navigationTitle("Machines")
             .navigationDestination(for: Machine.self) { machine in
-                BoardView(machine: machine, machineStore: machineStore, agentListCache: agentListCache)
-            }
-            .navigationDestination(for: PaneDestination.self) { destination in
-                ConversationView(destination: destination, machineStore: machineStore)
+                HcMobileBoardView(machine: machine, machineStore: machineStore, cache: cache)
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {

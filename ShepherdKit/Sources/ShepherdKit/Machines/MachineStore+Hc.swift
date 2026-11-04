@@ -26,10 +26,7 @@ extension MachineStore {
             #if os(macOS)
             if let localTransport { transport = localTransport }
             else {
-                let home = HcExecutable.homeDirectory()
-                let environment = try HcConnectionPolicy.localEnvironment(home: home, session: session, source: ProcessInfo.processInfo.environment)
-                guard let binary = HcExecutable.resolve(candidates: HcExecutable.candidates(home: home, environment: environment)) else { throw HcConnectionPolicy.Failure.noExecutable }
-                transport = try CoreProcessTransport(configuration: .init(executable: binary, environment: environment, directory: URL(fileURLWithPath: home)))
+                transport = try HcConnectionPolicy.localTransport(session: session)
             }
             #else
             throw HcConnectionPolicy.Failure.localUnavailable
@@ -70,8 +67,9 @@ extension MachineStore {
             guard fresh.pinnedHostKeyFingerprint == current.pinnedHostKeyFingerprint else { throw EditError.settingsChanged }
             return connection
         } catch {
-            try? await connection.close()
-            throw error
+            let failure = error
+            try await connection.close() // Cleanup failure must remain visible, not silently authorize a retry.
+            throw failure
         }
     }
 }

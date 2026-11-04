@@ -69,6 +69,10 @@ public actor HcTerminalSession {
         guard !stopped, let stream else { throw Failure.notStarted }
         try await stream.send(data)
     }
+    public func writeAndFlush(_ data: Data, timeout: Duration = .seconds(10)) async throws {
+        guard !stopped, let stream else { throw Failure.notStarted }
+        try await stream.sendAndFlush(data, timeout: timeout)
+    }
     public func resize(columns: Int, rows: Int) async throws {
         try grid(columns, rows)
         guard !stopped, let stream else { throw Failure.notStarted }

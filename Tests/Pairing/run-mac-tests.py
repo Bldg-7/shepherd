@@ -75,7 +75,9 @@ target = ['-target', platform.machine() + '-apple-macos26.6.2']
 features = []
 for feature in ['MemberImportVisibility', 'NonisolatedNonsendingByDefault', 'InferIsolatedConformances']:
     features += ['-enable-upcoming-feature', feature]
-swiftc = ['xcrun', 'swiftc', *target, '-swift-version', '6', '-default-isolation', 'MainActor', *features, '-parse-as-library']
+sdk_path = subprocess.check_output(['xcrun', '--sdk', 'macosx', '--show-sdk-path'], env=env, text=True).strip()
+plugins = Path(env['DEVELOPER_DIR']) / 'Platforms/MacOSX.platform/Developer/usr'
+swiftc = ['xcrun', 'swiftc', *target, '-swift-version', '6', '-default-isolation', 'MainActor', *features, '-parse-as-library', '-sdk', sdk_path, '-external-plugin-path', str(plugins / 'lib/swift/host/plugins') + '#' + str(plugins / 'bin/swift-plugin-server')]
 
 kit_pairing = sorted(str(x.relative_to(ROOT)) for x in (ROOT / KIT / 'Pairing').glob('*.swift'))
 kit = [f'{KIT}/Resources.swift', f'{KIT}/Machines/Machine.swift', *kit_pairing, f'{KIT}/HerdrKit/Transport/SecureEnclaveSSHKey.swift']

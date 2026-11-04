@@ -8,16 +8,21 @@ private actor DeliveryPeer: CoreByteTransport {
     private(set) var credits = 0
     private(set) var attaches = 0
     private(set) var closes = 0
+    private(set) var inputEntered = false
+    private(set) var input = Data()
+    private var inputWaiter: CheckedContinuation<Void, Error>?
+    let holdInput: Bool
     let holdOpen: Bool
     let wrongTerminal: Bool
-    init(holdOpen: Bool = false, wrongTerminal: Bool = false) { self.holdOpen = holdOpen; self.wrongTerminal = wrongTerminal }
+    init(holdOpen: Bool = false, wrongTerminal: Bool = false, holdInput: Bool = false) { self.holdOpen = holdOpen; self.wrongTerminal = wrongTerminal; self.holdInput = holdInput }
     func start() async throws {}
     func read() async throws -> Data? {
         if !queued.isEmpty { return queued.removeFirst() }
         if closed { return nil }
         return try await withCheckedThrowingContinuation { reader = $0 }
     }
-    func close() async throws { closed = true; reader?.resume(returning: nil); reader = nil; queued.removeAll() }
+    func close() async throws { closed = true; reader?.resume(returning: nil); reader = nil; queued.removeAll(); inputWaiter?.resume(throwing: CoreStreamFailure.closed); inputWaiter = nil }
+    func releaseInput() { inputWaiter?.resume(); inputWaiter = nil }
     private func emit(_ bytes: Data) {
         if let reader { self.reader = nil; reader.resume(returning: bytes) } else { queued.append(bytes) }
     }
@@ -34,6 +39,10 @@ private actor DeliveryPeer: CoreByteTransport {
                 let request = try JSONDecoder().decode(Request.self, from: frame.payload)
                 attaches += 1
                 if holdOpen { held = request.id } else { try opened(request.id) }
+            } else if frame.kind == .data {
+                inputEntered = true
+                if holdInput { try await withCheckedThrowingContinuation { inputWaiter = $0 } }
+                input.append(frame.payload)
             } else if frame.kind == .credit { credits += Int(CoreWire.uint32(Array(frame.payload), at: 0)) }
             else if frame.kind == .close { closes += 1; try framed(channel: 1, kind: .close) }
         }
@@ -111,7 +120,45 @@ private actor DeliveryPeer: CoreByteTransport {
         catch HcTerminalSession.Failure.wrongTerminal { checks += 1 }
         try check(await wrong.closes == 1, "wrong target closes actual returned channel")
         try await wrongRPC.close()
+        try await flushTests()
         try JSONSerialization.data(withJSONObject: ["passed":true,"checks":checks]).write(to: URL(fileURLWithPath: CommandLine.arguments[1]))
         print("PASS lossless terminal delivery: \(checks) checks")
+    }
+    static func flushTests() async throws {
+        let peer = DeliveryPeer(holdInput: true), rpc = try await make(peer)
+        let session = HcTerminalSession(connection: rpc, terminalID: "t1")
+        try await session.start(columns: 80, rows: 24)
+        var completed = false
+        let flushed = Task { try await session.writeAndFlush(Data("exact 한글😀".utf8)); completed = true }
+        try await wait { await peer.inputEntered }
+        try check(!completed, "flush does not acknowledge a stalled transport writer")
+        await peer.releaseInput(); try await flushed.value
+        try await session.stop()
+        let received = await peer.input
+        try check(completed && received == Data("exact 한글😀".utf8), "flush then close preserves every input byte")
+        try check(await rpc.state == .ready, "flushed attach does not stop shared RPC")
+        try await rpc.close()
+
+        for timed in [false, true] {
+            let held = DeliveryPeer(holdInput: true), connection = try await make(held)
+            let stream = try await connection.openStream("terminal.attach")
+            try await stream.send(Data("first".utf8))
+            try await wait { await held.inputEntered }
+            let second = Task { try await stream.sendAndFlush(Data("not-sent".utf8), timeout: timed ? .milliseconds(100) : .seconds(5)) }
+            try await wait { await connection.snapshot().queuedWriteBytes > 20 }
+            if !timed { second.cancel() }
+            do { try await second.value; throw CoreWorkspaceFailure.invalidDocument }
+            catch is CancellationError where !timed { checks += 1 }
+            catch CoreConnectionFailure.requestTimedOut where timed { checks += 1 }
+            await held.releaseInput(); try await stream.close()
+            try check(await held.input == Data("first".utf8), "unsent flush cancellation/timeout removes only its queued frame")
+            try check(await connection.state == .ready, "canceled flush preserves other RPC state")
+            try await connection.close()
+        }
+        let observerPeer = DeliveryPeer(), observerRPC = try await make(observerPeer)
+        let observer = try await observerRPC.openStream("terminal.attach", parameters: Data("{\"observe\":true}".utf8))
+        do { try await observer.sendAndFlush(Data([1])); throw CoreWorkspaceFailure.invalidDocument }
+        catch CoreStreamFailure.readOnly { checks += 1 }
+        try await observer.close(); try await observerRPC.close()
     }
 }

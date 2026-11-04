@@ -560,7 +560,7 @@ extension PairingSettingsViewTests {
         check(drainUntil { label(accessibility(host)[id + ".status"]).contains("The proxy is running") }, "…and said so")
 
         // Turned off while two agents use it: it stays until they have ended.
-        let route = { (n: Int) in AgentProxyRoute(routeID: "r\(n)", kind: .claude, session: "default", paneID: "w1:p\(n)", terminalID: "t\(n)",
+        let route: @Sendable (Int) -> AgentProxyRoute = { n in AgentProxyRoute(routeID: "r\(n)", kind: .claude, session: "default", paneID: "w1:p\(n)", terminalID: "t\(n)",
                                                    cliVersion: "2.1.290", createdAt: "2026-10-22T00:00:00Z", oauthRejected: false, inFlight: 0) }
         _ = run { await control.setRoutes([route(1), route(2)]) }
         live = ["t1", "t2"]

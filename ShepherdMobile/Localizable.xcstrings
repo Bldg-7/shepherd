@@ -1,6 +1,210 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+"Add a machine running hc to see its terminals and workspaces.": {
+  "extractionState": "manual",
+  "localizations": {
+    "ko": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "hc가 실행 중인 머신을 추가하면 터미널과 워크스페이스를 볼 수 있습니다."
+      }
+    },
+    "ja": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "hc が動作するマシンを追加すると、ターミナルとワークスペースを表示できます。"
+      }
+    }
+  }
+},
+"Connecting to hc…": {
+  "extractionState": "manual",
+  "localizations": {
+    "ko": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "hc에 연결 중…"
+      }
+    },
+    "ja": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "hc に接続中…"
+      }
+    }
+  }
+},
+"Approve verified host key": {
+  "extractionState": "manual",
+  "localizations": {
+    "ko": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "확인한 호스트 키 승인"
+      }
+    },
+    "ja": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "確認済みホストキーを承認"
+      }
+    }
+  }
+},
+"Install or update hc on this SSH host, not on iPhone or iPad. The app never installs a local core on this device.": {
+  "extractionState": "manual",
+  "localizations": {
+    "ko": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "hc는 iPhone이나 iPad가 아닌 SSH 호스트에 설치하거나 업데이트하세요. 이 기기에 로컬 core를 설치하지 않습니다."
+      }
+    },
+    "ja": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "hc は iPhone や iPad ではなく SSH ホストにインストールまたは更新してください。このデバイスにローカル core はインストールしません。"
+      }
+    }
+  }
+},
+"Saved display from %@. Actions verify a live connection and terminal before sending.": {
+  "extractionState": "manual",
+  "localizations": {
+    "ko": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "%@에 저장된 표시입니다. 작업 전 실제 연결과 터미널을 다시 확인합니다."
+      }
+    },
+    "ja": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "%@ に保存された表示です。操作前に接続とターミナルを再確認します。"
+      }
+    }
+  }
+},
+"Core terminals": {
+  "extractionState": "manual",
+  "localizations": {
+    "ko": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "Core 터미널"
+      }
+    },
+    "ja": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "Core ターミナル"
+      }
+    }
+  }
+},
+"Type only": {
+  "extractionState": "manual",
+  "localizations": {
+    "ko": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "텍스트만 입력"
+      }
+    },
+    "ja": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "テキストのみ入力"
+      }
+    }
+  }
+},
+"Send + Enter": {
+  "extractionState": "manual",
+  "localizations": {
+    "ko": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "전송 + Enter"
+      }
+    },
+    "ja": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "送信 + Enter"
+      }
+    }
+  }
+},
+"Text": {
+  "extractionState": "manual",
+  "localizations": {
+    "ko": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "텍스트"
+      }
+    },
+    "ja": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "テキスト"
+      }
+    }
+  }
+},
+"Status unreported": {
+  "extractionState": "manual",
+  "localizations": {
+    "ko": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "보고된 상태 없음"
+      }
+    },
+    "ja": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "状態未報告"
+      }
+    }
+  }
+},
+"Reading hc terminal…": {
+  "extractionState": "manual",
+  "localizations": {
+    "ko": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "hc 터미널 읽는 중…"
+      }
+    },
+    "ja": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "hc ターミナルを読み取り中…"
+      }
+    }
+  }
+},
+"%@ was added, but its hc core didn't answer: %@ Check that hc is installed and available on the Mac.": {
+  "extractionState": "manual",
+  "localizations": {
+    "ko": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "%1$@ 항목을 추가했지만 hc core가 응답하지 않았습니다: %2$@ Mac에 hc가 설치되어 연결 가능한지 확인하세요."
+      }
+    },
+    "ja": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "%1$@ を追加しましたが hc core が応答しませんでした: %2$@ Mac に hc がインストールされ、利用可能か確認してください。"
+      }
+    }
+  }
+},
 "Context compaction": {
     "extractionState": "manual",
     "localizations": {

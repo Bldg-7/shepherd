@@ -108,6 +108,43 @@ involved, and `launchdLifecycleQualified` stays false.
 - `/private/tmp/hc-screen-regression.ofHCyB/{attach,board,protocol}` retains
   nine attach, twelve board and seven-stage protocol regression results.
 
+## Mobile hc root, snapshot conversation and safe input
+
+Mobile's machine navigation now opens `HcMobileBoardView`, not the old herdr
+board/cache. It uses the same product machine factory and workspace model.
+`HcMobileCache` stores bounded **display-only** records/layout, scoped to the
+exact saved connection. Edits/removal retire it before committing settings;
+stale writers and invalid documents are rejected. A cached origin is never
+retargeted for actions. No iOS local core install/execution is possible.
+
+`HcConversationModel` reads snapshots without a terminal attach and uses hc's
+explicit send/named-key APIs with fresh same-origin terminal confirmation. Input
+is never replayed on failure. Generation-1 `terminal.keys` rejects arbitrary
+Unicode: the initial real-core negative exposed that limitation. Type-only
+Unicode now uses a short input attach at the current grid, without a focus
+command, and **flushes its DATA to the transport writer before closing**. Its
+unused output is credit-bounded and is not rendered as a VT screen. Control
+characters are rejected for type-only input so a hidden newline cannot submit.
+
+`CoreStream.sendAndFlush` does not mean the program processed input. Queued
+cancellation/timeout removes only that frame; an in-flight frame finishes intact
+and may have arrived. Normal `send` still means bounded writer admission. The
+31 stream-delivery checks include held writer, flush-before-close, queued
+cancellation/timeout and read-only stream denial in each build mode.
+
+Actual core conversation/cache: `/private/tmp/hc-runtime.yLDk2O/conversation`
+(21 checks, real Unicode bytes, send+Enter, disconnect, foreign-origin rejection,
+cache retirement and connect-child cleanup). iOS builds pass at
+`/private/tmp/hc-mobile-final.SuHGBs/ios.log`; this is **not iOS UI automation** or
+provider/authentication/readiness qualification. QR first-connect now uses pinned
+hc SSH exec, preserves the resolved numeric address, and checks its range before
+credentials are offered. Pairing report v1's `herdrReached` wire field is retained
+as core-health compatibility data, not an old-backend request.
+
+Device pairing `/private/tmp/hc-pair-device.AgXdpa/run` passes 117+7 checks; Mac
+pairing `/private/tmp/hc-pair-mac.51sBOl/run` passes 279+11+115 checks. No external
+SSH server, real keys/accounts, camera or system security configuration is used.
+
 ## File/layout integration and release browser retirement
 
 The hc pane now preserves native file gestures and file drops. Direct-origin

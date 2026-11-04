@@ -73,7 +73,7 @@ import CryptoKit
             } else if case HcConnectionPolicy.Failure.noExecutable = error {
                 phase = .missingExecutable; message = "Install hc (herdr-core) for this account, then retry. Existing cores and package-manager installations are never replaced automatically."
             } else {
-                phase = .failed; message = connectionFailureDescription(error)
+                phase = .failed; message = hcConnectionFailureDescription(error)
             }
         }
     }
