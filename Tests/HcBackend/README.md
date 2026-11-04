@@ -129,11 +129,13 @@ involved, and `launchdLifecycleQualified` stays false.
 
 The stricter current runner additionally requires actual foreground/key-window
 state and the native New Tab menu opening/canceling the human launch form.
-Unattended activation is refused in this session, including the owned helper
-(`helperActive=false`). Latest retained failure:
-`/private/tmp/hc-screen-app.qdg0mn1a` (nine earlier assertions reached, but
-**overall passed=false**). Known app/helper/core/holder/program resources and
-owned registrations retired. Earlier activation failures are retained too.
+Latest actual attempt: `/private/tmp/hc-screen-app.9zpk1e_h` used the explicit
+human-activation wait (150 seconds), reached nine earlier assertions and ended
+**overall passed=false**. Its helper never reported active; no handoff/focus/menu
+stage was recorded. These logs cannot establish whether a person clicked, which
+of the two owned windows was clicked, or whether the OS refused activation.
+Known app/helper/core/holder/program resources, socket, both owned registrations
+and staged bundles retired; reports remain. Earlier failures are retained too.
 No other app's focus, accessibility grants or authority are borrowed to force a
 pass. A GUI environment that genuinely permits this owned foreground interaction
 must pass the strict gate before window commands/release cutover are qualified.
@@ -141,6 +143,25 @@ must pass the strict gate before window commands/release cutover are qualified.
 Older 11-check UI positives below qualify their narrower source/gate only. They
 are not current foreground-command qualification. Current source compilation and
 fake-OS notification composition are separate evidence, not a substitute.
+
+### Explicit human activation, without a bypass
+
+When a person is ready to click an owned window, the existing command accepts
+`--human-activation`. It gives bounded time (270s controller, 150s handoff wait),
+keeps the private peer alive and shows instructions in only its owned helper.
+A person may click either the helper or the actual child. The helper may yield
+only to that exact child; a genuinely already-active/key child can proceed
+without an unnecessary helper-active prerequisite. The final active/key-window,
+native menu, form/cancel and unchanged-program assertions remain mandatory.
+`targetActive`, direct-activation and pre-handoff focus observations are logged.
+No other app, accessibility permission, screen capture grant or provider account
+is used. Neither a marker nor the mode flag makes the test pass.
+
+The direct-child path is currently **compile-checked, not GUI-qualified**:
+`/private/tmp/hc-ui-handoff-check.aqOHfM` has helper/macOS Swift6 build success and
+six retention controls. No new GUI run was launched after the failed human wait;
+retry only when a person confirms they are ready. The last failed result is not
+silently promoted by this harness correction.
 
 ## Artifact retention after owned GUI tests
 
@@ -150,7 +171,7 @@ registrations are removed. Reports, source/product hashes and screenshots remain
 Missing identities/uncertain retirement preserve the copies for inspection;
 symlinks, other roots or failed registration cleanup are never accepted.
 `test_ui_artifacts.py` has six positive/negative tests. Actual latest red GUI run
-`/private/tmp/hc-screen-app.qdg0mn1a/artifact-cleanup.json` confirms both owned
+`/private/tmp/hc-screen-app.9zpk1e_h/artifact-cleanup.json` confirms both owned
 copies removed, registrations exited 0, while the GUI verdict remains false.
 This prevents repeated ~447MiB bundle copies accumulating; it does not waive the
 foreground gate or retain immutable copies of every historical test executable.

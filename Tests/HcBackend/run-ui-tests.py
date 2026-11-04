@@ -13,6 +13,7 @@ from ui_artifacts import remove_staged_bundles
 p=argparse.ArgumentParser()
 p.add_argument('--official-017-archive',type=Path,required=True)
 p.add_argument('--products',type=Path,required=True)
+p.add_argument('--human-activation',action='store_true',help='Allow time for a person to click only the owned helper window; all GUI assertions still required')
 a=p.parse_args()
 out=Path(tempfile.mkdtemp(prefix='hc-screen-app.',dir='/private/tmp')).resolve()
 print(out,flush=True)
@@ -34,11 +35,14 @@ assert all(p.stat().st_mtime<=product.stat().st_mtime for p in tracked if p.suff
 (out/'owned-preview.md').write_text('# HC-FILE-PREVIEW-CONTENT\n\nOwned hc file preview, not browser content.\n')
 (out/"drop fixture's.png").write_bytes(b'owned-drop-fixture')
 (out/'ui-peer.py').write_text("import sys,time,tty,pathlib\nroot=pathlib.Path(__file__).parent\nprint('CJK 한글 😀 real SwiftTerm UI',flush=True)\nprint('HC-UI-RENDER-DONE',flush=True)\ninput()\nlink=(root/'owned-preview.md').as_uri()\nprint('\\x1b]8;;'+link+'\\x1b\\\\Open owned preview\\x1b]8;;\\x1b\\\\',flush=True)\ntty.setraw(sys.stdin.fileno())\nprint('HC-DROP-READY',flush=True)\nexpected=(root/'drop-expected.txt').read_bytes()\ndata=sys.stdin.buffer.read(len(expected))\n(root/'drop-received.bin').write_bytes(data)\nprint('HC-DROP-RECEIVED',flush=True)\ntime.sleep(60)\n")
+if a.human_activation:
+    peer=out/'ui-peer.py';peer.write_text(peer.read_text().replace('time.sleep(60)','time.sleep(300)'))
 profile=out/'private-unix.sb'
 profile.write_text('(version 1)\n(allow default)\n(deny network*)\n(allow network* (subpath '+json.dumps(str(out/'core'))+'))\n')
 sandbox=['/usr/bin/sandbox-exec','-f',str(profile)]
 env={'PATH':'/usr/bin:/bin:/usr/sbin:/sbin','HOME':str(out/'home'),'CFFIXED_USER_HOME':str(out/'home'),'TMPDIR':str(out/'tmp'),
      'LANG':'en_US.UTF-8','DO_NOT_TRACK':'1','SHEPHERD_HC_UI_ROOT':str(out),'SHEPHERD_HC_UI_BINARY':str(binary)}
+if a.human_activation:env['SHEPHERD_HC_UI_HUMAN_ACTIVATION']='1'
 # Network denial canary against only an owned loopback listener.
 with socket.socket() as listener:
     listener.bind(('127.0.0.1',0));listener.listen(1)
@@ -69,7 +73,7 @@ for name in ['app.stdout.log','app.stderr.log']:(out/name).touch(mode=0o600)
 (out/'fixture-bundle.json').write_text(json.dumps({'bundleID':bundle_id,'bundle':str(fixture_app),'helper':str(helper),'originalExecutableSHA256':digest(exe),'fixtureExecutableSHA256':digest(actual_exe),'launcherSourceSHA256':digest(ROOT/'Tests/HcBackend/OwnedUILauncher.swift'),'sandboxBeforeAppExec':True},indent=2))
 log=out/'app.log';report=out/'ui-report.json';failed=None
 try:
-    code=subprocess.run([sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout','60','--natural-exit-grace','10','--log',str(log),'--','/usr/bin/open','-n','-W','--env','SHEPHERD_OWNED_UI_LAUNCH_ROOT='+str(out),'--env','HOME='+str(out/'home'),'--env','CFFIXED_USER_HOME='+str(out/'home'),'--env','TMPDIR='+str(out/'tmp'),str(helper)],env=env,cwd=out,timeout=100).returncode
+    code=subprocess.run([sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(270 if a.human_activation else 60),'--natural-exit-grace','10','--log',str(log),'--','/usr/bin/open','-n','-W','--env','SHEPHERD_OWNED_UI_LAUNCH_ROOT='+str(out),'--env','HOME='+str(out/'home'),'--env','CFFIXED_USER_HOME='+str(out/'home'),'--env','TMPDIR='+str(out/'tmp'),str(helper)],env=env,cwd=out,timeout=310 if a.human_activation else 100).returncode
     stage=json.loads(log.with_suffix('.stage.json').read_text())
     assert code==0 and stage['naturalExitConfirmed'] and not stage['signalsSent'] and stage['cleanupVerified'],'app stage failed'
 except BaseException as error:failed=error
@@ -120,7 +124,7 @@ finally:
 passed=failed is None and result.get('passed') is True and bool(result.get('ownedPIDs')) and result.get('screenshot') is True and result.get('sidebarAccessibilityVerified') is True and result.get('productFactoryVerified') is True and result.get('filePreviewVerified') is True and result.get('fileDropVerified') is True and result.get('windowCommandsVerified') is True
 assert hashes=={str(p.relative_to(ROOT)):digest(p) for p in tracked},'sources changed during validation'
 (out/'validation.json').write_text(json.dumps({'passed':passed,'checks':result.get('checks'),'renderedBytes':result.get('renderedBytes'),
-    'actualSwiftUI':True,'nativeSwiftTerm':True,'windowCommandsVerified':result.get('windowCommandsVerified'),'filePreviewVerified':result.get('filePreviewVerified'),'fileDropVerified':result.get('fileDropVerified'),'productFactoryVerified':result.get('productFactoryVerified'),'sidebarAccessibilityVerified':result.get('sidebarAccessibilityVerified'),'screenshot':result.get('screenshot'),'browserAuthorityUsed':False,'legacyServicesStarted':False,
+    'actualSwiftUI':True,'nativeSwiftTerm':True,'humanActivationRequested':a.human_activation,'foregroundAssertionsRequired':True,'windowCommandsVerified':result.get('windowCommandsVerified'),'filePreviewVerified':result.get('filePreviewVerified'),'fileDropVerified':result.get('fileDropVerified'),'productFactoryVerified':result.get('productFactoryVerified'),'sidebarAccessibilityVerified':result.get('sidebarAccessibilityVerified'),'screenshot':result.get('screenshot'),'browserAuthorityUsed':False,'legacyServicesStarted':False,
     'ownedProcessesExited':bool(result.get('ownedPIDs')),'socketRemoved':not sock.exists(),'releaseCutover':False},indent=2))
 if failed:raise failed
 assert passed,'UI rendering/cleanup incomplete'

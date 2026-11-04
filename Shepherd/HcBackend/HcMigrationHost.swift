@@ -224,16 +224,22 @@ struct HcMigrationHost: View {
             let policyAccepted = NSApp.setActivationPolicy(.regular)
             rootWindow.makeKeyAndOrderFront(nil)
             try JSONSerialization.data(withJSONObject: ["appPID":ProcessInfo.processInfo.processIdentifier,"renderedAndPreviewed":true]).write(to: root.appending(path: "ui-wants-focus.json"), options: .atomic)
-            let yieldDeadline = ContinuousClock.now.advanced(by: .seconds(4))
-            while !FileManager.default.fileExists(atPath: root.appending(path: "activation-yielded.json").path) {
+            let humanActivation = ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_HUMAN_ACTIVATION"] == "1"
+            let yieldDeadline = ContinuousClock.now.advanced(by: .seconds(humanActivation ? 150 : 4))
+            while !FileManager.default.fileExists(atPath: root.appending(path: "activation-yielded.json").path)
+                    && !(NSApp.isActive && rootWindow.isKeyWindow) {
+                try JSONSerialization.data(withJSONObject: ["isActive":NSApp.isActive,"isKey":rootWindow.isKeyWindow,"humanActivationRequested":humanActivation]).write(to: root.appending(path: "focus-wait.json"), options: .atomic)
                 guard ContinuousClock.now < yieldDeadline else { throw HcWorkspaceModel.Failure.unavailable }
                 try await Task.sleep(for: .milliseconds(20))
             }
             guard let text = ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_PARENT_PID"], let pid = Int32(text),
                   let parent = NSRunningApplication(processIdentifier: pid), parent.bundleURL?.resolvingSymlinksInPath() == root.appending(path: "OwnedUILauncher.app").resolvingSymlinksInPath() else { throw HcWorkspaceModel.Failure.unavailable }
-            let activationAccepted = NSRunningApplication.current.activate(from: parent, options: [.activateAllWindows])
-            try JSONSerialization.data(withJSONObject: ["previousPolicy":previousPolicy,"policyAccepted":policyAccepted,"activationAccepted":activationAccepted,"isActive":NSApp.isActive,"isKey":rootWindow.isKeyWindow]).write(to: root.appending(path: "focus-stage.json"))
-            let focusDeadline = ContinuousClock.now.advanced(by: .seconds(4))
+            // Direct user activation of our own child already meets readiness.
+            // Only our owned helper can otherwise yield activation to this app.
+            let alreadyActive = NSApp.isActive
+            let activationAccepted = !alreadyActive && NSRunningApplication.current.activate(from: parent, options: [.activateAllWindows])
+            try JSONSerialization.data(withJSONObject: ["previousPolicy":previousPolicy,"policyAccepted":policyAccepted,"activationAlreadyPresent":alreadyActive,"activationAccepted":activationAccepted,"isActive":NSApp.isActive,"isKey":rootWindow.isKeyWindow]).write(to: root.appending(path: "focus-stage.json"))
+            let focusDeadline = ContinuousClock.now.advanced(by: .seconds(humanActivation ? 8 : 4))
             while !rootWindow.isKeyWindow || !NSApp.isActive {
                 guard ContinuousClock.now < focusDeadline else {
                     try JSONSerialization.data(withJSONObject: ["isActive":NSApp.isActive,"isKey":rootWindow.isKeyWindow,"policy":NSApp.activationPolicy().rawValue]).write(to: root.appending(path: "focus-failure.json"))

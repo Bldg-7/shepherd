@@ -33,20 +33,27 @@ import Darwin
             }
             child = process; try process.run()
             try JSONSerialization.data(withJSONObject: ["appPID":process.processIdentifier,"helperPID":ProcessInfo.processInfo.processIdentifier]).write(to: root.appending(path: "launched-identities.json"), options: .atomic)
-            let window = NSWindow(contentRect: NSRect(x: 120, y: 120, width: 280, height: 90), styleMask: [.titled], backing: .buffered, defer: false)
+            let human = environment["SHEPHERD_HC_UI_HUMAN_ACTIVATION"] == "1"
+            let window = NSWindow(contentRect: NSRect(x: 120, y: 120, width: 400, height: 120), styleMask: [.titled], backing: .buffered, defer: false)
             window.isReleasedWhenClosed = false; window.title = "Owned hc UI fixture"
-            window.contentView?.addSubview(NSTextField(labelWithString: "Preparing the private test window…"))
+            let label = NSTextField(wrappingLabelWithString: human ? "이 테스트 창을 직접 클릭해 주세요.\n권한이나 계정 승인은 필요하지 않습니다." : "Preparing the private test window…")
+            label.frame = NSRect(x: 18, y: 22, width: 360, height: 70)
+            window.contentView?.addSubview(label)
             self.window = window; window.makeKeyAndOrderFront(nil); NSApp.activate()
             let pid = process.processIdentifier
             Task {
-                let deadline = ContinuousClock.now.advanced(by: .seconds(10))
+                let deadline = ContinuousClock.now.advanced(by: .seconds(human ? 240 : 10))
                 while ContinuousClock.now < deadline {
                     let target = NSRunningApplication(processIdentifier: pid)
-                    try? JSONSerialization.data(withJSONObject: ["helperActive":NSApp.isActive,"targetBundle":target?.bundleURL?.path ?? "nil","expectedBundle":app.path,"targetFinished":target?.isFinishedLaunching ?? false,"focusRequested":FileManager.default.fileExists(atPath: root.appending(path: "ui-wants-focus.json").path)]).write(to: root.appending(path: "helper-stage.json"), options: .atomic)
+                    try? JSONSerialization.data(withJSONObject: ["helperActive":NSApp.isActive,"targetActive":target?.isActive ?? false,"targetBundle":target?.bundleURL?.path ?? "nil","expectedBundle":app.path,"targetFinished":target?.isFinishedLaunching ?? false,"focusRequested":FileManager.default.fileExists(atPath: root.appending(path: "ui-wants-focus.json").path)]).write(to: root.appending(path: "helper-stage.json"), options: .atomic)
                     if let target, target.bundleURL?.resolvingSymlinksInPath() == app.resolvingSymlinksInPath(),
-                       FileManager.default.fileExists(atPath: root.appending(path: "ui-wants-focus.json").path), process.isRunning, NSApp.isActive {
-                        NSApp.yieldActivation(to: target)
-                        try? JSONSerialization.data(withJSONObject: ["helperPID":ProcessInfo.processInfo.processIdentifier,"appPID":pid]).write(to: root.appending(path: "activation-yielded.json"), options: .atomic)
+                       FileManager.default.fileExists(atPath: root.appending(path: "ui-wants-focus.json").path), process.isRunning, NSApp.isActive || target.isActive {
+                        // A person may click the actual child rather than this
+                        // helper. Observe that genuine activation; never require
+                        // borrowing another app's activation or accessibility.
+                        let direct = target.isActive
+                        if !direct { NSApp.yieldActivation(to: target) }
+                        try? JSONSerialization.data(withJSONObject: ["helperPID":ProcessInfo.processInfo.processIdentifier,"appPID":pid,"directChildActivationObserved":direct]).write(to: root.appending(path: "activation-yielded.json"), options: .atomic)
                         window.orderOut(nil)
                         return
                     }
