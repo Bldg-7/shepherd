@@ -550,6 +550,12 @@ Ghostty #14711/#14725는 이미 upstream merge됐지만 hc에는 반영 PR이 �
 
 최신검사: `/private/tmp/hc-gateway-store.I0YyAc/run`243/mode+21stages+iOS17; `/private/tmp/hc-gateway-sdk.ShTwhU/check` production framed SDK20 over실제공식privatecores, 잘못된원점write방지(충돌구성), no replay, 모든ownedPID/socket퇴역; macOS/iOS Debug builds 통과. 상세·한계: `Tests/CoreWorkspace/GATEWAY-README.md`. 사용자core/프로그램/설치/배포를 바꾸지 않았다.
 
+### C/D 후속: 명시적 operation review/rebase UI
+
+미완료와 완료 journal기록을 모두 검토할 수 있게 했다. 완료기록64개가 쌓이면 UI에서 잊을 수 없어 quota가 막히던 경로도 명시적 metadata-forget 확인으로 해결한다(자동eviction아님). Review는 fresh document read와 bookkeeping조정만 수행하며, 정확한 reviewed UInt64 version과 model generation을 고정한다. 다른 client가 layout을 바꾸면 기존review는 적용불가이고 새read+사람review가 필요하다. 저장된 run receipt/동일targetfields만 layout-only CAS재적용을 허용하며 run/stop/labeladoption은하지 않는다. Unknown run은확인된실패로간주하지 않고 어떤재실행도하지않는다. In-flight metadata를 uncertain으로퇴역시켜도 서버도착불가를 뜻하지않으며, 새metadata CAS는persist후단한번 보낸다.
+
+`/private/tmp/hc-review.9auGWf/`: unit257/mode+21stages+iOS17; `real-final` actual model/core56(다른client rename으로stale review거부, 새review후한번bind, 프로그램수/생존불변); `macos-final.log`/`ios-final.log` Debug builds통과. Review sheet가열리면 root menu/settings/switcher도잠근다. Native modalUI 자동화는아직아니며 foreground게이트면제가아니다. 자세한한계/실패기록은 `Tests/HcBackend/RECOVERY-README.md`.
+
 ### 현재 GUI qualification 추가 한계
 
 Strict GUI gate는 실제 foreground/key-window와 native New Tab→launch form→cancel까지 요구한다. 현재 unattended session은 owned helper마저 `helperActive=false`여서 활성화를 거부한다. `/private/tmp/hc-screen-app.qdg0mn1a`는 9개 앞선 assertion 후 전체 `passed=false`; 기존 11-check positive를 이 더 강한 gate의 통과로 승격하지 않는다. 다른 앱의 포커스/접근성/권한을 빌려 우회하지 않으며 이 readiness 실패는 그대로 nonzero이다. 실제 GUI 상호작용이 허용된 환경의 검증이 추가로 필요하다.

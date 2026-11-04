@@ -40,7 +40,7 @@ struct HcRootView: View {
         let model = scopedModel
         return HcRootChanges(machine: machineStore.activeMachine?.connectionIdentity, state: model?.state,
             document: model?.document, focus: model?.focus, busy: model?.operationBusy ?? false,
-            writable: model?.workspace?.canWrite ?? false, sheets: [launchSheet,switcher,settings,installation])
+            writable: model?.workspace?.canWrite ?? false, sheets: [launchSheet,switcher,settings,installation,model?.operationReview != nil])
     }
     var body: some View {
         dialogs
@@ -110,7 +110,7 @@ struct HcRootView: View {
         let model = scopedModel, tab = model?.selectedTab
         let pane = tab.flatMap { tab in model?.focus.paneByTab[tab.id] }
         let split = (tab?.layout?.panes.count ?? 0) > 1
-        let available = !launchSheet && !switcher && !settings && !installation
+        let available = !launchSheet && !switcher && !settings && !installation && model?.operationReview == nil
         return HcWindowActions(canLaunch: available && model?.canEdit == true, canClose: available && model?.canEdit == true && tab != nil,
             canSwitch: available && model?.state == .connected, canSettings: available, closeTitle: split ? "Close Pane View" : "Close Tab View",
             launch: { launchSheet = true }, close: {

@@ -9,6 +9,14 @@ private nonisolated struct HcWorkspaceTerminalInitial: Decodable, Sendable { let
 @MainActor @Observable public final class HcWorkspaceModel {
     public enum State: Equatable { case idle, connecting, connected, failed, closed }
     public enum Failure: Error, Equatable { case unavailable, stale, conflict, uncertain, recoveryRequired }
+    public struct OperationReview: Identifiable, Equatable, Sendable {
+        public let id: UUID
+        public let record: CoreWorkspaceRecovery.Record
+        public let expectedVersion: UInt64
+        public let canApplyLayout: Bool
+        fileprivate let generation: UUID
+    }
+    public private(set) var operationReview: OperationReview?
     public private(set) var state: State = .idle
     public private(set) var workspace: CoreWorkspaceStore.View?
     public private(set) var terminals: [HcTerminalRecord] = []
@@ -40,7 +48,11 @@ private nonisolated struct HcWorkspaceTerminalInitial: Decodable, Sendable { let
         Task { try? await events?.close(); try? await store?.close(); try? await connection.close() }
     }
     public var document: CoreWorkspaceDocument? { workspace?.snapshot?.document }
-    public var canEdit: Bool { state == .connected && workspace?.canWrite == true && !operationBusy }
+    public var canEdit: Bool { state == .connected && workspace?.canWrite == true && !operationBusy && operationReview == nil }
+    public func canApply(_ review: OperationReview) -> Bool {
+        state == .connected && !operationBusy && operationReview?.id == review.id && review.generation == generation
+            && review.canApplyLayout && workspace?.canWrite == true && workspace?.snapshot?.version == review.expectedVersion
+    }
     public var selectedTab: CoreWorkspaceDocument.Tab? {
         guard let id = focus.workspaceID, let tabID = focus.tabByWorkspace[id] else { return nil }
         return document?.workspaces.first(where: { $0.id == id })?.tabs.first(where: { $0.id == tabID })
@@ -268,6 +280,67 @@ private nonisolated struct HcWorkspaceTerminalInitial: Decodable, Sendable { let
             apply(refreshed)
         } catch { try? await journal.finishLayout(attempt, result: .uncertain); recoveryRecords = await journal.snapshot(); throw error }
     }
+    /// Reading/reconciling is separate from a new human-approved layout CAS.
+    /// This never reruns a launch, looks up operation labels or dispatches kills.
+    public func prepareOperationReview(_ operationID: UUID) async throws -> OperationReview {
+        guard state == .connected, !operationBusy, operationReview == nil, let journal, let store else { throw Failure.unavailable }
+        let token = generation
+        operationBusy = true; defer { operationBusy = false }
+        let latest = try await store.refresh()
+        guard token == generation, latest.canWrite, latest.originCoreID == journal.coreID,
+              let snapshot = latest.snapshot else { throw Failure.stale }
+        apply(latest)
+        guard let before = await journal.snapshot().first(where: { $0.id == operationID }) else { throw CoreWorkspaceRecoveryFailure.staleTicket }
+        if before.layout != .confirmed {
+            try await journal.retireInFlightForReview(operationID)
+            try await journal.reconcileLayout(operationID: operationID, snapshot: snapshot)
+        }
+        let records = await journal.snapshot()
+        guard token == generation, let record = records.first(where: { $0.id == operationID }) else { throw Failure.stale }
+        recoveryRecords = records
+        let applicable = try await journal.canReapplyLayoutAfterReview(operationID, snapshot: snapshot)
+        guard token == generation else { throw Failure.stale }
+        let review = OperationReview(id: UUID(), record: record, expectedVersion: snapshot.version, canApplyLayout: applicable, generation: token)
+        operationReview = review
+        return review
+    }
+    public func cancelOperationReview(_ review: OperationReview) {
+        guard !operationBusy, operationReview?.id == review.id else { return }
+        operationReview = nil
+    }
+    public func applyOperationReview(_ review: OperationReview) async throws {
+        guard canApply(review), let journal, let store else { throw Failure.stale }
+        let token = generation
+        operationBusy = true
+        defer { operationBusy = false; operationReview = nil }
+        let current = await store.view()
+        guard token == generation, current.canWrite, current.originCoreID == journal.coreID, let snapshot = current.snapshot,
+              snapshot.version == review.expectedVersion else { throw Failure.stale }
+        let attempt = try await journal.prepareRebasedLayoutAfterReview(review.record.id, snapshot: snapshot)
+        let result: CoreWorkspaceCAS.WriteResult
+        do { result = try await store.edit(attempt.edit, expectedVersion: review.expectedVersion) }
+        catch {
+            try? await journal.finishLayout(attempt, result: .uncertain)
+            recoveryRecords = await journal.snapshot(); failure = .recoveryRequired; throw error
+        }
+        try await journal.finishLayout(attempt, result: result)
+        recoveryRecords = await journal.snapshot()
+        guard token == generation else { throw Failure.stale }
+        let refreshed = try await store.refresh()
+        guard token == generation else { throw Failure.stale }
+        apply(refreshed)
+        if case .acknowledged = result { return }
+        failure = .recoveryRequired; throw Failure.recoveryRequired
+    }
+    /// Forget tracking only. It is never program termination or a quota eviction.
+    public func forgetOperationReview(_ review: OperationReview) async throws {
+        guard state == .connected, !operationBusy, operationReview?.id == review.id,
+              review.generation == generation, let journal else { throw Failure.stale }
+        operationBusy = true; defer { operationBusy = false; operationReview = nil }
+        try await journal.forgetAfterUserReview(review.record.id)
+        recoveryRecords = await journal.snapshot()
+    }
+
     /// An attach may only be made from this live connection and a reference in
     /// this document. This is UI scoping, NOT native/browser authorization.
     public func session(for pane: CoreWorkspaceDocument.Pane) throws -> HcTerminalSession {
@@ -276,7 +349,7 @@ private nonisolated struct HcWorkspaceTerminalInitial: Decodable, Sendable { let
         return HcTerminalSession(connection: connection, terminalID: ref.terminalID)
     }
     public func disconnect(markClosed: Bool = true) async throws {
-        generation = UUID()
+        generation = UUID(); operationReview = nil
         if markClosed { state = .closed }
         let docTask = documentTask, termTask = terminalTask, events = events, store = store
         documentTask = nil; terminalTask = nil; self.events = nil; self.store = nil

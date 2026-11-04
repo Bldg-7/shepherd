@@ -162,6 +162,16 @@ without a legacy terminal connection or automatic core/native ID association.
 See [capture scope, gates and remaining work](CAPTURE-README.md). This is not new
 hc-launch capture/native-session binding or iOS UI automation.
 
+## Explicit saved-operation review
+
+The hc sidebar now exposes pending and completed operation history. Human review
+reads fresh layout metadata; reapply keeps the exact reviewed version, never
+reruns/kills/adopts an unknown program, and forgetting only removes bookkeeping.
+This also exposes explicit quota release for the 64-record journal. See
+[review scope and evidence](RECOVERY-README.md): unit257/mode, actual private
+model/core56, Debug macOS/iOS builds. Native review-sheet UI is not automated;
+the independent foreground gate remains unpassed.
+
 ## hc attention, window commands and remaining cutover
 
 `HcAttentionMonitor` admits actual event sequences one by one, baselines initial/

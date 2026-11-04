@@ -114,8 +114,48 @@ import Foundation
         try check(await restored.snapshot()[0].run == .uncertain, "crash while run inflight restores uncertain")
         try await rejects("wrong journal origin") { _ = try CoreWorkspaceRecovery(coreID: "c2", epoch: newEpoch, restoring: Data(contentsOf: file), persist: persist) }
         try await edgeCases(doc: doc, epoch: epoch, ref: ref, tabID: tab.id, persist: persist)
+        try await explicitReviewRebase(epoch: epoch)
         try JSONSerialization.data(withJSONObject: ["passed":true,"checks":checks]).write(to: report)
         print("PASS focus/recovery/notification lifecycle: \(checks) checks")
+    }
+    static func explicitReviewRebase(epoch: UUID) async throws {
+        let pane = Doc.Pane(), tab = Doc.Tab(name: "review", layout: .leaf(pane))
+        let doc = try Doc(workspaces: [.init(name: "review", tabs: [tab])])
+        let ref = Doc.TerminalReference(coreID: "c1", terminalID: "t1")
+        let persist: @Sendable (Data) throws -> Void = { _ in }
+        let old = try CoreWorkspaceRecovery(coreID: "c1", epoch: epoch, persist: persist)
+        let ticket = try await old.beginLaunch(paneID: pane.id, document: doc)
+        try await old.finishLaunch(ticket, terminal: ref)
+        _ = try await old.prepareLayoutAfterReview(ticket, snapshot: .init(version: 4, document: doc))
+        let nextEpoch = UUID()
+        let restored = try CoreWorkspaceRecovery(coreID: "c1", epoch: nextEpoch, restoring: await old.encoded(), persist: persist)
+        try check(await restored.snapshot()[0].layout == .uncertain, "restored in-flight metadata needs review")
+        try await rejects("layout rollback cannot be reviewed as fresh") { try await restored.reconcileLayout(operationID: ticket.operationID, snapshot: .init(version: 3, document: doc)) }
+        try await restored.reconcileLayout(operationID: ticket.operationID, snapshot: .init(version: 4, document: doc))
+        try check(try await restored.canReapplyLayoutAfterReview(ticket.operationID, snapshot: .init(version: 4, document: doc)), "known run receipt can be explicitly rebound after fresh read")
+        let reviewedBytes = try await restored.encoded()
+        let fail = try CoreWorkspaceRecovery(coreID: "c1", epoch: UUID(), restoring: reviewedBytes, persist: { _ in throw CoreWorkspaceRecoveryFailure.invalidJournal })
+        try await rejects("rebase persist failure yields no dispatch ticket") { _ = try await fail.prepareRebasedLayoutAfterReview(ticket.operationID, snapshot: .init(version: 4, document: doc)) }
+        try check(await fail.snapshot()[0].epoch == epoch, "failed rebase persistence does not rebind epoch")
+        let attempt = try await restored.prepareRebasedLayoutAfterReview(ticket.operationID, snapshot: .init(version: 4, document: doc))
+        try check(attempt.ticket.epoch == nextEpoch && attempt.expectedVersion == 4, "review mints current layout-only ticket at exact reviewed baseline")
+        try check(try attempt.edit.applying(to: doc).pane(pane.id)?.terminal == ref, "rebase binds exact saved receipt, not a label")
+        try await restored.finishLayout(attempt, result: .acknowledged(version: 5))
+        try check(await restored.snapshot()[0].complete, "explicit rebase can complete bookkeeping")
+        try await rejects("completed layout cannot be replayed") { _ = try await restored.prepareRebasedLayoutAfterReview(ticket.operationID, snapshot: .init(version: 5, document: doc)) }
+        try await restored.forgetAfterUserReview(ticket.operationID)
+        try check(await restored.snapshot().isEmpty, "explicit forget removes metadata only")
+        let unknown = try CoreWorkspaceRecovery(coreID: "c1", epoch: epoch, persist: persist)
+        let lost = try await unknown.beginLaunch(paneID: pane.id, document: doc)
+        try await unknown.retireInFlightForReview(lost.operationID)
+        try check(await unknown.snapshot()[0].run == .uncertain, "orphaned dispatch bookkeeping is uncertain, not failed")
+        try await unknown.reconcileLayout(operationID: lost.operationID, snapshot: .init(version: 0, document: doc))
+        try check(try await !unknown.canReapplyLayoutAfterReview(lost.operationID, snapshot: .init(version: 0, document: doc)), "unknown run never gets a layout adoption ticket")
+        try await rejects("unknown run cannot be resumed") { _ = try await unknown.prepareRebasedLayoutAfterReview(lost.operationID, snapshot: .init(version: 0, document: doc)) }
+        let closing = try CoreWorkspaceRecovery(coreID: "c1", epoch: epoch, persist: persist)
+        let close = try await closing.beginClose(tabID: tab.id, document: doc, endPrograms: false)
+        let changed = try CoreWorkspaceEdit.splitPane(pane.id, axis: .vertical, ratio: 0.5, newPane: .init()).applying(to: doc)
+        try check(try await !closing.canReapplyLayoutAfterReview(close.operationID, snapshot: .init(version: 2, document: changed)), "close rebase cannot discard concurrently changed members")
     }
     static func edgeCases(doc: Doc, epoch: UUID, ref: Doc.TerminalReference, tabID: UUID,
                           persist: @escaping @Sendable (Data) throws -> Void) async throws {

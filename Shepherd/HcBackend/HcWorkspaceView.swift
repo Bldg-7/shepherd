@@ -11,6 +11,7 @@ struct HcWorkspaceView: View {
     @State private var newWorkspaceName = "Workspace"
     @State private var rename = ""
     @State private var renaming = false
+    @State private var review: HcWorkspaceModel.OperationReview?
     var body: some View {
         NavigationSplitView {
             List {
@@ -48,13 +49,12 @@ struct HcWorkspaceView: View {
                 }
                 if !model.recoveryRecords.filter({ !$0.complete }).isEmpty {
                     Section("Operations needing review") {
-                        ForEach(model.recoveryRecords.filter { !$0.complete }, id: \.id) { operation in
-                            VStack(alignment: .leading) {
-                                Text(operation.kind.rawValue.capitalized).font(.headline)
-                                Text(operation.terminal?.terminalID ?? "Program identity unconfirmed").font(.caption)
-                                Text("No automatic retry or termination.").font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
+                        ForEach(model.recoveryRecords.filter { !$0.complete }, id: \.id) { operation in operationRow(operation) }
+                    }
+                }
+                if model.recoveryRecords.contains(where: \.complete) {
+                    DisclosureGroup("Completed operation history") {
+                        ForEach(model.recoveryRecords.filter(\.complete), id: \.id) { operation in operationRow(operation) }
                     }
                 }
                 Section("Core terminals") {
@@ -86,6 +86,7 @@ struct HcWorkspaceView: View {
             .navigationTitle(model.selectedTab?.name ?? "3rdr")
         }
         .frame(minWidth: 760, minHeight: 440)
+        .sheet(item: $review) { HcOperationReviewSheet(model: model, review: $0) }
         .alert("Workspace operation", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
             Button("OK") { error = nil }
         } message: { Text(error ?? "") }
@@ -96,6 +97,15 @@ struct HcWorkspaceView: View {
         }
         .overlay(alignment: .bottom) {
             if model.workspace?.failure != nil { Text("Workspace data is read-only until a fresh read succeeds.").font(.caption).padding().background(.regularMaterial) }
+        }
+    }
+    private func operationRow(_ operation: CoreWorkspaceRecovery.Record) -> some View {
+        VStack(alignment: .leading) {
+            Text(operation.kind.rawValue.capitalized).font(.headline)
+            Text(operation.terminal?.terminalID ?? "Program identity unconfirmed").font(.caption)
+            Text("No automatic retry or termination.").font(.caption).foregroundStyle(.secondary)
+            Button("Review tracking") { perform { review = try await model.prepareOperationReview(operation.id) } }
+                .disabled(model.operationBusy || model.operationReview != nil || model.state != .connected)
         }
     }
     private func launch(_ workspaceID: UUID, _ name: String, _ argv: [String]) {

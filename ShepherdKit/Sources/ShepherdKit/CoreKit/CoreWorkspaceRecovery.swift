@@ -150,6 +150,46 @@ public actor CoreWorkspaceRecovery {
                             members: panes.map { Member(paneID: $0.id, terminal: $0.terminal) }, run: nil, terminal: nil, layout: .pending, targets: targets)
         try save(records + [record]); return ticket(record.id)
     }
+    private func layoutEdit(_ record: Record, document: CoreWorkspaceDocument) throws -> CoreWorkspaceEdit {
+        if record.kind == .launch {
+            guard record.run == .returned, let paneID = record.paneID, let terminal = record.terminal,
+                  let pane = document.pane(paneID), pane.terminal == nil else { throw CoreWorkspaceRecoveryFailure.targetChanged }
+            return .bindPane(paneID, expected: nil, replacement: terminal)
+        }
+        guard let tab = document.workspaces.flatMap(\.tabs).first(where: { $0.id == record.tabID }),
+              (tab.layout?.panes ?? []).map({ Member(paneID: $0.id, terminal: $0.terminal) }) == record.members else { throw CoreWorkspaceRecoveryFailure.targetChanged }
+        return .removeTab(tab.id)
+    }
+    /// Only for an explicit review after the dispatcher has stopped awaiting
+    /// this operation. Nothing is canceled/proven failed at the server; late
+    /// arrivals remain possible. Run/stop outcomes stay uncertain, never retried.
+    public func retireInFlightForReview(_ operationID: UUID) throws {
+        guard let i = records.firstIndex(where: { $0.id == operationID }) else { throw CoreWorkspaceRecoveryFailure.staleTicket }
+        var next = records
+        if next[i].run == .inFlight { next[i].run = .uncertain }
+        if next[i].layout == .inFlight { next[i].layout = .uncertain; next[i].layoutAttempt = nil }
+        for t in next[i].targets.indices where next[i].targets[t].state == .inFlight { next[i].targets[t].state = .uncertain }
+        try save(next)
+    }
+    public func canReapplyLayoutAfterReview(_ operationID: UUID, snapshot: CoreWorkspaceCAS.Snapshot) throws -> Bool {
+        guard let record = records.first(where: { $0.id == operationID }) else { throw CoreWorkspaceRecoveryFailure.staleTicket }
+        guard record.layout == .pending || record.layout == .conflict, let document = snapshot.document,
+              record.layoutVersion.map({ snapshot.version >= $0 }) ?? true else { return false }
+        return (try? layoutEdit(record, document: document)) != nil
+    }
+    /// A new, explicitly approved layout CAS after reconnect. Never reissues a
+    /// run or stop attempt. The caller must keep the exact reviewed version.
+    public func prepareRebasedLayoutAfterReview(_ operationID: UUID, snapshot: CoreWorkspaceCAS.Snapshot) throws -> LayoutAttempt {
+        guard let i = records.firstIndex(where: { $0.id == operationID }),
+              try canReapplyLayoutAfterReview(operationID, snapshot: snapshot) else { throw CoreWorkspaceRecoveryFailure.requiresReview }
+        let r = records[i]
+        var next = records
+        next[i] = Record(id: r.id, epoch: epoch, kind: r.kind, paneID: r.paneID, tabID: r.tabID, members: r.members,
+            run: r.run, terminal: r.terminal, layout: r.layout, targets: r.targets, layoutAttempt: nil, layoutVersion: r.layoutVersion)
+        try save(next)
+        guard let attempt = try prepareLayoutAfterReview(ticket(operationID), snapshot: snapshot) else { throw CoreWorkspaceRecoveryFailure.requiresReview }
+        return attempt
+    }
     /// Explicit reapplication after review, not an automatic retry loop. Check
     /// the target fields against a freshly read document and persist the attempt
     /// BEFORE doc.set. A response-loss outcome must first be reconciled by read.
@@ -157,16 +197,7 @@ public actor CoreWorkspaceRecovery {
         let i = try index(ticket), record = records[i]
         guard record.layout == .pending || record.layout == .conflict else { throw CoreWorkspaceRecoveryFailure.requiresReview }
         guard let document = snapshot.document else { throw CoreWorkspaceRecoveryFailure.targetChanged }
-        let edit: CoreWorkspaceEdit
-        if record.kind == .launch {
-            guard record.run == .returned, let paneID = record.paneID, let terminal = record.terminal,
-                  let pane = document.pane(paneID), pane.terminal == nil else { throw CoreWorkspaceRecoveryFailure.targetChanged }
-            edit = .bindPane(paneID, expected: nil, replacement: terminal)
-        } else {
-            guard let tab = document.workspaces.flatMap(\.tabs).first(where: { $0.id == record.tabID }),
-                  (tab.layout?.panes ?? []).map({ Member(paneID: $0.id, terminal: $0.terminal) }) == record.members else { throw CoreWorkspaceRecoveryFailure.targetChanged }
-            edit = .removeTab(tab.id)
-        }
+        let edit = try layoutEdit(record, document: document)
         let nonce = UUID()
         var next = records; next[i].layout = .inFlight; next[i].layoutAttempt = nonce; next[i].layoutVersion = snapshot.version; try save(next)
         return LayoutAttempt(ticket: ticket, expectedVersion: snapshot.version, edit: edit, nonce: nonce)

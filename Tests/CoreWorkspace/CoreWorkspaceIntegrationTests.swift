@@ -156,6 +156,14 @@ private nonisolated struct Notice: Decodable, Sendable {
             try check(model.recoveryRecords.allSatisfy(\.complete), "screen journal reconciles successful run/bind/close")
             let restored = try CoreWorkspaceFocus.restore(Data(contentsOf: focus), coreID: model.coreID!)
             try check(restored == model.focus, "screen persists device-local focus")
+            guard let completed = model.recoveryRecords.first else { throw CoreWorkspaceFailure.invalidDocument }
+            let history = try await model.prepareOperationReview(completed.id)
+            try check(!history.canApplyLayout && history.record.layout == .confirmed && !model.canEdit, "completed history never reapplies later-removed layout and disables editing during review")
+            model.cancelOperationReview(history)
+            try check(model.canEdit, "cancel review restores layout controls without dispatch")
+            do { try await model.forgetOperationReview(history); throw CoreWorkspaceFailure.invalidDocument }
+            catch HcWorkspaceModel.Failure.stale { checks += 1 }
+            try await reviewedModel(config: config, home: home, connection: connection, model: model, workspaceID: id, reference: ref)
             let all = try await HcTerminalBoard(connection: connection).list(all: true)
             try await model.disconnect()
             try check(model.state == .closed && !model.canEdit, "screen disconnect retires writes")
@@ -165,6 +173,57 @@ private nonisolated struct Notice: Decodable, Sendable {
             // set too; a holder/core exit alone is not a process-retirement check.
             return before.holders.map(\.pid) + all.compactMap(\.pid)
         } catch { try? await model.disconnect(); throw error }
+    }
+    static func reviewedModel(config: CoreProcessTransport.Configuration, home: URL, connection: CoreRPCConnection,
+                              model: HcWorkspaceModel, workspaceID: UUID, reference: CoreWorkspaceDocument.TerminalReference) async throws {
+        let outside = try await CoreWorkspaceStore(connection: connection)
+        _ = try await outside.start()
+        let pane = CoreWorkspaceDocument.Pane(), tab = CoreWorkspaceDocument.Tab(name: "review placeholder", layout: .leaf(pane))
+        let start = try await outside.refresh()
+        guard let startVersion = start.snapshot?.version else { throw CoreWorkspaceFailure.invalidDocument }
+        _ = try await outside.edit(.appendTab(workspace: workspaceID, tab: tab), expectedVersion: startVersion)
+        let current = try await outside.refresh()
+        guard let snap = current.snapshot, let doc = snap.document, let coreID = model.coreID else { throw CoreWorkspaceFailure.invalidDocument }
+        let old = try CoreWorkspaceRecovery(coreID: coreID, epoch: UUID(), persist: { _ in })
+        let ticket = try await old.beginLaunch(paneID: pane.id, document: doc)
+        try await old.finishLaunch(ticket, terminal: reference) // Exact earlier owned run receipt, never a label.
+        let attempt = try await old.prepareLayoutAfterReview(ticket, snapshot: snap)!
+        try await old.finishLayout(attempt, result: .uncertain) // No write dispatched by this controlled fixture.
+        let transport = try CoreProcessTransport(configuration: config), rpc = try CoreRPCConnection(transport: transport)
+        let file = home.appending(path: "review-model-journal.json")
+        let restored = HcWorkspaceModel(connection: rpc, savedRecovery: try await old.encoded(),
+            saveRecovery: { try $0.write(to: file, options: .atomic) }, saveFocus: { _ in })
+        var failure: (any Error)?
+        do {
+            try await restored.start()
+            let before: Status = try await connection.call("server.status").result()
+            let plan = try await restored.prepareOperationReview(ticket.operationID)
+            try check(plan.canApplyLayout && !restored.canEdit && restored.operationReview?.id == plan.id, "explicit fresh review offers layout-only recovery after reconnect")
+            _ = try await outside.edit(.renameTab(tab.id, "concurrent rename"), expectedVersion: plan.expectedVersion)
+            let end = ContinuousClock.now.advanced(by: .seconds(5))
+            while restored.document?.workspaces.flatMap(\.tabs).first(where: { $0.id == tab.id })?.name != "concurrent rename" {
+                guard ContinuousClock.now < end else { throw CoreWorkspaceFailure.invalidDocument }
+                try await Task.sleep(for: .milliseconds(5))
+            }
+            try check(!restored.canApply(plan), "newer document cannot authorize an old review")
+            do { try await restored.applyOperationReview(plan); throw CoreWorkspaceFailure.invalidDocument }
+            catch HcWorkspaceModel.Failure.stale { checks += 1 }
+            restored.cancelOperationReview(plan)
+            let fresh = try await restored.prepareOperationReview(ticket.operationID)
+            try check(fresh.expectedVersion > plan.expectedVersion && fresh.canApplyLayout, "another user review explicitly selects the new baseline")
+            try await restored.applyOperationReview(fresh)
+            try check(restored.document?.pane(pane.id)?.terminal == reference && restored.recoveryRecords[0].complete, "one explicit reviewed CAS binds saved reference")
+            let done = try await restored.prepareOperationReview(ticket.operationID)
+            try check(!done.canApplyLayout, "completed recovery has no replay action")
+            try await restored.forgetOperationReview(done)
+            try check(restored.recoveryRecords.isEmpty, "explicit forget releases history quota")
+            let after: Status = try await connection.call("server.status").result()
+            let stillLive = try await HcTerminalBoard(connection: connection).get(reference.terminalID)
+            try check(before.live == after.live && stillLive.state == "live", "review/rebase/forget never launch or terminate programs")
+        } catch { failure = error }
+        try await restored.disconnect(); try await outside.close()
+        try check(await transport.snapshot().reaped, "recovery review owner releases only its own connect child")
+        if let failure { throw failure }
     }
     static func main() async throws {
         let args = CommandLine.arguments
