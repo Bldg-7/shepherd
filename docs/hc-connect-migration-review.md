@@ -306,6 +306,14 @@ session-only 제약(사용자 전역 설정 불허)을 풀면 in-process 주입(
 - child rewrite, native session naming, proxy conversation mapping.
 - pairing/SSH/remote file 기능 회귀.
 
+#### D 첫 구현: hc 대화형 terminal attach/session
+
+브라우저/주입은 제품 결정으로 이번 scope에서 제외했다. 핵심은 "hc 터미널에서 에이전트 CLI 실행"을 브라우저 없이 완성하는 것이다.
+
+`ShepherdKit/CoreKit/HcTerminalSession.swift`가 herdr `TerminalSession`(`herdr terminal attach --takeover` + SSH PTY)을 대체한다. `terminal.attach`(observe=false) 프레임 스트림으로 first paint + live bytes를 `AsyncStream<Data>`로 노출하고, 입력은 DATA·크기는 RESIZE·종료는 CLOSE다. CREDIT은 bounded buffer(`bufferingNewest(1024)`, UI가 느리면 오래된 출력 drop = scrollback 의미)에 들어간 뒤 반환한다. session은 연결/core/terminal을 중단하지 않는다. CoreKit은 NIOCore 없이 Foundation만 유지하며 SwiftTerm/ByteBuffer 적응은 UI가 담당한다.
+
+`Tests/HcBackend/`가 공식 0.1.17 private core에서 실제로 검증한다: attach first paint의 READY, `write("hello\r")`의 GOT echo, `resize(100,30)`이 `terminal.get`에 반영, attach 종료 후 프로그램 생존, 명시적 kill, 전체 owned PID/socket 정리. 상세: `Tests/HcBackend/README.md`. 아직 UI 배선·pairing/SSH/drop 회귀·hc 감지/설치 UX는 남는다.
+
 ### E. 기존 backend 제거
 
 A–D 통과 후 기존 pane/session socket API, attach CLI/PTY 경로, prefix 우회, 버전 fallback을 제거한다. 신규 저장 영역으로 시작하고 legacy 파일은 자동으로 지우지 않는다.
