@@ -518,6 +518,26 @@ run/doc과 close/kill의 비원자적 결과는 dispatch 전에 영속하는 jou
 
 검증: `/private/tmp/hc-screen-final.TtxPl4/unit`에서 Debug/optimized 각각 88+32+49+16=185 checks 및 iOS Swift 6 typecheck(17 stages), `/private/tmp/hc-screen-cleanup.29msb4/run` 실제 core/model 41 checks. `/private/tmp/hc-screen-app.4spxstrb` 실제 app 8 checks, AX ID·rendered cell·자체 bitmap·natural app exit·owned PID/socket 정리. 이전 AX readiness 실패는 별도 보존. macOS 최종 build(`/private/tmp/hc-screen-ax.gHcVSE/macos.log`), iOS build(`/private/tmp/hc-screen-final.TtxPl4/ios.log`), attach/board/protocol 회귀(`/private/tmp/hc-screen-regression.ofHCyB/`) 통과.
 
+### D 후속: mobile root·입력·pairing·attention 실제 조합
+
+`57ab120`은 production local/SSH machine factory와 root를 private 실제 앱 gate에 연결했다. `.hc`/package-manager symlink와 GUI PATH, remote POSIX lookup, 한 번만 허용범위 주소를 resolve하는 paired-address 정책을 적용한다. 미승인 SSH 지문은 credential을 읽거나 제시하지 않고 승인 요청으로 반환한다.
+
+`3b79e26`은 hc 화면에 파일 미리보기/드롭·split·기존 canonical terminal의 명시적 새 view를 연결하고 persisted browser ON을 release에서 차단했다. `286ca6b`은 mobile 기본 navigation/cache/스냅샷 입력/pairing을 hc로 전환한다. 새 `CoreStream.sendAndFlush`는 짧은 type-only attach의 DATA를 writer에 실제 넘긴 뒤 close하게 하며 program 처리 ACK를 뜻하지 않는다. Core gen1 named keys가 임의 Unicode를 받지 않는 실패를 실제 테스트가 발견했으므로 Unicode는 current-grid/no-focus 짧은 attach를 사용한다. VT renderer의 출력 소비/CREDIT 계약을 완화한 것이 아니다.
+
+증거: `/private/tmp/hc-runtime.yLDk2O/unit` 각 mode 203 checks(88+32+52+31), `conversation` 21, `attention` 18. attention adapter는 packet 안의 연속 event를 단일 seq jump로 합쳐 gap으로 오해하는 실제 실패도 수정했다. `missed`와 같은 seq snapshot은 baseline으로 pending을 제거한다. Native notification coordinator는 같은 origin/epoch fresh get 및 실제 viewed 억제를 조합하며 OS presenter는 별도 경계다. `/private/tmp/hc-final-ui.Vc41qW/notifications`는 실제 coordinator/core + fake OS 경계 테스트이며 실제 알림/권한 UI를 실행하지 않는다.
+
+Pairing device 117+7(`/private/tmp/hc-pair-device.AgXdpa/run`), Mac 279+11+115(`/private/tmp/hc-pair-mac.51sBOl/run`) 통과. `/private/tmp/hc-final-ui.Vc41qW/{macos,ios}.log` build 통과. iOS UI automation/사용자 host/cloud login/launchd quit survival을 대신 검증했다고 주장하지 않는다.
+
+**아직 전체 전환 완료가 아니다.** macOS 기본 root cutover, 승인 설치/업데이트, gateway-origin docs/alias 변경 처리, 신규 hc launch capture/기존 capture-history 화면, legacy 제거가 남는다. 기존 capture proxy 설정/route/data는 브라우저와 별개로 보존하고 새 core에 없다는 이유로 legacy terminal credential을 revoke하지 않는다. 어떤 것도 PID/label로 native session binding을 대체하지 않는다.
+
+공식 0.1.17 formatter negative gate는 계속 nonzero이다. 출시 core 선택(공식 수정 릴리스 대기 vs 검증 formatter 백포트를 바탕으로 별도 버전 app-managed core 유지/배포)은 사용자 결정 대기 중이다. 보관된 patched positive는 0.1.16 기반 qualification artifact이지, 수정 0.1.17 출시 artifact의 대체 증명이 아니다. 설치/기존 core 재시작/배포는 별도 승인 경계로 유지한다.
+
+### 현재 GUI qualification 추가 한계
+
+Strict GUI gate는 실제 foreground/key-window와 native New Tab→launch form→cancel까지 요구한다. 현재 unattended session은 owned helper마저 `helperActive=false`여서 활성화를 거부한다. `/private/tmp/hc-screen-app.yjim7wn_`는 9개 renderer/file 검사 후 전체 `passed=false`; 기존 11-check positive를 이 더 강한 gate의 통과로 승격하지 않는다. 다른 앱의 포커스/접근성/권한을 빌려 우회하지 않으며 이 readiness 실패는 그대로 nonzero이다. 실제 GUI 상호작용이 허용된 환경의 검증이 추가로 필요하다.
+
+Native source 현재 build 및 fake-OS 경계 검증은 `/private/tmp/hc-checkpoint.1DQZrL/{macos,release,ios}.log`와 `notifications`에 별도 보관한다. Scope owner는 연결한 Machine.ConnectionIdentity를 공개하고 root는 현재 선택과 일치할 때만 model/commands를 표시한다. 비동기 disconnect 직전 새 host 이름 아래 이전 model이 잠깐 남는 경로를 차단한다. 이 UI scope 식별은 native/browser 권한 증명이 아니다.
+
 ## 최종 권고
 
 장기 목표는 **hc 단일 backend + 앱 소유 workspace + 독립적인 agent observation/authority**로 정한다. 이전 데이터 마이그레이션을 하지 않는 조건은 이 방향을 단순하게 만든다.

@@ -115,6 +115,11 @@ struct HcTerminalPane: View {
     @State private var operationError: String?
     @State private var drops: TerminalDropController?
     @State private var terminal = HcTerminalPaneModel()
+    private var currentScope: Bool {
+        guard let machine else { return true }
+        guard let machineStore else { return false }
+        return machineStore.activeMachineID == machine.id && machineStore.isCurrentConnection(machine)
+    }
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -139,13 +144,14 @@ struct HcTerminalPane: View {
             } else {
                 HStack(spacing: 0) {
                 if !expandedPreview {
-                TerminalHostView(onCreate: { terminal.bind($0) }, onInput: { terminal.send($0) },
-                                 onResize: { terminal.resize($0, $1) }, onFocusChange: { focused in
+                TerminalHostView(onCreate: { terminal.bind($0) }, onInput: { if currentScope { terminal.send($0) } },
+                                 onResize: { if currentScope { terminal.resize($0, $1) } }, onFocusChange: { focused in
+                    guard !focused || currentScope else { return }
                     terminal.focus(focused)
                     if focused { try? model.select(pane: pane.id) }
                 }, focusesWhenShown: model.focus.paneByTab[model.selectedTab?.id ?? UUID()] == pane.id,
                     onOpenLink: { link, _ in open(link) },
-                    onDropFiles: terminal.connected && TerminalFileDropFeature.isEnabled && drops?.isUploading == false ? { drops?.drop($0) } : nil)
+                    onDropFiles: currentScope && terminal.connected && TerminalFileDropFeature.isEnabled && drops?.isUploading == false ? { drops?.drop($0) } : nil)
                 .task(id: pane.terminal) {
                     drops?.cancel(); drops = makeDrops()
                     await terminal.start { try model.session(for: pane) }
@@ -168,7 +174,7 @@ struct HcTerminalPane: View {
         .overlay { Rectangle().stroke(model.focus.paneByTab[model.selectedTab?.id ?? UUID()] == pane.id ? Color.accentColor : Color.secondary.opacity(0.3), lineWidth: 1) }
     }
     private func makeDrops() -> TerminalDropController {
-                    let controller = TerminalDropController(isEnabled: { TerminalFileDropFeature.isEnabled }, destination: {
+                    let controller = TerminalDropController(isEnabled: { currentScope && TerminalFileDropFeature.isEnabled }, destination: {
                         guard let machine, let machineStore else { throw TerminalDropError.unusableTarget }
                         let current = try machineStore.currentMachine(matching: machine)
                         guard model.state == .connected, pane.terminal?.coreID == model.coreID else { throw TerminalDropError.unusableTarget }
@@ -185,7 +191,7 @@ struct HcTerminalPane: View {
                         #endif
                     })
                     controller.paste = { text in
-                        guard let machine, machineStore?.isCurrentConnection(machine) == true, terminal.connected else { return }
+                        guard currentScope, let machine, machineStore?.isCurrentConnection(machine) == true, terminal.connected else { return }
                         terminal.paste(text)
                     }
         return controller

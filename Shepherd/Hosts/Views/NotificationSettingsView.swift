@@ -9,7 +9,7 @@ import SwiftUI
 struct NotificationSettingsView: View {
     let onBack: () -> Void
 
-    private var coordinator: NotificationCoordinator { .shared }
+    private var coordinator: HcNotificationCoordinator { .shared }
 
     var body: some View {
         @Bindable var preferences = coordinator.preferences
@@ -55,6 +55,7 @@ struct NotificationSettingsView: View {
                     Text("hrdrhrdrhrdr watches the agents on the machines turned on below, the active one and the others, for as long as it is running — with its window closed, too. A pane you are looking at doesn't notify.")
                         .foregroundStyle(.secondary)
                 }
+                if let notice = coordinator.coverageNotice { Text(notice).font(.footnote).foregroundStyle(.secondary) }
                 Section {
                     Toggle("Show agents waiting for input on the Dock icon", isOn: $preferences.showsBadge)
                         .accessibilityIdentifier("settings.notifications.badge")
@@ -79,14 +80,14 @@ struct NotificationSettingsView: View {
                 } header: {
                     Text("Machines")
                 } footer: {
-                    Text("A machine turned off gets no notifications and adds nothing to the Dock icon, and isn't connected to for them while the board isn't showing it. Its herdr machines go with it.")
+                    Text("A machine turned off gets no notifications and adds nothing to the Dock icon. Notification connections are separate from the visible hc board.")
                         .foregroundStyle(.secondary)
                 }
                 Section {
                     HStack {
-                        Text("herdr's own notifications")
+                        Text("Other clients' notifications")
                         InfoButton(accessibilityLabel: "About herdr's Own Notifications",
-                                   explanation: "herdr shows notifications of its own only while herdr itself is open in a terminal app, never through hrdrhrdrhrdr. If you have it open there, you may get both: to keep only hrdrhrdrhrdr's, set delivery = \"off\" under [ui.toast] in herdr's config.toml. hrdrhrdrhrdr doesn't read or change herdr's settings.")
+                                   explanation: "hc and other clients may notify independently. Configure them separately if duplicates appear. Shepherd does not read or modify their notification settings.")
                     }
                 }
             }

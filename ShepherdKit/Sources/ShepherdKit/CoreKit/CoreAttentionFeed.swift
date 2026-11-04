@@ -73,7 +73,10 @@ public nonisolated struct CoreAttentionFeed: Sendable {
     public mutating func observe(_ snapshot: [CoreAttentionRecord], epoch: UUID, sequence nextSequence: UInt64, baseline: Bool = false,
                                  restarted: Set<String> = []) throws -> [Candidate] {
         guard epoch == self.epoch else { throw CoreWorkspaceSyncFailure.staleOperation }
-        if let sequence, nextSequence <= sequence { return [] }
+        if let sequence {
+            if baseline { guard nextSequence >= sequence else { throw CoreWorkspaceSyncFailure.inconsistentSnapshot } }
+            else if nextSequence <= sequence { return [] }
+        }
         guard snapshot.count <= 4096 else { throw CoreWorkspaceFailure.limitExceeded }
         var next: [String: CoreAttentionRecord] = [:]
         for record in snapshot {

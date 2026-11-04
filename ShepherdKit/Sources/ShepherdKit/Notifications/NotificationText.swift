@@ -10,6 +10,9 @@ public nonisolated enum NotificationText {
         public let title: String
         public let subtitle: String
         public let body: String
+        public init(title: String, subtitle: String, body: String) {
+            self.title = title; self.subtitle = subtitle; self.body = body
+        }
     }
 
     /// Nil for an event that isn't shown (`agent.resumed`, or a kind this

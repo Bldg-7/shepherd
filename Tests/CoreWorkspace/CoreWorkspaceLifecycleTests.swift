@@ -65,6 +65,14 @@ import Foundation
         _ = try killedFeed.observe([record()], epoch: epoch, sequence: 0)
         try check(try killedFeed.observe([record(turn: 1, time: 2, pid: nil, finished: true, reason: "killed")], epoch: epoch, sequence: 1).isEmpty, "explicit kill not an unexpected-exit alert")
 
+        var baselineFeed = CoreAttentionFeed(coreID: "c1", epoch: epoch)
+        _ = try baselineFeed.observe([record()], epoch: epoch, sequence: 0)
+        let pending = try baselineFeed.observe([blocked], epoch: epoch, sequence: 1)
+        try check(pending.count == 1, "candidate before missed snapshot")
+        _ = try baselineFeed.observe([blocked], epoch: epoch, sequence: 1, baseline: true)
+        try check(baselineFeed.pendingCount == 0 && !baselineFeed.confirm(pending[0], fresh: blocked, epoch: epoch), "same-sequence missed snapshot clears pending attention")
+        try await rejects("regressing missed snapshot") { _ = try baselineFeed.observe([blocked], epoch: epoch, sequence: 0, baseline: true) }
+
         let report = URL(fileURLWithPath: CommandLine.arguments[1]), file = report.appendingPathExtension("journal")
         let persist: @Sendable (Data) throws -> Void = { try $0.write(to: file, options: .atomic) }
         let recovery = try CoreWorkspaceRecovery(coreID: "c1", epoch: epoch, persist: persist)

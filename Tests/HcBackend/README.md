@@ -64,11 +64,14 @@ python3 Tests/HcBackend/run-ui-tests.py \
   --products build/DerivedData/Build/Products/Debug
 ```
 
-The fixture starts its own app executable directly (not `open` on the user's app),
-uses a fresh private core and program, creates/selects a tab via the screen model,
-waits for the marker in **rendered SwiftTerm cells**, verifies workspace/tab
-controls through the app's own accessibility tree, and captures only its own
-content view as `workspace.png`. NSView bitmap capture may omit layer-backed
+The fixture stages a uniquely identified Debug bundle copy (tested executable
+and debug-dylib hashes unchanged) and an owned GUI helper. The helper starts its
+child with fresh env through sandbox-exec and may yield activation only to that
+child; no user's app is opened/replaced. Both temporary owned registrations are
+removed. The app independently checks TCP denial before starting its private
+core/program. It creates/selects a tab through the product root/model, waits for
+**rendered SwiftTerm cells**, verifies the app's own accessibility tree, and
+captures only its own content view as `workspace.png`. NSView bitmap capture may omit layer-backed
 SwiftUI content; it is not proof of sidebar pixels (accessibility is checked
 separately). It stops its private core and verifies all owned
 PIDs/socket retirement. Product/source hashes, exact reports and failed stages are
@@ -107,6 +110,69 @@ involved, and `launchdLifecycleQualified` stays false.
   `/private/tmp/hc-screen-final.TtxPl4/ios.log`.
 - `/private/tmp/hc-screen-regression.ofHCyB/{attach,board,protocol}` retains
   nine attach, twelve board and seven-stage protocol regression results.
+
+## Current foreground GUI gate is RED (not waived)
+
+The stricter current runner additionally requires actual foreground/key-window
+state and the native New Tab menu opening/canceling the human launch form.
+Unattended activation is refused in this session, including the owned helper
+(`helperActive=false`). Latest retained failure:
+`/private/tmp/hc-screen-app.yjim7wn_` (nine renderer/file checks reached, but
+**overall passed=false**). Known app/helper/core/holder/program resources and
+owned registrations retired. Earlier activation failures are retained too.
+No other app's focus, accessibility grants or authority are borrowed to force a
+pass. A GUI environment that genuinely permits this owned foreground interaction
+must pass the strict gate before window commands/release cutover are qualified.
+
+Older 11-check UI positives below qualify their narrower source/gate only. They
+are not current foreground-command qualification. Current source compilation and
+fake-OS notification composition are separate evidence, not a substitute.
+
+## hc attention, window commands and remaining cutover
+
+`HcAttentionMonitor` admits actual event sequences one by one, baselines initial/
+missed/restarted facts, confirms a candidate on the same RPC epoch after a hold,
+and keeps actual viewed/unread state separate from core parent `seen`. An initial
+real-core negative caught a real bug: coalescing two contiguous events into a
+single sequence jump incorrectly suppressed fresh attention as a gap. The adapter
+now admits both notices; genuine gaps still baseline. A missed snapshot at the
+same sequence also retires pending candidates (52 lifecycle checks per mode).
+
+`HcNotificationCoordinator` composes bounded independent hc watchers, preferences,
+viewed-pane suppression, badge and withdrawal logic, and a native presenter.
+Unknown SSH keys are not offered credentials by background watchers. It never
+launches/kills a program or derives native/browser authority from a status word.
+OS clicks are machine/core/terminal navigation data: they select an existing
+fresh origin view, never launch a program or create shared layout automatically.
+The coordinator watches up to 32 trusted enabled machine connections.
+
+Actual status adapter: `/private/tmp/hc-runtime.yLDk2O/attention` (18 checks).
+App composition: `/private/tmp/hc-checkpoint.1DQZrL/notifications` exercises the
+actual coordinator/factory/core with an **in-memory OS presenter boundary**.
+No real notifications or permission prompts are used; this is not OS-banner UI
+automation or agent-readiness/authentication qualification. The unit suite at
+`/private/tmp/hc-runtime.yLDk2O/unit` passes 88+32+52+31=203 checks per mode;
+its protocol regression also passes all seven stages.
+
+The staged product root now owns New Tab/Close View/Pane Switcher keyboard
+commands and an explicit human launch form (workspace, name, cwd, installed CLI
+or shell command). No legacy prefix translation or browser injection is used.
+Default macOS root cutover, installer/update behavior, gateway-origin document
+routing and final legacy removal remain incomplete; do not mark SHPHRD-153/154
+Done from these component/integration gates alone. Mobile root is hc now.
+
+Capture proxy is independent of browser retirement. Its configured lifecycle and
+existing route/data are preserved. Old injected-route terminal IDs are **not**
+compared against a new core to infer death/revoke credentials; no new capture
+route/native-session mapping is inferred from labels or PID. New hc launch capture
+and capture-history screen parity still require explicit independent integration.
+
+Current macOS Debug/Release and iOS builds:
+`/private/tmp/hc-checkpoint.1DQZrL/{macos,release,ios}.log`. The screen owner now
+publishes its exact saved connection identity; the root/commands cannot present
+an old live model under a newly selected machine while async teardown catches up.
+Local input/drop callbacks check current UI scope too. Native composition tests
+also cover identity publication/retirement; no native/browser grant is involved.
 
 ## Mobile hc root, snapshot conversation and safe input
 

@@ -10,7 +10,7 @@ struct HcMobileBoardView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     private var liveModel: HcWorkspaceModel? {
-        guard let model = connection.model, model.state == .connected else { return nil }
+        guard machineStore.isCurrentConnection(machine), let model = connection.model, model.state == .connected else { return nil }
         return model
     }
     private var coreID: String? { liveModel?.coreID ?? cached?.coreID }
@@ -63,6 +63,7 @@ struct HcMobileBoardView: View {
                 remember()
             } else { remember(); await connection.close() }
         }
+        .onChange(of: machineStore.isCurrentConnection(machine)) { _, current in if !current { Task { await connection.close() } } }
         .onChange(of: connection.model?.terminals) { remember() }
         .onChange(of: connection.model?.document) { remember() }
     }

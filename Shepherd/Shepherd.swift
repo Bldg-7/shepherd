@@ -21,7 +21,7 @@ import SwiftUI
         if ShepherdBrowserFeature.isAvailable {
             NotificationCoordinator.shared.machineStore = machineStore
             MachineMonitors.shared.makeListener = { NotificationFeed(machine: $0) }
-        }
+        } else { HcNotificationCoordinator.shared.machineStore = machineStore }
         #endif
     }
 
@@ -93,7 +93,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #if DEBUG
         if HcMigrationConfiguration.requested { return } // Private hc root never initializes legacy/browser/proxy services.
         #endif
-        guard ShepherdBrowserFeature.isAvailable else { return } // hc release never revives legacy proxy/browser/injection endpoints.
+        guard ShepherdBrowserFeature.isAvailable else {
+            HcNotificationCoordinator.shared.prepare()
+            // Capture proxy is a separate opt-in product feature, not browser
+            // authority. Keep its existing configured lifecycle; never launch
+            // AgentRuntime or infer old route liveness from a new core.
+            AgentProxyService.shared.start()
+            return
+        }
         if ShepherdBrowserFeature.shared.isEnabled { BrowserEngine.prepare() }
         #if DEBUG
         if ProcessInfo.processInfo.environment["SHEPHERD_BROWSER_FEATURE_FIXTURE"] != nil {
@@ -143,7 +150,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if HcMigrationConfiguration.requested { return }
         OwnedOperatorFixture.didLaunch()
         #endif
-        guard ShepherdBrowserFeature.isAvailable else { return }
+        guard ShepherdBrowserFeature.isAvailable else { HcNotificationCoordinator.shared.start(); return }
         NotificationCoordinator.shared.start()
     }
 
@@ -163,7 +170,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #if DEBUG
         if HcMigrationConfiguration.requested { return .terminateNow }
         #endif
-        guard ShepherdBrowserFeature.isAvailable else { return .terminateNow }
+        guard ShepherdBrowserFeature.isAvailable else { HcNotificationCoordinator.shared.clearBadgeBeforeQuitting(); return .terminateNow }
         if CDPProxy.shared.activeConnections > 0 {
             let alert = NSAlert()
             alert.messageText = String(localized: "Disconnect browser agents and quit?")
@@ -212,6 +219,12 @@ extension FocusedValues {
 
 /// The window's side of the File menu's herdr machine items (see
 /// `NewTabCommands`).
+struct HcWindowActions {
+    let canLaunch: Bool; let canClose: Bool; let canSwitch: Bool; let canSettings: Bool
+    let closeTitle: String
+    let launch: () -> Void; let close: () -> Void; let switcher: () -> Void; let settings: () -> Void
+}
+
 struct HerdrMachineCommand {
     /// Whether a herdr machine can be added to the active machine's herdr
     /// now: it is This Mac's, it can have them, and nothing else is up over
@@ -242,81 +255,18 @@ struct CloseCommand {
 /// it with it. Close Window stays, without a shortcut.
 private struct CloseCommands: Commands {
     @FocusedValue(\.closeCommand) private var closeCommand
-
-    var body: some Commands {
-        CommandGroup(replacing: .saveItem) {
-            Button("Close Window") {
-                // What the Close it replaces sent, to the same responders.
-                NSApp.sendAction(#selector(NSWindow.performClose(_:)), to: nil, from: nil)
-            }
-            .disabled(closeCommand == nil)
-            Button(closeCommand?.target.closesTab == true ? "Close Tab" : "Close Pane") {
-                closeCommand?.requests.wrappedValue += 1
-            }
-            .keyboardShortcut("w")
-            .disabled(closeCommand?.target.item == nil)
-        }
-    }
+    var body: some Commands { CommandGroup(replacing: .saveItem) { HcCloseMenuItems(legacy: closeCommand) } }
 }
-
-/// The File menu's New Tab… (⌘N), which brings up the window's new tab
-/// launcher — what the plus over the sidebar does — and New Tab in Current
-/// Workspace… (⌘T), which brings it up with the machine and the workspace
-/// of the selected pane or tab already picked. They take the place of New
-/// Window, and its ⌘N: the app has the one window.
-///
-/// After them, Add herdr Machine…, which brings up the panel that adds one
-/// to the active machine's herdr — greyed out, with why, unless that is This
-/// Mac's — and — while a pane or tab on a herdr machine is selected — Remove
-/// herdr Machine “…”…, which asks about removing that one. No shortcuts:
-/// they are rarely wanted.
 private struct NewTabCommands: Commands {
     @FocusedValue(\.launcherStart) private var launcherStart
     @FocusedValue(\.herdrMachineCommand) private var herdrMachineCommand
-
-    var body: some Commands {
-        CommandGroup(replacing: .newItem) {
-            Button("New Tab…") {
-                show(.blank)
-            }
-            .keyboardShortcut("n")
-            .disabled(launcherStart == nil)
-            Button("New Tab in Current Workspace…") {
-                show(.currentWorkspace)
-            }
-            .keyboardShortcut("t")
-            .disabled(launcherStart == nil)
-            Divider()
-            AddHerdrMachineMenuItem(unavailableReason: herdrMachineCommand?.addUnavailableReason,
-                                    isEnabled: herdrMachineCommand?.canAdd == true) {
-                herdrMachineCommand?.add()
-            }
-            if let machine = herdrMachineCommand?.selectedMachine {
-                Button("Remove herdr Machine \u{201C}\(machine.label)\u{201D}…") {
-                    herdrMachineCommand?.remove()
-                }
-                .disabled(herdrMachineCommand?.canRemove != true)
-            }
-        }
-    }
-
-    /// With the launcher already up there is nothing to do: what it has
-    /// been told so far stays.
-    private func show(_ start: LauncherStart) {
-        guard let launcherStart, launcherStart.wrappedValue == nil else { return }
-        launcherStart.wrappedValue = start
-    }
+    var body: some Commands { CommandGroup(replacing: .newItem) { HcNewTabMenuItems(legacy: launcherStart, machine: herdrMachineCommand) } }
 }
-
 private struct PaneSwitcherCommands: Commands {
-    @FocusedValue(\.isShowingPaneSwitcher) private var isShowingPaneSwitcher
+    @FocusedValue(\.isShowingPaneSwitcher) private var switcher
     var body: some Commands {
         CommandGroup(replacing: .printItem) {}
-        CommandGroup(after: .newItem) {
-            Button("Go to Agent or Pane…") { isShowingPaneSwitcher?.wrappedValue = true }
-                .keyboardShortcut("p", modifiers: .command)
-                .disabled(isShowingPaneSwitcher == nil)
-        }
+        CommandGroup(after: .newItem) { HcPaneSwitcherMenuItem(legacy: switcher) }
     }
 }
 
@@ -328,13 +278,7 @@ private struct SettingsCommands: Commands {
     @FocusedValue(\.isShowingSettings) private var isShowingSettings
 
     var body: some Commands {
-        CommandGroup(replacing: .appSettings) {
-            Button("Settings…") {
-                isShowingSettings?.wrappedValue = true
-            }
-            .keyboardShortcut(",")
-            .disabled(isShowingSettings == nil)
-        }
+        CommandGroup(replacing: .appSettings) { HcSettingsMenuItem(legacy: isShowingSettings) }
     }
 }
 #endif

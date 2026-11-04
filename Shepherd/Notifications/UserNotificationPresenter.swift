@@ -17,6 +17,7 @@ nonisolated enum NotificationAuthorization: Equatable, Sendable {
 /// notification to whoever asked for it (see `becomeDelegate`).
 final class UserNotificationPresenter: NSObject, UNUserNotificationCenterDelegate {
     private var onOpen: ((NotificationRoute) -> Void)?
+    private var onHcOpen: ((HcNotificationRoute) -> Void)?
 
     private var center: UNUserNotificationCenter { .current() }
 
@@ -24,8 +25,23 @@ final class UserNotificationPresenter: NSObject, UNUserNotificationCenterDelegat
     /// shown while the app is in front, too. To be called before the app
     /// finishes launching, so that a click that launched it isn't missed.
     func becomeDelegate(onOpen: @escaping (NotificationRoute) -> Void) {
-        self.onOpen = onOpen
+        self.onOpen = onOpen; onHcOpen = nil
         center.delegate = self
+    }
+
+    func becomeHcDelegate(onOpen: @escaping (HcNotificationRoute) -> Void) {
+        onHcOpen = onOpen; self.onOpen = nil; center.delegate = self
+    }
+    func presentHc(identifier: String, content: NotificationText.Content, route: HcNotificationRoute) async -> Bool {
+        // The coordinator already requested permission and reconfirmed the
+        // same candidate after that suspension; do not ask a second time here.
+        guard await authorization() == .allowed else { return false }
+        let notification = UNMutableNotificationContent()
+        notification.title = content.title; notification.subtitle = content.subtitle; notification.body = content.body
+        notification.sound = .default; notification.threadIdentifier = route.machineID.uuidString
+        notification.userInfo = route.userInfo
+        do { try await center.add(UNNotificationRequest(identifier: identifier, content: notification, trigger: nil)); return true }
+        catch { return false }
     }
 
     func authorization() async -> NotificationAuthorization {
@@ -108,6 +124,16 @@ final class UserNotificationPresenter: NSObject, UNUserNotificationCenterDelegat
         retract(identifiers: identifiers)
     }
 
+    func retractHc(machineIDs: Set<UUID>, before: Date? = nil) async {
+        guard !machineIDs.isEmpty else { return }
+        let ids = await center.deliveredNotifications().compactMap { item -> String? in
+            guard before.map({ item.date < $0 }) ?? true else { return nil }
+            return HcNotificationRoute(userInfo: item.request.content.userInfo)
+                .flatMap { machineIDs.contains($0.machineID) ? item.request.identifier : nil }
+        }
+        retract(identifiers: ids)
+    }
+
     /// A notification about a pane the person isn't looking at is worth
     /// showing with Shepherd in front too: the coordinator has already left
     /// out the ones about the pane they are looking at.
@@ -118,10 +144,9 @@ final class UserNotificationPresenter: NSObject, UNUserNotificationCenterDelegat
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
                                             didReceive response: UNNotificationResponse) async {
-        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
-              let route = NotificationRoute(userInfo: response.notification.request.content.userInfo) else { return }
-        await MainActor.run {
-            onOpen?(route)
-        }
+        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
+        let info = response.notification.request.content.userInfo
+        if let route = HcNotificationRoute(userInfo: info) { await MainActor.run { onHcOpen?(route) } }
+        else if let route = NotificationRoute(userInfo: info) { await MainActor.run { onOpen?(route) } }
     }
 }

@@ -75,26 +75,17 @@ nonisolated enum AgentProxySystemSettings {
         return enables.contains { (settings[$0 as String] as? NSNumber)?.boolValue == true }
     }
 
-    /// The terminals of This Mac's herdr session `session`, as `session.snapshot`
-    /// and `agent.list` give them now: empty when no herdr serves it, nil
-    /// when it can't be read.
+    /// Legacy capture route liveness is unknown across the backend change.
+    /// Nil preserves existing routes without making a legacy backend request.
+    /// A missing ID in the new core is not proof an old program died.
     static func liveTerminals(session: String) async -> Set<String>? {
-        guard !session.isEmpty, session.utf8.count <= 128, !session.contains("/"), session != ".", session != ".." else { return nil }
-        let base = URL(fileURLWithPath: LocalHerdrTransport.defaultSocketPath)
-        let socket = session == "default" ? base.path
-            : base.deletingLastPathComponent().appending(path: "sessions").appending(path: session).appending(path: "herdr.sock").path
-        guard FileManager.default.fileExists(atPath: socket) else { return [] }
-        let client = HerdrClient(transport: LocalHerdrTransport(socketPath: socket))
-        do {
-            try await client.connect()
-            let panes = try await client.launchSnapshot().panes
-            let agents = try await client.agentList()
-            await client.disconnect()
-            return Set(panes.map(\.terminalID)).union(agents.map(\.terminalID))
-        } catch {
-            await client.disconnect()
-            return nil
-        }
+        // Existing capture routes were minted by the old injected launch
+        // runtime. Absence from a NEW core cannot establish that those old
+        // programs died. Do not query herdr or revoke their proxy credentials
+        // by comparing incompatible identity namespaces. Explicit user revoke
+        // remains available; this does not mint browser/native authority or
+        // automatically configure capture for newly launched hc terminals.
+        return nil
     }
 }
 /// `SMAppService.agent` with the build's own plist in the app's

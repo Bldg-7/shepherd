@@ -9,6 +9,7 @@ import CryptoKit
     public enum Phase: Equatable { case idle, connecting, connected, failed, missingExecutable, approveHostKey(String) }
     public private(set) var phase: Phase = .idle
     public private(set) var model: HcWorkspaceModel?
+    public private(set) var identity: Machine.ConnectionIdentity?
     public private(set) var message: String?
     private var token = UUID()
     private var approval: Machine?
@@ -31,7 +32,7 @@ import CryptoKit
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
     }
     public func open(machine: Machine, store: MachineStore, localTransport: (any CoreByteTransport)? = nil) async {
-        let generation = UUID(); token = generation; approval = nil; message = nil; phase = .connecting
+        let generation = UUID(); token = generation; approval = nil; message = nil; phase = .connecting; identity = nil
         let previous = model, pending = opening; model = nil; opening = nil
         pending?.cancel()
         do {
@@ -62,7 +63,7 @@ import CryptoKit
                 saveRecovery: { try Self.persist($0, to: recovery) }, saveFocus: { try Self.persist($0, to: focus) })
             try await next.start()
             guard token == generation, !Task.isCancelled, store.isCurrentConnection(machine) else { try await next.disconnect(); throw CancellationError() }
-            model = next; phase = .connected
+            model = next; self.identity = machine.connectionIdentity; phase = .connected
         } catch {
             try? await connection?.close()
             guard token == generation else { return }
@@ -86,7 +87,7 @@ import CryptoKit
         await open(machine: current, store: store)
     }
     public func close() async {
-        token = UUID(); approval = nil
+        token = UUID(); approval = nil; identity = nil
         let previous = model, pending = opening; model = nil; opening = nil
         pending?.cancel()
         do {
