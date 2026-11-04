@@ -530,7 +530,9 @@ Pairing device 117+7(`/private/tmp/hc-pair-device.AgXdpa/run`), Mac 279+11+115(`
 
 **아직 전체 전환 완료가 아니다.** macOS 기본 root cutover, 승인 설치/업데이트, gateway-origin docs/alias 변경 처리, 신규 hc launch capture/기존 capture-history 화면, legacy 제거가 남는다. 기존 capture proxy 설정/route/data는 브라우저와 별개로 보존하고 새 core에 없다는 이유로 legacy terminal credential을 revoke하지 않는다. 어떤 것도 PID/label로 native session binding을 대체하지 않는다.
 
-공식 0.1.17 formatter negative gate는 계속 nonzero이다. 출시 core 선택(공식 수정 릴리스 대기 vs 검증 formatter 백포트를 바탕으로 별도 버전 app-managed core 유지/배포)은 사용자 결정 대기 중이다. 보관된 patched positive는 0.1.16 기반 qualification artifact이지, 수정 0.1.17 출시 artifact의 대체 증명이 아니다. 설치/기존 core 재시작/배포는 별도 승인 경계로 유지한다.
+공식 0.1.17 formatter negative gate는 계속 nonzero이다. **2026-11-04 사용자 결정: 크래시/사용 불가가 아닌 확인된 repaint 결함은 공개된 제한으로 수용하고 공식 0.1.17을 출시 기준으로 삼는다. 별도 app-managed formatter fork는 배포하지 않는다.** 기존 core 선택 대기 상태는 해소됐다. [출시 기준과 남은 게이트](hc-official-release-baseline.md)를 따른다. 보관된 patched positive는 여전히 0.1.16 기반 qualification control일 뿐 출시 artifact가 아니다. 렌더링 실패를 통과로 바꾸거나 다른 GUI/소유권/정리 실패를 면제하지 않는다. 출시 작업 승인이 사용자 실행 중 core의 임의 교체/재시작 승인은 아니다.
+
+Ghostty #14711/#14725는 이미 upstream merge됐지만 hc에는 반영 PR이 없어 [hc #117](https://github.com/herdrdev/herdr-core/pull/117)을 직접 제출했다. 두 회귀는 기존 pin에서 모두 실패, bump 후 Rust VT13·formatter325·core library146 + 별도 helper1 pass(기존 ignored1), build/notices 통과. 전체CI는 별도 upstream 검증이다. macOS 개인정보 identity [#105](https://github.com/herdrdev/herdr-core/pull/105)는 이미 merge됐지만 v0.1.17 이후여서 이 버전이 고쳤다고 주장하지 않는다.
 
 ### 현재 GUI qualification 추가 한계
 

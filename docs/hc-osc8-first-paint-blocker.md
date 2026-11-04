@@ -1,6 +1,20 @@
 # SHPHRD-157: hc first paint drops OSC8 cell hyperlinks
 
-## Decision / impact
+## Current release decision (2026-11-04)
+
+The user selected **official hc 0.1.17** with disclosed non-fatal repaint
+limitations, rather than a maintained app-managed fork. This supersedes the
+historical requirement below to wait for a fully fixed formatter before choosing
+a release baseline. It does not make negative fidelity tests pass or waive
+crashes, unusable text/input, ownership/cleanup or product GUI gates.
+See [the release decision](hc-official-release-baseline.md).
+
+Ghostty #14711/#14725 are already merged, but hc still pins the older Ghostty.
+Submitted [hc #117](https://github.com/herdrdev/herdr-core/pull/117) to update that
+pin with two failing-before/passing-after `Terminal::paint` regressions. The
+upstream PR is not merged and is not part of official 0.1.17.
+
+## Historical decision / impact
 
 **Resolved for the explicitly pinned #14711 source backport; official hc 0.1.16 remains incompatible.**
 The A2 transport qualification now passes against that private build. This is not

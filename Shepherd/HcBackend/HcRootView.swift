@@ -160,13 +160,13 @@ private struct HcInstallationView: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("hc installation and compatibility").font(.title2)
             Text(machine?.isLocal == true ? "Install for this Mac's account." : "Run the official installer on the selected SSH host, as the same account you connect with. iPhone and iPad do not install a local core.")
-            Text("curl -fsSL https://releases.herdr.dev/core/install.sh | sh")
+            Text(HcReleasePolicy.installCommand)
                 .font(.system(.body, design: .monospaced)).textSelection(.enabled)
             Link("Review the official installer", destination: URL(string: "https://releases.herdr.dev/core/install.sh")!)
             Text("Shepherd checks API generation and required methods when connecting. For an older core, update hc; for a newer API generation, update Shepherd. A successful handshake does not qualify every renderer feature.")
-            Text("Installation does not authorize restarting a running core. Existing programs, package-manager installations and user configuration are not replaced by this screen.")
-            Text("Known limitation: official hc 0.1.17 has retained OSC8/blank-background rendering failures. The hc release gate remains incomplete until a supported artifact passes those checks.")
-                .foregroundStyle(.secondary)
+            Text(HcReleasePolicy.installationNotice)
+            Text(HcReleasePolicy.renderingNotice).foregroundStyle(.secondary)
+            Text(HcReleasePolicy.privacyNotice).foregroundStyle(.secondary)
             HStack { Spacer(); Button("Done") { dismiss() }.keyboardShortcut(.defaultAction) }
         }.padding(24).frame(width: 590)
     }

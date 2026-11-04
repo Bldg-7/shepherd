@@ -11,6 +11,20 @@ python3 Tests/HcBackend/run-tests.py \
   --output "$(mktemp -d /tmp/hc-attach.XXXXXX)/run"
 ```
 
+## Current official release baseline
+
+The user selected **official hc 0.1.17** with known non-fatal repaint limitations,
+not a maintained app-managed fork. This resolves the former artifact-choice
+blocker, not the independent red foreground GUI/product-cutover gates. Initial
+OSC8/blank-background negative controls remain nonzero and are not waived as
+passing fidelity checks. See [release policy](../../docs/hc-official-release-baseline.md)
+and [upstream hc #117](https://github.com/herdrdev/herdr-core/pull/117).
+
+`HcReleasePolicy` pins the manual help command's installer version on the sh side
+of the pipe, warns about updates/handover and macOS privacy, and never executes an
+installer. New detect/bootstrap34 and Debug macOS/iOS builds:
+`/private/tmp/hc-official-policy.LZ7qAr`. No global core was changed.
+
 ## HcTerminalSession
 
 `ShepherdKit/CoreKit/HcTerminalSession.swift` is the hc replacement for the

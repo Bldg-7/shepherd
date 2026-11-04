@@ -14,6 +14,10 @@ private enum TestFailure: Error { case assertion(String) }
         guard args.count == 6, ["0.1.17"].contains(args[5]) else { throw TestFailure.assertion("missing pinned version") }
         let binary = URL(fileURLWithPath: args[1]), scopeRoot = URL(fileURLWithPath: args[2])
         let installDir = URL(fileURLWithPath: args[3]), report = URL(fileURLWithPath: args[4])
+        try check(HcReleasePolicy.version == args[5], "official release baseline, not an app-managed fork")
+        try check(HcReleasePolicy.manifestURL.absoluteString == "https://releases.herdr.dev/core/0.1.17/manifest.json", "versioned manifest, never floating latest")
+        try check(HcReleasePolicy.installCommand.contains("| HC_VERSION=0.1.17 sh"), "version is scoped to installer, not downloader")
+        try check(!HcReleasePolicy.renderingNotice.isEmpty && !HcReleasePolicy.privacyNotice.isEmpty, "accepted limitations remain visible")
         // --- Detection: positive + negative controls against inert fixtures ---
         let staged = installDir.appendingPathComponent("hc")
         try check(FileManager.default.isExecutableFile(atPath: staged.path), "staged hc is executable")
