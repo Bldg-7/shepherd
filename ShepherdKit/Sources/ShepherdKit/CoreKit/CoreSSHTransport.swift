@@ -7,6 +7,7 @@ import NIOPosix
 public nonisolated enum CoreSSHFailure: Error, Equatable, Sendable {
     case invalidConfiguration, closed, authenticationFailed, hostKeyMismatch, execRejected, timedOut
     case concurrentRead, bufferExceeded, writeLimitExceeded
+    case hostKeyApprovalRequired(String)
 }
 
 /// Real SSH session/exec transport (never a PTY). The caller supplies an
@@ -17,16 +18,18 @@ public actor CoreSSHTransport: CoreByteTransport {
     public nonisolated struct Configuration: Sendable {
         public let host: String
         public let port: Int
-        public let pinnedFingerprint: String
+        public let pinnedFingerprint: String?
         public let command: String
-        public init(host: String, port: Int = 22, pinnedFingerprint: String, executable: String = "hc",
+        public init(host: String, port: Int = 22, pinnedFingerprint: String? = nil, requestHostKeyApproval: Bool = false,
+                    executable: String = "hc", discoverExecutable: Bool = false,
                     session: String = "default", environment: [String: String] = [:]) throws {
-            guard !host.isEmpty, (1...65535).contains(port), pinnedFingerprint.hasPrefix("SHA256:"),
-                  pinnedFingerprint.utf8.count <= 128, !executable.isEmpty,
+            guard !host.isEmpty, (1...65535).contains(port),
+                  pinnedFingerprint.map({ $0.hasPrefix("SHA256:") && $0.utf8.count <= 128 && !requestHostKeyApproval }) ?? requestHostKeyApproval,
+                  !executable.isEmpty, (!discoverExecutable || environment.isEmpty),
                   (1...64).contains(session.utf8.count), session.utf8.allSatisfy({
                       (65...90).contains($0) || (97...122).contains($0) || (48...57).contains($0) || [45,46,95].contains($0)
                   }), session != ".", session != "..",
-                  !([host, executable, pinnedFingerprint] + environment.flatMap { [$0.key,$0.value] }).contains(where: { $0.utf8.contains(0) }),
+                  !([host, executable, pinnedFingerprint ?? ""] + environment.flatMap { [$0.key,$0.value] }).contains(where: { $0.utf8.contains(0) }),
                   environment.keys.allSatisfy({ $0.range(of: "^[A-Za-z_][A-Za-z0-9_]*$", options: .regularExpression) != nil }) else {
                 throw CoreSSHFailure.invalidConfiguration
             }
@@ -35,7 +38,8 @@ public actor CoreSSHTransport: CoreByteTransport {
             // A login shell may itself have been started inside a core terminal.
             let clear = ["HC_TERMINAL_ID", "HC_TERMINAL_SOCKET", "HC_SCOPE", "HC_SOCKET"].map { "-u " + shellQuoted($0) }
             let assignments = env.keys.sorted().map { shellQuoted($0 + "=" + env[$0]!) }
-            command = (["exec env"] + clear + assignments + [shellQuoted(executable), "connect"]).joined(separator: " ")
+            command = try discoverExecutable ? HcConnectionPolicy.remoteCommand(session: session) :
+                (["exec env"] + clear + assignments + [shellQuoted(executable), "connect"]).joined(separator: " ")
         }
     }
     private let config: Configuration
@@ -190,9 +194,13 @@ private nonisolated final class CoreSSHLifetime: @unchecked Sendable {
     }
 }
 private nonisolated struct CoreSSHHostPin: NIOSSHClientServerAuthenticationDelegate {
-    let pin: String
-    init(_ pin: String) { self.pin = pin }
+    let pin: String?
+    init(_ pin: String?) { self.pin = pin }
     func validateHostKey(hostKey: NIOSSHPublicKey, validationCompletePromise: EventLoopPromise<Void>) {
+        guard let pin else {
+            validationCompletePromise.fail(CoreSSHFailure.hostKeyApprovalRequired(HostKeyFingerprint.compute(hostKey)))
+            return
+        }
         if HostKeyFingerprint.compute(hostKey) == pin { validationCompletePromise.succeed(()) }
         else { validationCompletePromise.fail(CoreSSHFailure.hostKeyMismatch) }
     }

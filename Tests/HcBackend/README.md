@@ -108,6 +108,36 @@ involved, and `launchdLifecycleQualified` stays false.
 - `/private/tmp/hc-screen-regression.ofHCyB/{attach,board,protocol}` retains
   nine attach, twelve board and seven-stage protocol regression results.
 
+## Product machine factory and root
+
+`MachineStore.makeHcConnection` is the production factory, separate from private
+`HcCoreBootstrap`: normal local `hc connect` (no direct-start fixture marker), or
+SSH session/exec with a pinned host key and one allowed paired-address lookup.
+Unknown SSH hosts report a fingerprint for explicit approval **without reading
+or offering a saved credential**. Stale machine settings retire the connection;
+no missing dependency becomes a simulated successful connection.
+
+`HcConnectionPolicy` clears inherited terminal/socket/injected authority, retains
+normal user config/SSH-agent scope, and adds usual CLI paths for GUI launches.
+Executable detection follows package-manager symlinks but rejects directories,
+dangling links and relative PATH entries. Remote POSIX discovery executes hc
+from usual locations/PATH without interactive rc, install or legacy fallback.
+
+`HcMachineConnection` owns opening/closing, host-key approval and per-connection/
+origin persistence. `HcRootView` adds machine selection, settings, compatibility
+help and retry. This is wired into the private actual-app fixture first; it is
+not yet the release default. The helper provides the official installer command
+for review/manual install; automatic approved installation is not implemented.
+
+Evidence: `/private/tmp/hc-product.xGv3SC/{macos,ios}.log`, its `ssh` gate (39
+checks with the retained qualified candidate), and
+`/private/tmp/hc-screen-app.ounj3hgv` exercise the product root/factory. The owned
+SSH test validates the exact production exec command before relaying to the
+private core; the inert detection test executes the real lookup script itself.
+No remote user server or user core is accessed. The first expanded SSH run's
+old hard-coded exec-count assertion failed after adding one new successful
+factory connection; it was corrected to four, with PTY/cleanup checks retained.
+
 ## hc detection + bootstrap
 
 ```sh

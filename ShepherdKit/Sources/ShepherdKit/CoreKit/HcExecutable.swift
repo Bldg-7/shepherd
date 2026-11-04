@@ -31,7 +31,10 @@ public nonisolated enum HcExecutable {
     /// for directories, which are not binaries and must never be a candidate.
     public static func isExecutableRegularFile(_ path: String) -> Bool {
         guard FileManager.default.isExecutableFile(atPath: path) else { return false }
-        return (try? FileManager.default.attributesOfItem(atPath: path)[.type] as? FileAttributeType) == .typeRegular
+        // Package managers normally expose a symlink. Follow it, but still
+        // reject directories, dangling links, devices and non-executables.
+        let target = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+        return (try? FileManager.default.attributesOfItem(atPath: target)[.type] as? FileAttributeType) == .typeRegular
     }
 
     /// The first usual location holding an executable hc binary.
@@ -56,7 +59,7 @@ public nonisolated enum HcExecutable {
         }
         for location in usualLocations { add(location) }
         let path = environment["PATH"] ?? "/usr/bin:/bin"
-        for entry in path.split(separator: ":").map(String.init) where !entry.isEmpty {
+        for entry in path.split(separator: ":").map(String.init) where entry.hasPrefix("/") {
             for name in commandNames { add("\(entry)/\(name)") }
         }
         return result

@@ -22,7 +22,7 @@ provenance=artifacts.extract(artifacts.select(official_017_archive=a.official_01
 products=a.products.resolve();app=products/'hrdrhrdrhrdr.app'
 exe=app/'Contents/MacOS/hrdrhrdrhrdr'
 assert exe.is_file(),'build macOS Debug products first'
-tracked=[*sorted((ROOT/'ShepherdKit/Sources/ShepherdKit/CoreKit').glob('*.swift')),
+tracked=[*sorted((ROOT/'ShepherdKit/Sources/ShepherdKit').rglob('*.swift')),
          *sorted((ROOT/'Shepherd/HcBackend').glob('*.swift')),ROOT/'Shepherd/Shepherd.swift',Path(__file__).resolve()]
 def digest(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 hashes={str(p.relative_to(ROOT)):digest(p) for p in tracked}
@@ -64,10 +64,10 @@ finally:
         if not alive and not sock.exists():break
         if time.monotonic()>end:raise RuntimeError('owned core/holder/program cleanup unconfirmed')
         time.sleep(.025)
-passed=failed is None and result.get('passed') is True and bool(result.get('ownedPIDs')) and result.get('screenshot') is True and result.get('sidebarAccessibilityVerified') is True
+passed=failed is None and result.get('passed') is True and bool(result.get('ownedPIDs')) and result.get('screenshot') is True and result.get('sidebarAccessibilityVerified') is True and result.get('productFactoryVerified') is True
 assert hashes=={str(p.relative_to(ROOT)):digest(p) for p in tracked},'sources changed during validation'
 (out/'validation.json').write_text(json.dumps({'passed':passed,'checks':result.get('checks'),'renderedBytes':result.get('renderedBytes'),
-    'actualSwiftUI':True,'nativeSwiftTerm':True,'sidebarAccessibilityVerified':result.get('sidebarAccessibilityVerified'),'screenshot':result.get('screenshot'),'browserAuthorityUsed':False,'legacyServicesStarted':False,
+    'actualSwiftUI':True,'nativeSwiftTerm':True,'productFactoryVerified':result.get('productFactoryVerified'),'sidebarAccessibilityVerified':result.get('sidebarAccessibilityVerified'),'screenshot':result.get('screenshot'),'browserAuthorityUsed':False,'legacyServicesStarted':False,
     'ownedProcessesExited':bool(result.get('ownedPIDs')),'socketRemoved':not sock.exists(),'releaseCutover':False},indent=2))
 if failed:raise failed
 assert passed,'UI rendering/cleanup incomplete'

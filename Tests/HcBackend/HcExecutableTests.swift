@@ -35,6 +35,31 @@ private enum TestFailure: Error { case assertion(String) }
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: relCopy.path)
         let resolved = HcExecutable.candidates(home: home.path, environment: ["PATH": "/usr/bin:/bin"])
         try check(resolved.first == relCopy, "usual-location lookup resolves .local/bin/hc")
+        let symlink = installDir.appendingPathComponent("hc-link")
+        try FileManager.default.createSymbolicLink(at: symlink, withDestinationURL: staged)
+        try check(HcExecutable.resolve(candidates: [symlink]) == symlink, "package-manager symlink accepted")
+        let broken = installDir.appendingPathComponent("hc-broken")
+        try FileManager.default.createSymbolicLink(at: broken, withDestinationURL: missing)
+        try check(HcExecutable.resolve(candidates: [broken]) == nil, "dangling symlink rejected")
+        try check(!HcExecutable.candidates(home: home.path, environment: ["PATH": ".:relative"]).contains { $0.path.contains("relative") }, "relative GUI PATH entries ignored")
+        let environment = try HcConnectionPolicy.localEnvironment(home: home.path, session: "named", source: ["PATH":".:/custom/bin:/custom/bin", "HC_SOCKET":"parent", "HC_TERMINAL_ID":"parent", "SHEPHERD_BROWSER_TOKEN":"secret", "CLAUDE_CODE_OAUTH_TOKEN":"secret", "SHELL":"/bin/zsh", "SSH_AUTH_SOCK":"/owned/agent"])
+        try check(environment["HC_SOCKET"] == nil && environment["HC_TERMINAL_ID"] == nil && environment["SHEPHERD_BROWSER_TOKEN"] == nil && environment["CLAUDE_CODE_OAUTH_TOKEN"] == nil, "no parent socket or injected authority")
+        try check(environment["PATH"]?.hasPrefix("/custom/bin:") == true && environment["PATH"]?.contains("/opt/homebrew/bin") == true && environment["PATH"]?.contains(":.:") == false, "GUI CLI discovery without relative PATH")
+        try check(environment["HOME"] == home.path && environment["HC_SESSION"] == "named" && environment["SSH_AUTH_SOCK"] == "/owned/agent", "normal user scope and SSH agent retained")
+        for invalid in ["../other", "bad/name", "-option", "a;touch x", "a\u{0000}b"] {
+            do { _ = try HcConnectionPolicy.remoteCommand(session: invalid); throw TestFailure.assertion("accepted unsafe session") }
+            catch HcConnectionPolicy.Failure.invalidSession { checks += 1 }
+        }
+        let remote = try HcConnectionPolicy.remoteCommand(session: "owned")
+        try check(remote.hasPrefix("exec /bin/sh -c ") && remote.contains(".local/bin/herdr-core") && !remote.contains("zsh -ic"), "remote POSIX lookup, no interactive rc or legacy fallback")
+        try Data("#!/bin/sh\nprintf '%s|%s|%s' \"$1\" \"$HC_SESSION\" \"${HC_SOCKET-unset}\"\n".utf8).write(to: relCopy)
+        let probe = Process(), output = Pipe()
+        probe.executableURL = URL(fileURLWithPath: "/bin/sh"); probe.arguments = ["-c", remote]
+        probe.environment = ["HOME":home.path, "PATH":"/usr/bin:/bin", "HC_SOCKET":"parent-should-not-be-used", "SSH_CONNECTION":"owned-fixture-no-launchd"]
+        probe.standardOutput = output
+        try probe.run()
+        let response = output.fileHandleForReading.readDataToEndOfFile(); probe.waitUntilExit()
+        try check(probe.terminationStatus == 0 && String(decoding: response, as: UTF8.self) == "connect|owned|unset", "actual production discovery script executes hc with selected scope, never parent socket")
         // --- Bootstrap: start + connect + verify hello ---
         let scope = try HcCoreBootstrap.Scope(root: scopeRoot)
         try check(scope.socket.path.utf8.count < 104, "private socket path is bounded")

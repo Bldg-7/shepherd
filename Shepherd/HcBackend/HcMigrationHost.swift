@@ -55,18 +55,20 @@ private nonisolated struct HcMigrationStatus: Decodable, Sendable {
 
 struct HcMigrationHost: View {
     let configuration: HcMigrationConfiguration
-    @State private var model: HcWorkspaceModel?
+    @State private var owner: HcMachineConnection?
+    @State private var fixtureStore: MachineStore?
+    @State private var fixtureTransport: CoreProcessTransport?
     @State private var failure = false
     var body: some View {
         Group {
-            if let model { HcWorkspaceView(model: model) }
+            if let owner, let fixtureStore { HcRootView(machineStore: fixtureStore, connection: owner, localTransport: fixtureTransport) }
             else if failure { Text("Private hc integration failed") }
             else { ProgressView("Preparing private hc integration…") }
         }
         .task { await open() }
     }
     private func open() async {
-        guard model == nil else { return }
+        guard owner == nil else { return }
         let root = configuration.root, report = root.appending(path: "ui-report.json")
         var connection: CoreRPCConnection?, transport: CoreProcessTransport?, workspace: HcWorkspaceModel?
         var owned: [UInt32] = []
@@ -78,11 +80,19 @@ struct HcMigrationHost: View {
             let status: HcMigrationStatus = try await c.call("server.status").result()
             owned = [status.pid]
             try JSONSerialization.data(withJSONObject: ["ownedPIDs":owned]).write(to: report, options: .atomic)
-            let journal = root.appending(path: "operations.json"), focus = root.appending(path: "focus.json")
-            let m = HcWorkspaceModel(connection: c, saveRecovery: { try $0.write(to: journal, options: .atomic) },
-                                     saveFocus: { try $0.write(to: focus, options: .atomic) })
-            model = m; workspace = m
-            try await m.start(); checks += 1
+            let storage = root.appending(path: "workspace-store", directoryHint: .isDirectory)
+            let owner = HcMachineConnection(directory: storage)
+            let screenTransport = try CoreProcessTransport(configuration: .init(executable: configuration.binary,
+                environment: HcCoreBootstrap.environment(for: scope), directory: scope.root))
+            fixtureTransport = screenTransport; fixtureStore = configuration.machineStore(); self.owner = owner
+            // Let the real product root's .task call the production machine
+            // factory and open its model, rather than constructing a model here.
+            let openingDeadline = ContinuousClock.now.advanced(by: .seconds(10))
+            while owner.model == nil {
+                guard owner.phase != .failed, ContinuousClock.now < openingDeadline else { throw HcWorkspaceModel.Failure.unavailable }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            let m = owner.model!; workspace = m; checks += 1
             let id = try await m.createWorkspace(name: "Owned UI fixture"); checks += 1
             let peer = root.appending(path: "ui-peer.py").path
             try await m.launchTab(workspaceID: id, name: "Real hc terminal", argv: ["/usr/bin/python3","-I","-S","-B",peer]); checks += 1
@@ -96,8 +106,9 @@ struct HcMigrationHost: View {
                 try await Task.sleep(for: .milliseconds(20))
             }
             checks += 1
+            let persisted = FileManager.default.enumerator(at: storage, includingPropertiesForKeys: nil)?.allObjects.compactMap { ($0 as? URL)?.lastPathComponent } ?? []
             guard m.selectedTab != nil, m.focus.paneByTab[m.selectedTab!.id] != nil,
-                  FileManager.default.fileExists(atPath: journal.path), FileManager.default.fileExists(atPath: focus.path) else { throw HcWorkspaceModel.Failure.unavailable }
+                  persisted.contains("recovery.json"), persisted.contains("focus.json") else { throw HcWorkspaceModel.Failure.unavailable }
             checks += 1
             guard let content = NSApp.windows.first(where: { $0.contentView?.bounds.width ?? 0 > 500 })?.contentView else { throw HcWorkspaceModel.Failure.unavailable }
             content.layoutSubtreeIfNeeded(); content.displayIfNeeded()
@@ -125,16 +136,18 @@ struct HcMigrationHost: View {
             }
             // Only this fixture's explicitly isolated core may be stopped.
             _ = try await c.call("server.stop")
-            try await m.disconnect()
-            let snapshot = await t.snapshot()
-            guard snapshot.reaped else { throw HcWorkspaceModel.Failure.unavailable }; checks += 1
+            await owner.close()
+            try await c.close()
+            let snapshot = await t.snapshot(), screenSnapshot = await screenTransport.snapshot()
+            guard owner.phase == .idle, snapshot.reaped, screenSnapshot.reaped else { throw HcWorkspaceModel.Failure.unavailable }; checks += 1
             try JSONSerialization.data(withJSONObject: ["passed":true,"checks":checks,"ownedPIDs":owned,
-                "renderedBytes":HcMigrationRenderProbe.shared.bytes,"sidebarAccessibilityVerified":true,"screenshot":FileManager.default.fileExists(atPath: root.appending(path:"workspace.png").path),
+                "productFactoryVerified":true,"renderedBytes":HcMigrationRenderProbe.shared.bytes,"sidebarAccessibilityVerified":true,"screenshot":FileManager.default.fileExists(atPath: root.appending(path:"workspace.png").path),
                 "browserAuthorityUsed":false,"productCutover":false]).write(to: report, options: .atomic)
             NSApp.terminate(nil)
         } catch {
             failure = true
             if let connection { _ = try? await connection.call("server.stop") }
+            await owner?.close()
             try? await workspace?.disconnect(); try? await connection?.close()
             let reaped = await transport?.snapshot().reaped ?? false
             try? JSONSerialization.data(withJSONObject: ["passed":false,"checks":checks,"ownedPIDs":owned,"reaped":reaped]).write(to: report, options: .atomic)

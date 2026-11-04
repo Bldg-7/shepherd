@@ -30,6 +30,13 @@ private nonisolated final class ServerState: @unchecked Sendable {
     func counts() -> (Int, Int, Int) { lock.lock(); defer { lock.unlock() }; return (execs,ptys,cleanupErrors) }
     func owned() -> ([any Channel], [Task<Void, Never>]) { lock.lock(); defer { lock.unlock() }; return (channels,tasks) }
 }
+@MainActor private final class FactorySecrets: MachineSecretStore {
+    var data: [String: Data] = [:]
+    var reads = 0
+    func saveSecret(_ bytes: Data, tag: String) throws { data[tag] = bytes }
+    func loadSecret(tag: String) throws -> Data? { reads += 1; return data[tag] }
+    func deleteSecret(tag: String) throws { data[tag] = nil }
+}
 private nonisolated struct ServerAuth: NIOSSHServerUserAuthenticationDelegate {
     let password: String
     var supportedAuthenticationMethods: NIOSSHAvailableUserAuthenticationMethods { .password }
@@ -48,12 +55,12 @@ private nonisolated final class ServerErrorHandler: ChannelInboundHandler, @unch
 /// in a private /bin/sh, matching an SSH server's exec parsing semantics.
 private nonisolated final class OwnedExec: ChannelInboundHandler, @unchecked Sendable {
     typealias InboundIn = SSHChannelData
-    let expected: String
+    let expected: Set<String>
     let config: CoreProcessTransport.Configuration
     let state: ServerState
     private var input: AsyncThrowingStream<Data, Error>.Continuation?
     private var worker: Task<Void, Never>?
-    init(expected: String, config: CoreProcessTransport.Configuration, state: ServerState) {
+    init(expected: Set<String>, config: CoreProcessTransport.Configuration, state: ServerState) {
         self.expected = expected; self.config = config; self.state = state
     }
     func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
@@ -61,7 +68,7 @@ private nonisolated final class OwnedExec: ChannelInboundHandler, @unchecked Sen
             state.pty(); context.channel.triggerUserOutboundEvent(ChannelFailureEvent(), promise: nil); return
         }
         guard let exec = event as? SSHChannelRequestEvent.ExecRequest else { context.fireUserInboundEventTriggered(event); return }
-        guard exec.command == expected, worker == nil else { context.channel.triggerUserOutboundEvent(ChannelFailureEvent(), promise: nil); return }
+        guard expected.contains(exec.command), worker == nil else { context.channel.triggerUserOutboundEvent(ChannelFailureEvent(), promise: nil); return }
         state.exec()
         if state.isHeld() { return } // Exercise cancellation while exec ACK is pending.
         let pipe: CoreProcessTransport
@@ -179,6 +186,7 @@ private struct SSHStreamIntegrationTests {
         environment["HC_SESSION"] = nil
         let configTemplate = try CoreSSHTransport.Configuration(host: "127.0.0.1", pinnedFingerprint: pin, executable: bin, session: "owned", environment: environment)
         let state = ServerState(), expected = configTemplate.command
+        let factoryCommand = try HcConnectionPolicy.remoteCommand(session: "owned")
         let execConfig = CoreProcessTransport.Configuration(executable: URL(fileURLWithPath: "/bin/sh"),
             arguments: ["-c", expected], environment: ["PATH":"/usr/bin:/bin"], directory: URL(fileURLWithPath:home))
         let server = try await ServerBootstrap(group: group).serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
@@ -187,7 +195,7 @@ private struct SSHStreamIntegrationTests {
                 let ssh = NIOSSHHandler(role: .server(SSHServerConfiguration(hostKeys: [NIOSSHPrivateKey(ed25519Key: key)], userAuthDelegate: ServerAuth(password: testPassword))), allocator: parent.allocator,
                     inboundChildChannelInitializer: { child, type in
                         guard case .session = type else { return child.eventLoop.makeFailedFuture(CoreSSHFailure.execRejected) }
-                        return child.pipeline.addHandler(OwnedExec(expected: expected, config: execConfig, state: state))
+                        return child.pipeline.addHandler(OwnedExec(expected: [expected, factoryCommand], config: execConfig, state: state))
                     })
                 do {
                     try parent.pipeline.syncOperations.addHandlers([ssh, ServerErrorHandler()])
@@ -211,12 +219,35 @@ private struct SSHStreamIntegrationTests {
         catch is CoreSSHFailure { checks += 1 }
         try await wrongPassword.close()
         try check(state.counts().0 == 0, "bad authentication blocked before exec")
+        let domain = "hc-owned-factory-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: domain)!
+        defer { defaults.removePersistentDomain(forName: domain) }
+        let secrets = FactorySecrets()
+        let machines = MachineStore(defaults: defaults, keychain: secrets)
+        var machine = Machine(displayName: "Owned SSH", hostname: "127.0.0.1", port: port, username: "fixture", authMethod: .password, sessionName: "owned")
+        try machines.addMachine(machine, password: testPassword)
+        do { _ = try await machines.makeHcConnection(for: machine); throw IntegrationFailure.failed("unpinned factory authenticated") }
+        catch CoreSSHFailure.hostKeyApprovalRequired(let observed) { try check(observed == pin, "factory reports exact pin for explicit approval") }
+        try check(secrets.reads == 0 && state.counts().0 == 0, "host discovery neither reads credentials nor executes")
+        machines.pinHostKeyFingerprint(pin, for: machine)
+        let factory = try await machines.makeHcConnection(for: machine)
+        try check(await factory.hello?.core.id == hello.core.id && secrets.reads == 1, "production SSH factory reaches owned origin with stored credential")
+        try await factory.close()
+        let alive: IntegrationStatus = try await control.call("server.status").result()
+        try check(alive.pid == status.pid, "factory disconnect preserves core")
+        // A paired address may not leave its advertised range, even if the
+        // resulting endpoint would otherwise present a trusted host key.
+        machine = Machine(displayName: "Rejected paired address", hostname: "127.0.0.1", port: port, username: "fixture", authMethod: .password, addressKind: .privateIPv4)
+        try machines.addMachine(machine, password: testPassword)
+        machines.pinHostKeyFingerprint(pin, for: machine)
+        do { _ = try await machines.makeHcConnection(for: machine); throw IntegrationFailure.failed("paired loopback accepted") }
+        catch PairingAddressError.invalid { try check(secrets.reads == 1, "paired-address policy rejects before credential read") }
         state.hold(true)
         let awaitingExec = try CoreRPCConnection(transport: endpoint(pin: pin))
         let connecting = Task { try await awaitingExec.connect() }
         let execDeadline = ContinuousClock.now.advanced(by: .seconds(3))
-        while state.counts().0 == 0, ContinuousClock.now < execDeadline { try await Task.sleep(for: .milliseconds(5)) }
-        try check(state.counts().0 == 1, "exec request reached owned server")
+        while state.counts().0 < 2, ContinuousClock.now < execDeadline { try await Task.sleep(for: .milliseconds(5)) }
+        try check(state.counts().0 == 2, "exec request reached owned server")
         connecting.cancel()
         do { _ = try await connecting.value; throw IntegrationFailure.failed("SSH connect cancellation ignored") }
         catch is CancellationError { checks += 1 }
@@ -371,7 +402,7 @@ private struct SSHStreamIntegrationTests {
         for task in owned.1 { await task.value }
         try await group.shutdownGracefully()
         let counts = state.counts()
-        try check(counts.0 == 3 && counts.1 == 0 && counts.2 == 0, "exec/no-PTY/owned-child cleanup")
+        try check(counts.0 == 4 && counts.1 == 0 && counts.2 == 0, "exec/no-PTY/owned-child cleanup: \(counts)")
         try params(["passed":allLinksPreserved,"corePID":status.pid,"ownedPIDs":ownedPIDs,"checks":checks,"stopAcknowledged":true,"ssh":true,"swiftTerm":true,
                     "osc8FirstPaint":firstPaintLinkPreserved,"osc8Live":true,"osc8Reconnect":reconnectLinkPreserved]).write(to:report,options:.atomic)
         if !allLinksPreserved {
