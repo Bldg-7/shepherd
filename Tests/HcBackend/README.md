@@ -43,3 +43,21 @@ Against a pinned official hc 0.1.17 in an isolated home (direct startup via the
 
 This is a launch/attach path only: no browser, MCP, credential or authority is
 involved, and `launchdLifecycleQualified` stays false.
+
+## hc detection + bootstrap
+
+```sh
+python3 Tests/HcBackend/run-detect-tests.py \
+  --official-017-archive /absolute/herdr-core-macos-aarch64.tar.gz \
+  --output "$(mktemp -d /tmp/hc-detect.XXXXXX)/run"
+```
+
+`HcExecutable` finds `hc`/`herdr-core` in the usual install locations first
+(`.local/bin`, Homebrew, `/usr/local/bin`), then PATH, requiring an executable
+**regular file** (directories are rejected). It only locates; it never runs the
+binary. `HcCoreBootstrap` then owns one policy for the app and tests: private
+state/config/runtime + a short socket path, a direct-startup environment
+(`SSH_CONNECTION=owned-fixture-no-launchd`, never a machine-wide launchd job),
+and a `CoreProcessTransport` + `CoreRPCConnection` whose hello verifies version,
+generation and required methods. The caller owns the connection and stops the
+core it started.

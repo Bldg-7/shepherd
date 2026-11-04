@@ -312,7 +312,9 @@ session-only 제약(사용자 전역 설정 불허)을 풀면 in-process 주입(
 
 `ShepherdKit/CoreKit/HcTerminalSession.swift`가 herdr `TerminalSession`(`herdr terminal attach --takeover` + SSH PTY)을 대체한다. `terminal.attach`(observe=false) 프레임 스트림으로 first paint + live bytes를 `AsyncStream<Data>`로 노출하고, 입력은 DATA·크기는 RESIZE·종료는 CLOSE다. CREDIT은 bounded buffer(`bufferingNewest(1024)`, UI가 느리면 오래된 출력 drop = scrollback 의미)에 들어간 뒤 반환한다. session은 연결/core/terminal을 중단하지 않는다. CoreKit은 NIOCore 없이 Foundation만 유지하며 SwiftTerm/ByteBuffer 적응은 UI가 담당한다.
 
-`Tests/HcBackend/`가 공식 0.1.17 private core에서 실제로 검증한다: attach first paint의 READY, `write("hello\r")`의 GOT echo, `resize(100,30)`이 `terminal.get`에 반영, attach 종료 후 프로그램 생존, 명시적 kill, 전체 owned PID/socket 정리. 상세: `Tests/HcBackend/README.md`. 아직 UI 배선·pairing/SSH/drop 회귀·hc 감지/설치 UX는 남는다.
+`Tests/HcBackend/`가 공식 0.1.17 private core에서 실제로 검증한다: attach first paint의 READY, `write("hello\r")`의 GOT echo, `resize(100,30)`이 `terminal.get`에 반영, attach 종료 후 프로그램 생존, 명시적 kill, 전체 owned PID/socket 정리. 상세: `Tests/HcBackend/README.md`.
+
+hc 감지·부트스트랩 기반도 추가했다. `HcExecutable`은 `hc`/`herdr-core`를 일반 설치 위치(`.local/bin`, Homebrew, `/usr/local/bin`) 우선, 그다음 PATH에서 찾되 **실행 가능한 정규 파일**만 인정(디렉터리 거부)하고, 탐색만 하며 바이너리를 실행하지 않는다. `HcCoreBootstrap`은 private state/config/runtime·짧은 socket 경로, direct-startup 환경(`SSH_CONNECTION=owned-fixture-no-launchd`, machine-wide launchd 미사용), `CoreProcessTransport`+`CoreRPCConnection`의 hello로 version/generation/method를 검증하는 단일 정책을 앱과 테스트가 공유한다. 감지+부트스트랩 게이트는 공식 0.1.17에서 17 checks로 통과한다. 아직 UI 배선·pairing/SSH/drop 회귀·설치/업데이트 UX·legacy 제거는 남는다.
 
 ### E. 기존 backend 제거
 
