@@ -10,9 +10,14 @@ python3 Tests/CoreWorkspace/run-tests.py --output "$(mktemp -d /tmp/hc-workspace
 The runner builds and executes Debug and optimized Swift 6 tests, then typechecks
 both production files for iOS. It preserves source hashes and stage/cleanup logs.
 
-Current validation: **88 codec/edit/CAS + 32 RPC-owner + 49 focus/recovery/
-notification + 16 lossless attach checks per build mode**, plus iOS Swift 6
-typechecking (17 stages). Evidence: `/private/tmp/hc-screen-final.TtxPl4/unit`.
+Current validation: **88 codec/edit/CAS + 32 RPC-owner + 52 focus/recovery/
+notification + 31 lossless attach + 40 gateway policy checks per build mode**
+(243/mode), plus iOS17 Swift6 typechecking (21 stages). Evidence:
+`/private/tmp/hc-gateway-store.I0YyAc/run`.
+
+[Gateway routing/storage scope and limitations](GATEWAY-README.md): actual
+three-private-core SDK20, known ID-shadow configuration rejection and exact CAS;
+not product gateway UI, arbitrary concurrent config routing or release cutover.
 
 The actual-screen model is now composed in `HcWorkspaceModel`; its private-core
 integration checks real launch/binding, focus persistence, view-close/program

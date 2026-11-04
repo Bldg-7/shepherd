@@ -542,6 +542,14 @@ Ghostty #14711/#14725는 이미 upstream merge됐지만 hc에는 반영 PR이 �
 
 사용자 요청으로 불필요한 산출물159개 디렉터리를 정리하여 실측15.02GiB 공간을 확보했다. 원본/소스/로그/스크린샷/qualified controls/현재 Debug 제품은 유지한다. 이후 GUI runner는 **모든 known PID/socket 퇴역과 owned 등록 해제 확인 후에만** app/helper 복사본을 지워 재축적을 막는다(6 unit controls). 새 strict run `/private/tmp/hc-screen-app.qdg0mn1a`도 helperActive=false로 전체 passed=false를 유지했고, 두 owned bundle 정리는 확인했다. artifact cleanup이 foreground GUI 통과 증거는 아니다.
 
+### C 후속: gateway 원점 SDK와 ID-shadow 결함 차단
+
+공식0.1.17의 owned 3-core probe에서 doc.on/terminal qualified address는 일반 rename/alias재사용 시 core ID로 원점을 유지하지만, `terminal.list`는 on을 무시하고 global목록을 돌려준다는 점을 확인했다. 같은 reply의 machines metadata로만 분리하는 `HcGatewaySnapshot`과 공통 canonical terminal-ID 검사, optional gateway-origin document Store를 추가했다. 실제 hub transport epoch/hello를 원격hello로 위장하지 않고 logical doc owner를 분리한다. 원격 DocEvent의 mutable alias/version을 다른 원점의 CAS floor로 적용하지 않는다. 새 read/commit 전 fresh metadata와 caller baseline을 재검증한다.
+
+다른 core의 영구ID와 같은 alias가 해당 ID를 shadow하는 Core 결함도 실제 재현했다. 알려진 충돌 구성은 앱 SDK에서 차단하고 [hc #118](https://github.com/herdrdev/herdr-core/pull/118)을 별도 제출했다. 수정 head02ab775의 full GitHubCI는 통과했지만 아직 merge/release아니다. snapshot preflight는 atomic gateway-config lease가 아니며 임의 외부 concurrent 재구성까지 안전하다고 주장하지 않는다. Gateway 편집 UI/전체 remote terminal·file/drop routing은 이 단계에서 켜지 않는다.
+
+최신검사: `/private/tmp/hc-gateway-store.I0YyAc/run`243/mode+21stages+iOS17; `/private/tmp/hc-gateway-sdk.ShTwhU/check` production framed SDK20 over실제공식privatecores, 잘못된원점write방지(충돌구성), no replay, 모든ownedPID/socket퇴역; macOS/iOS Debug builds 통과. 상세·한계: `Tests/CoreWorkspace/GATEWAY-README.md`. 사용자core/프로그램/설치/배포를 바꾸지 않았다.
+
 ### 현재 GUI qualification 추가 한계
 
 Strict GUI gate는 실제 foreground/key-window와 native New Tab→launch form→cancel까지 요구한다. 현재 unattended session은 owned helper마저 `helperActive=false`여서 활성화를 거부한다. `/private/tmp/hc-screen-app.qdg0mn1a`는 9개 앞선 assertion 후 전체 `passed=false`; 기존 11-check positive를 이 더 강한 gate의 통과로 승격하지 않는다. 다른 앱의 포커스/접근성/권한을 빌려 우회하지 않으며 이 readiness 실패는 그대로 nonzero이다. 실제 GUI 상호작용이 허용된 환경의 검증이 추가로 필요하다.

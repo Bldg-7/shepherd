@@ -33,7 +33,8 @@ nonisolated struct CoreWorkspaceEvents: Sendable {
         let params: Params
     }
     private(set) var sequence: UInt64
-    init(sequence: UInt64) { self.sequence = sequence }
+    private let remoteDocuments: Bool
+    init(sequence: UInt64, remoteDocuments: Bool = false) { self.sequence = sequence; self.remoteDocuments = remoteDocuments }
 
     mutating func consume(_ bytes: Data) throws -> Effect {
         let notice = try JSONDecoder().decode(Notice.self, from: bytes)
@@ -58,9 +59,15 @@ nonisolated struct CoreWorkspaceEvents: Sendable {
             guard let change = notice.params.data, let name = change.name, let version = change.version else {
                 throw CoreWorkspaceFailure.invalidDocument
             }
-            // A gateway's remote-machine document is NOT this direct origin's
-            // document, even when it has the same name.
-            guard notice.params.machine == nil, name == CoreWorkspaceDocument.documentName else { return Effect(refresh: gap) }
+            guard name == CoreWorkspaceDocument.documentName else { return Effect(refresh: gap) }
+            if remoteDocuments {
+                // machine is a mutable alias, not a stable origin. Any matching
+                // remote notice conservatively invalidates our selected ID's
+                // read, but NEVER advances its version from another origin.
+                return Effect(refresh: gap || notice.params.machine != nil)
+            }
+            // A gateway's remote document is not the direct origin's document.
+            guard notice.params.machine == nil else { return Effect(refresh: gap) }
             return Effect(refresh: true, minimumVersion: version)
         default: throw CoreWorkspaceFailure.invalidDocument
         }

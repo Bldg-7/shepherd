@@ -1,7 +1,7 @@
 import Foundation
 
 public nonisolated enum CoreWorkspaceStoreFailure: Error, Equatable, Sendable {
-    case closed, alreadyStarted, staleRevision, subscriberLimit, readFailed, invalidDocument, eventStreamFailed, changingTooQuickly
+    case closed, alreadyStarted, staleRevision, subscriberLimit, readFailed, invalidDocument, eventStreamFailed, changingTooQuickly, originUnavailable
 }
 
 /// One origin connection, one unfiltered subscription, one bounded refresh job.
@@ -21,6 +21,7 @@ public actor CoreWorkspaceStore {
     public nonisolated let originCoreID: String
     public nonisolated let epoch: UUID
     private let connection: CoreRPCConnection
+    private let gatewayCoreID: String?
     private let timeout: Duration
     private var cas: CoreWorkspaceCAS
     private var phase: Phase = .idle
@@ -33,13 +34,26 @@ public actor CoreWorkspaceStore {
     private var writing = false
     private var watchers: [UUID: AsyncStream<View>.Continuation] = [:]
 
-    public init(connection: CoreRPCConnection, timeout: Duration = .seconds(5)) async throws {
+    /// gatewayCoreID is an explicit configured first-level origin ID, never an
+    /// alias. It is not native authority or an atomic lease on gateway config.
+    public init(connection: CoreRPCConnection, timeout: Duration = .seconds(5), gatewayCoreID: String? = nil) async throws {
         guard timeout > .zero, timeout <= .seconds(30) else { throw CoreConnectionFailure.invalidTimeout }
         guard await connection.state == .ready, let hello = await connection.hello else { throw CoreConnectionFailure.notReady }
         guard Set(["events.subscribe", "doc.get", "doc.set"]).isSubset(of: Set(hello.methods)) else { throw CoreConnectionFailure.methodUnavailable }
-        self.connection = connection; self.timeout = timeout
-        originCoreID = hello.core.id; epoch = connection.epoch
-        cas = try CoreWorkspaceCAS(originCoreID: hello.core.id, epoch: connection.epoch)
+        if let gatewayCoreID { try await Self.validateGateway(connection, target: gatewayCoreID) }
+        self.connection = connection; self.timeout = timeout; self.gatewayCoreID = gatewayCoreID
+        originCoreID = gatewayCoreID ?? hello.core.id; epoch = connection.epoch
+        cas = try CoreWorkspaceCAS(originCoreID: gatewayCoreID ?? hello.core.id, epoch: connection.epoch)
+    }
+    private nonisolated static func validateGateway(_ connection: CoreRPCConnection, target: String) async throws {
+        do {
+            let snapshot = try await HcGatewaySnapshot.read(connection: connection)
+            guard snapshot.machines.contains(where: { $0.id == target && $0.state == "connected" }) else { throw CoreWorkspaceStoreFailure.originUnavailable }
+        } catch { throw CoreWorkspaceStoreFailure.originUnavailable }
+    }
+    private func readParameters() throws -> Data {
+        struct Params: Encodable { let name: String; let on: String? }
+        return try JSONEncoder().encode(Params(name: CoreWorkspaceDocument.documentName, on: gatewayCoreID))
     }
     deinit {
         opening?.cancel(); reader?.cancel(); refreshJob?.task.cancel()
@@ -67,7 +81,7 @@ public actor CoreWorkspaceStore {
         guard phase == .idle else { throw CoreWorkspaceStoreFailure.alreadyStarted }
         phase = .starting; publish()
         do {
-            let connection = connection, timeout = timeout
+            let connection = connection, timeout = timeout, gatewayCoreID = gatewayCoreID
             let job = Task { try await connection.openStream("events.subscribe", timeout: timeout) }
             opening = job
             let events = try await withTaskCancellationHandler { try await job.value } onCancel: { job.cancel() }
@@ -81,7 +95,7 @@ public actor CoreWorkspaceStore {
             reader = Task.detached { [weak self, events] in
                 do {
                     var lines = try CoreEventLines(maximumLineBytes: 1 << 20)
-                    var reducer = CoreWorkspaceEvents(sequence: initial.seq)
+                    var reducer = CoreWorkspaceEvents(sequence: initial.seq, remoteDocuments: gatewayCoreID != nil)
                     // hc advertises a heartbeat every 15 seconds. A stalled
                     // event lane must not leave a cached layout writable forever.
                     while let packet = try await events.next(timeout: .seconds(45)) {
@@ -129,7 +143,8 @@ public actor CoreWorkspaceStore {
             catch { break }
             publish()
             do {
-                let reply = try await connection.call("doc.get", parameters: Data("{\"name\":\"\(CoreWorkspaceDocument.documentName)\"}".utf8), timeout: timeout)
+                if let gatewayCoreID { try await Self.validateGateway(connection, target: gatewayCoreID) }
+                let reply = try await connection.call("doc.get", parameters: readParameters(), timeout: timeout)
                 guard phase == .active else { break }
                 let result: CoreWorkspaceReadResult = try reply.result()
                 try cas.accept(token, version: result.version, document: result.document)
@@ -140,7 +155,8 @@ public actor CoreWorkspaceStore {
             } catch {
                 guard phase == .active else { break }
                 try? cas.readFailed(token)
-                failure = error is CoreWorkspaceFailure || error is DecodingError ? .invalidDocument : .readFailed
+                if let error = error as? CoreWorkspaceStoreFailure, error == .originUnavailable { failure = .originUnavailable }
+                else { failure = error is CoreWorkspaceFailure || error is DecodingError ? .invalidDocument : .readFailed }
                 break
             }
         }
@@ -173,12 +189,21 @@ public actor CoreWorkspaceStore {
         guard phase == .active else { throw CoreWorkspaceStoreFailure.closed }
         guard cas.snapshot?.version == expectedVersion else { throw CoreWorkspaceStoreFailure.staleRevision }
         guard refreshJob == nil, !writing else { throw CoreWorkspaceSyncFailure.refreshRequired }
+        if let gatewayCoreID {
+            do { try await Self.validateGateway(connection, target: gatewayCoreID) }
+            catch { try? cas.invalidate(epoch: epoch); failure = .originUnavailable; publish(); throw error }
+            // Validation suspends. It cannot authorize another caller's newer
+            // baseline or a concurrent write/refresh that began while awaiting.
+            guard phase == .active else { throw CoreWorkspaceStoreFailure.closed }
+            guard cas.snapshot?.version == expectedVersion else { throw CoreWorkspaceStoreFailure.staleRevision }
+            guard refreshJob == nil, !writing, cas.canWrite else { throw CoreWorkspaceSyncFailure.refreshRequired }
+        }
         let token = try cas.beginWrite(document)
         writing = true; publish()
         let result: CoreWorkspaceCAS.WriteResult
         do {
             struct Written: Decodable, Sendable { let version: UInt64 }
-            let ack: Written = try await connection.call("doc.set", parameters: token.parameters(), timeout: timeout).result()
+            let ack: Written = try await connection.call("doc.set", parameters: token.parameters(on: gatewayCoreID), timeout: timeout).result()
             result = .acknowledged(version: ack.version)
         } catch let error as CoreRPCRemoteFailure where error.kind == "conflict" {
             result = .conflict

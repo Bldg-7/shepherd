@@ -24,9 +24,13 @@ public nonisolated struct CoreWorkspaceCAS: Sendable {
         public let document: CoreWorkspaceDocument
         fileprivate let nonce: UUID
 
-        public func parameters() throws -> Data {
+        public func parameters(on: String? = nil) throws -> Data {
             // UInt64 is emitted as an integer, never round-tripped through Any/Double.
-            var data = Data("{\"name\":\"\(CoreWorkspaceDocument.documentName)\",\"version\":\(expectedVersion),\"value\":".utf8)
+            var data = Data("{".utf8)
+            if let on {
+                data.append(Data("\"on\":".utf8)); data.append(try JSONEncoder().encode(on)); data.append(44)
+            }
+            data.append(Data("\"name\":\"\(CoreWorkspaceDocument.documentName)\",\"version\":\(expectedVersion),\"value\":".utf8))
             data.append(try document.encoded()); data.append(contentsOf: [0x7d])
             return data
         }

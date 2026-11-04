@@ -101,19 +101,7 @@ public actor CoreWorkspaceRecovery {
     }
     private nonisolated static func validCoreID(_ value: String) -> Bool { identifier(value) }
     private nonisolated static func validReference(_ ref: CoreWorkspaceDocument.TerminalReference) -> Bool {
-        canonicalID(ref.terminalID) && validCoreID(ref.coreID)
-    }
-    /// Generation-1 terminal IDs, not names. Names can retarget another program.
-    private nonisolated static func canonicalID(_ value: String) -> Bool {
-        let bytes = Array(value.utf8), alphabet = Array("0123456789bcdfghjkmnpqrstvwxyz".utf8)
-        guard bytes.count >= 2, bytes.count <= 9, bytes[0] == 116, (49...57).contains(bytes[1]) else { return false }
-        var rest = UInt64(bytes[1] - 49), before: UInt64 = 0, size: UInt64 = 9
-        for byte in bytes.dropFirst(2) {
-            guard let digit = alphabet.firstIndex(of: byte) else { return false }
-            rest = rest * 30 + UInt64(digit); before += size; size *= 30
-            if before + rest + 1 > UInt32.max { return false }
-        }
-        return before + rest + 1 <= UInt32.max
+        CoreTerminalID.isCanonical(ref.terminalID) && validCoreID(ref.coreID)
     }
     public func snapshot() -> [Record] { records }
     public func encoded() throws -> Data { try encode(records) }
