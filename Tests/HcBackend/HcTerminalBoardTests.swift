@@ -1,7 +1,10 @@
 import Foundation
 
 private nonisolated struct Stopped: Decodable, Sendable { let stopped: Bool }
-private nonisolated struct Status: Decodable, Sendable { let pid: UInt32 }
+private nonisolated struct Status: Decodable, Sendable {
+    struct Holder: Decodable, Sendable { let pid: UInt32 }
+    let pid: UInt32; let holders: [Holder]
+}
 private enum TestFailure: Error { case assertion(String) }
 
 @main @MainActor private struct HcTerminalBoardTests {
@@ -18,6 +21,7 @@ private enum TestFailure: Error { case assertion(String) }
         var transport: CoreProcessTransport?
         var connection: CoreRPCConnection?
         var corePID: UInt32?
+        var owned: [UInt32] = []
         var failure: (any Error)?
         do {
             let (t, c, hello) = try await HcCoreBootstrap.connect(binary: binary, scope: scope)
@@ -25,11 +29,14 @@ private enum TestFailure: Error { case assertion(String) }
             try check(hello.version == "0.1.17", "pinned official 0.1.17")
             let board = HcTerminalBoard(connection: c)
             let status: Status = try await c.call("server.status").result()
-            corePID = status.pid
+            corePID = status.pid; owned = [status.pid]
             try JSONSerialization.data(withJSONObject: ["corePID": status.pid]).write(to: report, options: .atomic)
             try check(try await board.list().isEmpty, "fresh board is empty")
             let argv = ["/bin/sh", "-c", "echo BOARD-READY && sleep 30"]
             let run = try await board.run(argv: argv, cwd: scope.root.path, labels: ["3rdr.operation": "board-test"])
+            let running: Status = try await c.call("server.status").result()
+            owned += running.holders.map(\.pid) + [run.pid].compactMap { $0 }
+            try JSONSerialization.data(withJSONObject: ["corePID":status.pid,"ownedPIDs":owned]).write(to:report,options:.atomic)
             try check(run.state == "live" && run.pid != nil, "run returns a live record")
             try check(run.argv == argv, "run record carries exact argv")
             let live = try await board.list()
@@ -52,11 +59,15 @@ private enum TestFailure: Error { case assertion(String) }
             try check(removed, "rm removes the finished terminal")
             try check(try await board.list().isEmpty, "board is empty after rm")
             let attachTarget = try await board.run(argv: ["/bin/sleep", "30"])
+            let attachedStatus: Status = try await c.call("server.status").result()
+            owned = Array(Set(owned + attachedStatus.holders.map(\.pid) + [attachTarget.pid].compactMap { $0 }))
+            try JSONSerialization.data(withJSONObject: ["corePID":status.pid,"ownedPIDs":owned]).write(to:report,options:.atomic)
             let session = board.attach(attachTarget.address)
-            let stream = try await session.start(columns: 80, rows: 24)
-            for await _ in stream { break } // first paint arrives
-            await session.stop()
-            try check(attachTarget.state == "live", "attach still leaves the program live")
+            try await session.start(columns: 80, rows: 24)
+            if let packet = try await session.nextOutput(timeout: .seconds(5)) { try await session.acknowledgeOutput(packet) }
+            try await session.stop()
+            let afterClose = try await board.get(attachTarget.address)
+            try check(afterClose.state == "live", "attach still leaves the program live")
             _ = try await board.kill(attachTarget.address)
         } catch { failure = error }
         var stop: Stopped?
@@ -65,7 +76,7 @@ private enum TestFailure: Error { case assertion(String) }
         if let transport { reaped = await transport.snapshot().reaped }
         let passed = failure == nil && stop?.stopped == true && reaped
         var result: [String: Any] = ["passed": passed, "checks": checks, "stopAcknowledged": stop?.stopped == true,
-                                   "connectChildReaped": reaped]
+                                   "connectChildReaped": reaped, "ownedPIDs":owned]
         if let corePID { result["corePID"] = corePID }
         if let failure { result["failure"] = String(describing: failure) }
         try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys]).write(to: report, options: .atomic)

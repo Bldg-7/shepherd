@@ -287,7 +287,9 @@ hc 감지·설치·호환성 안내도 필수 완료 조건이다(SHPHRD-153):
 - 설치/업데이트와 실행 중 core 재시작은 분리. 기존 원격 setup에도 연결하며 iOS에 로컬 hc를 설치하지 않음.
 - 독자적인 대형 설치 시스템이 아니라 공식 경로 재사용. 아래 통합 작업과 함께 검증하며 아직 미구현.
 
-#### 주입 레이어 제거 설계 근거: 전역 MCP 등록 검증 (2026-11-03)
+#### 주입 레이어 제거 설계 근거: 전역 MCP 등록 검증 (2026-11-03, 후속 보류)
+
+**현재 출시 scope가 아님.** 사용자는 experimental 브라우저를 연기하고 hc backend 교체부터 진행하기로 했다. 아래는 탐색 당시의 기록이며, env 상속이 권한/자식 세션 분리까지 보장한다거나 native Pi lifecycle/capture 기능을 전부 대체한다는 증거는 아니다. 전역 MCP·env token만으로 브라우저 접근을 허용하지 않는다.
 
 session-only 제약(사용자 전역 설정 불허)을 풀면 in-process 주입(JS 런타임·plugin·skill·hook)을 대부분 외부 MCP 서버로 대체할 수 있다. 사설 HOME/환경에서 실제 설치 CLI로 확인했다.
 
@@ -310,7 +312,7 @@ session-only 제약(사용자 전역 설정 불허)을 풀면 in-process 주입(
 
 브라우저/주입은 제품 결정으로 이번 scope에서 제외했다. 핵심은 "hc 터미널에서 에이전트 CLI 실행"을 브라우저 없이 완성하는 것이다.
 
-`ShepherdKit/CoreKit/HcTerminalSession.swift`가 herdr `TerminalSession`(`herdr terminal attach --takeover` + SSH PTY)을 대체한다. `terminal.attach`(observe=false) 프레임 스트림으로 first paint + live bytes를 `AsyncStream<Data>`로 노출하고, 입력은 DATA·크기는 RESIZE·종료는 CLOSE다. CREDIT은 bounded buffer(`bufferingNewest(1024)`, UI가 느리면 오래된 출력 drop = scrollback 의미)에 들어간 뒤 반환한다. session은 연결/core/terminal을 중단하지 않는다. CoreKit은 NIOCore 없이 Foundation만 유지하며 SwiftTerm/ByteBuffer 적응은 UI가 담당한다.
+`ShepherdKit/CoreKit/HcTerminalSession.swift`가 herdr `TerminalSession`(`herdr terminal attach --takeover` + SSH PTY)을 대체한다. **후속 수정:** 최초 AsyncStream/drop-oldest 구현은 VT 제어열을 끊을 수 있어 잘못된 설계였다(파싱된 scrollback 제거와 다름). 이제 `start` → `nextOutput` → SwiftTerm feed → `acknowledgeOutput` 순서로, renderer 소비 전 CREDIT을 반환하지 않고 두 번째 출력 queue/drop도 없다. 입력은 DATA·크기는 RESIZE·종료는 CLOSE다. idle timeout은 없으며 stop-before/during-open과 concurrent close를 처리하고 cleanup 오류를 전파한다. session은 연결/core/terminal을 중단하지 않는다. CoreKit은 Foundation만 유지한다.
 
 `Tests/HcBackend/`가 공식 0.1.17 private core에서 실제로 검증한다: attach first paint의 READY, `write("hello\r")`의 GOT echo, `resize(100,30)`이 `terminal.get`에 반영, attach 종료 후 프로그램 생존, 명시적 kill, 전체 owned PID/socket 정리. 상세: `Tests/HcBackend/README.md`.
 
@@ -505,6 +507,16 @@ run/doc과 close/kill의 비원자적 결과는 dispatch 전에 영속하는 jou
 실제 owned core 통합에서 lost-launch orphan을 생성해 review용으로 남기고 label로 입양하거나 자동 kill하지 않았으며, CAS 충돌/부분 kill 뒤 fresh read로 조정함을 확인한다. 순수 unit은 세 기반을 각각 검증한다. 남은 것은 실제 UI/local focus 배선, explicit rebase 정책, gateway 원격 doc routing, native launch authority/설치(D) 결합이다.
 
 최종 검증 `/private/tmp/hc-remaining.LWk5Hp/`: Debug/optimized 각각 codec·편집·CAS 88 + RPC owner 32 + focus/복구/알림 49 checks, iOS typecheck(13 stages). 공식 0.1.17 owned core 통합 34 checks에서 lost-launch orphan 미입양/미자동kill 및 전체 owned PID 정리를 확인. protocol 회귀 7단계(`/private/tmp/hc-remaining-protocol.E9LJqK/run`), macOS/iOS unsigned build(`/private/tmp/hc-remaining-build.OF4lRF/`) 통과.
+
+### D 추가 구현: 실제 hc workspace 화면 배선 (staged)
+
+`HcWorkspaceModel`은 실제 RPC/event/workspace store, 기기별 focus, 영속 partial-operation journal을 화면 수명에 조합한다. placeholder tab 문서 저장 → terminal.run 1회 → 응답 reference 영속 → CAS binding 순서이며, unconfirmed outcome은 review 항목으로 남긴다. close view는 프로그램 생존을 명시하고 자동 kill하지 않는다. terminal 목록은 별도 bounded event subscription에서 갱신한다.
+
+`Shepherd/HcBackend/HcWorkspaceView.swift`와 `HcTerminalPane.swift`는 SwiftUI sidebar/layout 및 기존 native SwiftTerm host를 이 model에 직접 연결한다. raw input/resize/focus와 terminal reply는 bounded 순서대로 전송하고, SwiftTerm feed 뒤에만 CREDIT을 반환한다. legacy Ctrl+B escaping, HerdrClient, AgentRuntime/browser/MCP/credential은 이 경로에 없다.
+
+아직 release 기본 화면 전환은 아니다. DEBUG 전용 명시적 tmp HOME integration host가 AppDelegate의 legacy/browser/proxy 시작을 우회하고, 실제 창에서 program 실행·rendered cell marker·sidebar/tab accessibility를 검증한다. 자체 NSView bitmap은 SwiftUI layer를 누락할 수 있어 sidebar pixel의 증거로 세지 않는다. 설치/원격/파일/모바일 기능이 덜 된 상태에서 release UI를 바꾸거나 영구 dual backend를 추가하지 않는다. 검증 명령은 `Tests/HcBackend/run-ui-tests.py`.
+
+검증: `/private/tmp/hc-screen-final.TtxPl4/unit`에서 Debug/optimized 각각 88+32+49+16=185 checks 및 iOS Swift 6 typecheck(17 stages), `/private/tmp/hc-screen-cleanup.29msb4/run` 실제 core/model 41 checks. `/private/tmp/hc-screen-app.4spxstrb` 실제 app 8 checks, AX ID·rendered cell·자체 bitmap·natural app exit·owned PID/socket 정리. 이전 AX readiness 실패는 별도 보존. macOS 최종 build(`/private/tmp/hc-screen-ax.gHcVSE/macos.log`), iOS build(`/private/tmp/hc-screen-final.TtxPl4/ios.log`), attach/board/protocol 회귀(`/private/tmp/hc-screen-regression.ofHCyB/`) 통과.
 
 ## 최종 권고
 

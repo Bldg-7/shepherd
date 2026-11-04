@@ -1,111 +1,102 @@
 import Foundation
 
-/// One interactive attach to an hc terminal on an already-negotiated
-/// connection: `terminal.attach` (observe=false) yields first paint then live
-/// bytes as DATA frames; keys are sent as DATA, size changes as RESIZE, and
-/// the stream is retired with CLOSE. CREDIT is returned only after the UI
-/// consumer has received each DATA frame — dequeuing never grants credit.
-///
-/// This is the hc replacement for the herdr `TerminalSession` (which ran
-/// `herdr terminal attach --takeover` over an SSH PTY). No PTY, no shell
-/// command string, and no separate SSH hop: input/resize/close are the
-/// terminal's own stream frames. The caller owns the connection; closing this
-/// session never stops the core or the terminal. Output is raw `Data` (VT/ANSI
-/// as the core renders it); the UI layer owns SwiftTerm/ByteBuffer adaptation.
+/// One interactive attach on a caller-owned negotiated connection. Raw VT is
+/// ordered/lossless: request a packet, render it, THEN acknowledge it. There is
+/// no second AsyncStream queue, no dropped-oldest policy and no idle timeout.
+/// Closing this attach never stops the program, core or shared RPC connection.
 public actor HcTerminalSession {
-    public enum Failure: Error, Equatable, Sendable {
-        case notStarted, alreadyStarted, oversizedGrid
-    }
+    public enum Failure: Error, Equatable, Sendable { case notStarted, alreadyStarted, oversizedGrid, wrongTerminal }
     private let connection: CoreRPCConnection
     private let terminalID: String
     private let timeout: Duration
     private var stream: CoreStream?
-    private var reader: Task<Void, Never>?
-    private var output: AsyncStream<Data>.Continuation?
+    private var opening: Task<CoreStream, Error>?
+    private var closing: Task<Void, Error>?
     private var hasStarted = false
-    private var stopRequested = false
+    private var stopped = false
 
     public init(connection: CoreRPCConnection, terminalID: String, timeout: Duration = .seconds(10)) {
-        self.connection = connection
-        self.terminalID = terminalID
-        self.timeout = timeout
+        self.connection = connection; self.terminalID = terminalID; self.timeout = timeout
     }
-
-    public func start(columns: Int, rows: Int) async throws -> AsyncStream<Data> {
+    deinit {
+        opening?.cancel()
+        if let stream { Task { try? await stream.close() } }
+    }
+    public func start(columns: Int, rows: Int) async throws {
+        try Task.checkCancellation()
+        guard !stopped else { throw CancellationError() }
         guard !hasStarted else { throw Failure.alreadyStarted }
-        guard (1...2048).contains(columns), (1...2048).contains(rows) else { throw Failure.oversizedGrid }
+        try grid(columns, rows)
         hasStarted = true
-        let parameters = try JSONSerialization.data(withJSONObject: [
-            "terminal": terminalID, "cols": UInt16(columns), "rows": UInt16(rows)
-        ], options: [.sortedKeys])
-        let opened = try await connection.openStream("terminal.attach", parameters: parameters, timeout: timeout)
-        guard !stopRequested else { try await opened.close(); throw CancellationError() }
-        stream = opened
-        // Install the consumer before reading, so the reader task can never
-        // yield into a continuation the UI has not yet received.
-        // Bounded: if the UI drains slower than the core sends, oldest output
-        // is dropped (terminal scrollback semantics) instead of growing forever.
-        let pair = AsyncStream<Data>.makeStream(bufferingPolicy: .bufferingNewest(1024))
-        output = pair.continuation
-        pair.continuation.onTermination = { [weak self] _ in Task { await self?.consumerStopped() } }
-        reader = Task.detached { [weak self, opened] in await self?.pump(opened) }
-        return pair.stream
+        let params = try JSONSerialization.data(withJSONObject: ["terminal":terminalID,"cols":columns,"rows":rows], options: [.sortedKeys])
+        let connection = connection, timeout = timeout
+        let job = Task { try await connection.openStream("terminal.attach", parameters: params, timeout: timeout) }
+        opening = job
+        do {
+            let opened = try await withTaskCancellationHandler { try await job.value } onCancel: { job.cancel() }
+            opening = nil
+            guard !stopped, !Task.isCancelled else { try await opened.close(); throw CancellationError() }
+            stream = opened
+            struct Attached: Decodable, Sendable {
+                struct Terminal: Decodable, Sendable { let address: String }
+                let terminal: Terminal
+            }
+            let reply: Attached = try opened.initialReply.result()
+            guard reply.terminal.address == terminalID else { throw Failure.wrongTerminal }
+        } catch {
+            opening = nil
+            try await stop()
+            throw error
+        }
     }
-
+    /// A quiet interactive terminal can remain idle indefinitely. Optional
+    /// timeout is for bounded tests, not normal UI lifetime. Only one packet
+    /// may be outstanding; the connection enforces consumption CREDIT.
+    public func nextOutput(timeout: Duration? = nil) async throws -> CoreStreamPacket? {
+        guard !stopped, let stream else { throw Failure.notStarted }
+        guard let packet = try await stream.next(timeout: timeout) else { return nil }
+        switch packet.frame.kind {
+        case .data: return packet
+        case .close: return nil
+        default: throw CoreStreamFailure.invalidFrame
+        }
+    }
+    public func acknowledgeOutput(_ packet: CoreStreamPacket) async throws {
+        guard !stopped, let stream else { throw Failure.notStarted }
+        try await stream.acknowledge(packet)
+    }
     public func write(_ data: Data) async throws {
-        guard let stream else { throw Failure.notStarted }
+        guard !stopped, let stream else { throw Failure.notStarted }
         try await stream.send(data)
     }
-
     public func resize(columns: Int, rows: Int) async throws {
-        guard let stream else { throw Failure.notStarted }
-        guard (1...2048).contains(columns), (1...2048).contains(rows) else { throw Failure.oversizedGrid }
+        try grid(columns, rows)
+        guard !stopped, let stream else { throw Failure.notStarted }
         try await stream.resize(columns: UInt16(columns), rows: UInt16(rows))
     }
-
-    /// Ends the attach and finishes the output stream. Idempotent, and safe at
-    /// any point relative to `start()`: a stop told before attach completes
-    /// must never leave the terminal taken over.
-    public func stop() async {
-        stopRequested = true
-        let reader = reader
-        reader?.cancel()
-        let stream = stream
-        self.stream = nil
-        self.reader = nil
-        if let stream { try? await stream.close() }
-        await reader?.value
-        output?.finish()
-        output = nil
+    public func focus(_ focused: Bool) async throws {
+        guard !stopped, let stream else { throw Failure.notStarted }
+        try await stream.focus(focused)
     }
-
-    private func consumerStopped() async {
-        guard !stopRequested else { return }
-        stopRequested = true
-        reader?.cancel()
-        if let stream { self.stream = nil; try? await stream.close() }
-        reader = nil
+    private func grid(_ columns: Int, _ rows: Int) throws {
+        guard (1...2048).contains(columns), (1...2048).contains(rows), columns * rows <= 262_144 else { throw Failure.oversizedGrid }
     }
-
-    private func pump(_ stream: CoreStream) async {
-        do {
-            while !Task.isCancelled {
-                guard let packet = try await stream.next(timeout: timeout) else { break }
-                if packet.frame.kind == .close { try await stream.acknowledge(packet); break }
-                guard packet.frame.kind == .data else {
-                    try await stream.acknowledge(packet); continue
-                }
-                output?.yield(packet.frame.payload)
-                // Return CREDIT once the chunk is accepted into the bounded
-                // buffer; a stalled UI drops oldest output rather than
-                // unbounded memory, while the core stays within its credit.
-                _ = try await stream.acknowledge(packet)
-            }
-        } catch { /* A bounded public failure kind is surfaced by the closed stream. */ }
-        output?.finish()
-        if !stopRequested {
-            stopRequested = true
-            if self.stream != nil { self.stream = nil; try? await stream.close() }
+    /// Shared cleanup task makes concurrent stop callers await the same result.
+    /// Cancellation during open retires the late-open stream via RPC tombstone
+    /// cleanup, never closes another channel or sends terminal.kill.
+    public func stop() async throws {
+        if let closing { try await closing.value; return }
+        stopped = true
+        let opening = opening, stream = stream
+        opening?.cancel()
+        let job = Task {
+            var failure: (any Error)?
+            if let opened = try? await opening?.value { do { try await opened.close() } catch { failure = error } }
+            if let stream { do { try await stream.close() } catch { failure = error } }
+            if let failure { throw failure }
         }
+        closing = job
+        try await job.value
+        self.opening = nil; self.stream = nil
     }
 }

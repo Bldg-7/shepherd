@@ -95,5 +95,5 @@ passed = result.get('passed') is True and result.get('stopAcknowledged') is True
     'ownCoreStopped': True, 'ownSocketRemoved': True, 'ownedProcessesExited': bool(pids),
     'launchdLifecycleQualified': False, 'isolatedHomeAndSession': True, 'externalNetworkDenied': True,
     'userCoreOrConfigTouched': False, 'browserAuthorityUsed': False}, indent=2))
-print('PASS hc terminal attach/session:', out)
 assert passed
+print('PASS hc terminal attach/session:', out)

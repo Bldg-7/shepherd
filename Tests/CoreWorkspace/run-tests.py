@@ -14,14 +14,15 @@ sources=sorted(str(p.relative_to(ROOT)) for p in (ROOT/'ShepherdKit/Sources/Shep
 test='Tests/CoreWorkspace/CoreWorkspaceTests.swift'
 store_test='Tests/CoreWorkspace/CoreWorkspaceStoreTests.swift'
 lifecycle_test='Tests/CoreWorkspace/CoreWorkspaceLifecycleTests.swift'
-tracked=sources+[test,store_test,lifecycle_test,str(Path(__file__).resolve().relative_to(ROOT))]
+delivery_test='Tests/HcBackend/HcTerminalDeliveryTests.swift'
+tracked=sources+[test,store_test,lifecycle_test,delivery_test,str(Path(__file__).resolve().relative_to(ROOT))]
 def hashes():return {n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in tracked}
 before=hashes();(out/'source-hashes.json').write_text(json.dumps(before,indent=2))
 (out/'compiler.txt').write_text(subprocess.check_output(['/usr/bin/xcrun','swiftc','--version'],env=env,text=True,timeout=30))
 flags=['/usr/bin/xcrun','swiftc','-swift-version','6','-default-isolation','MainActor','-parse-as-library','-warnings-as-errors']
 for feature in ['MemberImportVisibility','NonisolatedNonsendingByDefault','InferIsolatedConformances']:flags+=['-enable-upcoming-feature',feature]
 profile=out/'no-network.sb';profile.write_text('(version 1)\n(allow default)\n(deny network*)\n')
-stages=[];counts=[];store_counts=[];lifecycle_counts=[]
+stages=[];counts=[];store_counts=[];lifecycle_counts=[];delivery_counts=[]
 def stage(name,cmd):
     log=out/(name+'.log')
     result=subprocess.run([sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout','120','--natural-exit-grace','5','--log',str(log),'--',*map(str,cmd)],cwd=ROOT,env=env,timeout=155)
@@ -47,8 +48,14 @@ for mode,extra in [('debug',[]),('optimized',['-O'])]:
     value=json.loads(lifecycle_report.read_text())
     if not value['passed'] or value['checks']<1:raise RuntimeError('no passing lifecycle checks')
     lifecycle_counts.append(value['checks'])
+    delivery_binary=out/('delivery-'+mode);delivery_report=out/(mode+'-delivery.json')
+    stage(mode+'-delivery-build',flags+extra+sources+[delivery_test,'-o',delivery_binary])
+    stage(mode+'-delivery-tests',['/usr/bin/sandbox-exec','-f',profile,delivery_binary,delivery_report])
+    value=json.loads(delivery_report.read_text())
+    if not value['passed'] or value['checks']<1:raise RuntimeError('no passing delivery checks')
+    delivery_counts.append(value['checks'])
 sdk=subprocess.check_output(['/usr/bin/xcrun','--sdk','iphonesimulator','--show-sdk-path'],env=env,text=True,timeout=30).strip()
 stage('ios-typecheck',flags+['-typecheck','-sdk',sdk,'-target',platform.machine()+'-apple-ios17.0-simulator']+sources)
 if before!=hashes():raise RuntimeError('source changed during validation')
-(out/'validation.json').write_text(json.dumps({'passed':True,'stages':stages,'checks':counts,'storeChecks':store_counts,'lifecycleChecks':lifecycle_counts,'network':False,'userCoreUsed':False,'productIntegrationComplete':False},indent=2))
+(out/'validation.json').write_text(json.dumps({'passed':True,'stages':stages,'checks':counts,'storeChecks':store_counts,'lifecycleChecks':lifecycle_counts,'deliveryChecks':delivery_counts,'network':False,'userCoreUsed':False,'productIntegrationComplete':False},indent=2))
 print('PASS workspace schema/CAS:',out)

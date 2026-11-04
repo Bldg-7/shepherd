@@ -124,6 +124,35 @@ private nonisolated struct Notice: Decodable, Sendable {
         try check(await journal.snapshot().first(where: { $0.id == close.operationID })!.complete, "partial close reconciled by fresh finished read")
         // Final server.stop below owns and cleans the deliberately retained test orphan.
     }
+    static func screenModel(config: CoreProcessTransport.Configuration, home: URL) async throws -> [UInt32] {
+        let transport = try CoreProcessTransport(configuration: config)
+        let connection = try CoreRPCConnection(transport: transport)
+        let journal = home.appending(path: "model-operations.json"), focus = home.appending(path: "model-focus.json")
+        let model = HcWorkspaceModel(connection: connection, saveRecovery: { try $0.write(to: journal, options: .atomic) },
+                                     saveFocus: { try $0.write(to: focus, options: .atomic) })
+        do {
+            try await model.start()
+            try check(model.state == .connected && model.canEdit, "screen model owns live RPC/storage subscriptions")
+            let id = try await model.createWorkspace(name: "screen model")
+            try await model.launchTab(workspaceID: id, name: "owned sleeper", argv: ["/bin/sleep","60"], cwd: home.path)
+            guard let tab = model.selectedTab, let pane = tab.layout?.panes.first, let ref = pane.terminal else { throw CoreWorkspaceFailure.invalidReference }
+            try check(model.focus.paneByTab[tab.id] == pane.id && ref.coreID == model.coreID, "actual launch journal binds selected pane")
+            let before: Status = try await connection.call("server.status").result()
+            try await model.closeTab(tab.id)
+            let after: Status = try await connection.call("server.status").result()
+            try check(before.live == after.live, "screen close only removes layout; program survives")
+            try check(model.recoveryRecords.allSatisfy(\.complete), "screen journal reconciles successful run/bind/close")
+            let restored = try CoreWorkspaceFocus.restore(Data(contentsOf: focus), coreID: model.coreID!)
+            try check(restored == model.focus, "screen persists device-local focus")
+            try await model.disconnect()
+            try check(model.state == .closed && !model.canEdit, "screen disconnect retires writes")
+            let snapshot = await transport.snapshot()
+            try check(snapshot.reaped, "screen releases owned connect process, not core")
+            // Keep the actual launched process in the outer fixture's cleanup
+            // set too; a holder/core exit alone is not a process-retirement check.
+            return before.holders.map(\.pid) + model.terminals.compactMap(\.pid)
+        } catch { try? await model.disconnect(); throw error }
+    }
     static func main() async throws {
         let args = CommandLine.arguments
         guard args.count == 5 else { throw CoreWorkspaceFailure.invalidDocument }
@@ -209,6 +238,10 @@ private nonisolated struct Notice: Decodable, Sendable {
             let lifecycle = try await CoreWorkspaceStore(connection: a), competitor = try await CoreWorkspaceStore(connection: b)
             stores += [lifecycle, competitor]; _ = try await lifecycle.start(); _ = try await competitor.start()
             try await recovery(a, lifecycle, competitor, home: home, report: report, ownedPIDs: &ownedPIDs)
+            ownedPIDs += try await screenModel(config: config, home: home)
+            let finalOwned: Status = try await a.call("server.status").result()
+            ownedPIDs = Array(Set(ownedPIDs + finalOwned.holders.map(\.pid)))
+            try JSONSerialization.data(withJSONObject: ["corePID":finalOwned.pid,"ownedPIDs":ownedPIDs]).write(to:report,options:.atomic)
         } catch { failure = error }
         for store in stores { try? await store.close() }
         for stream in streams { try? await stream.close() }

@@ -19,12 +19,14 @@ private enum TestFailure: Error { case assertion(String) }
     static func params(_ value: [String: Any]) throws -> Data {
         try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
     }
-    static func readUntil(_ stream: AsyncStream<Data>, accumulator: inout Data, needle: String,
+    static func readUntil(_ session: HcTerminalSession, accumulator: inout Data, needle: String,
                           deadline: ContinuousClock.Instant) async throws {
         let target = Data(needle.utf8)
         while !accumulator.contains(target) {
             guard ContinuousClock.now < deadline else { throw TestFailure.assertion("output missing: \(needle)") }
-            for await bytes in stream { accumulator.append(bytes); break }
+            guard let packet = try await session.nextOutput(timeout: .seconds(3)) else { throw TestFailure.assertion("output ended") }
+            accumulator.append(packet.frame.payload)
+            try await session.acknowledgeOutput(packet)
         }
         checks += 1
     }
@@ -62,11 +64,11 @@ private enum TestFailure: Error { case assertion(String) }
             try check(run.pid != nil, "owned run has a live PID")
             let attach = HcTerminalSession(connection: connection, terminalID: run.address, timeout: .seconds(5))
             session = attach
-            let stream = try await attach.start(columns: 80, rows: 24)
+            try await attach.start(columns: 80, rows: 24)
             var received = Data()
-            try await readUntil(stream, accumulator: &received, needle: "READY", deadline: .now.advanced(by: .seconds(10)))
+            try await readUntil(attach, accumulator: &received, needle: "READY", deadline: .now.advanced(by: .seconds(10)))
             try await attach.write(Data("hello\r".utf8))
-            try await readUntil(stream, accumulator: &received, needle: "GOT:hello", deadline: .now.advanced(by: .seconds(10)))
+            try await readUntil(attach, accumulator: &received, needle: "GOT:hello", deadline: .now.advanced(by: .seconds(10)))
             try check(received.count < (1 << 20), "bounded attach output")
             try await attach.resize(columns: 100, rows: 30)
             var grid: TerminalRecord = try await connection.call("terminal.get", parameters: try params(["terminal": run.address])).result()
@@ -76,13 +78,13 @@ private enum TestFailure: Error { case assertion(String) }
                 grid = try await connection.call("terminal.get", parameters: try params(["terminal": run.address])).result()
             }
             try check(grid.cols == 100 && grid.rows == 30, "resize reached the terminal")
-            await attach.stop(); session = nil
+            try await attach.stop(); session = nil
             let afterAttach: Status = try await connection.call("server.status").result()
             try check(afterAttach.live == 1, "attach close must not end the program")
             let killed: TerminalRecord = try await connection.call("terminal.kill", parameters: try params(["terminal": run.address])).result()
             try check(killed.state == "finished", "explicit kill of owned program")
         } catch { failure = error }
-        if let session { await session.stop() }
+        if let session { try await session.stop() }
         let stop: Stopped? = try? await connection.call("server.stop").result()
         try await connection.close()
         let snapshot = await transport.snapshot()

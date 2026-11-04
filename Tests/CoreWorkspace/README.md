@@ -11,14 +11,20 @@ The runner builds and executes Debug and optimized Swift 6 tests, then typecheck
 both production files for iOS. It preserves source hashes and stage/cleanup logs.
 
 Current validation: **88 codec/edit/CAS + 32 RPC-owner + 49 focus/recovery/
-notification checks per build mode**, plus iOS Swift 6 typechecking (13 stages).
-Evidence: `/private/tmp/hc-remaining.LWk5Hp/unit`.
-The same directory's `real` gate passes 34 checks against official hc 0.1.17,
-including the production store, cross-client refresh, and a deliberately retained
-lost-launch orphan that is never label-adopted or auto-killed; all owned PIDs
-retire on stop. Protocol regression (seven stages) passes at
-`/private/tmp/hc-remaining-protocol.E9LJqK/run`; unsigned macOS/iOS builds pass
-at `/private/tmp/hc-remaining-build.OF4lRF/{macos,ios}.log`.
+notification + 16 lossless attach checks per build mode**, plus iOS Swift 6
+typechecking (17 stages). Evidence: `/private/tmp/hc-screen-final.TtxPl4/unit`.
+
+The actual-screen model is now composed in `HcWorkspaceModel`; its private-core
+integration checks real launch/binding, focus persistence, view-close/program
+survival and disconnect cleanup (41 checks including previous storage tests).
+Final real-core cleanup rerun: `/private/tmp/hc-screen-cleanup.29msb4/run`.
+
+The real suite also retains a lost-launch orphan without label adoption or
+automatic kill. The fixture's final stop verifies core, holders and recorded
+program PIDs retire. Protocol regression (seven stages) passes at
+`/private/tmp/hc-screen-regression.ofHCyB/protocol`; unsigned macOS/iOS builds pass
+at `/private/tmp/hc-screen-final.TtxPl4/{macos,ios}.log`.
+See `../HcBackend/README.md` for the separate native SwiftUI screen gate.
 
 The document preflight and typed decoder consume the same normalized JSON object;
 they cannot disagree about which repeated-key value to validate and persist.

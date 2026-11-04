@@ -9,7 +9,7 @@ import SwiftUI
 
     init() {
         #if DEBUG && os(macOS)
-        let machineStore = OwnedOperatorFixture.machineStore()
+        let machineStore = HcMigrationConfiguration.current?.machineStore() ?? OwnedOperatorFixture.machineStore()
         #else
         let machineStore = MachineStore()
         #endif
@@ -23,7 +23,19 @@ import SwiftUI
         #endif
     }
 
-    private var mainContent: some View {
+    @ViewBuilder private var mainContent: some View {
+        #if DEBUG && os(macOS)
+        if let configuration = HcMigrationConfiguration.current {
+            HcMigrationHost(configuration: configuration)
+        } else {
+            legacyContent
+        }
+        #else
+        legacyContent
+        #endif
+    }
+
+    private var legacyContent: some View {
         ContentView(machineStore: machineStore)
             #if DEBUG && os(macOS)
             .defaultAppStorage(OwnedOperatorFixture.configuration?.defaults ?? .standard)
@@ -76,6 +88,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // the CoreGraphics path. AppKit reads this once, on the first layer
         // display, and only honors a real Bool.
         UserDefaults.standard.register(defaults: ["NSViewCanUseGPUAcceleration": false])
+        #if DEBUG
+        if HcMigrationConfiguration.requested { return } // Private hc root never initializes legacy/browser/proxy services.
+        #endif
         if ShepherdBrowserFeature.shared.isEnabled { BrowserEngine.prepare() }
         #if DEBUG
         if ProcessInfo.processInfo.environment["SHEPHERD_BROWSER_FEATURE_FIXTURE"] != nil {
@@ -122,6 +137,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         #if DEBUG
+        if HcMigrationConfiguration.requested { return }
         OwnedOperatorFixture.didLaunch()
         #endif
         NotificationCoordinator.shared.start()
@@ -140,6 +156,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// in docs/agent-browser-plan.md). It has to happen in here, before
     /// returning: nothing asynchronous gets to run once the app is quitting.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        #if DEBUG
+        if HcMigrationConfiguration.requested { return .terminateNow }
+        #endif
         if CDPProxy.shared.activeConnections > 0 {
             let alert = NSAlert()
             alert.messageText = String(localized: "Disconnect browser agents and quit?")
