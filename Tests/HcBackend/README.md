@@ -76,3 +76,20 @@ foreground anchor/snapshot (session leader with a controlling tty), and
 `proc_pidpath` (the kernel's executable, not argv). It is observation, not
 authority — the caller still compares the resolved executable against what it
 asked to launch, and PID/start-time continuity alone cannot survive an exec.
+
+## Board
+
+```sh
+python3 Tests/HcBackend/run-board-tests.py \
+  --official-017-archive /absolute/herdr-core-macos-aarch64.tar.gz \
+  --output "$(mktemp -d /tmp/hc-board.XXXXXX)/run"
+```
+
+`HcTerminalBoard` is the hc replacement for the herdr board's terminal surface:
+`list`/`get`/`run`/`read`/`kill`/`remove`/`attach` on one negotiated connection.
+`HcTerminalRecord` decodes the core's public terminal record (address, name,
+labels, argv, cwd, state, pid, exit, reason, title, cols/rows, timestamps, OSC
+status, reported, turn) and treats those facts as presentation-only. `run` takes
+exact argv (no shell line parsing), so quoting stays the caller's. The gate
+proves list→run→get→read-marker→kill→rm round-trips and that attach leaves the
+program live, against a pinned official core.
