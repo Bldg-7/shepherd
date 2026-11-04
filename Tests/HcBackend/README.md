@@ -61,3 +61,18 @@ state/config/runtime + a short socket path, a direct-startup environment
 and a `CoreProcessTransport` + `CoreRPCConnection` whose hello verifies version,
 generation and required methods. The caller owns the connection and stops the
 core it started.
+
+## Launch owner proof
+
+```sh
+python3 Tests/HcBackend/run-launch-proof-tests.py \
+  --official-017-archive /absolute/herdr-core-macos-aarch64.tar.gz \
+  --output "$(mktemp -d /tmp/hc-proof.XXXXXX)/run"
+```
+
+`HcLaunchProof` proves a program hc launched is the process actually running in
+its terminal: hc's own record (live state, PID, exact argv), the kernel
+foreground anchor/snapshot (session leader with a controlling tty), and
+`proc_pidpath` (the kernel's executable, not argv). It is observation, not
+authority — the caller still compares the resolved executable against what it
+asked to launch, and PID/start-time continuity alone cannot survive an exec.
