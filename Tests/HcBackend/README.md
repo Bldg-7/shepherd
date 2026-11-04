@@ -108,6 +108,45 @@ involved, and `launchdLifecycleQualified` stays false.
 - `/private/tmp/hc-screen-regression.ofHCyB/{attach,board,protocol}` retains
   nine attach, twelve board and seven-stage protocol regression results.
 
+## File/layout integration and release browser retirement
+
+The hc pane now preserves native file gestures and file drops. Direct-origin
+file previews reuse the real bounded file/Markdown/image panel; human web/local
+HTML links use the default browser. Local drops paste escaped paths through
+SwiftTerm's paste encoder. SSH image uploads retain the bounded streaming
+uploader and require a pin; both SFTP preview and uploads apply paired-address
+range/DNS binding before authenticating.
+
+Workspace UI supports creating a new shell in a split, closing/collapsing a
+pane view without killing its program, and explicitly showing a fresh canonical
+core terminal in a new tab (not operation-label adoption). Pending store views
+are refreshed from current store state before applying to the screen.
+
+The hc release now ignores persisted browser opt-in and refuses re-enabling it;
+normal startup/quit hooks cannot revive browser/injection/legacy endpoints.
+Preferences/profiles are preserved, old sessions are not adopted or terminated,
+and the new root explains the retirement. Only explicitly isolated DEBUG legacy
+browser fixtures can exercise the old browser feature. This does not claim that
+external CLIs' inherited hooks were edited or removed.
+
+`/private/tmp/hc-screen-app.p3gksodb` passes 11 actual-app checks: live OSC8 file
+link in real SwiftTerm, escaped Finder-path bytes arriving in the inert owned
+program, and file-content text read by the real preview panel/accessibility tree,
+plus original renderer/root/cleanup gates. This live-link check does **not**
+replace the still-failing official initial/reconnect OSC8 gates.
+
+`/private/tmp/hc-layout.BrTcfe/{unit,real}` passes 185 checks per build mode and
+44 actual-core checks (split/view close/show existing terminal included).
+`release-macos.log` and `ios.log` in that directory pass. Release policy/password
+preference retirement tests pass at `/private/tmp/hc-retirement.dXIXoV/run`.
+File/drop regression gates pass at `/private/tmp/hc-drop.28BpTb/run` and
+`/private/tmp/hc-preview.ZTyeJW/run` (including production panel restoration and
+native terminal file links). Standalone SwiftUI fixture compilation now passes
+an explicit SDK/plugin path matching Xcode, rather than silently mixing SDKs.
+The initial attempts are preserved as failures, not counted as passes.
+The shared connection owner moved to ShepherdKit for the upcoming iOS root;
+mobile root composition is qualified separately.
+
 ## Product machine factory and root
 
 `MachineStore.makeHcConnection` is the production factory, separate from private

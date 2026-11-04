@@ -40,6 +40,10 @@ enum MachineStore { enum EditError: Error { case missingCredential } }
         let deniedConnects = await fake.connects; check(deniedConnects == 0)
         do { _ = try await FilePreviewReader().read(path: path, machine: machine, secret: nil); preconditionFailure() } catch MachineStore.EditError.missingCredential { checks += 1 }
         let noSecretConnects = await fake.connects; check(noSecretConnects == 0)
+        var paired = machine; paired.hostname = "127.0.0.1"; paired.addressKind = .privateIPv4
+        do { _ = try await FilePreviewReader().read(path: path, machine: paired, secret: secret); preconditionFailure() }
+        catch PairingAddressError.invalid { checks += 1 }
+        let rejectedPairedConnects = await fake.connects; check(rejectedPairedConnects == 0)
         let modes: [UInt32?] = [nil, 0o040700, 0o010600, 0o020600]
         for mode in modes {
             await fake.plan(mode: mode)

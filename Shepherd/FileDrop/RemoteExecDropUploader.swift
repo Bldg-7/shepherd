@@ -32,6 +32,7 @@ actor RemoteExecDropUploader: TerminalDropUploading {
     private let username: String
     private let credential: HostCredential
     private let pinnedFingerprint: String
+    private let addressKind: Machine.AddressKind?
     /// The herdr machine the pane is on, or nil for the host's own herdr.
     private let herdrMachine: HerdrMachine?
     private var client: SSHClient?
@@ -39,12 +40,13 @@ actor RemoteExecDropUploader: TerminalDropUploading {
     /// way then is closed as soon as it is made.
     private var closed = false
 
-    init(host: String, port: Int, username: String, credential: HostCredential, pinnedFingerprint: String, on herdrMachine: HerdrMachine? = nil) {
+    init(host: String, port: Int, username: String, credential: HostCredential, pinnedFingerprint: String, addressKind: Machine.AddressKind? = nil, on herdrMachine: HerdrMachine? = nil) {
         self.host = host
         self.port = port
         self.username = username
         self.credential = credential
         self.pinnedFingerprint = pinnedFingerprint
+        self.addressKind = addressKind
         self.herdrMachine = herdrMachine
     }
 
@@ -77,9 +79,14 @@ actor RemoteExecDropUploader: TerminalDropUploading {
     private func connection() async throws -> SSHClient {
         if let client { return client }
         guard !closed else { throw CancellationError() }
+        let connectionHost: String
+        if let addressKind { connectionHost = try await PairingAddressResolver().resolve(hostname: host, kind: addressKind).description }
+        else { connectionHost = host }
+        try Task.checkCancellation()
+        guard !closed else { throw CancellationError() }
         let authMethod = try credential.authenticationFactory(username: username)
         let validator = TOFUHostKeyValidator(pinnedFingerprint: pinnedFingerprint, observedFingerprint: NIOLockedValueBox<String?>(nil))
-        var settings = SSHClientSettings(host: host, port: port, authenticationMethod: authMethod,
+        var settings = SSHClientSettings(host: connectionHost, port: port, authenticationMethod: authMethod,
                                          hostKeyValidator: .custom(validator))
         settings.connectTimeout = .seconds(10)
         let client = try await SSHClient.connect(to: settings)

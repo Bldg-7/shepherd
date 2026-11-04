@@ -13,6 +13,20 @@ private final class ObservationCounter: @unchecked Sendable {
         let suite = "com.bldg-7.shepherd.feature-policy-test." + UUID().uuidString
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
+        if !ShepherdBrowserFeature.isAvailable {
+            defaults.set(true, forKey: ShepherdBrowserFeature.preferenceKey)
+            defaults.set("pending", forKey: PasswordManagerPreferences.onboardingKey)
+            let retired = ShepherdBrowserFeature(defaults: defaults)
+            precondition(!retired.isEnabled, "saved opt-in does not revive browser services")
+            precondition(!retired.passwordManagers.resumeAtStartup(owner: UUID(), browserEnabled: true), "no credential onboarding lease from old opt-in")
+            let enabled = await retired.setEnabled(true, canDisable: { fatalError("must not consult legacy sessions") }, transition: { fatalError("must not start browser/runtime") })
+            precondition(!enabled && !retired.isEnabled && retired.refusal != nil)
+            precondition(defaults.bool(forKey: ShepherdBrowserFeature.preferenceKey), "preserve original user preference/data, do not rewrite it as a safe shutdown")
+            let disabled = await retired.setEnabled(false, canDisable: { false }, transition: { fatalError("must not terminate old sessions") })
+            precondition(disabled && !retired.isEnabled)
+            print("PASS: hc release retirement, saved opt-in ignored, no credentials/legacy session probe/start/kill, user data preserved")
+            return
+        }
         let feature = ShepherdBrowserFeature(defaults: defaults)
         precondition(!feature.isEnabled, "default OFF")
         let windowA = ObservationCounter(), windowB = ObservationCounter()

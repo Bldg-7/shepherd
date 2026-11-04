@@ -30,7 +30,9 @@ hashes={str(p.relative_to(ROOT)):digest(p) for p in tracked}
 product=app/'Contents/MacOS/hrdrhrdrhrdr.debug.dylib'
 assert all(p.stat().st_mtime<=product.stat().st_mtime for p in tracked if p.suffix=='.swift'),'build current sources first'
 (out/'products.json').write_text(json.dumps({str(p.relative_to(app)):digest(p) for p in [exe,product]},indent=2))
-(out/'ui-peer.py').write_text("import sys,time\nprint('CJK 한글 😀 real SwiftTerm UI',flush=True)\nprint('HC-UI-RENDER-DONE',flush=True)\ntime.sleep(60)\n")
+(out/'owned-preview.md').write_text('# HC-FILE-PREVIEW-CONTENT\n\nOwned hc file preview, not browser content.\n')
+(out/"drop fixture's.png").write_bytes(b'owned-drop-fixture')
+(out/'ui-peer.py').write_text("import sys,time,tty,pathlib\nroot=pathlib.Path(__file__).parent\nprint('CJK 한글 😀 real SwiftTerm UI',flush=True)\nprint('HC-UI-RENDER-DONE',flush=True)\ninput()\nlink=(root/'owned-preview.md').as_uri()\nprint('\\x1b]8;;'+link+'\\x1b\\\\Open owned preview\\x1b]8;;\\x1b\\\\',flush=True)\ntty.setraw(sys.stdin.fileno())\nprint('HC-DROP-READY',flush=True)\nexpected=(root/'drop-expected.txt').read_bytes()\ndata=sys.stdin.buffer.read(len(expected))\nprint('HC-DROP-HEX:'+data.hex(),flush=True)\ntime.sleep(60)\n")
 profile=out/'private-unix.sb'
 profile.write_text('(version 1)\n(allow default)\n(deny network*)\n(allow network* (subpath '+json.dumps(str(out/'core'))+'))\n')
 sandbox=['/usr/bin/sandbox-exec','-f',str(profile)]
@@ -64,10 +66,10 @@ finally:
         if not alive and not sock.exists():break
         if time.monotonic()>end:raise RuntimeError('owned core/holder/program cleanup unconfirmed')
         time.sleep(.025)
-passed=failed is None and result.get('passed') is True and bool(result.get('ownedPIDs')) and result.get('screenshot') is True and result.get('sidebarAccessibilityVerified') is True and result.get('productFactoryVerified') is True
+passed=failed is None and result.get('passed') is True and bool(result.get('ownedPIDs')) and result.get('screenshot') is True and result.get('sidebarAccessibilityVerified') is True and result.get('productFactoryVerified') is True and result.get('filePreviewVerified') is True and result.get('fileDropVerified') is True
 assert hashes=={str(p.relative_to(ROOT)):digest(p) for p in tracked},'sources changed during validation'
 (out/'validation.json').write_text(json.dumps({'passed':passed,'checks':result.get('checks'),'renderedBytes':result.get('renderedBytes'),
-    'actualSwiftUI':True,'nativeSwiftTerm':True,'productFactoryVerified':result.get('productFactoryVerified'),'sidebarAccessibilityVerified':result.get('sidebarAccessibilityVerified'),'screenshot':result.get('screenshot'),'browserAuthorityUsed':False,'legacyServicesStarted':False,
+    'actualSwiftUI':True,'nativeSwiftTerm':True,'filePreviewVerified':result.get('filePreviewVerified'),'fileDropVerified':result.get('fileDropVerified'),'productFactoryVerified':result.get('productFactoryVerified'),'sidebarAccessibilityVerified':result.get('sidebarAccessibilityVerified'),'screenshot':result.get('screenshot'),'browserAuthorityUsed':False,'legacyServicesStarted':False,
     'ownedProcessesExited':bool(result.get('ownedPIDs')),'socketRemoved':not sock.exists(),'releaseCutover':False},indent=2))
 if failed:raise failed
 assert passed,'UI rendering/cleanup incomplete'

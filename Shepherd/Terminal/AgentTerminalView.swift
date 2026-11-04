@@ -153,6 +153,7 @@ struct PaneTerminalView: View {
                         username: current.username,
                         credential: HostCredential(authMethod: current.authMethod, secretData: secret),
                         pinnedFingerprint: pin,
+                        addressKind: current.addressKind,
                         on: herdrMachine
                     )
                 }

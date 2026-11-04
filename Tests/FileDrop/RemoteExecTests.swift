@@ -37,6 +37,11 @@ struct TOFUHostKeyValidator: OwnedValidator {
 
         // B: one connection for the drop, one exec per file.
         let pin = "SHA256:owned-pin-not-a-real-host"
+        let outsideRange = RemoteExecDropUploader(host: "127.0.0.1", port: 2222, username: "owned", credential: HostCredential(), pinnedFingerprint: pin, addressKind: .privateIPv4)
+        do { _ = try await outsideRange.upload(try file("rejected.png", Data([1]), as: "rejected.png"), batch: UUID().uuidString.lowercased(), progress: { _ in }); preconditionFailure("paired loopback accepted") }
+        catch PairingAddressError.invalid { checks += 1 }
+        let rejectedConnects = await fake.connects; check(rejectedConnects == 0, "paired address rejected before SSH")
+        await outsideRange.close()
         let host = RemoteExecDropUploader(host: "owned-host.invalid", port: 2222, username: "owned", credential: HostCredential(), pinnedFingerprint: pin)
         let batch = UUID().uuidString.lowercased()
         let big = Data((0..<200_000).map { UInt8(($0 * 31) % 256) })

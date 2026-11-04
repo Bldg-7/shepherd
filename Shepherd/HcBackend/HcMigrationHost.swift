@@ -1,6 +1,7 @@
 #if DEBUG && os(macOS)
 import SwiftUI
 import AppKit
+import SwiftTerm
 
 /// Explicit private integration route while release UI parity is incomplete.
 /// Never a user preference/backend fallback; release builds cannot select it.
@@ -53,6 +54,30 @@ private nonisolated struct HcMigrationStatus: Decodable, Sendable {
     return found
 }
 
+@MainActor private func hcTerminal(in view: NSView) -> FocusReportingTerminalView? {
+    if let terminal = view as? FocusReportingTerminalView { return terminal }
+    for child in view.subviews { if let result = hcTerminal(in: child) { return result } }
+    return nil
+}
+@MainActor private func hcAccessibilityText(_ root: NSView) -> String {
+    var visited = Set<ObjectIdentifier>(), text: [String] = []
+    func walk(_ node: AnyObject, _ depth: Int) {
+        guard depth < 60, visited.count < 16000, visited.insert(ObjectIdentifier(node)).inserted else { return }
+        if let object = node as? NSObject {
+            for name in ["accessibilityLabel", "accessibilityValue", "accessibilityTitle"] {
+                let selector = NSSelectorFromString(name)
+                if object.responds(to: selector), let value = object.perform(selector)?.takeUnretainedValue() {
+                    if let value = value as? String { text.append(String(value.prefix(16000))) }
+                    else if let value = value as? NSAttributedString { text.append(String(value.string.prefix(16000))) }
+                }
+            }
+        }
+        for child in (node.accessibilityChildren?() ?? nil) ?? [] { walk(child as AnyObject, depth + 1) }
+        if let view = node as? NSView { for child in view.subviews { walk(child, depth + 1) } }
+    }
+    walk(root, 0); return text.joined(separator: "\n")
+}
+
 struct HcMigrationHost: View {
     let configuration: HcMigrationConfiguration
     @State private var owner: HcMachineConnection?
@@ -80,6 +105,7 @@ struct HcMigrationHost: View {
             let status: HcMigrationStatus = try await c.call("server.status").result()
             owned = [status.pid]
             try JSONSerialization.data(withJSONObject: ["ownedPIDs":owned]).write(to: report, options: .atomic)
+            UserDefaults.standard.set(true, forKey: TerminalFileDropFeature.preferenceKey) // Only this explicitly isolated HOME.
             let storage = root.appending(path: "workspace-store", directoryHint: .isDirectory)
             let owner = HcMachineConnection(directory: storage)
             let screenTransport = try CoreProcessTransport(configuration: .init(executable: configuration.binary,
@@ -124,6 +150,40 @@ struct HcMigrationHost: View {
             }
             try JSONSerialization.data(withJSONObject: ax.keys.sorted()).write(to: root.appending(path: "accessibility.json"))
             checks += 1
+            guard let native = hcTerminal(in: content), let target = m.selectedTab?.layout?.panes.first?.terminal?.terminalID else { throw HcWorkspaceModel.Failure.unavailable }
+            let dropped = root.appending(path: "drop fixture's.png")
+            guard let escaped = TerminalDropPaste.escaped(dropped.path) else { throw HcWorkspaceModel.Failure.unavailable }
+            let paste = Data((escaped + " ").utf8)
+            try paste.write(to: root.appending(path: "drop-expected.txt"))
+            _ = try await c.call("terminal.keys", parameters: JSONSerialization.data(withJSONObject: ["terminal":target,"keys":["f","enter"]]))
+            let liveDeadline = ContinuousClock.now.advanced(by: .seconds(6))
+            while !HcMigrationRenderProbe.shared.text.contains("HC-DROP-READY") {
+                guard ContinuousClock.now < liveDeadline else { throw HcWorkspaceModel.Failure.unavailable }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            let screen = native.getTerminal(), link = root.appending(path: "owned-preview.md").absoluteString
+            guard let row = (0..<screen.rows).first(where: { screen.getLine(row: $0)?.translateToString(trimRight: true).contains("Open owned preview") == true }),
+                  screen.link(at: .screen(Position(col: 0, row: row)), mode: .explicitOnly) == link else { throw HcWorkspaceModel.Failure.unavailable }
+            checks += 1
+            guard let drop = native.onDropFiles else { throw HcWorkspaceModel.Failure.unavailable }
+            drop([dropped])
+            let pasteHex = paste.map { String(format: "%02x", $0) }.joined(), dropDeadline = ContinuousClock.now.advanced(by: .seconds(6))
+            while !HcMigrationRenderProbe.shared.text.contains("HC-DROP-HEX:" + pasteHex) {
+                guard ContinuousClock.now < dropDeadline else { throw HcWorkspaceModel.Failure.unavailable }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            checks += 1
+            guard let open = native.onOpenFileGesture else { throw HcWorkspaceModel.Failure.unavailable }
+            open(link, .unknown)
+            let previewDeadline = ContinuousClock.now.advanced(by: .seconds(6))
+            while !hcAccessibilityText(content).contains("HC-FILE-PREVIEW-CONTENT") {
+                guard ContinuousClock.now < previewDeadline else {
+                    try Data(hcAccessibilityText(content).utf8).write(to: root.appending(path: "preview-accessibility.txt"))
+                    throw HcWorkspaceModel.Failure.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            checks += 1
             // NSView bitmap capture proves native terminal output, but may not
             // composite SwiftUI layer-backed/sidebar content. AX above checks
             // those real controls separately, without global accessibility access.
@@ -141,7 +201,7 @@ struct HcMigrationHost: View {
             let snapshot = await t.snapshot(), screenSnapshot = await screenTransport.snapshot()
             guard owner.phase == .idle, snapshot.reaped, screenSnapshot.reaped else { throw HcWorkspaceModel.Failure.unavailable }; checks += 1
             try JSONSerialization.data(withJSONObject: ["passed":true,"checks":checks,"ownedPIDs":owned,
-                "productFactoryVerified":true,"renderedBytes":HcMigrationRenderProbe.shared.bytes,"sidebarAccessibilityVerified":true,"screenshot":FileManager.default.fileExists(atPath: root.appending(path:"workspace.png").path),
+                "filePreviewVerified":true,"fileDropVerified":true,"productFactoryVerified":true,"renderedBytes":HcMigrationRenderProbe.shared.bytes,"sidebarAccessibilityVerified":true,"screenshot":FileManager.default.fileExists(atPath: root.appending(path:"workspace.png").path),
                 "browserAuthorityUsed":false,"productCutover":false]).write(to: report, options: .atomic)
             NSApp.terminate(nil)
         } catch {

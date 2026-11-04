@@ -1,19 +1,20 @@
-import SwiftUI
+import Foundation
+import Observation
 import CryptoKit
 
 /// Owns one product hc connection. Replacement first retires the previous
 /// screen/streams/connect child, never the core or its programs. No legacy
 /// fallback, automatic install, service restart or browser runtime startup.
-@MainActor @Observable final class HcMachineConnection {
-    enum Phase: Equatable { case idle, connecting, connected, failed, missingExecutable, approveHostKey(String) }
-    private(set) var phase: Phase = .idle
-    private(set) var model: HcWorkspaceModel?
-    private(set) var message: String?
+@MainActor @Observable public final class HcMachineConnection {
+    public enum Phase: Equatable { case idle, connecting, connected, failed, missingExecutable, approveHostKey(String) }
+    public private(set) var phase: Phase = .idle
+    public private(set) var model: HcWorkspaceModel?
+    public private(set) var message: String?
     private var token = UUID()
     private var approval: Machine?
     private var opening: Task<CoreRPCConnection, Error>?
     private let directory: URL
-    init(directory: URL? = nil) {
+    public init(directory: URL? = nil) {
         self.directory = directory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appending(path: "com.bldg-7.shepherd/HcWorkspace", directoryHint: .isDirectory)
     }
@@ -29,7 +30,7 @@ import CryptoKit
         try data.write(to: file, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
     }
-    func open(machine: Machine, store: MachineStore, localTransport: (any CoreByteTransport)? = nil) async {
+    public func open(machine: Machine, store: MachineStore, localTransport: (any CoreByteTransport)? = nil) async {
         let generation = UUID(); token = generation; approval = nil; message = nil; phase = .connecting
         let previous = model, pending = opening; model = nil; opening = nil
         pending?.cancel()
@@ -76,7 +77,7 @@ import CryptoKit
             }
         }
     }
-    func approve(machine: Machine, store: MachineStore) async {
+    public func approve(machine: Machine, store: MachineStore) async {
         guard case .approveHostKey(let pin) = phase, let original = approval,
               original.connectionIdentity == machine.connectionIdentity,
               let current = try? store.currentMachine(matching: original), current.pinnedHostKeyFingerprint == nil else { return }
@@ -84,7 +85,7 @@ import CryptoKit
         guard (try? store.currentMachine(matching: current).pinnedHostKeyFingerprint) == pin else { phase = .failed; message = "Host settings changed; reconnect and verify again."; return }
         await open(machine: current, store: store)
     }
-    func close() async {
+    public func close() async {
         token = UUID(); approval = nil
         let previous = model, pending = opening; model = nil; opening = nil
         pending?.cancel()

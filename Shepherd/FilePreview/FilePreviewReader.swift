@@ -59,9 +59,14 @@ actor FilePreviewReader {
         #if canImport(Citadel)
         guard let pin = machine.pinnedHostKeyFingerprint else { throw FilePreviewError.needsHostKey }
         guard let secret else { throw MachineStore.EditError.missingCredential }
+        let host: String
+        if let kind = machine.addressKind { host = try await PairingAddressResolver().resolve(hostname: machine.hostname, kind: kind).description }
+        else { host = machine.hostname }
+        try Task.checkCancellation()
+        guard !cancelled else { throw CancellationError() }
         let auth = try HostCredential(authMethod: machine.authMethod, secretData: secret).authenticationFactory(username: machine.username)
         let observed = NIOLockedValueBox<String?>(nil)
-        var settings = SSHClientSettings(host: machine.hostname, port: machine.port,
+        var settings = SSHClientSettings(host: host, port: machine.port,
             authenticationMethod: auth, hostKeyValidator: .custom(TOFUHostKeyValidator(pinnedFingerprint: pin, observedFingerprint: observed)))
         settings.connectTimeout = .seconds(10)
         let connection = try await SSHClient.connect(to: settings)

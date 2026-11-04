@@ -72,8 +72,11 @@ struct ExperimentalFeaturesSettingsView: View {
                                    explanation: "An in-app pane browser. Links clicked in a terminal open in In-app Browser; ⌘-click opens them in the default browser. Codex resume confirmation may wait until the first user turn; live agents are never restarted automatically.")
                     }
                 }
-                .disabled(feature.isTransitioning)
+                .disabled(!ShepherdBrowserFeature.isAvailable || feature.isTransitioning)
                 .help("Turning this off preserves saved tabs, profiles, cookies, and runtime settings. An already initialized idle browser engine may remain resident until quit.")
+                if !ShepherdBrowserFeature.isAvailable {
+                    Text("In-app Browser and agent injection are deferred in this hc release. Existing programs and browser data are preserved; old integrations are not resumed.").font(.footnote).foregroundStyle(.secondary)
+                }
                 if feature.isEnabled {
                     PasswordManagerSettingsRows(preferences: feature.passwordManagers,
                         windowID: passwordManagerWindowID, connectIntent: { manager in

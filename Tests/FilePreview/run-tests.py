@@ -148,9 +148,14 @@ if args.prepare_restore_completion:
  print(json.dumps(json.loads((derived_folder/'contract.json').read_text()),indent=2));sys.exit(0)
 def source_path(n):return Path(n) if Path(n).is_absolute() else ROOT/n
 if not args.static_contracts_only:
- sources=['ShepherdKit/Sources/ShepherdKit/Rendering/PreviewMarkdownBlock.swift','ShepherdKit/Sources/ShepherdKit/Rendering/PreviewSyntaxLanguage.swift']+['Shepherd/FilePreview/FilePreviewLink.swift','Shepherd/FilePreview/FilePreviewReader.swift','Shepherd/FilePreview/MarkdownPreview.swift','Shepherd/FilePreview/PreviewSyntaxHighlighter.swift','Shepherd/FilePreview/PreviewSyntaxRendering.swift','ShepherdKit/Sources/ShepherdKit/Machines/Machine.swift','Tests/FilePreview/FilePreviewTests.swift']
+ pairingSources=['ShepherdKit/Sources/ShepherdKit/Pairing/PairingAddress.swift','ShepherdKit/Sources/ShepherdKit/Pairing/PairingAddressResolver.swift']
+ sources=pairingSources+['ShepherdKit/Sources/ShepherdKit/Rendering/PreviewMarkdownBlock.swift','ShepherdKit/Sources/ShepherdKit/Rendering/PreviewSyntaxLanguage.swift']+['Shepherd/FilePreview/FilePreviewLink.swift','Shepherd/FilePreview/FilePreviewReader.swift','Shepherd/FilePreview/MarkdownPreview.swift','Shepherd/FilePreview/PreviewSyntaxHighlighter.swift','Shepherd/FilePreview/PreviewSyntaxRendering.swift','ShepherdKit/Sources/ShepherdKit/Machines/Machine.swift','Tests/FilePreview/FilePreviewTests.swift']
  (out/'source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in sources},indent=2))
  def stage(name,seconds,args,mirrorsLog=False):
+  if 'swiftc' in args:
+   sdk=Path(env['DEVELOPER_DIR'])/'Platforms/MacOSX.platform/Developer/usr'
+   sdk_path=subprocess.check_output(['xcrun','--sdk','macosx','--show-sdk-path'],env=env,text=True).strip()
+   args=args+['-sdk',sdk_path,'-external-plugin-path',str(sdk/'lib/swift/host/plugins')+'#'+str(sdk/'bin/swift-plugin-server')]
   log=out/(name+'.log')
   code=subprocess.run([sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(seconds),'--natural-exit-grace','10','--log',str(log),'--',*args],cwd=ROOT,env=dict(env,OS_ACTIVITY_DT_MODE='1') if mirrorsLog else env,timeout=seconds+40).returncode
   v=json.loads(log.with_suffix('.stage.json').read_text());assert code==0 and v['naturalExitConfirmed'] and not v['signalsSent'] and v['cleanupVerified'],name
@@ -163,18 +168,18 @@ if not args.static_contracts_only:
  helpers=out/'TestHelpers.swift';helpers.write_text('public final class NIOLockedValueBox<T>: @unchecked Sendable { public init(_ value: T) {} }\n')
  for module,file in [('NIOCore',marker),('NIOConcurrencyHelpers',helpers),('Citadel',ROOT/'Tests/FilePreview/OwnedSFTPModule.swift')]:
   stage(module+'-owned-module',60,['xcrun','swiftc','-target',platform.machine()+'-apple-macos26.6.2','-swift-version','6','-emit-library','-emit-module','-module-name',module,str(file),'-emit-module-path',str(modules/(module+'.swiftmodule')),'-o',str(modules/('lib'+module+'.dylib'))])
- remote=['Shepherd/FilePreview/FilePreviewLink.swift','Shepherd/FilePreview/FilePreviewReader.swift','ShepherdKit/Sources/ShepherdKit/Machines/Machine.swift','Tests/FilePreview/RemoteReaderTests.swift']
+ remote=pairingSources+['Shepherd/FilePreview/FilePreviewLink.swift','Shepherd/FilePreview/FilePreviewReader.swift','ShepherdKit/Sources/ShepherdKit/Machines/Machine.swift','Tests/FilePreview/RemoteReaderTests.swift']
  stage('remote-reader-build',90,['xcrun','swiftc','ShepherdKit/Sources/ShepherdKit/Resources.swift','-target',platform.machine()+'-apple-macos26.6.2','-swift-version','6','-default-isolation','MainActor','-parse-as-library','-I',str(modules),'-L',str(modules),'-lCitadel','-lNIOCore','-lNIOConcurrencyHelpers','-Xlinker','-rpath','-Xlinker',str(modules),*remote,'-o',str(out/'remote-reader-tests')])
  stage('remote-reader-tests',20,[str(out/'remote-reader-tests')])
  (out/'remote-source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in remote+['Tests/FilePreview/OwnedSFTPModule.swift']},indent=2))
- model=['Shepherd/FilePreview/PreviewScrollAnchor.swift','Shepherd/FilePreview/FilePreviewLink.swift','Shepherd/FilePreview/FilePreviewReader.swift','Shepherd/FilePreview/FilePreviewModel.swift','ShepherdKit/Sources/ShepherdKit/Machines/Machine.swift','ShepherdKit/Sources/ShepherdKit/Machines/MachineStore.swift','ShepherdKit/Sources/ShepherdKit/Machines/KeychainStore.swift','Tests/FilePreview/ModelTests.swift']
+ model=pairingSources+['Shepherd/FilePreview/PreviewScrollAnchor.swift','Shepherd/FilePreview/FilePreviewLink.swift','Shepherd/FilePreview/FilePreviewReader.swift','Shepherd/FilePreview/FilePreviewModel.swift','ShepherdKit/Sources/ShepherdKit/Machines/Machine.swift','ShepherdKit/Sources/ShepherdKit/Machines/MachineStore.swift','ShepherdKit/Sources/ShepherdKit/Machines/KeychainStore.swift','Tests/FilePreview/ModelTests.swift']
  stage('preview-model-build',90,['xcrun','swiftc','ShepherdKit/Sources/ShepherdKit/Resources.swift','-target',platform.machine()+'-apple-macos26.6.2','-swift-version','6','-default-isolation','MainActor','-parse-as-library','-I',str(modules),'-L',str(modules),'-lCitadel','-lNIOCore','-lNIOConcurrencyHelpers','-Xlinker','-rpath','-Xlinker',str(modules),*model,'-o',str(out/'preview-model-tests')])
  stage('preview-model-tests',40,[str(out/'preview-model-tests'),str(out/'files')])
  (out/'model-source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in model},indent=2))
  # The file preview of each pane or tab, kept while another one is selected:
  # the actual store, request and model with the actual pane and tab models.
  paneModels=['ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/JSONValue.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/AgentModels.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/AgentLaunchModels.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/AgentTitleDisplay.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/TabModels.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/HerdrMachine.swift']
- paneStates=['Shepherd/FilePreview/PreviewScrollAnchor.swift','Shepherd/FilePreview/FilePreviewLink.swift','Shepherd/FilePreview/FilePreviewReader.swift','Shepherd/FilePreview/FilePreviewModel.swift','Shepherd/FilePreview/FilePreviewPaneStates.swift','ShepherdKit/Sources/ShepherdKit/Machines/Machine.swift','ShepherdKit/Sources/ShepherdKit/Machines/MachineStore.swift','ShepherdKit/Sources/ShepherdKit/Machines/KeychainStore.swift']+paneModels
+ paneStates=pairingSources+['Shepherd/FilePreview/PreviewScrollAnchor.swift','Shepherd/FilePreview/FilePreviewLink.swift','Shepherd/FilePreview/FilePreviewReader.swift','Shepherd/FilePreview/FilePreviewModel.swift','Shepherd/FilePreview/FilePreviewPaneStates.swift','ShepherdKit/Sources/ShepherdKit/Machines/Machine.swift','ShepherdKit/Sources/ShepherdKit/Machines/MachineStore.swift','ShepherdKit/Sources/ShepherdKit/Machines/KeychainStore.swift']+paneModels
  stage('pane-states-build',90,['xcrun','swiftc','ShepherdKit/Sources/ShepherdKit/Resources.swift','-target',platform.machine()+'-apple-macos26.6.2','-swift-version','6','-default-isolation','MainActor','-parse-as-library',*paneStates,'Tests/FilePreview/PaneStatesTests.swift','-o',str(out/'pane-states-tests')])
  stage('pane-states-tests',20,[str(out/'pane-states-tests')])
  # And the actual panel in an owned window that is never shown: P, Q and back

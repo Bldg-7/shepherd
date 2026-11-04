@@ -25,6 +25,18 @@ final class ShepherdBrowserFeature {
         #endif
         return ShepherdBrowserFeature()
     }()
+    /// Browser/session injection is deferred for the hc release. A persisted
+    /// opt-in is not permission to revive old endpoints, credential brokers or
+    /// leases. Only explicitly isolated DEBUG legacy fixtures may opt in.
+    static var isAvailable: Bool {
+        #if DEBUG && os(macOS)
+        let env = ProcessInfo.processInfo.environment
+        return env["SHEPHERD_BROWSER_TEST_ROOT"] != nil &&
+            ["SHEPHERD_BROWSER_FEATURE_FIXTURE", "SHEPHERD_AGENT_LAUNCH_FIXTURE", "SHEPHERD_NATIVE_B_PROBE", "SHEPHERD_BROWSER_PHASE2_FIXTURE", "SHEPHERD_BROWSER_SELFTEST"].contains { env[$0] != nil }
+        #else
+        return false
+        #endif
+    }
     static let preferenceKey = "experimentalShepherdBrowserEnabled"
     #if DEBUG && os(macOS)
     @ObservationIgnored private var fixtureDefaultsDomain: String?
@@ -44,13 +56,17 @@ final class ShepherdBrowserFeature {
         self.defaults = defaults
         #if os(macOS)
         passwordManagers = PasswordManagerPreferences(
-            defaults: defaults, browserEnabledAtStartup: defaults.bool(forKey: Self.preferenceKey))
+            defaults: defaults, browserEnabledAtStartup: Self.isAvailable && defaults.bool(forKey: Self.preferenceKey))
         #endif
-        isEnabled = defaults.bool(forKey: Self.preferenceKey)
+        isEnabled = Self.isAvailable && defaults.bool(forKey: Self.preferenceKey)
     }
 
     @discardableResult
     func setEnabled(_ enabled: Bool, presentationOwner: UUID? = nil, canDisable: () -> Bool, transition: () async -> Void) async -> Bool {
+        guard !enabled || Self.isAvailable else {
+            refusal = "In-app Browser and agent injection are unavailable in this hc release. Existing browser data is preserved; terminal programs are not terminated."
+            return false
+        }
         guard !isTransitioning else { return false }
         guard enabled != isEnabled else { return true }
         guard enabled || canDisable() else {

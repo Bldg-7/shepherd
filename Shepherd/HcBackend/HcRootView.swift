@@ -12,6 +12,7 @@ struct HcRootView: View {
     }
     @State private var settings = false
     @State private var installation = false
+    @AppStorage("hc.browserRetirementNoticeDismissed") private var retirementDismissed = false
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -23,8 +24,15 @@ struct HcRootView: View {
                 Button { settings = true } label: { Label("Settings", systemImage: "gearshape") }
             }.padding(10)
             Divider()
+            if !retirementDismissed && UserDefaults.standard.bool(forKey: ShepherdBrowserFeature.preferenceKey) {
+                HStack(alignment: .top) {
+                    Text("In-app Browser and injected agent integrations are unavailable in this hc release. Existing terminal programs are untouched; integrations from older sessions are not resumed. Browser data and runtime settings are preserved.").font(.caption)
+                    Spacer()
+                    Button("Dismiss") { retirementDismissed = true }
+                }.padding(10).background(Color.orange.opacity(0.12))
+            }
             if let model = connection.model {
-                HcWorkspaceView(model: model)
+                HcWorkspaceView(model: model, machine: machineStore.activeMachine, machineStore: machineStore)
             } else {
                 VStack(spacing: 16) {
                     if connection.phase == .connecting { ProgressView("Connecting to hc…") }

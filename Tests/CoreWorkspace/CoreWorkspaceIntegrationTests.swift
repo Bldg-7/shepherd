@@ -137,20 +137,33 @@ private nonisolated struct Notice: Decodable, Sendable {
             try await model.launchTab(workspaceID: id, name: "owned sleeper", argv: ["/bin/sleep","60"], cwd: home.path)
             guard let tab = model.selectedTab, let pane = tab.layout?.panes.first, let ref = pane.terminal else { throw CoreWorkspaceFailure.invalidReference }
             try check(model.focus.paneByTab[tab.id] == pane.id && ref.coreID == model.coreID, "actual launch journal binds selected pane")
+            try await model.launchSplit(paneID: pane.id, axis: .horizontal, argv: ["/bin/sleep", "60"], cwd: home.path)
+            guard let split = model.selectedTab?.layout?.panes.first(where: { $0.id != pane.id }), let splitRef = split.terminal else { throw CoreWorkspaceFailure.invalidReference }
+            try check(model.selectedTab?.layout?.panes.count == 2 && model.focus.paneByTab[tab.id] == split.id, "split launch binds a second program and local focus")
+            try await model.closePane(split.id)
+            let stillLive = try await HcTerminalBoard(connection: connection).get(splitRef.terminalID)
+            try check(model.selectedTab?.layout?.panes.count == 1 && stillLive.state == "live", "close pane collapses layout, keeps program alive")
             let before: Status = try await connection.call("server.status").result()
+            try await model.showTerminal(splitRef.terminalID, workspaceID: id)
+            let shown = model.selectedTab!
+            let afterShow: Status = try await connection.call("server.status").result()
+            try check(shown.layout?.panes.first?.terminal == splitRef && afterShow.live == before.live, "explicit new view of fresh canonical terminal, no rerun or label adoption")
+            try await model.closeTab(shown.id)
+            try model.select(tab: tab.id)
             try await model.closeTab(tab.id)
             let after: Status = try await connection.call("server.status").result()
             try check(before.live == after.live, "screen close only removes layout; program survives")
             try check(model.recoveryRecords.allSatisfy(\.complete), "screen journal reconciles successful run/bind/close")
             let restored = try CoreWorkspaceFocus.restore(Data(contentsOf: focus), coreID: model.coreID!)
             try check(restored == model.focus, "screen persists device-local focus")
+            let all = try await HcTerminalBoard(connection: connection).list(all: true)
             try await model.disconnect()
             try check(model.state == .closed && !model.canEdit, "screen disconnect retires writes")
             let snapshot = await transport.snapshot()
             try check(snapshot.reaped, "screen releases owned connect process, not core")
             // Keep the actual launched process in the outer fixture's cleanup
             // set too; a holder/core exit alone is not a process-retirement check.
-            return before.holders.map(\.pid) + model.terminals.compactMap(\.pid)
+            return before.holders.map(\.pid) + all.compactMap(\.pid)
         } catch { try? await model.disconnect(); throw error }
     }
     static func main() async throws {

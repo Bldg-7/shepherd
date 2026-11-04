@@ -6,6 +6,19 @@ import Foundation
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set("synthetic-only", forKey: "unrelated-fixture")
+        if !ShepherdBrowserFeature.isAvailable {
+            defaults.set(true, forKey: ShepherdBrowserFeature.preferenceKey)
+            defaults.set("pending", forKey: PasswordManagerPreferences.onboardingKey)
+            defaults.set("bitwarden", forKey: PasswordManagerPreferences.managerKey)
+            let feature = ShepherdBrowserFeature(defaults: defaults)
+            precondition(!feature.isEnabled && feature.passwordManagers.selectedManager == .bitwarden)
+            precondition(feature.passwordManagers.onboarding == .pending && feature.passwordManagers.presentationOwner == nil)
+            precondition(!feature.passwordManagers.resumeAtStartup(owner: UUID(), browserEnabled: true))
+            let result = await feature.setEnabled(true, canDisable: { true }, transition: { fatalError("retired credential integration resumed") })
+            precondition(!result && defaults.string(forKey: "unrelated-fixture") == "synthetic-only")
+            print("PASS: deferred browser preserves password-manager settings without granting presentation or credential access")
+            return
+        }
         let feature = ShepherdBrowserFeature(defaults: defaults)
         let preferences = feature.passwordManagers
         let a = UUID(), b = UUID()

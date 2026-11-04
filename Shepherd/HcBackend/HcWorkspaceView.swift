@@ -5,6 +5,8 @@ import SwiftUI
 /// there is no legacy fallback inside this view or its model.
 struct HcWorkspaceView: View {
     let model: HcWorkspaceModel
+    var machine: Machine? = nil
+    var machineStore: MachineStore? = nil
     @State private var error: String?
     @State private var newWorkspaceName = "Workspace"
     @State private var rename = ""
@@ -60,6 +62,10 @@ struct HcWorkspaceView: View {
                         VStack(alignment: .leading) {
                             Text(terminal.name ?? terminal.address)
                             Text([terminal.state, terminal.status?.state].compactMap { $0 }.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary)
+                            if terminal.state == "live", let workspaceID = model.focus.workspaceID ?? model.document?.workspaces.first?.id {
+                                Button("Show as new tab") { perform { try await model.showTerminal(terminal.address, workspaceID: workspaceID) } }
+                                    .disabled(!model.canEdit)
+                            }
                         }
                     }
                 }
@@ -71,7 +77,7 @@ struct HcWorkspaceView: View {
                     ContentUnavailableView("hc connection unavailable", systemImage: "network.slash", description: Text("No fallback core was started. Reconnect after checking installation and host settings."))
                 } else if let tab = model.selectedTab, let layout = tab.layout {
                     if let zoom = model.focus.zoomByTab[tab.id], let pane = layout.panes.first(where: { $0.id == zoom }) {
-                        HcTerminalPane(model: model, pane: pane).id(pane.id)
+                        HcTerminalPane(model: model, pane: pane, machine: machine, machineStore: machineStore).id(pane.id)
                     } else { layoutView(layout) }
                 } else {
                     ContentUnavailableView("No terminal selected", systemImage: "terminal", description: Text("Create a workspace and open a terminal. Programs keep running when a view closes."))
@@ -103,7 +109,7 @@ struct HcWorkspaceView: View {
     }
     private func layoutView(_ layout: CoreWorkspaceDocument.Layout) -> AnyView {
         switch layout {
-        case .leaf(let pane): return AnyView(HcTerminalPane(model: model, pane: pane).id(pane.id))
+        case .leaf(let pane): return AnyView(HcTerminalPane(model: model, pane: pane, machine: machine, machineStore: machineStore).id(pane.id))
         case .split(let axis, let ratio, let first, let second):
             return AnyView(GeometryReader { proxy in
                 if axis == .horizontal {

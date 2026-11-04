@@ -58,7 +58,10 @@ def main():
         if code or not record['naturalExitConfirmed'] or record['signalsSent'] or not record['cleanupVerified']:
             raise RuntimeError(name + ' failed; forced cleanup is not a healthy pass')
 
-    swift = ['/usr/bin/xcrun', 'swiftc','ShepherdKit/Sources/ShepherdKit/Resources.swift', '-swift-version', '6']
+    developer = Path(subprocess.check_output(['/usr/bin/xcode-select', '-p'], text=True).strip())
+    platform = developer / 'Platforms/MacOSX.platform/Developer/usr'
+    swift = ['/usr/bin/xcrun', 'swiftc','ShepherdKit/Sources/ShepherdKit/Resources.swift', '-swift-version', '6',
+             '-external-plugin-path', str(platform / 'lib/swift/host/plugins') + '#' + str(platform / 'bin/swift-plugin-server')]
     binary = output / 'selection-tests'
     stage('selection-build', 60, [*swift, '-parse-as-library', feature, *common, selection, '-o', str(binary)])
     stage('selection-tests', 20, [str(binary)])

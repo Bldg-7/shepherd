@@ -19,6 +19,13 @@ struct FilePreviewRequest: Identifiable {
         nestedMachine = pane.herdrMachine != nil; rawLink = link
     }
 
+    /// Direct hc origin: pane UUID and canonical terminal ID are presentation
+    /// scope, not legacy agent identities or browser authority.
+    init(machine: Machine, hcPaneID: UUID, terminalID: String, directory: String?, link: String) {
+        self.machine = machine; paneID = hcPaneID.uuidString; self.terminalID = terminalID
+        self.directory = directory; herdrMachineID = nil; nestedMachine = false; rawLink = link
+    }
+
     func following(_ link: String, directory: String) -> Self {
         Self(machine: machine, paneID: paneID, terminalID: terminalID, directory: directory,
              herdrMachineID: herdrMachineID, nestedMachine: nestedMachine, rawLink: link)

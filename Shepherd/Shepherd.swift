@@ -18,8 +18,10 @@ import SwiftUI
         // The notifications watch every machine whether or not the window
         // is open, so they get the machines from here rather than from it.
         // They start once the app has finished launching (see `AppDelegate`).
-        NotificationCoordinator.shared.machineStore = machineStore
-        MachineMonitors.shared.makeListener = { NotificationFeed(machine: $0) }
+        if ShepherdBrowserFeature.isAvailable {
+            NotificationCoordinator.shared.machineStore = machineStore
+            MachineMonitors.shared.makeListener = { NotificationFeed(machine: $0) }
+        }
         #endif
     }
 
@@ -91,6 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #if DEBUG
         if HcMigrationConfiguration.requested { return } // Private hc root never initializes legacy/browser/proxy services.
         #endif
+        guard ShepherdBrowserFeature.isAvailable else { return } // hc release never revives legacy proxy/browser/injection endpoints.
         if ShepherdBrowserFeature.shared.isEnabled { BrowserEngine.prepare() }
         #if DEBUG
         if ProcessInfo.processInfo.environment["SHEPHERD_BROWSER_FEATURE_FIXTURE"] != nil {
@@ -140,6 +143,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if HcMigrationConfiguration.requested { return }
         OwnedOperatorFixture.didLaunch()
         #endif
+        guard ShepherdBrowserFeature.isAvailable else { return }
         NotificationCoordinator.shared.start()
     }
 
@@ -159,6 +163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #if DEBUG
         if HcMigrationConfiguration.requested { return .terminateNow }
         #endif
+        guard ShepherdBrowserFeature.isAvailable else { return .terminateNow }
         if CDPProxy.shared.activeConnections > 0 {
             let alert = NSAlert()
             alert.messageText = String(localized: "Disconnect browser agents and quit?")

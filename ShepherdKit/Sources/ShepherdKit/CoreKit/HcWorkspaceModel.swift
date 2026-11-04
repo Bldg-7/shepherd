@@ -72,9 +72,13 @@ private nonisolated struct HcWorkspaceTerminalInitial: Decodable, Sendable { let
             terminals = try Self.direct(baseline.terminals)
             state = .connected
             documentTask = Task { [weak self] in
-                for await view in updates {
+                for await _ in updates {
                     guard let self, self.generation == token else { return }
-                    self.apply(view)
+                    // A queued view may predate an explicit refresh/commit.
+                    // Read the store's current full view instead of regressing.
+                    let current = await store.view()
+                    guard self.generation == token else { return }
+                    self.apply(current)
                 }
             }
             let connection = connection
@@ -183,6 +187,19 @@ private nonisolated struct HcWorkspaceTerminalInitial: Decodable, Sendable { let
         try await commit(.appendTab(workspace: workspaceID, tab: tab), snapshot: snapshot, store: store)
         guard token == generation, let document else { throw Failure.stale }
         try focus.select(tab: tab.id, in: document); try persistFocus()
+        try await launchInto(pane: pane, argv: argv, cwd: cwd ?? document.workspaces.first(where: { $0.id == workspaceID })?.cwd, journal: journal, store: store, token: token)
+    }
+    public func launchSplit(paneID: UUID, axis: CoreWorkspaceDocument.Axis, argv: [String], cwd: String? = nil) async throws {
+        guard !operationBusy, let journal else { throw Failure.unavailable }
+        let (store, snapshot) = try baseline(), pane = CoreWorkspaceDocument.Pane(), token = generation
+        operationBusy = true; defer { operationBusy = false }
+        try await commit(.splitPane(paneID, axis: axis, ratio: 0.5, newPane: pane), snapshot: snapshot, store: store)
+        guard token == generation, let document else { throw Failure.stale }
+        try focus.select(pane: pane.id, in: document); try persistFocus()
+        try await launchInto(pane: pane, argv: argv, cwd: cwd, journal: journal, store: store, token: token)
+    }
+    private func launchInto(pane: CoreWorkspaceDocument.Pane, argv: [String], cwd: String?, journal: CoreWorkspaceRecovery, store: CoreWorkspaceStore, token: UUID) async throws {
+        guard token == generation, let document else { throw Failure.stale }
         let ticket = try await journal.beginLaunch(paneID: pane.id, document: document)
         do {
             guard token == generation else { throw Failure.stale }
@@ -196,7 +213,9 @@ private nonisolated struct HcWorkspaceTerminalInitial: Decodable, Sendable { let
             recoveryRecords = await journal.snapshot(); failure = .uncertain; throw error
         }
         guard token == generation else { recoveryRecords = await journal.snapshot(); throw Failure.stale }
-        let latest = try await store.refresh(); apply(latest)
+        let latest = try await store.refresh()
+        guard token == generation else { throw Failure.stale }
+        apply(latest)
         guard latest.canWrite, let fresh = latest.snapshot else { recoveryRecords = await journal.snapshot(); throw Failure.recoveryRequired }
         let attempt = try await journal.prepareLayoutAfterReview(ticket, snapshot: fresh)!
         let result: CoreWorkspaceCAS.WriteResult
@@ -210,6 +229,25 @@ private nonisolated struct HcWorkspaceTerminalInitial: Decodable, Sendable { let
         apply(refreshed)
         if case .acknowledged = result { return }
         failure = .recoveryRequired; throw Failure.recoveryRequired
+    }
+    /// Explicitly show a freshly fetched canonical terminal. This is a new view,
+    /// not adoption from operation labels or a retry of an uncertain launch.
+    public func showTerminal(_ address: String, workspaceID: UUID) async throws {
+        guard !operationBusy else { throw Failure.unavailable }
+        let (store, snapshot) = try baseline(), token = generation
+        operationBusy = true; defer { operationBusy = false }
+        let record = try await HcTerminalBoard(connection: connection).get(address)
+        guard token == generation, record.address == address, record.state == "live", let coreID else { throw Failure.stale }
+        let pane = CoreWorkspaceDocument.Pane(terminal: .init(coreID: coreID, terminalID: record.address))
+        let tab = CoreWorkspaceDocument.Tab(name: record.name ?? record.address, layout: .leaf(pane))
+        try await commit(.appendTab(workspace: workspaceID, tab: tab), snapshot: snapshot, store: store)
+        if let document { try focus.select(tab: tab.id, in: document); try persistFocus() }
+    }
+    public func closePane(_ id: UUID) async throws {
+        guard !operationBusy else { throw Failure.unavailable }
+        let (store, snapshot) = try baseline()
+        operationBusy = true; defer { operationBusy = false }
+        try await commit(.removePane(id), snapshot: snapshot, store: store)
     }
     /// Closing the tab hides its views, not its programs. Termination must be a
     /// separate explicit user action; no unreviewed batch kill is dispatched.
