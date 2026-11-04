@@ -534,9 +534,17 @@ Pairing device 117+7(`/private/tmp/hc-pair-device.AgXdpa/run`), Mac 279+11+115(`
 
 Ghostty #14711/#14725는 이미 upstream merge됐지만 hc에는 반영 PR이 없어 [hc #117](https://github.com/herdrdev/herdr-core/pull/117)을 직접 제출했다. 두 회귀는 기존 pin에서 모두 실패, bump 후 Rust VT13·formatter325·core library146 + 별도 helper1 pass(기존 ignored1), build/notices 통과. 전체CI는 별도 upstream 검증이다. macOS 개인정보 identity [#105](https://github.com/herdrdev/herdr-core/pull/105)는 이미 merge됐지만 v0.1.17 이후여서 이 버전이 고쳤다고 주장하지 않는다.
 
+### D 후속: 독립 캡처 기록 화면 복구와 산출물 정리
+
+모바일 hc 보드에 **사용자가 명시적으로 선택하는 읽기 전용 캡처 기록**을 연결했다. `ConversationClient`는 legacy terminal transport 대신 작은 `ConversationLineTransport`에만 의존한다. 저장된 native key를 사용자가 선택하며 새 hc terminal ID/status/PID/label로 자동 매칭하지 않는다. 고정 capture socket에 local nc 또는 pinned non-PTY SSH→nc로 연결하고 proxy/AgentRuntime/provider/browser를 시작하지 않는다. 새 hc launch의 capture route 설정·live native-session 연결은 여전히 별도 미완료다.
+
+25/mode bounded raw-line checks, capture core5837/mode, client19+model9/mode 및 iOS17 typecheck, actual pinned SSH/socket11 (최소 HOME/PATH 환경), 실제 app source-owner/notification28(fake OS only), macOS/iOS Debug builds가 통과했다. 상세/한계/실패 기록은 `Tests/HcBackend/CAPTURE-README.md`.
+
+사용자 요청으로 불필요한 산출물159개 디렉터리를 정리하여 실측15.02GiB 공간을 확보했다. 원본/소스/로그/스크린샷/qualified controls/현재 Debug 제품은 유지한다. 이후 GUI runner는 **모든 known PID/socket 퇴역과 owned 등록 해제 확인 후에만** app/helper 복사본을 지워 재축적을 막는다(6 unit controls). 새 strict run `/private/tmp/hc-screen-app.qdg0mn1a`도 helperActive=false로 전체 passed=false를 유지했고, 두 owned bundle 정리는 확인했다. artifact cleanup이 foreground GUI 통과 증거는 아니다.
+
 ### 현재 GUI qualification 추가 한계
 
-Strict GUI gate는 실제 foreground/key-window와 native New Tab→launch form→cancel까지 요구한다. 현재 unattended session은 owned helper마저 `helperActive=false`여서 활성화를 거부한다. `/private/tmp/hc-screen-app.yjim7wn_`는 9개 renderer/file 검사 후 전체 `passed=false`; 기존 11-check positive를 이 더 강한 gate의 통과로 승격하지 않는다. 다른 앱의 포커스/접근성/권한을 빌려 우회하지 않으며 이 readiness 실패는 그대로 nonzero이다. 실제 GUI 상호작용이 허용된 환경의 검증이 추가로 필요하다.
+Strict GUI gate는 실제 foreground/key-window와 native New Tab→launch form→cancel까지 요구한다. 현재 unattended session은 owned helper마저 `helperActive=false`여서 활성화를 거부한다. `/private/tmp/hc-screen-app.qdg0mn1a`는 9개 앞선 assertion 후 전체 `passed=false`; 기존 11-check positive를 이 더 강한 gate의 통과로 승격하지 않는다. 다른 앱의 포커스/접근성/권한을 빌려 우회하지 않으며 이 readiness 실패는 그대로 nonzero이다. 실제 GUI 상호작용이 허용된 환경의 검증이 추가로 필요하다.
 
 Native source 현재 build 및 fake-OS 경계 검증은 `/private/tmp/hc-checkpoint.1DQZrL/{macos,release,ios}.log`와 `notifications`에 별도 보관한다. Scope owner는 연결한 Machine.ConnectionIdentity를 공개하고 root는 현재 선택과 일치할 때만 model/commands를 표시한다. 비동기 disconnect 직전 새 host 이름 아래 이전 model이 잠깐 남는 경로를 차단한다. 이 UI scope 식별은 native/browser 권한 증명이 아니다.
 

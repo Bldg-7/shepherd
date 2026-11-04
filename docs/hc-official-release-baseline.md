@@ -69,8 +69,9 @@ Both new tests fail on the old pin; after the bump VT13, formatter325,
 core-library146 + one separately executed helper pass (one existing ignored).
 Core build/notices pass. `just check` is unavailable locally; full CI is not
 claimed from those narrower results. An earlier long-session-name socket failure
-is retained separately in `logs`. GitHub CI run `41817190148` runs the remaining
-upstream checks.
+is retained separately in `logs`. [GitHub CI run `41817190148`](https://github.com/herdrdev/herdr-core/actions/runs/41817190148)
+completed **success** for this exact head (lint, upgrade, Linux/macOS/Windows
+and aggregate checks). That does not merge or release the PR.
 
 App baseline-policy evidence: `/private/tmp/hc-official-policy.LZ7qAr`: official
 0.1.17 detect/bootstrap34 (owned cleanup/TCP denial), macOS/iOS Debug builds pass.

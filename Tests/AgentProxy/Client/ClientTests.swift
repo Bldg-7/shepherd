@@ -3,9 +3,7 @@ import AgentProxyCore
 
 // Only the already-authenticated transport seam. The real SSH implementation
 // is compiled separately with ShepherdKit; these tests perform no SSH/auth.
-public protocol HerdrTransport: Actor {
-    func openLineStream(endpoint: HerdrLineEndpoint, request: Data) async throws -> HerdrLineStream
-}
+public protocol HerdrTransport: ConversationLineTransport {}
 
 nonisolated func fixtureItem(_ id: String, _ text: String) throws -> ConversationItem {
     let request = try RequestProjection.project(JSONSerialization.data(withJSONObject: ["messages": [["role": "user", "content": text]]]), provider: .anthropic)
@@ -63,6 +61,8 @@ actor FakeConversationTransport: HerdrTransport {
         try await transport.populate(original)
         let client = ConversationClient(transport: transport)
         let scope = ConversationSelection(terminalID: "terminal", herdrSession: "", agent: "claude", nativeSession: nil)
+        let history = try await client.list()
+        check(history.conversations.count == 1 && history.conversations[0].nativeSession == "native", "explicit history list needs no core terminal binding")
         let selected = try await client.select(scope)!
         check(selected.header.nativeSession == "native", "latest terminal fallback matches default namespace")
         let missing = try await client.select(.init(terminalID: "terminal", herdrSession: "default", agent: "claude", nativeSession: "different"))

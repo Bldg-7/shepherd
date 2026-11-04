@@ -20,7 +20,7 @@ final class CapturedConversationModel {
     @ObservationIgnored private var generation = UUID()
     @ObservationIgnored private var paused = false
 
-    func connect(transport: any HerdrTransport, selection: ConversationSelection) {
+    func connect(transport: any ConversationLineTransport, selection: ConversationSelection) {
         if client == nil { client = ConversationClient(transport: transport) }
         guard self.selection != selection || task == nil else { return }
         self.selection = selection

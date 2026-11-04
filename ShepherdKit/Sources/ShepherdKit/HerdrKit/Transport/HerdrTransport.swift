@@ -5,7 +5,7 @@ import Foundation
 /// (`SSHHerdrTransport`). Kept separate from `HerdrClient` so that the rest
 /// of the app doesn't depend on the SSH packages (Citadel, swift-nio-ssh)
 /// directly.
-public protocol HerdrTransport: Actor {
+public protocol HerdrTransport: ConversationLineTransport {
     func connect() async throws
     func disconnect() async
     func send(method: String, params: JSONValue) async throws -> JSONValue

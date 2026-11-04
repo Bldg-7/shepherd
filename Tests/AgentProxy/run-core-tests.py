@@ -26,8 +26,8 @@ out = args.output.resolve()
 out.mkdir(parents=True, exist_ok=False, mode=0o700)
 for name in ['home', 'tmp', 'cache']:
     (out / name).mkdir(mode=0o700)
-env = dict(os.environ, HOME=str(out / 'home'), CFFIXED_USER_HOME=str(out / 'home'),
-           TMPDIR=str(out / 'tmp'), CLANG_MODULE_CACHE_PATH=str(out / 'cache'))
+env = {'PATH':'/usr/bin:/bin:/usr/sbin:/sbin', 'DEVELOPER_DIR':'/Applications/Xcode.app/Contents/Developer',
+       'HOME':str(out/'home'), 'CFFIXED_USER_HOME':str(out/'home'), 'TMPDIR':str(out/'tmp'), 'CLANG_MODULE_CACHE_PATH':str(out/'cache')}
 sources = sorted((ROOT / 'AgentProxy/Sources/AgentProxyCore').glob('*.swift'))
 assert sources, 'no core sources'
 protocol_sources = sorted((ROOT / 'AgentProxy/Sources/AgentProxyProtocol').glob('*.swift'))
@@ -74,7 +74,7 @@ for mode, optimization in [('debug', '-Onone'), ('release', '-O')]:
     build.mkdir()
     module = build / 'AgentProxyCore.swiftmodule'
     library = build / 'libAgentProxyCore.dylib'
-    common = ['/usr/bin/xcrun', 'swiftc', '-swift-version', '6', optimization, '-parse-as-library',
+    common = ['/usr/bin/xcrun', 'swiftc', '-j2', '-swift-version', '6', optimization, '-parse-as-library',
               '-module-cache-path', str(out / 'cache')]
     stage(mode + '-protocol-build', common + ['-emit-module', '-emit-library', '-module-name', 'AgentProxyProtocol',
                                             '-emit-module-path', str(build / 'AgentProxyProtocol.swiftmodule'),

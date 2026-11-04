@@ -41,10 +41,16 @@ public nonisolated struct ConversationSelection: Sendable, Equatable {
 }
 
 public actor ConversationClient {
-    private let transport: any HerdrTransport
+    private let transport: any ConversationLineTransport
     private let endpoint: HerdrLineEndpoint
-    public init(transport: any HerdrTransport, endpoint: HerdrLineEndpoint = .conversations) {
+    public init(transport: any ConversationLineTransport, endpoint: HerdrLineEndpoint = .conversations) {
         self.transport = transport; self.endpoint = endpoint
+    }
+    /// Explicit history browsing, never a label/terminal-ID match to a new core.
+    public func list() async throws -> (conversations: [ConversationHeader], epoch: String) {
+        let result = try await query("conversations.list", [:])
+        guard let headers = result.conversations else { throw ConversationClientError.invalidReply }
+        return (headers, result.epoch)
     }
     public func select(_ selection: ConversationSelection) async throws -> (header: ConversationHeader, epoch: String)? {
         let result = try await query("conversations.list", selection.params)

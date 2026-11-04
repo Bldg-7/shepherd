@@ -19,7 +19,7 @@ public actor CoreSSHTransport: CoreByteTransport {
         public let host: String
         public let port: Int
         public let pinnedFingerprint: String?
-        public let command: String
+        public private(set) var command: String
         public init(host: String, port: Int = 22, pinnedFingerprint: String? = nil, requestHostKeyApproval: Bool = false,
                     executable: String = "hc", discoverExecutable: Bool = false,
                     session: String = "default", environment: [String: String] = [:]) throws {
@@ -40,6 +40,15 @@ public actor CoreSSHTransport: CoreByteTransport {
             let assignments = env.keys.sorted().map { shellQuoted($0 + "=" + env[$0]!) }
             command = try discoverExecutable ? HcConnectionPolicy.remoteCommand(session: session) :
                 (["exec env"] + clear + assignments + [shellQuoted(executable), "connect"]).joined(separator: " ")
+        }
+        /// Separate read-only capture socket on a paired Mac, not hc or a
+        /// legacy terminal API. A fixed socket name is the only selection;
+        /// no arbitrary caller path, PTY, helper install or interactive rc.
+        public static func conversationHistory(host: String, port: Int = 22, pinnedFingerprint: String, debug: Bool = false) throws -> Configuration {
+            var config = try Configuration(host: host, port: port, pinnedFingerprint: pinnedFingerprint)
+            let socket = debug ? "ac-debug.sock" : "ac.sock"
+            config.command = "exec /usr/bin/env -i HOME=\"$HOME\" PATH=/usr/bin:/bin /bin/sh -c " + shellQuoted("exec /usr/bin/nc -U \"$HOME/Library/Application Support/com.bldg-7.shepherd/" + socket + "\"")
+            return config
         }
     }
     private let config: Configuration

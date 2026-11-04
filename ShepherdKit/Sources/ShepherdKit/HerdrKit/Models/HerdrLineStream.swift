@@ -1,5 +1,11 @@
 import Foundation
 
+/// Capture history is an independent read-only endpoint, not a terminal backend.
+/// A caller can read it without implementing any legacy terminal RPC/CLI APIs.
+public protocol ConversationLineTransport: Actor {
+    func openLineStream(endpoint: HerdrLineEndpoint, request: Data) async throws -> HerdrLineStream
+}
+
 /// Fixed read-only endpoints on the paired Mac, not arbitrary remote paths.
 /// A herdr-managed remote machine does not implement this transport primitive.
 public nonisolated enum HerdrLineEndpoint: Sendable {

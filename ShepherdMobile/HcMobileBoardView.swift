@@ -50,6 +50,12 @@ struct HcMobileBoardView: View {
                     }
                 }
             }
+            Section {
+                NavigationLink {
+                    CaptureHistoryView(machine: machine, store: machineStore)
+                } label: { Label("Captured conversations", systemImage: "text.bubble") }
+                .disabled(!machineStore.isCurrentConnection(machine))
+            }
             Section("Core terminals") {
                 ForEach(records) { record in row(address: record.address, title: record.title.isEmpty ? record.address : record.title) }
             }

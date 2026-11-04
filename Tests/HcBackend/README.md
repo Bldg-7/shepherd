@@ -131,7 +131,7 @@ The stricter current runner additionally requires actual foreground/key-window
 state and the native New Tab menu opening/canceling the human launch form.
 Unattended activation is refused in this session, including the owned helper
 (`helperActive=false`). Latest retained failure:
-`/private/tmp/hc-screen-app.yjim7wn_` (nine renderer/file checks reached, but
+`/private/tmp/hc-screen-app.qdg0mn1a` (nine earlier assertions reached, but
 **overall passed=false**). Known app/helper/core/holder/program resources and
 owned registrations retired. Earlier activation failures are retained too.
 No other app's focus, accessibility grants or authority are borrowed to force a
@@ -141,6 +141,26 @@ must pass the strict gate before window commands/release cutover are qualified.
 Older 11-check UI positives below qualify their narrower source/gate only. They
 are not current foreground-command qualification. Current source compilation and
 fake-OS notification composition are separate evidence, not a substitute.
+
+## Artifact retention after owned GUI tests
+
+The strict runner now removes its staged app/helper copies **only after** known
+app/helper/core/program PIDs and socket retire and both owned LaunchServices
+registrations are removed. Reports, source/product hashes and screenshots remain.
+Missing identities/uncertain retirement preserve the copies for inspection;
+symlinks, other roots or failed registration cleanup are never accepted.
+`test_ui_artifacts.py` has six positive/negative tests. Actual latest red GUI run
+`/private/tmp/hc-screen-app.qdg0mn1a/artifact-cleanup.json` confirms both owned
+copies removed, registrations exited 0, while the GUI verdict remains false.
+This prevents repeated ~447MiB bundle copies accumulating; it does not waive the
+foreground gate or retain immutable copies of every historical test executable.
+
+## Independent capture history
+
+The production mobile hc board now offers explicit read-only archive browsing,
+without a legacy terminal connection or automatic core/native ID association.
+See [capture scope, gates and remaining work](CAPTURE-README.md). This is not new
+hc-launch capture/native-session binding or iOS UI automation.
 
 ## hc attention, window commands and remaining cutover
 

@@ -10,10 +10,11 @@ p = argparse.ArgumentParser(); p.add_argument('--output', type=Path, required=Tr
 a = p.parse_args(); out = a.output.resolve(); core = a.core.resolve()
 out.mkdir(parents=True, exist_ok=False, mode=0o700)
 for name in ['home','tmp','cache']: (out/name).mkdir(mode=0o700)
-env = dict(os.environ, HOME=str(out/'home'), CFFIXED_USER_HOME=str(out/'home'), TMPDIR=str(out/'tmp'), CLANG_MODULE_CACHE_PATH=str(out/'cache'))
+env = {'PATH':'/usr/bin:/bin:/usr/sbin:/sbin', 'DEVELOPER_DIR':'/Applications/Xcode.app/Contents/Developer',
+       'HOME':str(out/'home'), 'CFFIXED_USER_HOME':str(out/'home'), 'TMPDIR':str(out/'tmp'), 'CLANG_MODULE_CACHE_PATH':str(out/'cache')}
 for name, digest in json.loads((core/'source-hashes.json').read_text()).items():
     assert hashlib.sha256((ROOT/name).read_bytes()).hexdigest() == digest, 'Core validation is stale: '+name
-sources = [ROOT/'ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/HerdrLineStream.swift']
+sources = [ROOT/'ShepherdKit/Sources/ShepherdKit/HerdrKit/Models/HerdrLineStream.swift', ROOT/'ShepherdKit/Sources/ShepherdKit/CoreKit/CoreByteTransport.swift']
 sources += sorted((ROOT/'ShepherdKit/Sources/ShepherdKit/Conversations').glob('*.swift'))
 sources += [ROOT/'Tests/AgentProxy/Client/ClientTests.swift']
 model_sources = [ROOT/'ShepherdMobile/CapturedConversationModel.swift', ROOT/'Tests/AgentProxy/Client/ModelTests.swift']
@@ -33,7 +34,7 @@ flags=['-swift-version','6','-parse-as-library','-default-isolation','MainActor'
 for feature in ['MemberImportVisibility','NonisolatedNonsendingByDefault','InferIsolatedConformances']:
     flags += ['-enable-upcoming-feature',feature]
 stub = out/'TransportSeam.swift'
-stub.write_text('import Foundation\npublic protocol HerdrTransport: Actor { func openLineStream(endpoint: HerdrLineEndpoint, request: Data) async throws -> HerdrLineStream }\n')
+stub.write_text('import Foundation\npublic protocol HerdrTransport: ConversationLineTransport {}\n')
 shared = sources[:-1] + [stub]
 for mode,opt in [('debug','-Onone'),('release','-O')]:
     build=core/mode; binary=out/(mode+'-client')
@@ -49,7 +50,7 @@ for mode,opt in [('debug','-Onone'),('release','-O')]:
         '-Xlinker','-rpath','-Xlinker',module,'-o',module/'ModelTests',*model_sources])
     stage(mode+'-model-tests',['/usr/bin/sandbox-exec','-f',out/'sandbox.sb',module/'ModelTests'],30)
     print((out/(mode+'-model-tests.log')).read_text().strip())
-sdk=subprocess.check_output(['/usr/bin/xcrun','--sdk','iphonesimulator','--show-sdk-path'],text=True).strip()
+sdk=subprocess.check_output(['/usr/bin/xcrun','--sdk','iphonesimulator','--show-sdk-path'],env=env,text=True).strip()
 ios=out/'ios'; ios.mkdir()
 core_sources=sorted((ROOT/'AgentProxy/Sources/AgentProxyCore').glob('*.swift'))
 stage('ios-core-module',['/usr/bin/xcrun','swiftc','-swift-version','6','-parse-as-library','-emit-module','-module-name','AgentProxyCore',

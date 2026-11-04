@@ -65,7 +65,28 @@ private nonisolated struct Status: Decodable, Sendable {
             try check(owner.identity != store.activeMachine?.connectionIdentity, "selection change cannot present old model as a new host")
             await owner.close()
             try check(owner.identity == nil && owner.model == nil, "close retires scope before reconnect")
+            let history = CaptureHistorySource(machine: another, store: store)
+            guard let firstHistory = await history.prepare(), let nextHistory = await history.prepare() else { throw NSError(domain: "history prepare", code: 1) }
+            do { _ = try await firstHistory.openLineStream(endpoint: .conversations, request: Data("{}\n".utf8)); throw NSError(domain: "retired history read", code: 1) }
+            catch ConversationLineConnection.Failure.closed { checks += 1 }
+            await history.close(firstHistory)
+            try check(history.transport === nextHistory, "late history cleanup cannot close a newer refresh")
+            try check(secrets.reads == 0, "preparing read-only history never authenticates or launches a service")
             store.activeMachineID = machine.id; _ = store.removeMachine(another)
+            try check(!history.isCurrent, "removed profile invalidates history immediately")
+            try check(await history.prepare() == nil, "stale profile cannot prepare a new history connection")
+            await history.close()
+            let unapprovedHistory = Machine(displayName: "Owned capture negative", hostname: "127.0.0.1", port: 22,
+                username: "owned", authMethod: .secureEnclaveKey, addressKind: .privateIPv4)
+            try store.addMachine(unapprovedHistory, password: "synthetic-memory-only")
+            do { _ = try await store.makeConversationByteTransport(for: unapprovedHistory, endpoint: .conversations); throw NSError(domain: "unapproved capture access", code: 1) }
+            catch HerdrLineStreamError.unsupported { checks += 1 }
+            try check(secrets.reads == 0, "unapproved capture host cannot read credentials")
+            store.pinHostKeyFingerprint("SHA256:owned-fixture-not-a-real-key", for: unapprovedHistory)
+            do { _ = try await store.makeConversationByteTransport(for: unapprovedHistory, endpoint: .conversations); throw NSError(domain: "paired capture loopback", code: 1) }
+            catch PairingAddressError.invalid { checks += 1 }
+            try check(secrets.reads == 0, "paired capture range rejection precedes credential access")
+            _ = store.removeMachine(unapprovedHistory)
             let program = "import sys\ndef state(s): print('\\033]7501;state='+s+':app=owned-coordinator\\007',flush=True)\nstate('blocked')\nfor line in sys.stdin:\n s={'w':'working','b':'blocked'}.get(line.strip())\n if s: state(s)"
             let terminal = try await board.run(argv: ["/usr/bin/python3","-I","-S","-B","-c",program], cwd: root.path)
             let live: Status = try await rpc.call("server.status").result()
