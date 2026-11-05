@@ -94,9 +94,11 @@ closed; invalid per-origin terminal addresses are not relabeled as another row.
 the earlier20 plus current model compound directory, separate observed A/B aliases
 and permanent IDs, ambiguity rejection and retired-model rejection. All private
 core/program/holder/bridge/connect PIDs and sockets retire. macOS/iOS Debug builds
-pass in that root's `{macos,ios}.log`. The sheet's native GUI has **not** been
-qualified; this does not enable gateway mutations or qualify arbitrary concurrent
-config routing. Official baseline remains0.1.17.
+pass in that root's `{macos,ios}.log`. The native origin-sheet/content/Done flow later executes successfully in
+`/private/tmp/hc-screen-app.{i9o7jydz,ylj4sihv}` (partial assertions in **overall
+failed** extended UI runs). It is not a full gateway/native/release gate pass;
+this does not enable gateway mutations or qualify arbitrary concurrent config
+routing. Official baseline remains0.1.17.
 
 ## Gates
 

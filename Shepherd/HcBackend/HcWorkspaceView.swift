@@ -11,6 +11,7 @@ struct HcWorkspaceView: View {
     @State private var newWorkspaceName = "Workspace"
     @State private var rename = ""
     @State private var renaming = false
+    @State private var showsCompletedHistory = false
     @State private var review: HcWorkspaceModel.OperationReview?
     var body: some View {
         NavigationSplitView {
@@ -53,9 +54,17 @@ struct HcWorkspaceView: View {
                     }
                 }
                 if model.recoveryRecords.contains(where: \.complete) {
-                    DisclosureGroup("Completed operation history") {
-                        ForEach(model.recoveryRecords.filter(\.complete), id: \.id) { operation in operationRow(operation) }
-                    }.accessibilityIdentifier("hc.review.history")
+                    Section {
+                        Button { showsCompletedHistory.toggle() } label: {
+                            Label(showsCompletedHistory ? "Hide completed operation history" : "Show completed operation history",
+                                  systemImage: showsCompletedHistory ? "chevron.down" : "chevron.right")
+                        }
+                        .accessibilityIdentifier("hc.review.history")
+                        .accessibilityValue(showsCompletedHistory ? "Expanded" : "Collapsed")
+                        if showsCompletedHistory {
+                            ForEach(model.recoveryRecords.filter(\.complete), id: \.id) { operation in operationRow(operation) }
+                        }
+                    }
                 }
                 Section("Core terminals") {
                     ForEach(model.terminals, id: \.address) { terminal in

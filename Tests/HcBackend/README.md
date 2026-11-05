@@ -162,22 +162,39 @@ The runner now hashes all macOS Swift sources, including the settings view.
 These are actual modal/command checks, not component-only mocks; native recovery
 review/forget and full product cutover remain separate work.
 
-### Current recovery-modal extension is still pending / red
+### Current 18-check recovery/origin extension is still pending / red
 
-The runner now additionally requires real completed-history expansion, Review /
-Cancel and separately confirmed Forget tracking with unchanged live programs.
-Do not apply the preceding 15-check result to this newer source/gate.
-`/private/tmp/hc-screen-app.{1q9ajoli,l189ai4r}` reached 14 assertions before
-stopping at history expansion. The identified `AccessibilityNode` implements the
-Press selector, but Press did not expose its review controls. The fixture now
-requests expansion through the public AppKit accessibility API, verifies the
-expanded state and actual controls; it does not assign SwiftUI internal state.
-Button Press now checks enabled/handled as well as subsequent UI state.
-`/private/tmp/hc-screen-app.byx48ay5` failed earlier at owned foreground activation
-(nine checks), so it **does not test that expansion change**. All these exact
-owned processes/sockets/registrations/bundles retired; failed evidence remains.
-No further automatic foreground retry is running: confirm human readiness first.
-Compilation is not native review/forget qualification.
+The runner additionally requires the actual read-only origin sheet, completed
+history, Review / Cancel and separately confirmed Forget tracking with unchanged
+live programs. Do not apply the preceding 15-check pass to this newer source/gate.
+
+- `.i9o7jydz`: actual origin sheet/content/Done passes, then history expansion
+  fails; the identifier resolves to **AXHeading**, not a disclosure control.
+- `.jede4ayl`: bounded nearby disclosure search also fails; no control was forced.
+  Earlier `.1q9ajoli`/`.l189ai4r`/`.byx48ay5` failures remain retained too.
+- The product now has an ordinary explicit Show/Hide completed history **button**,
+  collapsed by default, with accessible label/value and unchanged record content.
+  Tests press that actual button; no SwiftUI state is assigned by the fixture.
+  The unsuccessful disclosure-selector/ancestor workaround has been removed.
+- `.yy6eksrp`: list node appeared before its core ID text; that immediate check
+  failed. The runner now waits at most five seconds for the actual text and saves
+  `directory-accessibility-text.txt`; the required content assertion is unchanged.
+- `.ylj4sihv`: **overall false, 16 assertions reached**. Origin sheet/content/Done,
+  explicit history and actual Review / Cancel passed within this failed run.
+  Reopening Review then found the real button disabled. Presence alone is not
+  actionable readiness: the current helper additionally waits (bounded five
+  seconds) for the actual AX-enabled state, never sets it, and checks Press's
+  enabled/supported/handled values separately. Confirmation controls also require
+  enabled state. This is not evidence that Forget tracking passed.
+- `._miz2a05`: latest source compiles, but the human-activation run never obtains
+  foreground (nine assertions, helper/app inactive, 150-second handoff deadline).
+  The new enabled-state wait and final Forget flow remain **unverified**.
+
+All named roots are under `/private/tmp/hc-screen-app`; each owned process/socket,
+registration and staged bundle retires, logs/reports remain. No automatic GUI
+retry is running. Confirm readiness before another foreground attempt; do not
+waive active/key-window, actual controls, content or program-survival requirements.
+Compilation/partial assertions are not an overall native UI or release pass.
 
 ## Retained earlier foreground failures (not retroactively passed)
 

@@ -566,6 +566,8 @@ Ghostty #14711/#14725는 이미 upstream merge됐지만 hc에는 반영 PR이 �
 
 추가read-only 원점목록연결: HcRootView의Core origins…는하나의global terminal.list응답으로hub/1차machines/terminal을표시한다. 원격run/attach/input/file/config변경동작없음. Model은await후generation/state/hub/epoch를재검증하고퇴역model을거부한다. `/private/tmp/hc-origin-directory.pXs0bY/sdk`26실제코어SDK checks,macOS+iOS Debug build통과,모든임시프로세스/socket퇴역. 새sheet의native GUI/전체gateway제품/임의config동시성은미검증이며0.1.17 baseline불변.
 
+후속human GUI: `.i9o7jydz`/`.ylj4sihv`에서read-only원점sheet/실제coreID/Done을확인했다. history식별자가AXHeading으로붙는것을확인했고무리한selector/ancestor우회는제거,기본접힘의명시적Show/Hide버튼으로접근성을보완했다. `.ylj4sihv`전체false/16assertions:기록버튼과실제Review/Cancel까지통과했으나다시열기버튼이비활성상태여서중단. 현재helper는존재뿐아니라실제AXenabled를5초이내기다리고Press enabled/supported/handled를분리검증하며절대로활성화강제대입하지않는다. 최신`._miz2a05`는컴파일통과후human전경대기150초로9개에서종료하여그수정/Forget최종flow미검증. 전체18gate미통과,모든임시자원퇴역,추가자동GUI재시도중지. 사람준비확인전까지source/partial결과를전체pass로승격하지않는다.
+
 ### 이전 GUI qualification 실패 기록
 
 URL비교수정후 `/private/tmp/hc-screen-app.aovolzks`는 실제active/key까지진입했지만canEdit=true에도NewTab native item이disabled였다. 4초유계진단 `/private/tmp/hc-screen-app.rhppg5ac`에서도ownerCanLaunch=true/ownerPresent=true인데native menu는초기legacy분기와action=nil/target=nil/disabled상태를유지했다. Observer전달을main-actor ObservableObject/@Published와Commands의@ObservedObject구독으로바꾸고snapshot을명시전달,실행은최신owner/enablement및Root의현재model/tabscope를검사한다. 강제isEnabled설정이나foreground/menu검사삭제없음. Debug/O15checks(`/private/tmp/hc-command-owner.dqMcZ2`)와macOS compile통과. 수정후자동실행 `.1m8mfgjj`는foreground미획득으로menu단계에도달못해GUI수정검증은아직아니다. 모든owned자원/bundle퇴역,추가클릭은요청하지않았고사람준비확인때만다시실행한다.
