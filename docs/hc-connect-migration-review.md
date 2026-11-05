@@ -1,5 +1,13 @@
 # hc connect 전환 검토
 
+## 제품 UI 보존 차단 요인 — 수동 확인 피드백
+
+사용자가 직접 확인한 hc 화면은 기존 레이아웃과 완전히 달라 거부됐다. backend 교체를 하면서 별도 sidebar/toolbar/launcher 구성을 제품 UI처럼 제시한 것은 회귀다. **기존 UI/사용 흐름을 유지하고 그 아래 backend만 hc로 교체하는 것이 기준**이며, 브라우저·주입 runtime의 명시적 연기만 예외다. 18개 native 동작 검사는 해당 새 화면의 기능 증거이지 UI 동등성/제품 승인 증거가 아니다. 기본 root 전환과 legacy UI 제거는 이 차단 요인을 해소하기 전 진행하지 않는다. 기준과 원본 소스 대응은 [hc-ui-parity-contract.md](hc-ui-parity-contract.md)에 기록했다.
+
+### UI 복원 구현 현황 (승인과 구분)
+
+기존WorkspaceNavigationSplitView/사이드바툴바를실제재사용하고,원본row/search/workspace label/tab-mode bar의렌더링을WorkspaceBoardPresentation으로분리하여기존board와hc board가공유한다. 별도전역머신/진단바·CRUD/작업기록메인사이드바를제거했다. hc는기존NewTabLauncher와pane-switcher presentation,제목의IME대응rename field/toolbar/doubleclick,기존native draggable preview split을사용한다. CoreUUID/epoch/버전검증은유지하며legacy transport/native session ID를가짜로만들지않는다. 복원코드의macOS+iOS Debug/제목컴포넌트6단계/명령18 perDebug·optimized/소스배선4테스트통과: `/private/tmp/hc-restored-layout-final.gwiZUB`. Core workspace261 per mode/21stages: `/private/tmp/hc-ui-preservation.NybyIt/workspace`. 수동복원확인본`/private/tmp/hc-screen-app.jlbjkcqo`를열었다. **사용자시각·전체흐름승인/새레이아웃용E2E갱신은미완료이며이전18GUI검사로대체하지않는다.**
+
 ## 결론
 
 **전환 방향은 권장한다. 다만 transport만 바꾸는 drop-in 교체는 아니다.**

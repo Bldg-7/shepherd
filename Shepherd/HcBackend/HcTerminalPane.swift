@@ -104,14 +104,50 @@ import AppKit
     }
 }
 
+@MainActor @Observable final class HcPanePresentation {
+    var preview: FilePreviewRequest?
+    let previewModel = FilePreviewModel()
+    var expanded = false
+}
+@MainActor final class HcPanePresentationStore {
+    private struct Key: Hashable { let epoch: UUID; let pane: UUID; let terminal: CoreWorkspaceDocument.TerminalReference? }
+    private var entries: [Key:HcPanePresentation] = [:]
+    func entry(epoch: UUID?, pane: CoreWorkspaceDocument.Pane) -> HcPanePresentation {
+        guard let epoch else { return HcPanePresentation() }
+        let key = Key(epoch: epoch, pane: pane.id, terminal: pane.terminal)
+        if let value = entries[key] { return value }
+        let value = HcPanePresentation()
+        if entries.count < 128 { entries[key] = value } // Do not silently evict another pane's preview.
+        return value
+    }
+    func retain(epoch: UUID?, panes: [CoreWorkspaceDocument.Pane]) {
+        guard let epoch else { entries = [:]; return }
+        let valid = Set(panes.map { Key(epoch: epoch, pane: $0.id, terminal: $0.terminal) })
+        entries = entries.filter { valid.contains($0.key) }
+    }
+}
+
 struct HcTerminalPane: View {
     let model: HcWorkspaceModel
     let pane: CoreWorkspaceDocument.Pane
     var machine: Machine? = nil
     var machineStore: MachineStore? = nil
-    @State private var preview: FilePreviewRequest?
-    @State private var previewModel = FilePreviewModel()
-    @State private var expandedPreview = false
+    @AppStorage(AgentBoardView.showsTabsKey) private var showsTabs = false
+    @State private var presentation: HcPanePresentation
+    private var preview: FilePreviewRequest? {
+        get { presentation.preview }
+        nonmutating set { presentation.preview = newValue }
+    }
+    private var previewModel: FilePreviewModel { presentation.previewModel }
+    private var expandedPreview: Bool {
+        get { presentation.expanded }
+        nonmutating set { presentation.expanded = newValue }
+    }
+    init(model: HcWorkspaceModel, pane: CoreWorkspaceDocument.Pane, machine: Machine? = nil,
+         machineStore: MachineStore? = nil, presentations: HcPanePresentationStore? = nil) {
+        self.model = model; self.pane = pane; self.machine = machine; self.machineStore = machineStore
+        _presentation = State(initialValue: presentations?.entry(epoch: model.workspace?.epoch, pane: pane) ?? HcPanePresentation())
+    }
     @State private var operationError: String?
     @State private var drops: TerminalDropController?
     @State private var terminal = HcTerminalPaneModel()
@@ -122,6 +158,7 @@ struct HcTerminalPane: View {
     }
     var body: some View {
         VStack(spacing: 0) {
+            if showsTabs && (model.selectedTab?.layout?.panes.count ?? 0) > 1 {
             HStack {
                 Text(pane.title ?? pane.terminal?.terminalID ?? "Unbound pane").font(.caption)
                 Spacer()
@@ -137,13 +174,14 @@ struct HcTerminalPane: View {
                     .buttonStyle(.borderless)
                 }
             }.padding(6)
+            }
             if pane.terminal == nil {
                 ContentUnavailableView("Program not bound", systemImage: "terminal", description: Text("Check operation recovery before starting another program."))
             } else if pane.terminal?.coreID != model.coreID {
                 ContentUnavailableView("Remote terminal", systemImage: "network", description: Text("Connect directly to its origin before attaching."))
             } else {
-                HStack(spacing: 0) {
-                if !expandedPreview {
+                WorkspaceDetailSplitView(showsPanel: preview != nil, panelMinimum: 320, panelIdeal: 560,
+                                         panelCoversTerminal: expandedPreview) {
                 TerminalHostView(onCreate: { terminal.bind($0) }, onInput: { if currentScope { terminal.send($0) } },
                                  onResize: { if currentScope { terminal.resize($0, $1) } }, onFocusChange: { focused in
                     guard !focused || currentScope else { return }
@@ -157,21 +195,32 @@ struct HcTerminalPane: View {
                     await terminal.start { try model.session(for: pane) }
                 }
                 .onDisappear { drops?.cancel(); terminal.stop() }
-                }
+                .accessibilityHidden(expandedPreview)
+                .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
+                .modifier(WorkspaceSidebarDetailLayout())
+                } panel: {
                 if let preview, let machineStore {
                     FilePreviewPanel(request: preview, model: previewModel, machineStore: machineStore,
                         onClose: { self.preview = nil; expandedPreview = false }, onFileLink: { self.preview = $0 })
                         .previewExpansion(isExpanded: expandedPreview, onToggle: { expandedPreview.toggle() })
-                        .frame(minWidth: 300, idealWidth: 420, maxWidth: expandedPreview ? .infinity : 480)
+                        .frame(minWidth: 320, idealWidth: 560, maxWidth: .infinity, maxHeight: .infinity)
+                        .modifier(WorkspaceSidebarDetailLayout())
                 }
                 }
                 if let drops { TerminalDropBanner(controller: drops) }
                 if let message = terminal.message { Text(message).font(.caption).foregroundStyle(.secondary).padding(6) }
             }
         }
+        .preference(key: HcWorkspacePreviewVisible.self, value: preview != nil)
+        .onAppear { expandedPreview = false }
         .onChange(of: pane.terminal) { preview = nil; expandedPreview = false; drops?.cancel() }
         .alert("Terminal operation", isPresented: Binding(get: { operationError != nil }, set: { if !$0 { operationError = nil } })) { Button("OK") { operationError = nil } } message: { Text(operationError ?? "") }
-        .overlay { Rectangle().stroke(model.focus.paneByTab[model.selectedTab?.id ?? UUID()] == pane.id ? Color.accentColor : Color.secondary.opacity(0.3), lineWidth: 1) }
+        .overlay {
+            if showsTabs && (model.selectedTab?.layout?.panes.count ?? 0) > 1 {
+                Rectangle().stroke(model.focus.paneByTab[model.selectedTab?.id ?? UUID()] == pane.id ? Color.accentColor : Color.secondary.opacity(0.3), lineWidth: 1)
+                    .allowsHitTesting(false)
+            }
+        }
     }
     private func makeDrops() -> TerminalDropController {
                     let controller = TerminalDropController(isEnabled: { currentScope && TerminalFileDropFeature.isEnabled }, destination: {

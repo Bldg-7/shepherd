@@ -197,6 +197,12 @@ private nonisolated struct HcWorkspaceTerminalInitial: Decodable, Sendable { let
         operationBusy = true; defer { operationBusy = false }
         try await commit(.renameTab(id, name), snapshot: snapshot, store: store)
     }
+    public func renamePane(_ id: UUID, name: String) async throws {
+        guard !operationBusy else { throw Failure.unavailable }
+        let (store, snapshot) = try baseline()
+        operationBusy = true; defer { operationBusy = false }
+        try await commit(.renamePane(id, name), snapshot: snapshot, store: store)
+    }
     /// Creates placeholder metadata BEFORE launching. The run is sent once and
     /// bound via a journaled CAS attempt. Any uncertain outcome remains visible
     /// in recoveryRecords. No label-based adoption, automatic rerun or kill.

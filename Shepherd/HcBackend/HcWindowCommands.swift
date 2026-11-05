@@ -21,7 +21,10 @@ struct HcNewTabMenuItems: View {
         }
     }
     private func show(_ start: LauncherStart) {
-        if HcWindowCommandState.shared.actions != nil { HcWindowCommandState.shared.perform(.launch) }
+        if HcWindowCommandState.shared.actions != nil {
+            if case .currentWorkspace = start { HcWindowCommandState.shared.perform(.launchCurrentWorkspace) }
+            else { HcWindowCommandState.shared.perform(.launch) }
+        }
         else if let legacy, legacy.wrappedValue == nil { legacy.wrappedValue = start }
     }
 }

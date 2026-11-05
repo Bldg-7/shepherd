@@ -62,7 +62,17 @@ enum TitleRename {
 /// state — AppKit reports some of it in the middle of SwiftUI's updates (a
 /// composition committed as the field goes away), where a change of state
 /// isn't allowed. What is typed only matters when the rename ends.
-final class TitleRenameSession {
+@MainActor protocol TitleRenameEditing: AnyObject {
+    var startText: String { get }
+    var prompt: String { get }
+    var text: String { get set }
+    var isTab: Bool { get }
+    var isEnded: Bool { get }
+    var keyboardBefore: AnyObject? { get set }
+}
+
+final class TitleRenameSession: TitleRenameEditing {
+    var isTab: Bool { if case .tab = item { true } else { false } }
     let id = UUID()
     /// The pane or tab, as it was when the rename began.
     let item: BoardItem

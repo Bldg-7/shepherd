@@ -18,15 +18,15 @@ import AppKit
 ///
 /// The field takes the keyboard once it is in its window — whichever window
 /// that is: in full screen AppKit may host the toolbar in one of its own.
-struct TitleRenameField: NSViewRepresentable {
-    let session: TitleRenameSession
+struct TitleRenameField<Session: TitleRenameEditing>: NSViewRepresentable {
+    let session: Session
     /// Whether Return may send what has been typed.
     let canSubmit: (String) -> Bool
     /// Told how the rename ended: on Return and Escape at once, in the key
     /// event; when the keyboard goes elsewhere or the field goes away, on
     /// the next turn of the run loop, since AppKit can report those in the
     /// middle of SwiftUI's update that takes the field away.
-    let onEnd: (TitleRenameSession, TitleRenameEnding) -> Void
+    let onEnd: (Session, TitleRenameEnding) -> Void
     /// What a Return that can't send does: the alert sound, as a disabled
     /// default button would.
     var refuse: () -> Void = { NSSound.beep() }
@@ -94,7 +94,7 @@ struct TitleRenameField: NSViewRepresentable {
         field.font = .titleBarFont(ofSize: 0)
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)
         field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        if case .tab = session.item {
+        if session.isTab {
             field.setAccessibilityLabel(String(localized: "Rename Tab"))
         } else {
             field.setAccessibilityLabel(String(localized: "Rename Pane"))
@@ -264,7 +264,7 @@ final class TitleRenameTextField: NSTextField {
         set {}
     }
 
-    weak var session: TitleRenameSession?
+    weak var session: (any TitleRenameEditing)?
     private var takesKeyboardOnLanding = true
 
     override func viewDidMoveToWindow() {
@@ -306,7 +306,7 @@ final class TitleRenameFieldCell: NSTextFieldCell {
     }
 }
 
-extension TitleRenameSession {
+extension TitleRenameEditing {
     /// Gives the keyboard back to what had it before the field took it, if
     /// that is still in a window and will take it. False otherwise.
     func giveKeyboardBack() -> Bool {

@@ -116,6 +116,11 @@ public nonisolated struct WorkspaceSummary: Identifiable, Equatable, Sendable {
 
     public var id: String { workspaceID }
 
+    /// Presentation value. A workspace selector is not a native/core identity.
+    public init(workspaceID: String, label: String) {
+        self.workspaceID = workspaceID; self.label = label
+    }
+
     public init?(json: JSONValue) {
         guard let workspaceID = json["workspace_id"]?.stringValue else { return nil }
         self.workspaceID = workspaceID

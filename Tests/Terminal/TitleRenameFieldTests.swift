@@ -154,7 +154,7 @@ struct Host: View {
             check(editing(field) && text.hasMarkedText() && text.string == "serverㅎ" && field.placeholderString == "zsh",
                   "board refreshes leave the composition, the text and the prompt alone")
             check(probe.calls.isEmpty, "nor do they end anything")
-            let coordinator = field.delegate as! TitleRenameField.Coordinator
+            let coordinator = field.delegate as! TitleRenameField<TitleRenameSession>.Coordinator
             check(!coordinator.control(field, textView: text, doCommandBy: #selector(NSResponder.insertNewline(_:))),
                   "Return in the middle of a composition is the input method's")
             check(!coordinator.control(field, textView: text, doCommandBy: #selector(NSResponder.cancelOperation(_:))),
@@ -179,7 +179,7 @@ struct Host: View {
             check(text.string == "Owned" && field.placeholderString == "Owned" && field.toolTip == nil, "a tab starts with its label")
             text.insertText("Changed", replacementRange: none)
             text.setMarkedText("ㄱ", selectedRange: NSRange(location: 1, length: 0), replacementRange: none)
-            let coordinator = field.delegate as! TitleRenameField.Coordinator
+            let coordinator = field.delegate as! TitleRenameField<TitleRenameSession>.Coordinator
             check(!coordinator.control(field, textView: text, doCommandBy: #selector(NSResponder.cancelOperation(_:))) && probe.endings.count == 1,
                   "Escape while composing doesn't cancel")
             text.unmarkText()

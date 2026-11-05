@@ -728,43 +728,13 @@ struct AgentBoardView: View {
     /// it can't be selected, and has no fold of its own — the group it is
     /// in folds with it.
     private func workspaceLabel(_ label: String) -> some View {
-        Text(verbatim: label)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .padding(.top, 4)
-            .selectionDisabled()
-            .accessibilityAddTraits(.isHeader)
+        WorkspaceBoardSectionLabel(title: label)
     }
 
     /// The search field over the list — with the workspace filter at its
     /// end — on a capsule of Liquid Glass that the list scrolls under.
     private var searchBar: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-            TextField("Filter", text: $searchText)
-                .textFieldStyle(.plain)
-                #if os(macOS)
-                .onExitCommand { searchText = "" }
-                #endif
-            if !searchText.isEmpty {
-                Button {
-                    searchText = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .accessibilityLabel(Text("Clear"))
-            }
-            workspaceFilterMenu
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .glassEffect(.regular.interactive(), in: .capsule)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        WorkspaceBoardSearchBar(text: $searchText) { workspaceFilterMenu }
     }
 
     /// Picks the workspaces the list is narrowed down to, any number of
@@ -822,22 +792,7 @@ struct AgentBoardView: View {
 
     /// The setting for the board's mode, kept clear of the list.
     private var tabModeBar: some View {
-        VStack(spacing: 0) {
-            Divider()
-            HStack {
-                Text("Group by Tab")
-                Spacer()
-                Toggle("Group by Tab", isOn: $showsTabs)
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-        }
-        // Not upwards, where it would lie over the list's last row.
-        .background(.bar, ignoresSafeAreaEdges: [.horizontal, .bottom])
-        .help("Show each tab as one row, and all of its panes at once when it is selected.")
+        WorkspaceBoardTabModeBar(showsTabs: $showsTabs)
     }
 
     /// A pane's row. One with an agent shows the agent's status, as a dot
@@ -845,33 +800,19 @@ struct AgentBoardView: View {
     /// `unknown` for every such pane — so it is marked as a plain terminal
     /// instead, and says where it is rather than which agent runs in it.
     private func row(for agent: AgentSummary) -> some View {
-        HStack {
-            statusIndicator(agent.hasAgent ? agent.state : nil)
-            VStack(alignment: .leading) {
-                HStack(spacing: 6) {
-                    Text(agent.title).font(.body)
-                    #if os(macOS)
-                    if ShepherdBrowserFeature.shared.isEnabled {
-                        let browserStatus = AgentLaunchService.shared.status(for: agent, on: machine)
-                        if agent.hasAgent || agent.launchPending == true || browserStatus != .shell {
-                            AgentBrowserStatusBadge(status: browserStatus,
-                                failure: AgentLaunchService.shared.failure(for: agent, on: machine))
-                        }
-                    }
-                    #endif
+        WorkspaceBoardRow(title: agent.title, state: agent.hasAgent ? agent.state : nil) {
+            #if os(macOS)
+            if ShepherdBrowserFeature.shared.isEnabled {
+                let browserStatus = AgentLaunchService.shared.status(for: agent, on: machine)
+                if agent.hasAgent || agent.launchPending == true || browserStatus != .shell {
+                    AgentBrowserStatusBadge(status: browserStatus,
+                        failure: AgentLaunchService.shared.failure(for: agent, on: machine))
                 }
-                AgentPaneCaption(subtitle(for: agent), agentName: agent.agentName)
             }
-            Spacer()
-            if agent.hasAgent {
-                Text(agent.state.title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            #endif
+        } caption: {
+            AgentPaneCaption(subtitle(for: agent), agentName: agent.agentName)
         }
-        #if os(macOS)
-        .padding(.trailing, Self.rowTrailingPadding)
-        #endif
         .contextMenu {
             Button("Rename Pane…") { beginRenaming(.pane(agent)) }
             #if os(macOS)
@@ -900,31 +841,20 @@ struct AgentBoardView: View {
     /// A tab's row: name and actionable browser statuses only, without pane
     /// counts or repeated unknown browser captions. Agent urgency stays intact.
     private func row(for tab: TabSummary) -> some View {
-        HStack {
-            statusIndicator(tab.mostUrgentState)
-            VStack(alignment: .leading) {
-                Text(tab.title).font(.body)
-                #if os(macOS)
-                if ShepherdBrowserFeature.shared.isEnabled {
-                    ForEach(tab.panes) { pane in
-                        let browserStatus = AgentLaunchService.shared.status(for: pane, on: machine)
-                        if let title = AgentBrowserStatusDisplay.tabTitle(for: browserStatus) {
-                            Text(title).font(.caption).foregroundStyle(.secondary).help(pane.title)
-                        }
+        WorkspaceBoardRow(title: tab.title, state: tab.mostUrgentState) {
+            EmptyView()
+        } caption: {
+            #if os(macOS)
+            if ShepherdBrowserFeature.shared.isEnabled {
+                ForEach(tab.panes) { pane in
+                    let browserStatus = AgentLaunchService.shared.status(for: pane, on: machine)
+                    if let title = AgentBrowserStatusDisplay.tabTitle(for: browserStatus) {
+                        Text(title).font(.caption).foregroundStyle(.secondary).help(pane.title)
                     }
                 }
-                #endif
             }
-            Spacer()
-            if let state = tab.mostUrgentState {
-                Text(state.title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            #endif
         }
-        #if os(macOS)
-        .padding(.trailing, Self.rowTrailingPadding)
-        #endif
         .contextMenu {
             Button("Rename Tab…") { beginRenaming(.tab(tab)) }
             Divider()
@@ -945,20 +875,7 @@ struct AgentBoardView: View {
     /// A status dot, or — with no agent's status to show — the mark of a
     /// plain terminal.
     private func statusIndicator(_ state: AgentState?) -> some View {
-        Group {
-            if let state {
-                Circle()
-                    .fill(Self.color(for: state))
-                    .frame(width: 10, height: 10)
-            } else {
-                Image(systemName: "terminal")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        // As wide as the dot either way, so that every row's title starts
-        // at the same place.
-        .frame(width: 10)
+        WorkspaceBoardStatusIndicator(state: state)
     }
 
     /// Which agent runs in the pane, or — for a pane with none — the folder

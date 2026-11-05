@@ -37,6 +37,14 @@ import Darwin
         state.release(b)
         try check(state.actions == nil && !state.perform(.settings),"release retires command actions")
         try check(values.count == 6 && values.last! == nil,"publisher includes replacement/update/retirement")
+        var blank = 0, current = 0
+        let distinct = HcWindowActions(canLaunch:true,canClose:false,canSwitch:false,canSettings:false,
+            closeTitle:"Close Tab",launch:{ blank += 1 },close:{},switcher:{},settings:{},launchCurrentWorkspace:{ current += 1 })
+        state.claim(a,actions:distinct)
+        try check(state.perform(.launch) && blank == 1 && current == 0,"CmdN retains blank launcher intent")
+        try check(state.perform(.launchCurrentWorkspace) && blank == 1 && current == 1,"CmdT preserves current-workspace intent without fake target")
+        state.release(a)
+        try check(!state.perform(.launchCurrentWorkspace),"retired current-workspace command cannot dispatch")
         print("PASS explicit command publication/ownership: \(checks) checks")
     }
 }

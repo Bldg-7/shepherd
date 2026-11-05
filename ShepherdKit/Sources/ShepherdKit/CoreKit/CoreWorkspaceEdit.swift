@@ -10,6 +10,7 @@ public nonisolated enum CoreWorkspaceEdit: Sendable {
     case renameWorkspace(UUID, String)
     case appendTab(workspace: UUID, tab: CoreWorkspaceDocument.Tab)
     case renameTab(UUID, String)
+    case renamePane(UUID, String)
     case removeTab(UUID)
     case splitPane(UUID, axis: CoreWorkspaceDocument.Axis, ratio: Double, newPane: CoreWorkspaceDocument.Pane)
     case removePane(UUID)
@@ -22,6 +23,8 @@ public nonisolated enum CoreWorkspaceEdit: Sendable {
             switch node {
             case .leaf(let leaf):
                 switch self {
+                case .renamePane(let id, let title) where id == leaf.id:
+                    found = true; return .leaf(.init(id: leaf.id, title: title.isEmpty ? nil : title, terminal: leaf.terminal))
                 case .splitPane(let id, let axis, let ratio, let newPane) where id == leaf.id:
                     found = true; return .split(axis: axis, ratio: ratio, first: node, second: .leaf(newPane))
                 case .removePane(let id) where id == leaf.id: found = true; return nil

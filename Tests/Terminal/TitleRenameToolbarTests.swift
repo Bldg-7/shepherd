@@ -410,7 +410,7 @@ final class RecordingWindow: NSWindow {
         check(text.string == "build" && text.selectedRange() == NSRange(location: 0, length: 5), "starting from the name, selected")
         text.insertText("server", replacementRange: NSRange(location: NSNotFound, length: 0))
         text.setMarkedText("ㅎ", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
-        let coordinator = field.delegate as! TitleRenameField.Coordinator
+        let coordinator = field.delegate as! TitleRenameField<TitleRenameSession>.Coordinator
         check(!coordinator.control(field, textView: text, doCommandBy: #selector(NSResponder.insertNewline(_:))), "Return remains with a synthetic input-method composition")
         text.insertText("한", replacementRange: text.markedRange())
         text.doCommand(by: #selector(NSResponder.insertNewline(_:)))

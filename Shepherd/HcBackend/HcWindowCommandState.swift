@@ -5,6 +5,7 @@ import Combine
     let canLaunch: Bool; let canClose: Bool; let canSwitch: Bool; let canSettings: Bool
     let closeTitle: String
     let launch: () -> Void; let close: () -> Void; let switcher: () -> Void; let settings: () -> Void
+    var launchCurrentWorkspace: (() -> Void)? = nil
 }
 
 /// One main-window owner. Commands explicitly observe objectWillChange: a
@@ -12,7 +13,7 @@ import Combine
 /// disabled snapshot in SwiftUI's Commands host. This is UI dispatch only,
 /// never authorization; models still check current origin/version/lifetime.
 @MainActor final class HcWindowCommandState: ObservableObject {
-    enum Action { case launch, close, switcher, settings }
+    enum Action { case launch, launchCurrentWorkspace, close, switcher, settings }
     static let shared = HcWindowCommandState()
     @Published private(set) var actions: HcWindowActions?
     private var owner: UUID?
@@ -23,6 +24,9 @@ import Combine
         guard let actions else { return false }
         switch action {
         case .launch: guard actions.canLaunch else { return false }; actions.launch()
+        case .launchCurrentWorkspace:
+            guard actions.canLaunch else { return false }
+            (actions.launchCurrentWorkspace ?? actions.launch)()
         case .close: guard actions.canClose else { return false }; actions.close()
         case .switcher: guard actions.canSwitch else { return false }; actions.switcher()
         case .settings: guard actions.canSettings else { return false }; actions.settings()

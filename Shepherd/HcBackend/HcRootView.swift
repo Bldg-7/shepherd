@@ -23,6 +23,11 @@ struct HcRootView: View {
     @State private var launchSheet = false
     @State private var switcher = false
     @State private var origins = false
+    @State private var tracking = false
+    @State private var closeRequests = 0
+    @State private var launcherUsesCurrentWorkspace = false
+    @State private var renamingTitle = false
+    @AppStorage(AgentBoardView.showsTabsKey) private var showsTabs = false
     @State private var routeNotice: String?
     @State private var operationError: String?
     @State private var viewingEpoch = UUID()
@@ -41,7 +46,7 @@ struct HcRootView: View {
         let model = scopedModel
         return HcRootChanges(machine: machineStore.activeMachine?.connectionIdentity, state: model?.state,
             document: model?.document, focus: model?.focus, busy: model?.operationBusy ?? false,
-            writable: model?.workspace?.canWrite ?? false, sheets: [launchSheet,switcher,settings,installation,origins,model?.operationReview != nil])
+            writable: model?.workspace?.canWrite ?? false, sheets: [launchSheet,switcher,settings,installation,origins,tracking,renamingTitle,model?.operationReview != nil])
     }
     var body: some View {
         dialogs
@@ -51,14 +56,14 @@ struct HcRootView: View {
             }
             .onAppear(perform: appeared)
             .onChange(of: changes) { routeAndViewed() }
-            .onChange(of: machineStore.activeMachine?.connectionIdentity) { origins = false }
+            .onChange(of: machineStore.activeMachine?.connectionIdentity) { origins = false; tracking = false; launchSheet = false; switcher = false }
             .onChange(of: scenePhase) { if scenePhase == .active { HcNotificationCoordinator.shared.refreshAuthorization() }; routeAndViewed() }
             .onChange(of: HcNotificationCoordinator.shared.navigationRequest, initial: true) { routeAndViewed() }
             .onDisappear(perform: disappeared)
     }
     private var dialogs: some View {
-        contents.frame(minWidth: 760, minHeight: 480)
-            .sheet(isPresented: $launchSheet) { if let model = scopedModel { HcLaunchSheet(model: model, machineName: machineStore.activeMachine?.displayName ?? "Machine") } }
+        contents
+            .sheet(isPresented: $tracking) { if let model = scopedModel { HcOperationTrackingView(model: model) } }
             .sheet(isPresented: $switcher) { if let model = scopedModel { HcPaneSwitcher(model: model) } }
             .sheet(isPresented: $settings) { MachinesSettingsView(machineStore: machineStore) }
             .sheet(isPresented: $installation) { HcInstallationView(machine: machineStore.activeMachine) }
@@ -68,33 +73,73 @@ struct HcRootView: View {
             } message: { Text(operationError ?? "") }
     }
     private var contents: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Picker("Machine", selection: Binding(get: { machineStore.activeMachineID }, set: { machineStore.activeMachineID = $0 })) {
-                    ForEach(machineStore.allMachines) { Text($0.displayName).tag(Optional($0.id)) }
-                }.frame(maxWidth: 280)
-                Button("New Terminal…") { launchSheet = true }.disabled(scopedModel?.canEdit != true).accessibilityIdentifier("hc.launch.open")
-                Button("Core origins…") { origins = true }
-                    .disabled(scopedModel?.state != .connected || scopedModel?.operationReview != nil)
-                    .accessibilityIdentifier("hc.origins.open")
-                Spacer()
-                if let coreID = scopedModel?.coreID { Text("hc · " + String(coreID.prefix(12))).font(.caption).foregroundStyle(.secondary) }
-                if let machine = machineStore.activeMachine {
-                    Button("Reconnect") { Task { await connection.open(machine: machine, store: machineStore, localTransport: localTransport) } }
-                }
-                Button { settings = true } label: { Label("Settings", systemImage: "gearshape") }
-            }.padding(10)
-            Divider()
-            if !retirementDismissed && UserDefaults.standard.bool(forKey: ShepherdBrowserFeature.preferenceKey) {
-                HStack(alignment: .top) {
-                    Text("In-app Browser and injected agent integrations are unavailable in this hc release. Existing terminal programs are untouched; integrations from older sessions are not resumed. Browser data and runtime settings are preserved.").font(.caption)
-                    Spacer(); Button("Dismiss") { retirementDismissed = true }
-                }.padding(10).background(Color.orange.opacity(0.12))
+        HcWorkspaceView(model: scopedModel, machine: machineStore.activeMachine, machineStore: machineStore,
+            closeRequests: closeRequests,
+            onSettings: { if !launchSheet && !switcher && !tracking { settings = true } },
+            onLaunch: { openLauncher(currentWorkspace: false) },
+            onSwitcher: { if !launchSheet && !tracking { switcher = true } },
+            onOrigins: { origins = true }, onTracking: { tracking = true },
+            onReconnect: {
+                guard let machine = machineStore.activeMachine else { return }
+                Task { await connection.open(machine: machine, store: machineStore, localTransport: localTransport) }
+            }, onRenameVisibility: { renamingTitle = $0 }, unavailable: AnyView(unavailable))
+        .overlay {
+            if launchSheet, let model = scopedModel {
+                NewTabLauncher(targets: launchTargets(model), preset: launcherPreset(model),
+                    standalonePrograms: true,
+                    create: { request, handOff in try await launch(request, model: model, handOff: handOff) },
+                    onClose: { launchSheet = false })
             }
-            if let routeNotice { Text(routeNotice).font(.caption).padding(8) }
-            if let model = scopedModel { HcWorkspaceView(model: model, machine: machineStore.activeMachine, machineStore: machineStore) }
-            else { unavailable }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if let routeNotice { Text(routeNotice).font(.caption).padding(8) }
+            if !retirementDismissed && UserDefaults.standard.bool(forKey: ShepherdBrowserFeature.preferenceKey) {
+                HStack {
+                    Text("In-app Browser and injected integrations are unavailable. Existing programs and data are preserved.").font(.caption)
+                    Spacer(); Button("Dismiss") { retirementDismissed = true }
+                }.padding(8)
+            }
+        }
+    }
+    private func launchTargets(_ model: HcWorkspaceModel) -> [LaunchTarget] {
+        [.init(herdrMachine: nil, label: machineStore.activeMachine?.displayName ?? "Machine",
+            workspaces: (model.document?.workspaces ?? []).map {
+                .init(workspace: .init(workspaceID: $0.id.uuidString, label: $0.name), tabCount: $0.tabs.count)
+            }, unavailableReason: model.canEdit ? nil : "Connection is not writable.")]
+    }
+    private func launcherPreset(_ model: HcWorkspaceModel) -> LaunchPreset? {
+        guard launcherUsesCurrentWorkspace, let id = model.focus.workspaceID,
+              let workspace = model.document?.workspaces.first(where: { $0.id == id }) else { return nil }
+        return .init(targetID: "host", workspace: .init(workspaceID: id.uuidString, label: workspace.name))
+    }
+    private func openLauncher(currentWorkspace: Bool) {
+        guard scopedModel?.canEdit == true, !switcher, !settings, !installation, !origins, !tracking else { return }
+        launcherUsesCurrentWorkspace = currentWorkspace
+        launchSheet.toggle()
+    }
+    private func launch(_ request: LaunchRequest, model: HcWorkspaceModel, handOff: @escaping @MainActor () -> Void) async throws {
+        guard scopedModel === model, model.canEdit, request.herdrMachine == nil else { throw HcWorkspaceModel.Failure.stale }
+        let workspaceID: UUID
+        switch request.workspace {
+        case .existing(let selected):
+            guard let id = UUID(uuidString: selected.workspaceID), model.document?.workspaces.contains(where: { $0.id == id }) == true else {
+                throw HcWorkspaceModel.Failure.stale
+            }
+            workspaceID = id
+        case .new(let name):
+            workspaceID = try await model.createWorkspace(name: name ?? "Workspace")
+        }
+        guard scopedModel === model else { throw HcWorkspaceModel.Failure.stale }
+        let argv: [String]
+        switch request.program {
+        case .shell: argv = []
+        case .claude: argv = ["claude"]
+        case .codex: argv = ["codex", "--no-daemon"]
+        case .pi: argv = ["pi"]
+        }
+        try await model.launchTab(workspaceID: workspaceID, name: request.tabName ?? String(localized: request.program.title), argv: argv)
+        guard scopedModel === model else { return }
+        handOff()
     }
     private var unavailable: some View {
         VStack(spacing: 16) {
@@ -114,21 +159,15 @@ struct HcRootView: View {
     }
     private var actions: HcWindowActions {
         let model = scopedModel, tab = model?.selectedTab
-        let split = (tab?.layout?.panes.count ?? 0) > 1
-        let available = !launchSheet && !switcher && !settings && !installation && !origins && model?.operationReview == nil
+        let available = !launchSheet && !switcher && !settings && !installation && !origins && !tracking && !renamingTitle && model?.operationReview == nil
         return HcWindowActions(canLaunch: available && model?.canEdit == true, canClose: available && model?.canEdit == true && tab != nil,
-            canSwitch: available && model?.state == .connected, canSettings: available, closeTitle: split ? "Close Pane View" : "Close Tab View",
+            canSwitch: available && model?.state == .connected, canSettings: available, closeTitle: showsTabs ? "Close Tab" : "Close Pane",
             launch: {
                 guard let current = scopedModel, current.canEdit, !launchSheet, !switcher, !settings, !installation, !origins else { return }
-                launchSheet = true
+                openLauncher(currentWorkspace: false)
             }, close: {
-                guard let current = scopedModel, current.canEdit, !origins, let selected = current.selectedTab else { return }
-                let selectedPane = current.focus.paneByTab[selected.id], isSplit = (selected.layout?.panes.count ?? 0) > 1
-                Task {
-                    guard scopedModel === current, current.canEdit, current.selectedTab?.id == selected.id else { return }
-                    do { if isSplit, let selectedPane { try await current.closePane(selectedPane) } else { try await current.closeTab(selected.id) } }
-                    catch { operationError = "Close unconfirmed. Review the current layout and saved operation; no program was terminated." }
-                }
+                guard scopedModel?.canEdit == true, !origins, !tracking else { return }
+                closeRequests += 1
             }, switcher: {
                 guard scopedModel?.state == .connected, scopedModel?.operationReview == nil,
                       !launchSheet, !switcher, !settings, !installation, !origins else { return }
@@ -136,7 +175,7 @@ struct HcRootView: View {
             }, settings: {
                 guard scopedModel?.operationReview == nil, !launchSheet, !switcher, !settings, !installation, !origins else { return }
                 settings = true
-            })
+            }, launchCurrentWorkspace: { openLauncher(currentWorkspace: true) })
     }
     private func appeared() {
         HcWindowCommandState.shared.claim(commandOwner, actions: actions)

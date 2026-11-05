@@ -27,27 +27,56 @@ extension EnvironmentValues {
     @Entry var terminalPaneFocus: TerminalPaneFocus?
 }
 
+/// Backend-independent data for the existing switcher presentation.
+struct WorkspaceSwitcherItem<ID: Hashable>: Identifiable, Equatable {
+    let id: ID
+    let title: String
+    let location: String
+    let searchTerms: [String]
+    let hasAgent: Bool
+    let isAvailable: Bool
+    func matches(_ query: String) -> Bool {
+        query.split(whereSeparator: \.isWhitespace).allSatisfy { term in
+            ([title,location] + searchTerms).contains { $0.localizedStandardContains(String(term)) }
+        }
+    }
+}
 struct PaneSwitcher: View {
     let destinations: [PaneDestination]
     let onSelect: (PaneDestination) -> Void
     let onClose: () -> Void
+    var body: some View {
+        WorkspacePaneSwitcher(destinations: destinations.map {
+            WorkspaceSwitcherItem(id: $0.id, title: $0.pane.title, location: $0.location + " · " + $0.pane.id,
+                searchTerms: [$0.pane.agentName ?? "",$0.pane.workingDirectory ?? ""],
+                hasAgent: $0.pane.hasAgent, isAvailable: $0.isAvailable)
+        }, onSelect: { item in
+            if let current = destinations.first(where: { $0.id == item.id && $0.isAvailable }) { onSelect(current) }
+        }, onClose: onClose)
+    }
+}
+
+struct WorkspacePaneSwitcher<ID: Hashable>: View {
+    let destinations: [WorkspaceSwitcherItem<ID>]
+    let onSelect: (WorkspaceSwitcherItem<ID>) -> Void
+    let onClose: () -> Void
     @State private var query = ""
-    @State private var highlightedID: String?
+    @State private var highlightedID: ID?
     @FocusState private var fieldFocused: Bool
-    private var results: [PaneDestination] { destinations.filter { $0.matches(query) } }
+    private var results: [WorkspaceSwitcherItem<ID>] { destinations.filter { $0.matches(query) } }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                 TextField("Go to Agent or Pane…", text: $query)
-                    .textFieldStyle(.plain).focused($fieldFocused)
+                    .textFieldStyle(.plain).focused($fieldFocused).accessibilityIdentifier("workspace.switcher.search")
                     .onSubmit { chooseHighlighted() }
                     .onKeyPress(.downArrow) { move(1); return .handled }
                     .onKeyPress(.upArrow) { move(-1); return .handled }
                 Button(action: onClose) { Image(systemName: "xmark.circle.fill") }
                     .buttonStyle(.plain).foregroundStyle(.secondary)
-                    .accessibilityLabel("Cancel")
+                    .accessibilityLabel("Cancel").accessibilityIdentifier("workspace.switcher.cancel")
             }.padding(16)
             Divider()
             if results.isEmpty {
@@ -59,10 +88,10 @@ struct PaneSwitcher: View {
                             ForEach(results) { destination in
                                 Button { if destination.isAvailable { onSelect(destination) } } label: {
                                     HStack {
-                                        Image(systemName: destination.pane.hasAgent ? "person.crop.rectangle" : "terminal")
+                                        Image(systemName: destination.hasAgent ? "person.crop.rectangle" : "terminal")
                                         VStack(alignment: .leading, spacing: 3) {
-                                            Text(verbatim: destination.pane.title).lineLimit(1)
-                                            Text(verbatim: destination.location + " · " + destination.pane.id)
+                                            Text(verbatim: destination.title).lineLimit(1)
+                                            Text(verbatim: destination.location)
                                                 .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                                         }
                                         Spacer()

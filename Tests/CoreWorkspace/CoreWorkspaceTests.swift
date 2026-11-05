@@ -166,6 +166,13 @@ typealias Doc = CoreWorkspaceDocument
         let ref = Doc.TerminalReference(coreID: "c1", terminalID: "t1")
         let bound = try CoreWorkspaceEdit.bindPane(pane.id, expected: nil, replacement: ref).applying(to: initial)
         try check(bound != initial, "explicit bind records reference")
+        let renamedPane = try CoreWorkspaceEdit.renamePane(pane.id, "한글 name").applying(to: bound)
+        try check(renamedPane.panes.first?.title == "한글 name" && renamedPane.panes.first?.terminal == ref
+            && renamedPane.workspaces[0].tabs[0].name == "t", "pane rename preserves terminal and tab, no fabricated identity")
+        let clearedPane = try CoreWorkspaceEdit.renamePane(pane.id, "").applying(to: renamedPane)
+        try check(clearedPane == bound, "empty pane name restores automatic title")
+        try rejects("missing pane rename") { _ = try CoreWorkspaceEdit.renamePane(UUID(), "x").applying(to: bound) }
+        try rejects("oversized pane rename") { _ = try CoreWorkspaceEdit.renamePane(pane.id, String(repeating: "x", count: 1025)).applying(to: bound) }
         try rejects("bind precondition") { _ = try CoreWorkspaceEdit.bindPane(pane.id, expected: nil, replacement: ref).applying(to: bound) }
         try rejects("duplicate append") { _ = try CoreWorkspaceEdit.appendWorkspace(workspace).applying(to: initial) }
         try rejects("missing edit target") { _ = try CoreWorkspaceEdit.renameTab(UUID(), "x").applying(to: initial) }
