@@ -44,6 +44,14 @@ class PreservationWiring(unittest.TestCase):
         self.assertIn('UUID(uuidString: selected.workspaceID)', root)
         self.assertIn('scopedModel === model', root)
 
+    def test_inspection_rejects_unsupported_launch_before_metadata(self):
+        root = source('Shepherd/HcBackend/HcRootView.swift')
+        launch = root[root.index('private func launch('):]
+        self.assertLess(launch.index('guard !inspectionOnly || request.program == .shell'), launch.index('model.createWorkspace'))
+        self.assertIn('allowedStandalonePrograms: inspectionOnly ? [.shell]', root)
+        self.assertIn('describeFailure:', root)
+        self.assertIn('return hcConnectionFailureDescription(error)', root)
+
     def test_preview_expansion_does_not_remove_live_terminal(self):
         pane = source('Shepherd/HcBackend/HcTerminalPane.swift')
         self.assertIn('WorkspaceDetailSplitView(showsPanel:', pane)

@@ -125,6 +125,31 @@ involved, and `launchdLifecycleQualified` stays false.
 - `/private/tmp/hc-screen-regression.ofHCyB/{attach,board,protocol}` retains
   nine attach, twelve board and seven-stage protocol regression results.
 
+## Manual inspection is Shell-only, not an installed-agent launch environment
+
+The private core deliberately has `PATH=/usr/bin:/bin` and fresh HOME with network
+blocked. It does not inherit installed Claude/Codex/Pi executables or credentials.
+Showing those program choices in the first inspection build was incorrect:
+`hc-screen-app.5abryr19`'s owned `holder.log` records Claude missing (`os error 2`).
+A placeholder and uncertain operation were retained; they are not a running agent
+and are never automatically deleted, adopted or replayed.
+
+The inspection host now explicitly supplies Shell-only launcher choices, and its
+root rejects any other program **before** workspace/placeholder creation. The
+existing launcher takes a caller-specific safe failure formatter rather than
+showing `ShepherdKit.CoreRPCRemoteFailure error 1`. Ordinary product CLI integration
+is separate; this mode does not borrow the real account to make a test appear to
+work. `/private/tmp/hc-launcher-mode.tXFo6x/run`: **69 actual launcher component
+checks** in owned never-shown windows, including single Shell segment, Tab/ShiftTab
+unable to select a hidden CLI, and Return requesting Shell only. No real CLI or
+provider account was run. Five source-wiring guards also pass.
+
+Full-app rebuilding this change is currently blocked by the installed Xcode27.2
+missing Metal Toolchain (`/private/tmp/hc-inspection-launch-policy.904Mtl/macos.log`).
+No component was downloaded or global toolchain changed. The source/component
+result is **not** a rebuilt-app or foreground GUI pass; the running older inspection
+instance is unchanged until an explicitly approved rebuild/relaunch.
+
 ## Current native New Tab foreground gate passes (limited scope)
 
 `/private/tmp/hc-screen-app.6zgntub_` passes **12 checks** on the exact retained

@@ -40,11 +40,13 @@ import AppKit
         var keepsKeyboard: Bool { window.firstResponder === editor && field.currentEditor() === editor }
     }
 
-    static func open(_ targets: [LaunchTarget], preset: LaunchPreset?, allowsBrowserAgents: Bool) -> Launcher {
+    static func open(_ targets: [LaunchTarget], preset: LaunchPreset?, allowsBrowserAgents: Bool,
+                     standalonePrograms: Bool = false, allowedPrograms: [LaunchProgram] = LaunchProgram.allCases) -> Launcher {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 420), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         let probe = LauncherProbe()
-        let launcher = NewTabLauncher(targets: targets, preset: preset, allowsBrowserAgents: allowsBrowserAgents, create: { @MainActor request, _ in
+        let launcher = NewTabLauncher(targets: targets, preset: preset, allowsBrowserAgents: allowsBrowserAgents,
+            standalonePrograms: standalonePrograms, allowedStandalonePrograms: allowedPrograms, create: { @MainActor request, _ in
             probe.requests.append(request)
             if probe.holdsReturn { await withCheckedContinuation { probe.pending = $0 } }
         }, onClose: { probe.closes += 1 })
@@ -197,6 +199,16 @@ import AppKit
         returnKey(d)
         check(d.picker?.selectedSegment == 2, "back on the Tab Name step, the program picked is kept")
         d.window.close()
+
+        // The manual hc UI cannot borrow installed CLIs/config. Its actual
+        // picker and Tab paths expose only Shell, not merely a warning label.
+        let inspection = open([host], preset: onHost, allowsBrowserAgents: false, standalonePrograms: true, allowedPrograms: [.shell])
+        check(inspection.picker?.segmentCount == 1 && inspection.picker?.label(forSegment: 0) == "Shell", "inspection shows only its supported Shell")
+        tab(inspection); backtab(inspection)
+        check(inspection.picker?.selectedSegment == 0 && inspection.keepsKeyboard, "inspection Tab cannot select a hidden agent CLI")
+        returnKey(inspection)
+        check(inspection.probe.requests.map(\.program) == [.shell], "inspection Return can request Shell only")
+        inspection.window.close()
 
         print("PASS \(checks) launcher Tab checks: the rule round the picker both ways, Tab and ⇧Tab key-downs on the Tab Name step keeping the keyboard, the text, the insertion point and a composition, Return taking the program picked, a pending Return, a herdr machine, no picker, the other steps left to AppKit; the whole launcher in never-shown owned windows, no input method or app")
     }

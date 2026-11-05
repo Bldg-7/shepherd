@@ -228,7 +228,8 @@ struct HcMigrationHost: View {
     @State private var manualInspection = false
     var body: some View {
         Group {
-            if let owner, let fixtureStore { HcRootView(machineStore: fixtureStore, connection: owner, localTransport: fixtureTransport) }
+            if let owner, let fixtureStore { HcRootView(machineStore: fixtureStore, connection: owner, localTransport: fixtureTransport,
+                    inspectionOnly: ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_MANUAL_SECONDS"] != nil) }
             else if failure { Text("Private hc integration failed") }
             else { ProgressView("Preparing private hc integration…") }
         }

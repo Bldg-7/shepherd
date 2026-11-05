@@ -1,5 +1,10 @@
 import SwiftUI
 
+private enum HcInspectionLaunchFailure: Error, LocalizedError {
+    case shellOnly
+    var errorDescription: String? { "This private inspection environment supports Shell only. Claude Code, Codex and Pi are not connected to your installed CLIs or accounts. No program was started." }
+}
+
 private struct HcRootChanges: Equatable {
     let machine: Machine.ConnectionIdentity?
     let state: HcWorkspaceModel.State?
@@ -16,6 +21,7 @@ struct HcRootView: View {
     let machineStore: MachineStore
     @State private var connection: HcMachineConnection
     private let localTransport: (any CoreByteTransport)?
+    private let inspectionOnly: Bool
     @Environment(\.openWindow) private var openWindow
     @Environment(\.scenePhase) private var scenePhase
     @State private var settings = false
@@ -33,8 +39,8 @@ struct HcRootView: View {
     @State private var viewingEpoch = UUID()
     @State private var commandOwner = UUID()
     @AppStorage("hc.browserRetirementNoticeDismissed") private var retirementDismissed = false
-    init(machineStore: MachineStore, connection: HcMachineConnection? = nil, localTransport: (any CoreByteTransport)? = nil) {
-        self.machineStore = machineStore; self.localTransport = localTransport
+    init(machineStore: MachineStore, connection: HcMachineConnection? = nil, localTransport: (any CoreByteTransport)? = nil, inspectionOnly: Bool = false) {
+        self.machineStore = machineStore; self.localTransport = localTransport; self.inspectionOnly = inspectionOnly
         _connection = State(initialValue: connection ?? HcMachineConnection())
     }
     private var scopedModel: HcWorkspaceModel? {
@@ -87,6 +93,12 @@ struct HcRootView: View {
             if launchSheet, let model = scopedModel {
                 NewTabLauncher(targets: launchTargets(model), preset: launcherPreset(model),
                     standalonePrograms: true,
+                    allowedStandalonePrograms: inspectionOnly ? [.shell] : LaunchProgram.allCases,
+                    standaloneProgramNotice: inspectionOnly ? "Private UI inspection: Shell only, temporary HOME, network disabled. Installed agent CLIs and accounts are not connected." : nil,
+                    describeFailure: { error in
+                        if let inspection = error as? HcInspectionLaunchFailure { return inspection.localizedDescription }
+                        return hcConnectionFailureDescription(error) + " If a view was created, review its saved outcome before another launch."
+                    },
                     create: { request, handOff in try await launch(request, model: model, handOff: handOff) },
                     onClose: { launchSheet = false })
             }
@@ -119,6 +131,9 @@ struct HcRootView: View {
     }
     private func launch(_ request: LaunchRequest, model: HcWorkspaceModel, handOff: @escaping @MainActor () -> Void) async throws {
         guard scopedModel === model, model.canEdit, request.herdrMachine == nil else { throw HcWorkspaceModel.Failure.stale }
+        // Reject unsupported inspection intent BEFORE even creating workspace
+        // or placeholder metadata. Never borrow the user's CLI/config instead.
+        guard !inspectionOnly || request.program == .shell else { throw HcInspectionLaunchFailure.shellOnly }
         let workspaceID: UUID
         switch request.workspace {
         case .existing(let selected):

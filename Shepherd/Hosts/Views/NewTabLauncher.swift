@@ -169,6 +169,10 @@ struct NewTabLauncher: View {
     let allowsBrowserAgents: Bool
     /// Plain hc CLI choices reuse this launcher without enabling browser/runtime injection.
     let standalonePrograms: Bool
+    let allowedStandalonePrograms: [LaunchProgram]
+    let standaloneProgramNotice: String?
+    let describeFailure: (any Error) -> String
+    private var programChoices: [LaunchProgram] { standalonePrograms ? allowedStandalonePrograms : LaunchProgram.launchableCases }
     /// The machine list's row that adds a herdr machine, or nil for none.
     let addHerdrMachine: AddHerdrMachineOffer?
     /// Closes the launcher and starts adding a herdr machine.
@@ -221,11 +225,16 @@ struct NewTabLauncher: View {
     @State private var outsideClicks = OutsideClickWatcher()
 
     init(targets: [LaunchTarget], preset: LaunchPreset? = nil, allowsBrowserAgents: Bool = false, standalonePrograms: Bool = false,
+         allowedStandalonePrograms: [LaunchProgram] = LaunchProgram.allCases, standaloneProgramNotice: String? = nil,
+         describeFailure: @escaping (any Error) -> String = connectionFailureDescription,
          addHerdrMachine: AddHerdrMachineOffer? = nil, onAddHerdrMachine: @escaping () -> Void = {},
          create: @escaping (LaunchRequest, _ handOff: @escaping @MainActor () -> Void) async throws -> Void, onClose: @escaping () -> Void) {
         self.targets = targets
         self.allowsBrowserAgents = allowsBrowserAgents
         self.standalonePrograms = standalonePrograms
+        self.allowedStandalonePrograms = allowedStandalonePrograms
+        self.standaloneProgramNotice = standaloneProgramNotice
+        self.describeFailure = describeFailure
         self.addHerdrMachine = addHerdrMachine
         self.onAddHerdrMachine = onAddHerdrMachine
         self.create = create
@@ -309,7 +318,7 @@ struct NewTabLauncher: View {
             #if os(macOS)
             if step == .tabName && (allowsBrowserAgents || standalonePrograms) {
                 Picker("Launch", selection: $program) {
-                    ForEach(standalonePrograms ? LaunchProgram.allCases : LaunchProgram.launchableCases, id: \.self) { choice in
+                    ForEach(programChoices, id: \.self) { choice in
                         Text(choice.title).tag(choice)
                     }
                 }
@@ -319,7 +328,7 @@ struct NewTabLauncher: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 12)
                 if standalonePrograms {
-                    Text("Uses the installed CLI without browser integration or injected credentials.")
+                    Text(standaloneProgramNotice ?? "Uses the installed CLI without browser integration or injected credentials.")
                         .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 16).padding(.bottom, 10)
                 } else if !allowsBrowserAgents || target?.herdrMachine != nil {
                     Text("Browser agent launching is unavailable here. Shell tabs remain available.")
@@ -554,7 +563,7 @@ struct NewTabLauncher: View {
                                         program: (allowsBrowserAgents || standalonePrograms) && target.herdrMachine == nil ? program : .shell)
             isCreating = true
             let attempt = LaunchAttempt(close: { close(restoringFocus: false) }, fail: { error, keepsCreatedPane in
-                failure = connectionFailureDescription(error)
+                failure = describeFailure(error)
                 createdPaneRetained = keepsCreatedPane
                 isCreating = false
             })
@@ -619,7 +628,7 @@ struct NewTabLauncher: View {
     /// Whether the Launch picker can be changed: browser agents allowed, on
     /// the host's own herdr, with no Return on the tab name pending or kept.
     private var canPickProgram: Bool {
-        (allowsBrowserAgents || standalonePrograms) && target?.herdrMachine == nil && !isCreating && !createdPaneRetained
+        (allowsBrowserAgents || standalonePrograms) && programChoices.count > 1 && target?.herdrMachine == nil && !isCreating && !createdPaneRetained
     }
 
     /// Tab, or ⇧Tab with `backward`: on the Tab Name step, the next program
@@ -629,7 +638,7 @@ struct NewTabLauncher: View {
     private func cycleProgram(backward: Bool) -> Bool {
         guard step == .tabName else { return false }
         if canPickProgram {
-            program = program.cycled(backward: backward, among: standalonePrograms ? LaunchProgram.allCases : LaunchProgram.launchableCases)
+            program = program.cycled(backward: backward, among: programChoices)
         }
         return true
     }
