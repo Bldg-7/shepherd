@@ -562,6 +562,8 @@ Ghostty #14711/#14725는 이미 upstream merge됐지만 hc에는 반영 PR이 �
 
 추가 `/private/tmp/hc-screen-app.sgmo28fn`15 checks: 기존12+actual CmdP전환창/search/Done,Settings/Done,CmdW로명시적duplicate뷰만닫고정확한terminal이live/프로그램수불변확인. sourcehash는settings를포함한모든macOS Swift로확장했다. artifact/등록/PID/socket모두퇴역,releaseCutover=false. recovery-native modal/전체gateway 제품UI/defaultroot와배포는이결과로통과시키지않는다.
 
+현재추가recovery-modal GUI gate는미통과: `.1q9ajoli`/`.l189ai4r`14개이후history Disclosure의Press로review controls가나오지않음. publicAX expanded요청/expanded상태와실제controls검증을추가했지만`.byx48ay5`는9개이후전경진입에서멈춰수정자체는미검증. 임시자원전부퇴역. 15개과거source의통과를현재17개gate로소급하지않음. 다음GUI는사람준비확인후진행하며그동안비GUI gateway작업을진행한다.
+
 ### 이전 GUI qualification 실패 기록
 
 URL비교수정후 `/private/tmp/hc-screen-app.aovolzks`는 실제active/key까지진입했지만canEdit=true에도NewTab native item이disabled였다. 4초유계진단 `/private/tmp/hc-screen-app.rhppg5ac`에서도ownerCanLaunch=true/ownerPresent=true인데native menu는초기legacy분기와action=nil/target=nil/disabled상태를유지했다. Observer전달을main-actor ObservableObject/@Published와Commands의@ObservedObject구독으로바꾸고snapshot을명시전달,실행은최신owner/enablement및Root의현재model/tabscope를검사한다. 강제isEnabled설정이나foreground/menu검사삭제없음. Debug/O15checks(`/private/tmp/hc-command-owner.dqMcZ2`)와macOS compile통과. 수정후자동실행 `.1m8mfgjj`는foreground미획득으로menu단계에도달못해GUI수정검증은아직아니다. 모든owned자원/bundle퇴역,추가클릭은요청하지않았고사람준비확인때만다시실행한다.

@@ -162,11 +162,28 @@ The runner now hashes all macOS Swift sources, including the settings view.
 These are actual modal/command checks, not component-only mocks; native recovery
 review/forget and full product cutover remain separate work.
 
+### Current recovery-modal extension is still pending / red
+
+The runner now additionally requires real completed-history expansion, Review /
+Cancel and separately confirmed Forget tracking with unchanged live programs.
+Do not apply the preceding 15-check result to this newer source/gate.
+`/private/tmp/hc-screen-app.{1q9ajoli,l189ai4r}` reached 14 assertions before
+stopping at history expansion. The identified `AccessibilityNode` implements the
+Press selector, but Press did not expose its review controls. The fixture now
+requests expansion through the public AppKit accessibility API, verifies the
+expanded state and actual controls; it does not assign SwiftUI internal state.
+Button Press now checks enabled/handled as well as subsequent UI state.
+`/private/tmp/hc-screen-app.byx48ay5` failed earlier at owned foreground activation
+(nine checks), so it **does not test that expansion change**. All these exact
+owned processes/sockets/registrations/bundles retired; failed evidence remains.
+No further automatic foreground retry is running: confirm human readiness first.
+Compilation is not native review/forget qualification.
+
 ## Retained earlier foreground failures (not retroactively passed)
 
 The stricter current runner additionally requires actual foreground/key-window
 state and the native New Tab menu opening/canceling the human launch form.
-Latest actual attempt: `/private/tmp/hc-screen-app.lu550__x` used the explicit
+Actual attempt at that checkpoint: `/private/tmp/hc-screen-app.lu550__x` used the explicit
 human-activation wait, reached nine earlier assertions and ended **passed=false**.
 This time `helperActive=true` was observed: the person's activation did reach the
 owned helper. `targetActive=false`/own app `isActive=false,isKey=false` remained,

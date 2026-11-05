@@ -55,7 +55,7 @@ struct HcWorkspaceView: View {
                 if model.recoveryRecords.contains(where: \.complete) {
                     DisclosureGroup("Completed operation history") {
                         ForEach(model.recoveryRecords.filter(\.complete), id: \.id) { operation in operationRow(operation) }
-                    }
+                    }.accessibilityIdentifier("hc.review.history")
                 }
                 Section("Core terminals") {
                     ForEach(model.terminals, id: \.address) { terminal in
@@ -105,6 +105,7 @@ struct HcWorkspaceView: View {
             Text(operation.terminal?.terminalID ?? "Program identity unconfirmed").font(.caption)
             Text("No automatic retry or termination.").font(.caption).foregroundStyle(.secondary)
             Button("Review tracking") { perform { review = try await model.prepareOperationReview(operation.id) } }
+                .accessibilityIdentifier("hc.review.open.\(operation.id)")
                 .disabled(model.operationBusy || model.operationReview != nil || model.state != .connected)
         }
     }

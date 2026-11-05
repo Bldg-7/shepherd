@@ -22,16 +22,16 @@ struct HcOperationReviewSheet: View {
             if let error { Text(error).font(.footnote).foregroundStyle(.red) }
             if model.operationBusy { ProgressView("Applying once…") }
             HStack {
-                Button("Forget tracking only…", role: .destructive) { forget = true }
+                Button("Forget tracking only…", role: .destructive) { forget = true }.accessibilityIdentifier("hc.review.forget")
                     .disabled(model.operationBusy || model.state != .connected)
                 Spacer()
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction).disabled(model.operationBusy)
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction).disabled(model.operationBusy).accessibilityIdentifier("hc.review.cancel")
                 Button("Apply reviewed layout once") {
                     Task {
                         do { try await model.applyOperationReview(review); dismiss() }
                         catch { self.error = "Layout was not confirmed. Close this sheet and review a fresh read before another attempt. Nothing is automatically resent." }
                     }
-                }.disabled(!model.canApply(review))
+                }.disabled(!model.canApply(review)).accessibilityIdentifier("hc.review.apply")
             }
         }
         .padding(24).frame(width: 620)
@@ -43,7 +43,7 @@ struct HcOperationReviewSheet: View {
                     do { try await model.forgetOperationReview(review); dismiss() }
                     catch { self.error = "Tracking could not be removed. No program was changed." }
                 }
-            }
+            }.accessibilityIdentifier("hc.review.forget.confirm")
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("A program whose launch was unconfirmed may still be running. This removes bookkeeping only; it does not stop, adopt or relaunch anything.")

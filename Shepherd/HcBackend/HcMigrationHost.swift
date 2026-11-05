@@ -133,9 +133,27 @@ private nonisolated struct HcMigrationStatus: Decodable, Sendable {
         try await Task.sleep(for: .milliseconds(20))
     }
 }
+@MainActor private func hcFixtureExpand(_ id: String, root: URL) throws {
+    guard let control = hcFixtureElement(id) else { throw HcWorkspaceModel.Failure.unavailable }
+    let object: AnyObject = control
+    guard object.isAccessibilityEnabled?() == true else { throw HcWorkspaceModel.Failure.unavailable }
+    let before = object.isAccessibilityExpanded?() ?? false
+    let supported = control.responds(to: NSSelectorFromString("setAccessibilityExpanded:"))
+    if supported { object.setAccessibilityExpanded?(true) }
+    let after = object.isAccessibilityExpanded?() ?? false
+    try JSONSerialization.data(withJSONObject: ["before":before,"after":after,"supportsExpand":supported,
+        "role":(object.accessibilityRole?() ?? nil)?.rawValue ?? "nil"]).write(to: root.appending(path: "history-expand.json"), options: .atomic)
+    guard supported, after else { throw HcWorkspaceModel.Failure.unavailable }
+}
 @MainActor private func hcFixturePress(_ id: String) throws {
-    guard let control = hcFixtureElement(id), control.responds(to: NSSelectorFromString("accessibilityPerformPress")) else { throw HcWorkspaceModel.Failure.unavailable }
-    _ = control.perform(NSSelectorFromString("accessibilityPerformPress"))
+    let control = hcFixtureElement(id)
+    let supported = ((control as AnyObject?)?.isAccessibilityEnabled?() == true) && (control?.responds(to: NSSelectorFromString("accessibilityPerformPress")) ?? false)
+    let handled = supported ? ((control as AnyObject?)?.accessibilityPerformPress?() ?? false) : false
+    if let root = HcMigrationConfiguration.current?.root {
+        try JSONSerialization.data(withJSONObject: ["identifier":id,"found":control != nil,"class":control.map { String(describing:type(of:$0)) } ?? "nil",
+            "supportsPress":supported,"handled":handled]).write(to: root.appending(path: "last-accessibility-press.json"), options: .atomic)
+    }
+    guard handled else { throw HcWorkspaceModel.Failure.unavailable }
 }
 @MainActor private func hcFixtureElement(_ identifier: String) -> NSObject? {
     for window in NSApp.windows { if let content = window.contentView, let element = hcAccessibility(content)[identifier] { return element } }
@@ -391,6 +409,28 @@ struct HcMigrationHost: View {
             let afterClose = try await HcTerminalBoard(connection: c).list(all: true)
             guard afterClose.count == records.count, afterClose.first(where: { $0.address == target })?.state == "live" else { throw HcWorkspaceModel.Failure.unavailable }
             checks += 1
+            guard let historyRecord = m.recoveryRecords.first(where: { $0.kind == .launch && $0.complete }) else { throw HcWorkspaceModel.Failure.unavailable }
+            let reviewID = "hc.review.open.\(historyRecord.id)", historyCount = m.recoveryRecords.count
+            try hcFixtureExpand("hc.review.history", root: root)
+            try await hcFixtureWait(reviewID, present: true, window: rootWindow)
+            try hcFixturePress(reviewID)
+            try await hcFixtureWait("hc.review.cancel", present: true, window: rootWindow)
+            guard m.operationReview?.record.id == historyRecord.id, m.operationReview?.canApplyLayout == false,
+                  !m.canEdit, HcWindowCommandState.shared.actions?.canLaunch == false else { throw HcWorkspaceModel.Failure.unavailable }
+            try hcFixturePress("hc.review.cancel")
+            try await hcFixtureWait("hc.review.cancel", present: false, window: rootWindow)
+            guard m.operationReview == nil, m.recoveryRecords.count == historyCount else { throw HcWorkspaceModel.Failure.unavailable }
+            checks += 1
+            try hcFixturePress(reviewID)
+            try await hcFixtureWait("hc.review.forget", present: true, window: rootWindow)
+            try hcFixturePress("hc.review.forget")
+            try await hcFixtureWait("hc.review.forget.confirm", present: true, window: rootWindow)
+            try hcFixturePress("hc.review.forget.confirm")
+            try await hcFixtureWait("hc.review.cancel", present: false, window: rootWindow)
+            let afterForget = try await HcTerminalBoard(connection: c).list(all: true)
+            guard m.recoveryRecords.count == historyCount - 1, !m.recoveryRecords.contains(where: { $0.id == historyRecord.id }),
+                  afterForget.count == records.count, afterForget.first(where: { $0.address == target })?.state == "live" else { throw HcWorkspaceModel.Failure.unavailable }
+            checks += 1
             // Only this fixture's explicitly isolated core may be stopped.
             _ = try await c.call("server.stop")
             await owner.close()
@@ -398,12 +438,16 @@ struct HcMigrationHost: View {
             let snapshot = await t.snapshot(), screenSnapshot = await screenTransport.snapshot()
             guard owner.phase == .idle, snapshot.reaped, screenSnapshot.reaped else { throw HcWorkspaceModel.Failure.unavailable }; checks += 1
             try JSONSerialization.data(withJSONObject: ["passed":true,"checks":checks,"ownedPIDs":owned,
-                "windowCommandsVerified":true,"paneSwitcherVerified":true,"settingsVerified":true,"closeViewKeepsProgram":true,"filePreviewVerified":true,"fileDropVerified":true,"productFactoryVerified":true,"renderedBytes":HcMigrationRenderProbe.shared.bytes,"sidebarAccessibilityVerified":true,"screenshot":FileManager.default.fileExists(atPath: root.appending(path:"workspace.png").path),
+                "windowCommandsVerified":true,"paneSwitcherVerified":true,"recoveryReviewVerified":true,"forgetTrackingKeepsProgram":true,"settingsVerified":true,"closeViewKeepsProgram":true,"filePreviewVerified":true,"fileDropVerified":true,"productFactoryVerified":true,"renderedBytes":HcMigrationRenderProbe.shared.bytes,"sidebarAccessibilityVerified":true,"screenshot":FileManager.default.fileExists(atPath: root.appending(path:"workspace.png").path),
                 "browserAuthorityUsed":false,"productCutover":false]).write(to: report, options: .atomic)
             NSApp.terminate(nil)
         } catch {
             failure = true
             try? Data(HcMigrationRenderProbe.shared.text.utf8).write(to: root.appending(path: "failed-screen.txt"))
+            var ids = Set<String>()
+            for window in NSApp.windows { if let content = window.contentView { ids.formUnion(hcAccessibility(content).keys) } }
+            try? JSONSerialization.data(withJSONObject: ["identifiers":ids.sorted(),"operationReviewActive":workspace?.operationReview != nil,
+                "errorType":String(describing:type(of:error))]).write(to: root.appending(path: "failed-ui-stage.json"), options: .atomic)
             if let connection { _ = try? await connection.call("server.stop") }
             await owner?.close()
             try? await workspace?.disconnect(); try? await connection?.close()
