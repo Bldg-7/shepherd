@@ -25,7 +25,7 @@ products=a.products.resolve();app=products/'hrdrhrdrhrdr.app'
 exe=app/'Contents/MacOS/hrdrhrdrhrdr'
 assert exe.is_file(),'build macOS Debug products first'
 tracked=[*sorted((ROOT/'ShepherdKit/Sources/ShepherdKit').rglob('*.swift')),
-         *sorted((ROOT/'Shepherd/HcBackend').glob('*.swift')),ROOT/'Shepherd/Shepherd.swift',ROOT/'Tests/HcBackend/OwnedUILauncher.swift',ROOT/'Tests/HcBackend/ui_artifacts.py',Path(__file__).resolve()]
+         *sorted((ROOT/'Shepherd').rglob('*.swift')),ROOT/'Tests/HcBackend/OwnedUILauncher.swift',ROOT/'Tests/HcBackend/ui_artifacts.py',Path(__file__).resolve()]
 def digest(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 hashes={str(p.relative_to(ROOT)):digest(p) for p in tracked}
 (out/'source-hashes.json').write_text(json.dumps(hashes,indent=2))
@@ -121,10 +121,10 @@ finally:
             artifact_cleanup = {'removed': [], 'error': type(error).__name__}
             failed = failed or error
     (out/'artifact-cleanup.json').write_text(json.dumps(artifact_cleanup,indent=2))
-passed=failed is None and result.get('passed') is True and bool(result.get('ownedPIDs')) and result.get('screenshot') is True and result.get('sidebarAccessibilityVerified') is True and result.get('productFactoryVerified') is True and result.get('filePreviewVerified') is True and result.get('fileDropVerified') is True and result.get('windowCommandsVerified') is True
+passed=failed is None and result.get('passed') is True and bool(result.get('ownedPIDs')) and result.get('screenshot') is True and result.get('sidebarAccessibilityVerified') is True and result.get('productFactoryVerified') is True and result.get('filePreviewVerified') is True and result.get('fileDropVerified') is True and result.get('windowCommandsVerified') is True and result.get('paneSwitcherVerified') is True and result.get('settingsVerified') is True and result.get('closeViewKeepsProgram') is True
 assert hashes=={str(p.relative_to(ROOT)):digest(p) for p in tracked},'sources changed during validation'
 (out/'validation.json').write_text(json.dumps({'passed':passed,'checks':result.get('checks'),'renderedBytes':result.get('renderedBytes'),
-    'actualSwiftUI':True,'nativeSwiftTerm':True,'humanActivationRequested':a.human_activation,'foregroundAssertionsRequired':True,'windowCommandsVerified':result.get('windowCommandsVerified'),'filePreviewVerified':result.get('filePreviewVerified'),'fileDropVerified':result.get('fileDropVerified'),'productFactoryVerified':result.get('productFactoryVerified'),'sidebarAccessibilityVerified':result.get('sidebarAccessibilityVerified'),'screenshot':result.get('screenshot'),'browserAuthorityUsed':False,'legacyServicesStarted':False,
+    'actualSwiftUI':True,'nativeSwiftTerm':True,'humanActivationRequested':a.human_activation,'foregroundAssertionsRequired':True,'windowCommandsVerified':result.get('windowCommandsVerified'),'paneSwitcherVerified':result.get('paneSwitcherVerified'),'settingsVerified':result.get('settingsVerified'),'closeViewKeepsProgram':result.get('closeViewKeepsProgram'),'filePreviewVerified':result.get('filePreviewVerified'),'fileDropVerified':result.get('fileDropVerified'),'productFactoryVerified':result.get('productFactoryVerified'),'sidebarAccessibilityVerified':result.get('sidebarAccessibilityVerified'),'screenshot':result.get('screenshot'),'browserAuthorityUsed':False,'legacyServicesStarted':False,
     'ownedProcessesExited':bool(result.get('ownedPIDs')),'socketRemoved':not sock.exists(),'releaseCutover':False},indent=2))
 if failed:raise failed
 assert passed,'UI rendering/cleanup incomplete'

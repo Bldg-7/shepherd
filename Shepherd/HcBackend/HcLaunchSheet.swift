@@ -80,7 +80,7 @@ struct HcPaneSwitcher: View {
     var body: some View {
         VStack(alignment: .leading) {
             Text("Go to workspace or pane").font(.headline)
-            TextField("Search", text: $search)
+            TextField("Search", text: $search).accessibilityIdentifier("hc.switcher.search")
             List {
                 ForEach(model.document?.workspaces ?? [], id: \.id) { workspace in
                     ForEach(workspace.tabs, id: \.id) { tab in
@@ -93,7 +93,7 @@ struct HcPaneSwitcher: View {
                     }
                 }
             }
-            HStack { Spacer(); Button("Done") { dismiss() }.keyboardShortcut(.cancelAction) }
+            HStack { Spacer(); Button("Done") { dismiss() }.keyboardShortcut(.cancelAction).accessibilityIdentifier("hc.switcher.done") }
         }.padding(20).frame(width: 600, height: 440)
     }
 }

@@ -143,7 +143,7 @@ struct MachinesSettingsView: View {
             Divider()
             HStack {
                 Spacer()
-                Button("Done") { dismiss() }
+                Button("Done") { dismiss() }.accessibilityIdentifier("hc.settings.done")
                     .keyboardShortcut(.defaultAction)
             }
             .padding(.horizontal, 20)

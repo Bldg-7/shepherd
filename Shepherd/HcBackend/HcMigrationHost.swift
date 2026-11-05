@@ -79,11 +79,12 @@ private nonisolated struct HcMigrationStatus: Decodable, Sendable {
     walk(root, 0); return text.joined(separator: "\n")
 }
 
-@MainActor private func hcNewTabItem(in menu: NSMenu) -> NSMenuItem? {
+@MainActor private func hcNewTabItem(in menu: NSMenu) -> NSMenuItem? { hcCommandItem(in: menu, key: "n") }
+@MainActor private func hcCommandItem(in menu: NSMenu, key: String) -> NSMenuItem? {
     menu.update()
     for item in menu.items {
-        if item.keyEquivalent == "n", item.keyEquivalentModifierMask.intersection([.command,.option,.shift,.control]) == .command { return item }
-        if let child = item.submenu, let found = hcNewTabItem(in: child) { return found }
+        if item.keyEquivalent == key, item.keyEquivalentModifierMask.intersection([.command,.option,.shift,.control]) == .command { return item }
+        if let child = item.submenu, let found = hcCommandItem(in: child, key: key) { return found }
     }
     return nil
 }
@@ -98,16 +99,43 @@ private nonisolated struct HcMigrationStatus: Decodable, Sendable {
 }
 @MainActor private final class HcVisibleMenuProbe: NSObject {
     let menu: NSMenu
+    let key: String
     var inspected = false
     var enabled = false
     var snapshot: [[String: Any]] = []
-    init(menu: NSMenu) { self.menu = menu }
+    init(menu: NSMenu, key: String = "n") { self.menu = menu; self.key = key }
     @objc func finish(_ timer: Timer) {
         inspected = true
-        enabled = hcNewTabItem(in: menu)?.isEnabled == true
+        enabled = hcCommandItem(in: menu, key: key)?.isEnabled == true
         snapshot = hcMenuDiagnostics(menu)
         menu.cancelTrackingWithoutAnimation()
     }
+}
+@MainActor private func hcNativeFixtureCommand(_ key: String, code: UInt16, label: String, window: NSWindow, root: URL) throws {
+    guard NSApp.isActive, window.isKeyWindow, let menu = NSApp.mainMenu, let item = hcCommandItem(in: menu, key: key),
+          let parent = item.menu, let view = window.contentView else { throw HcWorkspaceModel.Failure.unavailable }
+    let probe = HcVisibleMenuProbe(menu: parent, key: key)
+    let timer = Timer(timeInterval: 0.2, target: probe, selector: #selector(HcVisibleMenuProbe.finish(_:)), userInfo: nil, repeats: false)
+    RunLoop.main.add(timer, forMode: .eventTracking); RunLoop.main.add(timer, forMode: .common)
+    _ = parent.popUp(positioning: nil, at: NSPoint(x: 10, y: max(10, view.bounds.height - 20)), in: view)
+    timer.invalidate()
+    guard probe.inspected, probe.enabled, let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command],
+        timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil,
+        characters: key, charactersIgnoringModifiers: key, isARepeat: false, keyCode: code) else { throw HcWorkspaceModel.Failure.unavailable }
+    let handled = menu.performKeyEquivalent(with: event)
+    try JSONSerialization.data(withJSONObject: ["enabledWhileOpen":probe.enabled,"handled":handled,"menu":probe.snapshot]).write(to: root.appending(path: label + ".json"), options: .atomic)
+    guard handled else { throw HcWorkspaceModel.Failure.unavailable }
+}
+@MainActor private func hcFixtureWait(_ id: String, present: Bool, window: NSWindow) async throws {
+    let end = ContinuousClock.now.advanced(by: .seconds(5))
+    while (hcFixtureElement(id) != nil) != present || (!present && !window.isKeyWindow) {
+        guard ContinuousClock.now < end else { throw HcWorkspaceModel.Failure.unavailable }
+        try await Task.sleep(for: .milliseconds(20))
+    }
+}
+@MainActor private func hcFixturePress(_ id: String) throws {
+    guard let control = hcFixtureElement(id), control.responds(to: NSSelectorFromString("accessibilityPerformPress")) else { throw HcWorkspaceModel.Failure.unavailable }
+    _ = control.perform(NSSelectorFromString("accessibilityPerformPress"))
 }
 @MainActor private func hcFixtureElement(_ identifier: String) -> NSObject? {
     for window in NSApp.windows { if let content = window.contentView, let element = hcAccessibility(content)[identifier] { return element } }
@@ -325,6 +353,15 @@ struct HcMigrationHost: View {
             let afterMenu = try await HcTerminalBoard(connection: c).list(all: true)
             guard afterMenu.count == records.count else { throw HcWorkspaceModel.Failure.unavailable }
             checks += 1
+            try hcNativeFixtureCommand("p", code: 35, label: "native-switcher", window: rootWindow, root: root)
+            try await hcFixtureWait("hc.switcher.done", present: true, window: rootWindow)
+            guard hcFixtureElement("hc.switcher.search") != nil else { throw HcWorkspaceModel.Failure.unavailable }
+            try hcFixturePress("hc.switcher.done")
+            try await hcFixtureWait("hc.switcher.done", present: false, window: rootWindow); checks += 1
+            try hcNativeFixtureCommand(",", code: 43, label: "native-settings", window: rootWindow, root: root)
+            try await hcFixtureWait("hc.settings.done", present: true, window: rootWindow)
+            try hcFixturePress("hc.settings.done")
+            try await hcFixtureWait("hc.settings.done", present: false, window: rootWindow); checks += 1
             // NSView bitmap capture proves native terminal output, but may not
             // composite SwiftUI layer-backed/sidebar content. AX above checks
             // those real controls separately, without global accessibility access.
@@ -335,6 +372,25 @@ struct HcMigrationHost: View {
                 view.cacheDisplay(in: view.bounds, to: image)
                 if let png = image.representation(using: .png, properties: [:]) { try png.write(to: root.appending(path: "workspace.png")); checks += 1 }
             }
+            // Show the exact already-owned terminal in a second view. Native
+            // Close must remove that view, not end or rerun the program.
+            let originalTab = m.selectedTab?.id
+            try await m.showTerminal(target, workspaceID: id)
+            guard let duplicate = m.selectedTab, duplicate.id != originalTab else { throw HcWorkspaceModel.Failure.unavailable }
+            let closeReady = ContinuousClock.now.advanced(by: .seconds(5))
+            while HcWindowCommandState.shared.actions?.canClose != true {
+                guard ContinuousClock.now < closeReady else { throw HcWorkspaceModel.Failure.unavailable }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            try hcNativeFixtureCommand("w", code: 13, label: "native-close-view", window: rootWindow, root: root)
+            let closeEnd = ContinuousClock.now.advanced(by: .seconds(5))
+            while m.document?.workspaces.flatMap(\.tabs).contains(where: { $0.id == duplicate.id }) == true {
+                guard ContinuousClock.now < closeEnd else { throw HcWorkspaceModel.Failure.unavailable }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            let afterClose = try await HcTerminalBoard(connection: c).list(all: true)
+            guard afterClose.count == records.count, afterClose.first(where: { $0.address == target })?.state == "live" else { throw HcWorkspaceModel.Failure.unavailable }
+            checks += 1
             // Only this fixture's explicitly isolated core may be stopped.
             _ = try await c.call("server.stop")
             await owner.close()
@@ -342,7 +398,7 @@ struct HcMigrationHost: View {
             let snapshot = await t.snapshot(), screenSnapshot = await screenTransport.snapshot()
             guard owner.phase == .idle, snapshot.reaped, screenSnapshot.reaped else { throw HcWorkspaceModel.Failure.unavailable }; checks += 1
             try JSONSerialization.data(withJSONObject: ["passed":true,"checks":checks,"ownedPIDs":owned,
-                "windowCommandsVerified":true,"filePreviewVerified":true,"fileDropVerified":true,"productFactoryVerified":true,"renderedBytes":HcMigrationRenderProbe.shared.bytes,"sidebarAccessibilityVerified":true,"screenshot":FileManager.default.fileExists(atPath: root.appending(path:"workspace.png").path),
+                "windowCommandsVerified":true,"paneSwitcherVerified":true,"settingsVerified":true,"closeViewKeepsProgram":true,"filePreviewVerified":true,"fileDropVerified":true,"productFactoryVerified":true,"renderedBytes":HcMigrationRenderProbe.shared.bytes,"sidebarAccessibilityVerified":true,"screenshot":FileManager.default.fileExists(atPath: root.appending(path:"workspace.png").path),
                 "browserAuthorityUsed":false,"productCutover":false]).write(to: report, options: .atomic)
             NSApp.terminate(nil)
         } catch {

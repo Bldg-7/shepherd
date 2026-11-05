@@ -149,6 +149,19 @@ bitmap, initial/reconnect OSC8, product gateway UI, or default backend/release
 cutover (`releaseCutover=false`). Source compilation/gates for future changes
 must be rerun. [Build log](/private/tmp/hc-native-menu-api.1s16Vj/macos.log).
 
+### Expanded native commands also pass
+
+`/private/tmp/hc-screen-app.sgmo28fn` passes **15 checks** on its exact source /
+product snapshot, including the preceding 12 plus native Cmd+P switcher search /
+Done, native Settings / Done, and native Cmd+W removing a second explicitly
+created view while the exact terminal remains live and total program count is
+unchanged. `paneSwitcherVerified`, `settingsVerified`, `closeViewKeepsProgram`
+are required true by the runner. No menu flags are forced and callbacks dispatch
+through the native menu. Build: `/private/tmp/hc-native-commands.LusAcp/macos.log`.
+The runner now hashes all macOS Swift sources, including the settings view.
+These are actual modal/command checks, not component-only mocks; native recovery
+review/forget and full product cutover remain separate work.
+
 ## Retained earlier foreground failures (not retroactively passed)
 
 The stricter current runner additionally requires actual foreground/key-window
