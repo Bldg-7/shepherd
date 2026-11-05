@@ -14,7 +14,11 @@ p=argparse.ArgumentParser()
 p.add_argument('--official-017-archive',type=Path,required=True)
 p.add_argument('--products',type=Path,required=True)
 p.add_argument('--human-activation',action='store_true',help='Allow time for a person to click only the owned helper window; all GUI assertions still required')
+p.add_argument('--manual-inspection',action='store_true',help='Open an interactive private workspace, without running/claiming automated GUI checks')
+p.add_argument('--manual-seconds',type=int,default=1200,help='Manual session lifetime, 60–1800 seconds; owned programs retire on exit')
 a=p.parse_args()
+if not 60 <= a.manual_seconds <= 1800:p.error('manual-seconds must be 60–1800')
+stage_seconds=a.manual_seconds+90 if a.manual_inspection else (270 if a.human_activation else 60)
 out=Path(tempfile.mkdtemp(prefix='hc-screen-app.',dir='/private/tmp')).resolve()
 print(out,flush=True)
 for name in ['bin','home','tmp','core']:(out/name).mkdir(mode=0o700)
@@ -42,7 +46,8 @@ profile.write_text('(version 1)\n(allow default)\n(deny network*)\n(allow networ
 sandbox=['/usr/bin/sandbox-exec','-f',str(profile)]
 env={'PATH':'/usr/bin:/bin:/usr/sbin:/sbin','HOME':str(out/'home'),'CFFIXED_USER_HOME':str(out/'home'),'TMPDIR':str(out/'tmp'),
      'LANG':'en_US.UTF-8','DO_NOT_TRACK':'1','SHEPHERD_HC_UI_ROOT':str(out),'SHEPHERD_HC_UI_BINARY':str(binary)}
-if a.human_activation:env['SHEPHERD_HC_UI_HUMAN_ACTIVATION']='1'
+if a.human_activation or a.manual_inspection:env['SHEPHERD_HC_UI_HUMAN_ACTIVATION']='1'
+if a.manual_inspection:env['SHEPHERD_HC_UI_MANUAL_SECONDS']=str(a.manual_seconds)
 # Network denial canary against only an owned loopback listener.
 with socket.socket() as listener:
     listener.bind(('127.0.0.1',0));listener.listen(1)
@@ -73,7 +78,20 @@ for name in ['app.stdout.log','app.stderr.log']:(out/name).touch(mode=0o600)
 (out/'fixture-bundle.json').write_text(json.dumps({'bundleID':bundle_id,'bundle':str(fixture_app),'helper':str(helper),'originalExecutableSHA256':digest(exe),'fixtureExecutableSHA256':digest(actual_exe),'launcherSourceSHA256':digest(ROOT/'Tests/HcBackend/OwnedUILauncher.swift'),'sandboxBeforeAppExec':True},indent=2))
 log=out/'app.log';report=out/'ui-report.json';failed=None
 try:
-    code=subprocess.run([sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(270 if a.human_activation else 60),'--natural-exit-grace','10','--log',str(log),'--','/usr/bin/open','-n','-W','--env','SHEPHERD_OWNED_UI_LAUNCH_ROOT='+str(out),'--env','HOME='+str(out/'home'),'--env','CFFIXED_USER_HOME='+str(out/'home'),'--env','TMPDIR='+str(out/'tmp'),str(helper)],env=env,cwd=out,timeout=310 if a.human_activation else 100).returncode
+    command=[sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(stage_seconds),'--natural-exit-grace','10','--log',str(log),'--','/usr/bin/open','-n','-W','--env','SHEPHERD_OWNED_UI_LAUNCH_ROOT='+str(out),'--env','HOME='+str(out/'home'),'--env','CFFIXED_USER_HOME='+str(out/'home'),'--env','TMPDIR='+str(out/'tmp'),str(helper)]
+    if a.manual_inspection:
+        child=subprocess.Popen(command,env=env,cwd=out)
+        announced=False;deadline=time.monotonic()+stage_seconds+40
+        try:
+            while child.poll() is None:
+                if not announced and (out/'manual-ready.json').exists():
+                    print('MANUAL_READY: '+str(out),flush=True);announced=True
+                if time.monotonic()>=deadline:raise subprocess.TimeoutExpired(command,stage_seconds+40)
+                time.sleep(.2)
+            code=child.wait()
+        finally:
+            if child.poll() is None:child.terminate();child.wait(timeout=15)
+    else:code=subprocess.run(command,env=env,cwd=out,timeout=stage_seconds+40).returncode
     stage=json.loads(log.with_suffix('.stage.json').read_text())
     assert code==0 and stage['naturalExitConfirmed'] and not stage['signalsSent'] and stage['cleanupVerified'],'app stage failed'
 except BaseException as error:failed=error
@@ -101,6 +119,18 @@ finally:
     if sock.exists():
         core_env={'PATH':'/usr/bin:/bin','HOME':str(out/'core'),'XDG_STATE_HOME':str(out/'core/state'),'XDG_CONFIG_HOME':str(out/'core/config'),
                   'XDG_RUNTIME_DIR':str(out/'core/runtime'),'HC_SESSION':'owned','HC_SOCKET':str(sock),'SSH_CONNECTION':'owned-fixture-no-launchd'}
+        if a.manual_inspection:
+            # Only this owned scope: these CLI calls can autostart a private
+            # core on a race, never inspect/start the user's daemon or launchd.
+            for command in [['server','status','--json'],['ls','--all','--json']]:
+                try:
+                    latest=subprocess.run(sandbox+[str(binary),*command],env=core_env,capture_output=True,timeout=10)
+                    if latest.returncode==0:
+                        value=json.loads(latest.stdout)
+                        extra=([value['pid']]+[v['pid'] for v in value.get('holders',[])]) if command[0]=='server' else [v['pid'] for v in value.get('terminals',[]) if v.get('pid')]
+                        result['ownedPIDs']=sorted(set(result.get('ownedPIDs',[])+extra))
+                except BaseException as error:failed=failed or error
+            (out/'manual-cleanup-identities.json').write_text(json.dumps(result))
         stopped=subprocess.run(sandbox+[str(binary),'server','stop'],env=core_env,capture_output=True,timeout=10)
         (out/'cleanup.json').write_text(json.dumps({'exitCode':stopped.returncode}))
     end=time.monotonic()+5
@@ -121,6 +151,11 @@ finally:
             artifact_cleanup = {'removed': [], 'error': type(error).__name__}
             failed = failed or error
     (out/'artifact-cleanup.json').write_text(json.dumps(artifact_cleanup,indent=2))
+if a.manual_inspection:
+    (out/'manual-result.json').write_text(json.dumps({'sessionEnded':True,'cleanupVerified':failed is None,'automatedGUIQualified':False,'releaseCutover':False,'ownedPIDs':result.get('ownedPIDs',[])},indent=2))
+    if failed:raise failed
+    print('MANUAL SESSION CLOSED; no automated GUI qualification:',out,flush=True)
+    sys.exit(0)
 passed=failed is None and result.get('passed') is True and bool(result.get('ownedPIDs')) and result.get('screenshot') is True and result.get('sidebarAccessibilityVerified') is True and result.get('productFactoryVerified') is True and result.get('filePreviewVerified') is True and result.get('fileDropVerified') is True and result.get('windowCommandsVerified') is True and result.get('paneSwitcherVerified') is True and result.get('settingsVerified') is True and result.get('closeViewKeepsProgram') is True and result.get('recoveryReviewVerified') is True and result.get('forgetTrackingKeepsProgram') is True and result.get('originDirectoryVerified') is True
 assert hashes=={str(p.relative_to(ROOT)):digest(p) for p in tracked},'sources changed during validation'
 (out/'validation.json').write_text(json.dumps({'passed':passed,'checks':result.get('checks'),'renderedBytes':result.get('renderedBytes'),

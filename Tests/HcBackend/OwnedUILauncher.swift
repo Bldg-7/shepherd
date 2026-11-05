@@ -34,6 +34,8 @@ import Darwin
             child = process; try process.run()
             try JSONSerialization.data(withJSONObject: ["appPID":process.processIdentifier,"helperPID":ProcessInfo.processInfo.processIdentifier]).write(to: root.appending(path: "launched-identities.json"), options: .atomic)
             let human = environment["SHEPHERD_HC_UI_HUMAN_ACTIVATION"] == "1"
+            let manual = environment["SHEPHERD_HC_UI_MANUAL_SECONDS"].flatMap(Int.init)
+            if let manual { precondition((60...1800).contains(manual)) }
             let window = NSWindow(contentRect: NSRect(x: 120, y: 120, width: 400, height: 120), styleMask: [.titled], backing: .buffered, defer: false)
             window.isReleasedWhenClosed = false; window.title = "Owned hc UI fixture"
             let label = NSTextField(wrappingLabelWithString: human ? "이 테스트 창을 직접 클릭해 주세요.\n권한이나 계정 승인은 필요하지 않습니다." : "Preparing the private test window…")
@@ -42,7 +44,7 @@ import Darwin
             self.window = window; window.makeKeyAndOrderFront(nil); NSApp.activate()
             let pid = process.processIdentifier
             Task {
-                let deadline = ContinuousClock.now.advanced(by: .seconds(human ? 240 : 10))
+                let deadline = ContinuousClock.now.advanced(by: .seconds(manual.map { $0 + 60 } ?? (human ? 240 : 10)))
                 while ContinuousClock.now < deadline {
                     let target = NSRunningApplication(processIdentifier: pid)
                     try? JSONSerialization.data(withJSONObject: ["helperActive":NSApp.isActive,"bundleMatches":HcFixtureBundlePath.matches(target?.bundleURL,expected:app),"processRunning":process.isRunning,"actualBundleURL":target?.bundleURL?.absoluteString ?? "nil","expectedBundleURL":app.absoluteString,"targetActive":target?.isActive ?? false,"targetBundle":target?.bundleURL?.path ?? "nil","expectedBundle":app.path,"targetFinished":target?.isFinishedLaunching ?? false,"focusRequested":FileManager.default.fileExists(atPath: root.appending(path: "ui-wants-focus.json").path)]).write(to: root.appending(path: "helper-stage.json"), options: .atomic)

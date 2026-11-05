@@ -225,11 +225,18 @@ struct HcMigrationHost: View {
     @State private var fixtureStore: MachineStore?
     @State private var fixtureTransport: CoreProcessTransport?
     @State private var failure = false
+    @State private var manualInspection = false
     var body: some View {
         Group {
             if let owner, let fixtureStore { HcRootView(machineStore: fixtureStore, connection: owner, localTransport: fixtureTransport) }
             else if failure { Text("Private hc integration failed") }
             else { ProgressView("Preparing private hc integration…") }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if manualInspection {
+                Text("수동 확인 · 임시 HOME/코어 · 네트워크 차단 · 한시 실행 · 마치면 ⌘Q (임시 프로그램도 정리)")
+                    .font(.caption).padding(8).background(.regularMaterial)
+            }
         }
         .task { await open() }
     }
@@ -262,6 +269,39 @@ struct HcMigrationHost: View {
                 try await Task.sleep(for: .milliseconds(20))
             }
             let m = owner.model!; workspace = m; checks += 1
+            if let value = ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_MANUAL_SECONDS"] {
+                guard let seconds = Int(value), (60...1800).contains(seconds) else { throw HcWorkspaceModel.Failure.unavailable }
+                manualInspection = true
+                let id = try await m.createWorkspace(name: "Manual inspection · private hc")
+                try await m.launchTab(workspaceID: id, name: "Manual shell · temporary HOME",
+                    argv: ["/bin/sh","-c","printf 'Manual hc workspace — temporary HOME, network disabled.\\nTry: pwd, ls, echo hello. Finish with Command-Q.\\n'; exec /bin/sh -i"], cwd: root.path)
+                NSApp.setActivationPolicy(.regular)
+                NSApp.windows.first(where: { $0.contentView?.bounds.width ?? 0 > 500 })?.makeKeyAndOrderFront(nil)
+                try JSONSerialization.data(withJSONObject: ["manualInspection":true,"seconds":seconds,"automatedGUIQualified":false])
+                    .write(to: root.appending(path: "manual-ready.json"), options: .atomic)
+                try Data("{}".utf8).write(to: root.appending(path: "ui-wants-focus.json"), options: .atomic)
+                let end = ContinuousClock.now.advanced(by: .seconds(seconds))
+                var activationAttempted = false
+                while ContinuousClock.now < end {
+                    if !activationAttempted, FileManager.default.fileExists(atPath: root.appending(path: "activation-yielded.json").path),
+                       let text = ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_PARENT_PID"], let pid = Int32(text),
+                       let parent = NSRunningApplication(processIdentifier: pid),
+                       HcFixtureBundlePath.matches(parent.bundleURL, expected: root.appending(path: "OwnedUILauncher.app")) {
+                        if !NSApp.isActive { _ = NSRunningApplication.current.activate(from: parent, options: [.activateAllWindows]) }
+                        activationAttempted = true
+                    }
+                    let current: HcMigrationStatus = try await c.call("server.status").result()
+                    let terminals = try await HcTerminalBoard(connection: c).list(all: true)
+                    owned = Array(Set(owned + [current.pid] + current.holders.map(\.pid) + terminals.compactMap(\.pid))).sorted()
+                    try JSONSerialization.data(withJSONObject: ["manualInspection":true,"ownedPIDs":owned,"automatedGUIQualified":false])
+                        .write(to: report, options: .atomic)
+                    try await Task.sleep(for: .seconds(1))
+                }
+                _ = try await c.call("server.stop")
+                await owner.close(); try await c.close()
+                NSApp.terminate(nil)
+                return
+            }
             let id = try await m.createWorkspace(name: "Owned UI fixture"); checks += 1
             let peer = root.appending(path: "ui-peer.py").path
             try await m.launchTab(workspaceID: id, name: "Real hc terminal", argv: ["/usr/bin/python3","-I","-S","-B",peer]); checks += 1
