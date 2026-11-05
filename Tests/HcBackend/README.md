@@ -172,6 +172,31 @@ helper and macOS build pass. This is **not a successful GUI run**. The previous
 helper/macOS compile evidence is `/private/tmp/hc-ui-handoff-check.aqOHfM`.
 Retry only after confirming a person is ready; failures are not silently promoted.
 
+### Native command state publication
+
+The next actual run `/private/tmp/hc-screen-app.aovolzks` reached active/key-window
+state but New Tab was disabled. A bounded four-second diagnostic run
+`/private/tmp/hc-screen-app.rhppg5ac` confirmed **ownerCanLaunch=true** while the
+native menu retained initial disabled items (`action=nil,target=nil`) and even
+the initial legacy Add herdr branch. This was not fixed merely by waiting.
+
+`HcWindowCommandState` now publishes on the main actor via `ObservableObject` /
+`@Published`, and the **Commands hosts explicitly subscribe** with `@ObservedObject`
+and pass current snapshots to their menu content. Dispatch checks the latest
+owner/enablement, not a captured stale menu action; root callbacks also recheck
+current machine/model/tab scope before metadata actions. No menu item is forcibly
+enabled and no foreground/form/cancel assertion is skipped.
+
+`WindowCommandStateTests.swift`: 15 checks per Debug/optimized mode at
+`/private/tmp/hc-command-owner.dqMcZ2`; publication, stale owner/release,
+replacement, disabled dispatch and all current handlers. macOS Debug build:
+`/private/tmp/hc-command-build.vtvp1S/macos.log`. **Native verification of this
+fix is not complete:** its bounded automatic run
+`/private/tmp/hc-screen-app.1m8mfgjj` never obtained foreground activation, so
+it did not reach the menu stage; both staged bundles/resources were retired.
+Do not call the component tests a GUI pass. Extra clicks were not requested;
+another foreground run requires confirming the person's readiness.
+
 ## Artifact retention after owned GUI tests
 
 The strict runner now removes its staged app/helper copies **only after** known

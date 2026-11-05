@@ -219,12 +219,6 @@ extension FocusedValues {
 
 /// The window's side of the File menu's herdr machine items (see
 /// `NewTabCommands`).
-struct HcWindowActions {
-    let canLaunch: Bool; let canClose: Bool; let canSwitch: Bool; let canSettings: Bool
-    let closeTitle: String
-    let launch: () -> Void; let close: () -> Void; let switcher: () -> Void; let settings: () -> Void
-}
-
 struct HerdrMachineCommand {
     /// Whether a herdr machine can be added to the active machine's herdr
     /// now: it is This Mac's, it can have them, and nothing else is up over
@@ -254,19 +248,22 @@ struct CloseCommand {
 /// Close, whose ⌘W closed the window — the app's one, and every terminal in
 /// it with it. Close Window stays, without a shortcut.
 private struct CloseCommands: Commands {
+    @ObservedObject private var hcCommands = HcWindowCommandState.shared
     @FocusedValue(\.closeCommand) private var closeCommand
-    var body: some Commands { CommandGroup(replacing: .saveItem) { HcCloseMenuItems(legacy: closeCommand) } }
+    var body: some Commands { CommandGroup(replacing: .saveItem) { HcCloseMenuItems(actions: hcCommands.actions, legacy: closeCommand) } }
 }
 private struct NewTabCommands: Commands {
+    @ObservedObject private var hcCommands = HcWindowCommandState.shared
     @FocusedValue(\.launcherStart) private var launcherStart
     @FocusedValue(\.herdrMachineCommand) private var herdrMachineCommand
-    var body: some Commands { CommandGroup(replacing: .newItem) { HcNewTabMenuItems(legacy: launcherStart, machine: herdrMachineCommand) } }
+    var body: some Commands { CommandGroup(replacing: .newItem) { HcNewTabMenuItems(actions: hcCommands.actions, legacy: launcherStart, machine: herdrMachineCommand) } }
 }
 private struct PaneSwitcherCommands: Commands {
+    @ObservedObject private var hcCommands = HcWindowCommandState.shared
     @FocusedValue(\.isShowingPaneSwitcher) private var switcher
     var body: some Commands {
         CommandGroup(replacing: .printItem) {}
-        CommandGroup(after: .newItem) { HcPaneSwitcherMenuItem(legacy: switcher) }
+        CommandGroup(after: .newItem) { HcPaneSwitcherMenuItem(actions: hcCommands.actions, legacy: switcher) }
     }
 }
 
@@ -275,10 +272,11 @@ private struct PaneSwitcherCommands: Commands {
 /// window of its own (a `Settings` scene), so the item opens it over the
 /// main window, and is unavailable while that is closed.
 private struct SettingsCommands: Commands {
+    @ObservedObject private var hcCommands = HcWindowCommandState.shared
     @FocusedValue(\.isShowingSettings) private var isShowingSettings
 
     var body: some Commands {
-        CommandGroup(replacing: .appSettings) { HcSettingsMenuItem(legacy: isShowingSettings) }
+        CommandGroup(replacing: .appSettings) { HcSettingsMenuItem(actions: hcCommands.actions, legacy: isShowingSettings) }
     }
 }
 #endif

@@ -108,18 +108,29 @@ struct HcRootView: View {
     }
     private var actions: HcWindowActions {
         let model = scopedModel, tab = model?.selectedTab
-        let pane = tab.flatMap { tab in model?.focus.paneByTab[tab.id] }
         let split = (tab?.layout?.panes.count ?? 0) > 1
         let available = !launchSheet && !switcher && !settings && !installation && model?.operationReview == nil
         return HcWindowActions(canLaunch: available && model?.canEdit == true, canClose: available && model?.canEdit == true && tab != nil,
             canSwitch: available && model?.state == .connected, canSettings: available, closeTitle: split ? "Close Pane View" : "Close Tab View",
-            launch: { launchSheet = true }, close: {
-                guard let model, let tab else { return }
+            launch: {
+                guard let current = scopedModel, current.canEdit, !launchSheet, !switcher, !settings, !installation else { return }
+                launchSheet = true
+            }, close: {
+                guard let current = scopedModel, current.canEdit, let selected = current.selectedTab else { return }
+                let selectedPane = current.focus.paneByTab[selected.id], isSplit = (selected.layout?.panes.count ?? 0) > 1
                 Task {
-                    do { if split, let pane { try await model.closePane(pane) } else { try await model.closeTab(tab.id) } }
+                    guard scopedModel === current, current.canEdit, current.selectedTab?.id == selected.id else { return }
+                    do { if isSplit, let selectedPane { try await current.closePane(selectedPane) } else { try await current.closeTab(selected.id) } }
                     catch { operationError = "Close unconfirmed. Review the current layout and saved operation; no program was terminated." }
                 }
-            }, switcher: { switcher = true }, settings: { settings = true })
+            }, switcher: {
+                guard scopedModel?.state == .connected, scopedModel?.operationReview == nil,
+                      !launchSheet, !switcher, !settings, !installation else { return }
+                switcher = true
+            }, settings: {
+                guard scopedModel?.operationReview == nil, !launchSheet, !switcher, !settings, !installation else { return }
+                settings = true
+            })
     }
     private func appeared() {
         HcWindowCommandState.shared.claim(commandOwner, actions: actions)

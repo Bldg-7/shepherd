@@ -87,6 +87,15 @@ private nonisolated struct HcMigrationStatus: Decodable, Sendable {
     }
     return nil
 }
+@MainActor private func hcMenuDiagnostics(_ menu: NSMenu) -> [[String: Any]] {
+    menu.items.map { item in
+        var value: [String: Any] = ["title":item.title,"key":item.keyEquivalent,"enabled":item.isEnabled,"hidden":item.isHidden,
+            "modifiers":item.keyEquivalentModifierMask.rawValue,"action":item.action.map(NSStringFromSelector) ?? "nil",
+            "target":item.target.map { String(describing:type(of:$0)) } ?? "nil"]
+        if let child = item.submenu { value["children"] = hcMenuDiagnostics(child) }
+        return value
+    }
+}
 @MainActor private func hcFixtureElement(_ identifier: String) -> NSObject? {
     for window in NSApp.windows { if let content = window.contentView, let element = hcAccessibility(content)[identifier] { return element } }
     return nil
@@ -223,6 +232,9 @@ struct HcMigrationHost: View {
             let previousPolicy = NSApp.activationPolicy().rawValue
             let policyAccepted = NSApp.setActivationPolicy(.regular)
             rootWindow.makeKeyAndOrderFront(nil)
+            let beforeFocus = HcWindowCommandState.shared.actions
+            try JSONSerialization.data(withJSONObject: ["modelCanEdit":m.canEdit,"ownerPresent":beforeFocus != nil,
+                "ownerCanLaunch":beforeFocus?.canLaunch ?? false,"ownerCanSettings":beforeFocus?.canSettings ?? false]).write(to: root.appending(path: "command-owner-before-focus.json"), options: .atomic)
             try JSONSerialization.data(withJSONObject: ["appPID":ProcessInfo.processInfo.processIdentifier,"renderedAndPreviewed":true]).write(to: root.appending(path: "ui-wants-focus.json"), options: .atomic)
             let humanActivation = ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_HUMAN_ACTIVATION"] == "1"
             let yieldDeadline = ContinuousClock.now.advanced(by: .seconds(humanActivation ? 150 : 4))
@@ -248,9 +260,20 @@ struct HcMigrationHost: View {
                 try await Task.sleep(for: .milliseconds(20))
             }
             guard let menu = NSApp.mainMenu else { throw HcWorkspaceModel.Failure.unavailable }
-            let item = hcNewTabItem(in: menu)
-            try JSONSerialization.data(withJSONObject: ["isActive":NSApp.isActive,"isKey":rootWindow.isKeyWindow,"canEdit":m.canEdit,"menuFound":item != nil,"enabled":item?.isEnabled ?? false]).write(to: root.appending(path: "command-stage.json"))
-            guard let item, item.isEnabled, let parent = item.menu else { throw HcWorkspaceModel.Failure.unavailable }
+            let menuDeadline = ContinuousClock.now.advanced(by: .seconds(4))
+            var item: NSMenuItem?
+            repeat {
+                item = hcNewTabItem(in: menu)
+                let actions = HcWindowCommandState.shared.actions
+                try JSONSerialization.data(withJSONObject: ["isActive":NSApp.isActive,"isKey":rootWindow.isKeyWindow,
+                    "canEdit":m.canEdit,"ownerPresent":actions != nil,"ownerCanLaunch":actions?.canLaunch ?? false,
+                    "ownerCanSettings":actions?.canSettings ?? false,"menuFound":item != nil,"title":item?.title ?? "nil",
+                    "enabled":item?.isEnabled ?? false,"menu":hcMenuDiagnostics(menu)]).write(to: root.appending(path: "command-stage.json"), options: .atomic)
+                if item?.isEnabled == true { break }
+                guard ContinuousClock.now < menuDeadline else { throw HcWorkspaceModel.Failure.unavailable }
+                try await Task.sleep(for: .milliseconds(20))
+            } while true
+            guard NSApp.isActive, rootWindow.isKeyWindow, let item, item.isEnabled, let parent = item.menu else { throw HcWorkspaceModel.Failure.unavailable }
             parent.performActionForItem(at: parent.index(of: item))
             let launchDeadline = ContinuousClock.now.advanced(by: .seconds(4))
             while hcFixtureElement("hc.launch.cancel") == nil || hcFixtureElement("hc.launch.program") == nil {
