@@ -233,7 +233,7 @@ struct HcMigrationHost: View {
                 try await Task.sleep(for: .milliseconds(20))
             }
             guard let text = ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_PARENT_PID"], let pid = Int32(text),
-                  let parent = NSRunningApplication(processIdentifier: pid), parent.bundleURL?.resolvingSymlinksInPath() == root.appending(path: "OwnedUILauncher.app").resolvingSymlinksInPath() else { throw HcWorkspaceModel.Failure.unavailable }
+                  let parent = NSRunningApplication(processIdentifier: pid), HcFixtureBundlePath.matches(parent.bundleURL, expected: root.appending(path: "OwnedUILauncher.app")) else { throw HcWorkspaceModel.Failure.unavailable }
             // Direct user activation of our own child already meets readiness.
             // Only our owned helper can otherwise yield activation to this app.
             let alreadyActive = NSApp.isActive

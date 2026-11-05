@@ -129,11 +129,12 @@ involved, and `launchdLifecycleQualified` stays false.
 
 The stricter current runner additionally requires actual foreground/key-window
 state and the native New Tab menu opening/canceling the human launch form.
-Latest actual attempt: `/private/tmp/hc-screen-app.9zpk1e_h` used the explicit
-human-activation wait (150 seconds), reached nine earlier assertions and ended
-**overall passed=false**. Its helper never reported active; no handoff/focus/menu
-stage was recorded. These logs cannot establish whether a person clicked, which
-of the two owned windows was clicked, or whether the OS refused activation.
+Latest actual attempt: `/private/tmp/hc-screen-app.lu550__x` used the explicit
+human-activation wait, reached nine earlier assertions and ended **passed=false**.
+This time `helperActive=true` was observed: the person's activation did reach the
+owned helper. `targetActive=false`/own app `isActive=false,isKey=false` remained,
+and no handoff/focus/menu stage was recorded. Earlier `.9zpk1e_h` never observed
+an active helper. Neither result qualifies foreground/menu interaction.
 Known app/helper/core/holder/program resources, socket, both owned registrations
 and staged bundles retired; reports remain. Earlier failures are retained too.
 No other app's focus, accessibility grants or authority are borrowed to force a
@@ -157,11 +158,19 @@ native menu, form/cancel and unchanged-program assertions remain mandatory.
 No other app, accessibility permission, screen capture grant or provider account
 is used. Neither a marker nor the mode flag makes the test pass.
 
-The direct-child path is currently **compile-checked, not GUI-qualified**:
-`/private/tmp/hc-ui-handoff-check.aqOHfM` has helper/macOS Swift6 build success and
-six retention controls. No new GUI run was launched after the failed human wait;
-retry only when a person confirms they are ready. The last failed result is not
-silently promoted by this harness correction.
+A subsequent harness bug was reproduced: Foundation compares a bundle URL's
+**directory hint/trailing slash** as well as its file path, so two URLs for the
+same owned `.app` compared unequal. Both helper/child checks now share a strict
+canonical **local file path** comparison, rejecting nil/nonfile/nonlocal/other
+paths. It does not authorize a process: ownership and tested executable hashes
+are checked separately. Diagnostics now include `bundleMatches`, exact bundle
+URLs and child process-running state. Native active/key/menu checks are unchanged.
+`FixtureBundlePathTests.swift` reproduces the old false negative and passes seven
+cases in Debug/optimized after correction. Evidence:
+`/private/tmp/hc-bundle-path.8EroFS/{before,after,optimized,helper,macos}.log`;
+helper and macOS build pass. This is **not a successful GUI run**. The previous
+helper/macOS compile evidence is `/private/tmp/hc-ui-handoff-check.aqOHfM`.
+Retry only after confirming a person is ready; failures are not silently promoted.
 
 ## Artifact retention after owned GUI tests
 
@@ -171,7 +180,7 @@ registrations are removed. Reports, source/product hashes and screenshots remain
 Missing identities/uncertain retirement preserve the copies for inspection;
 symlinks, other roots or failed registration cleanup are never accepted.
 `test_ui_artifacts.py` has six positive/negative tests. Actual latest red GUI run
-`/private/tmp/hc-screen-app.9zpk1e_h/artifact-cleanup.json` confirms both owned
+`/private/tmp/hc-screen-app.lu550__x/artifact-cleanup.json` confirms both owned
 copies removed, registrations exited 0, while the GUI verdict remains false.
 This prevents repeated ~447MiB bundle copies accumulating; it does not waive the
 foreground gate or retain immutable copies of every historical test executable.

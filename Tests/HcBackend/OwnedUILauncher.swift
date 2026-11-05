@@ -45,8 +45,8 @@ import Darwin
                 let deadline = ContinuousClock.now.advanced(by: .seconds(human ? 240 : 10))
                 while ContinuousClock.now < deadline {
                     let target = NSRunningApplication(processIdentifier: pid)
-                    try? JSONSerialization.data(withJSONObject: ["helperActive":NSApp.isActive,"targetActive":target?.isActive ?? false,"targetBundle":target?.bundleURL?.path ?? "nil","expectedBundle":app.path,"targetFinished":target?.isFinishedLaunching ?? false,"focusRequested":FileManager.default.fileExists(atPath: root.appending(path: "ui-wants-focus.json").path)]).write(to: root.appending(path: "helper-stage.json"), options: .atomic)
-                    if let target, target.bundleURL?.resolvingSymlinksInPath() == app.resolvingSymlinksInPath(),
+                    try? JSONSerialization.data(withJSONObject: ["helperActive":NSApp.isActive,"bundleMatches":HcFixtureBundlePath.matches(target?.bundleURL,expected:app),"processRunning":process.isRunning,"actualBundleURL":target?.bundleURL?.absoluteString ?? "nil","expectedBundleURL":app.absoluteString,"targetActive":target?.isActive ?? false,"targetBundle":target?.bundleURL?.path ?? "nil","expectedBundle":app.path,"targetFinished":target?.isFinishedLaunching ?? false,"focusRequested":FileManager.default.fileExists(atPath: root.appending(path: "ui-wants-focus.json").path)]).write(to: root.appending(path: "helper-stage.json"), options: .atomic)
+                    if let target, HcFixtureBundlePath.matches(target.bundleURL, expected: app),
                        FileManager.default.fileExists(atPath: root.appending(path: "ui-wants-focus.json").path), process.isRunning, NSApp.isActive || target.isActive {
                         // A person may click the actual child rather than this
                         // helper. Observe that genuine activation; never require

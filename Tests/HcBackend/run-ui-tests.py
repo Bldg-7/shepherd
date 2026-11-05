@@ -67,7 +67,7 @@ env['SHEPHERD_HC_UI_CANARY_PORT']=str(canary_port)
 helper=out/'OwnedUILauncher.app';(helper/'Contents/MacOS').mkdir(parents=True)
 helper_exe=helper/'Contents/MacOS/helper'
 (helper/'Contents/Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier':bundle_id+'.launcher','CFBundleName':'Owned hc UI launcher','CFBundleExecutable':'helper','CFBundlePackageType':'APPL','NSPrincipalClass':'NSApplication','LSUIElement':False}))
-subprocess.run(['xcrun','swiftc','-swift-version','6','-parse-as-library',str(ROOT/'Tests/HcBackend/OwnedUILauncher.swift'),'-o',str(helper_exe)],check=True,timeout=60)
+subprocess.run(['xcrun','swiftc','-swift-version','6','-parse-as-library',str(ROOT/'Tests/HcBackend/OwnedUILauncher.swift'),str(ROOT/'Shepherd/HcBackend/HcFixtureBundlePath.swift'),'-o',str(helper_exe)],check=True,timeout=60)
 subprocess.run(['/usr/bin/codesign','--force','--sign','-','--timestamp=none',str(helper)],check=True,capture_output=True,timeout=30)
 for name in ['app.stdout.log','app.stderr.log']:(out/name).touch(mode=0o600)
 (out/'fixture-bundle.json').write_text(json.dumps({'bundleID':bundle_id,'bundle':str(fixture_app),'helper':str(helper),'originalExecutableSHA256':digest(exe),'fixtureExecutableSHA256':digest(actual_exe),'launcherSourceSHA256':digest(ROOT/'Tests/HcBackend/OwnedUILauncher.swift'),'sandboxBeforeAppExec':True},indent=2))

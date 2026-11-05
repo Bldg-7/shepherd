@@ -558,6 +558,8 @@ Ghostty #14711/#14725는 이미 upstream merge됐지만 hc에는 반영 PR이 �
 
 ### 현재 GUI qualification 추가 한계
 
+후속 준비확인 실행 `/private/tmp/hc-screen-app.lu550__x`는 helperActive=true를관측하여사용자활성화도달은확인했다. 그러나targetActive=false이고handoff전단계에서전체passed=false(9 assertions)였다. 두owned bundle/등록/core·program·socket모두퇴역. 검사코드의Foundation URL비교가같은bundle 경로도directory hint/trailing slash차이로불일치하는것을 별도재현했다. 양쪽 bundle guard를shared strict canonical local-file path helper로바꾸고 nil/nonfile/nonlocal/다른경로는거부한다. PID/경로는native권한이아니며caller의소유process와실행파일hash검증은별도로유지한다. `/private/tmp/hc-bundle-path.8EroFS`에서수정전회귀실패→수정후Debug/O각7 checks,helper/macOS compile통과. 수정후실제GUI는아직아니고자동재시도하지않는다. 사용자에게다시클릭준비를확인한후한번실행한다.
+
 최신실제실행 `/private/tmp/hc-screen-app.9zpk1e_h`는 human wait150초 후에도 helperActive=false이며 전체passed=false(앞선9 assertions), handoff/focus/menu단계 미도달이다. 보조창/본창 중 무엇이클릭됐는지와 클릭전달/OS거부 여부는 이 로그로 확정할 수 없다. 모든 known PID/socket/등록 및 임시bundle정리는 확인했다. 명시적 human flag는대기시간만늘리며 실제active/key와nativecommand assertions를면제하지않는다. 이후 본child가실제활성/키창이면불필요한helper-active 선행조건없이같은최종검사를진행하도록하고targetActive/focus-wait 로그를추가했다. `/private/tmp/hc-ui-handoff-check.aqOHfM`에서helper/macOS compile+retention6만통과했으며 수정후GUI재실행/통과는아니다. 사람이준비되었다고확인할때만다시실행한다.
 
 Strict GUI gate는 실제 foreground/key-window와 native New Tab→launch form→cancel까지 요구한다. 현재 unattended session은 owned helper마저 `helperActive=false`여서 활성화를 거부한다. `/private/tmp/hc-screen-app.qdg0mn1a`는 9개 앞선 assertion 후 전체 `passed=false`; 기존 11-check positive를 이 더 강한 gate의 통과로 승격하지 않는다. 다른 앱의 포커스/접근성/권한을 빌려 우회하지 않으며 이 readiness 실패는 그대로 nonzero이다. 실제 GUI 상호작용이 허용된 환경의 검증이 추가로 필요하다.
