@@ -22,6 +22,7 @@ struct HcRootView: View {
     @State private var installation = false
     @State private var launchSheet = false
     @State private var switcher = false
+    @State private var origins = false
     @State private var routeNotice: String?
     @State private var operationError: String?
     @State private var viewingEpoch = UUID()
@@ -40,7 +41,7 @@ struct HcRootView: View {
         let model = scopedModel
         return HcRootChanges(machine: machineStore.activeMachine?.connectionIdentity, state: model?.state,
             document: model?.document, focus: model?.focus, busy: model?.operationBusy ?? false,
-            writable: model?.workspace?.canWrite ?? false, sheets: [launchSheet,switcher,settings,installation,model?.operationReview != nil])
+            writable: model?.workspace?.canWrite ?? false, sheets: [launchSheet,switcher,settings,installation,origins,model?.operationReview != nil])
     }
     var body: some View {
         dialogs
@@ -50,6 +51,7 @@ struct HcRootView: View {
             }
             .onAppear(perform: appeared)
             .onChange(of: changes) { routeAndViewed() }
+            .onChange(of: machineStore.activeMachine?.connectionIdentity) { origins = false }
             .onChange(of: scenePhase) { if scenePhase == .active { HcNotificationCoordinator.shared.refreshAuthorization() }; routeAndViewed() }
             .onChange(of: HcNotificationCoordinator.shared.navigationRequest, initial: true) { routeAndViewed() }
             .onDisappear(perform: disappeared)
@@ -60,6 +62,7 @@ struct HcRootView: View {
             .sheet(isPresented: $switcher) { if let model = scopedModel { HcPaneSwitcher(model: model) } }
             .sheet(isPresented: $settings) { MachinesSettingsView(machineStore: machineStore) }
             .sheet(isPresented: $installation) { HcInstallationView(machine: machineStore.activeMachine) }
+            .sheet(isPresented: $origins) { if let model = scopedModel { HcGatewayDirectoryView(model: model) } }
             .alert("Workspace operation", isPresented: Binding(get: { operationError != nil }, set: { if !$0 { operationError = nil } })) {
                 Button("OK") { operationError = nil }
             } message: { Text(operationError ?? "") }
@@ -71,6 +74,9 @@ struct HcRootView: View {
                     ForEach(machineStore.allMachines) { Text($0.displayName).tag(Optional($0.id)) }
                 }.frame(maxWidth: 280)
                 Button("New Terminal…") { launchSheet = true }.disabled(scopedModel?.canEdit != true).accessibilityIdentifier("hc.launch.open")
+                Button("Core origins…") { origins = true }
+                    .disabled(scopedModel?.state != .connected || scopedModel?.operationReview != nil)
+                    .accessibilityIdentifier("hc.origins.open")
                 Spacer()
                 if let coreID = scopedModel?.coreID { Text("hc · " + String(coreID.prefix(12))).font(.caption).foregroundStyle(.secondary) }
                 if let machine = machineStore.activeMachine {
@@ -109,14 +115,14 @@ struct HcRootView: View {
     private var actions: HcWindowActions {
         let model = scopedModel, tab = model?.selectedTab
         let split = (tab?.layout?.panes.count ?? 0) > 1
-        let available = !launchSheet && !switcher && !settings && !installation && model?.operationReview == nil
+        let available = !launchSheet && !switcher && !settings && !installation && !origins && model?.operationReview == nil
         return HcWindowActions(canLaunch: available && model?.canEdit == true, canClose: available && model?.canEdit == true && tab != nil,
             canSwitch: available && model?.state == .connected, canSettings: available, closeTitle: split ? "Close Pane View" : "Close Tab View",
             launch: {
-                guard let current = scopedModel, current.canEdit, !launchSheet, !switcher, !settings, !installation else { return }
+                guard let current = scopedModel, current.canEdit, !launchSheet, !switcher, !settings, !installation, !origins else { return }
                 launchSheet = true
             }, close: {
-                guard let current = scopedModel, current.canEdit, let selected = current.selectedTab else { return }
+                guard let current = scopedModel, current.canEdit, !origins, let selected = current.selectedTab else { return }
                 let selectedPane = current.focus.paneByTab[selected.id], isSplit = (selected.layout?.panes.count ?? 0) > 1
                 Task {
                     guard scopedModel === current, current.canEdit, current.selectedTab?.id == selected.id else { return }
@@ -125,10 +131,10 @@ struct HcRootView: View {
                 }
             }, switcher: {
                 guard scopedModel?.state == .connected, scopedModel?.operationReview == nil,
-                      !launchSheet, !switcher, !settings, !installation else { return }
+                      !launchSheet, !switcher, !settings, !installation, !origins else { return }
                 switcher = true
             }, settings: {
-                guard scopedModel?.operationReview == nil, !launchSheet, !switcher, !settings, !installation else { return }
+                guard scopedModel?.operationReview == nil, !launchSheet, !switcher, !settings, !installation, !origins else { return }
                 settings = true
             })
     }

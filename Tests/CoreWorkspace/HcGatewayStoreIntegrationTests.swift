@@ -11,6 +11,7 @@ private nonisolated enum Failure: Error { case assertion(String) }
         let report = URL(fileURLWithPath:CommandLine.arguments[3])
         var controls: [(CoreProcessTransport,CoreRPCConnection,CoreHello)] = []
         var stores: [CoreWorkspaceStore] = [], owned: [Int32] = [], failure: (any Error)?
+        var model: HcWorkspaceModel?
         do {
             for name in ["h","r","q"] {
                 let scope = try HcCoreBootstrap.Scope(root:root.appending(path:name))
@@ -27,6 +28,15 @@ private nonisolated enum Failure: Error { case assertion(String) }
             let gatewayB = try await CoreWorkspaceStore(connection:h,gatewayCoreID:bID)
             stores = [directA,directB,local,gatewayA,gatewayB]
             for store in stores { _ = try await store.start() }
+            let directoryModel = HcWorkspaceModel(connection: h, saveRecovery: { _ in }, saveFocus: { _ in })
+            model = directoryModel
+            try await directoryModel.start()
+            let directory = try await directoryModel.readGatewayDirectory()
+            try check(directory.hub.id == controls[0].2.core.id && directory.epoch == h.epoch, "product directory preserves actual hub/epoch")
+            try check(Set(directory.machines.map(\.id)) == Set([aID,bID]), "compound directory contains two explicit first-level origins")
+            let entriesA = try directory.terminals(on: aID), entriesB = try directory.terminals(on: bID)
+            try check(!entriesA.isEmpty && entriesA.allSatisfy { $0.reference.coreID == aID && $0.observed.address.hasPrefix("owned-after/") }, "read-only model preserves observed A alias and stable ID separately")
+            try check(!entriesB.isEmpty && entriesB.allSatisfy { $0.reference.coreID == bID && $0.observed.address.hasPrefix("owned-before/") }, "read-only model does not flatten another origin")
             let baseline = await gatewayA.view()
             try check(baseline.originCoreID == aID && baseline.epoch == h.epoch && baseline.canWrite && baseline.snapshot?.version == 0, "explicit remote document owner, actual hub transport epoch")
             try check(await h.hello?.core.id == controls[0].2.core.id, "never impersonates remote hello on hub connection")
@@ -41,6 +51,8 @@ private nonisolated enum Failure: Error { case assertion(String) }
             // Configuration collision is introduced only in these private cores.
             // Without preflight, on=bID would select A with matching version 1.
             _ = try await h.call("machine.rename",parameters:params(["machine":"owned-after","new_name":bID]))
+            do { _ = try await directoryModel.readGatewayDirectory(); throw Failure.assertion("directory admitted ambiguous metadata") }
+            catch HcGatewaySnapshot.Failure.ambiguousSelector { checks += 1 }
             let attempted = try CoreWorkspaceDocument(workspaces:[.init(name:"Must never be written")])
             do { _ = try await gatewayB.commit(attempted,expectedVersion:1); throw Failure.assertion("ambiguous selector admitted") }
             catch CoreWorkspaceStoreFailure.originUnavailable { checks += 1 }
@@ -59,6 +71,13 @@ private nonisolated enum Failure: Error { case assertion(String) }
             try check(freshA.snapshot?.document == docA && freshA.snapshot?.version == 1 && freshA.canWrite, "foreign doc versions never become selected origin's CAS floor")
         } catch { failure = error }
         for store in stores { do { try await store.close() } catch { failure = failure ?? error } }
+        if let model {
+            do {
+                try await model.disconnect()
+                do { _ = try await model.readGatewayDirectory(); throw Failure.assertion("retired model directory admitted") }
+                catch HcWorkspaceModel.Failure.unavailable { checks += 1 }
+            } catch { failure = failure ?? error }
+        }
         for (transport,rpc,_) in controls {
             do { try await rpc.close() } catch { failure = failure ?? error }
             do { try check(await transport.snapshot().reaped, "owned connect child reaped, daemon left to fixture owner") } catch { failure = failure ?? error }

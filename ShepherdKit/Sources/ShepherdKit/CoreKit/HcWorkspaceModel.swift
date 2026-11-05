@@ -47,6 +47,16 @@ private nonisolated struct HcWorkspaceTerminalInitial: Decodable, Sendable { let
         let store = store, events = events, connection = connection
         Task { try? await events?.close(); try? await store?.close(); try? await connection.close() }
     }
+    /// One read-only compound reply; never joins terminal records to an alias
+    /// directory from a different moment. No remote layout, attach or mutation.
+    public func readGatewayDirectory() async throws -> HcGatewaySnapshot {
+        guard state == .connected else { throw Failure.unavailable }
+        let token = generation
+        let snapshot = try await HcGatewaySnapshot.read(connection: connection)
+        guard token == generation, state == .connected, snapshot.hub.id == coreID,
+              snapshot.epoch == connection.epoch else { throw Failure.stale }
+        return snapshot
+    }
     public var document: CoreWorkspaceDocument? { workspace?.snapshot?.document }
     public var canEdit: Bool { state == .connected && workspace?.canWrite == true && !operationBusy && operationReview == nil }
     public func canApply(_ review: OperationReview) -> Bool {

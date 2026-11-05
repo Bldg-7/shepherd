@@ -1,8 +1,10 @@
 # Gateway origin routing and document SDK (SHPHRD-152)
 
-This is scoped SDK/storage work, **not the product gateway UI/backend cutover**.
-The app's selected machine/gateway UI, remote terminal dispatch, file/drop origin
-providers and notification routing still need composition. No native/browser
+This is scoped SDK/storage and a read-only origin directory, **not the full
+product gateway UI/backend cutover**. The hc root now offers Core origins…:
+first-level metadata/terminals from one reply, no remote action/navigation or
+alias fallback. Remote terminal dispatch, file/drop origin providers and
+notification routing still need composition and safe server routing. No native/browser
 permission is derived from core IDs, aliases, PID, labels or these snapshots.
 
 ## Official 0.1.17 observations
@@ -76,6 +78,25 @@ external reconfiguration that creates ID-shadowing aliases is **not qualified**;
 there is no claim of atomic expected-origin enforcement by this API. Known
 collisions are blocked, and product gateway mutation UI is not enabled by this
 slice. Do not upgrade that to a guarantee or deploy an unsafe alias fallback.
+
+## Read-only product directory
+
+`HcWorkspaceModel.readGatewayDirectory()` rechecks model generation, connected
+state, hub ID and transport epoch after the compound read. Retired models reject
+reads; the sheet suppresses stale results and clears its snapshot when closed.
+`HcGatewayDirectoryView` shows observed names/state and stable routing references
+separately; it never treats these as native authority. Root machine changes
+dismiss the directory and native command publication accounts for its modal.
+It has no run/attach/input/file/config mutation actions. Invalid namespaces fail
+closed; invalid per-origin terminal addresses are not relabeled as another row.
+
+`/private/tmp/hc-origin-directory.pXs0bY/sdk`: **26 actual-core SDK checks**, including
+the earlier20 plus current model compound directory, separate observed A/B aliases
+and permanent IDs, ambiguity rejection and retired-model rejection. All private
+core/program/holder/bridge/connect PIDs and sockets retire. macOS/iOS Debug builds
+pass in that root's `{macos,ios}.log`. The sheet's native GUI has **not** been
+qualified; this does not enable gateway mutations or qualify arbitrary concurrent
+config routing. Official baseline remains0.1.17.
 
 ## Gates
 
