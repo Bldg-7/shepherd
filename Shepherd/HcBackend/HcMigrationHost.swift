@@ -96,6 +96,19 @@ private nonisolated struct HcMigrationStatus: Decodable, Sendable {
         return value
     }
 }
+@MainActor private final class HcVisibleMenuProbe: NSObject {
+    let menu: NSMenu
+    var inspected = false
+    var enabled = false
+    var snapshot: [[String: Any]] = []
+    init(menu: NSMenu) { self.menu = menu }
+    @objc func finish(_ timer: Timer) {
+        inspected = true
+        enabled = hcNewTabItem(in: menu)?.isEnabled == true
+        snapshot = hcMenuDiagnostics(menu)
+        menu.cancelTrackingWithoutAnimation()
+    }
+}
 @MainActor private func hcFixtureElement(_ identifier: String) -> NSObject? {
     for window in NSApp.windows { if let content = window.contentView, let element = hcAccessibility(content)[identifier] { return element } }
     return nil
@@ -270,11 +283,33 @@ struct HcMigrationHost: View {
                     "ownerCanSettings":actions?.canSettings ?? false,"menuFound":item != nil,"title":item?.title ?? "nil",
                     "enabled":item?.isEnabled ?? false,"menu":hcMenuDiagnostics(menu)]).write(to: root.appending(path: "command-stage.json"), options: .atomic)
                 if item?.isEnabled == true { break }
-                guard ContinuousClock.now < menuDeadline else { throw HcWorkspaceModel.Failure.unavailable }
+                if ContinuousClock.now >= menuDeadline { break }
                 try await Task.sleep(for: .milliseconds(20))
             } while true
-            guard NSApp.isActive, rootWindow.isKeyWindow, let item, item.isEnabled, let parent = item.menu else { throw HcWorkspaceModel.Failure.unavailable }
-            parent.performActionForItem(at: parent.index(of: item))
+            guard NSApp.isActive, rootWindow.isKeyWindow, let item, let fileMenu = item.menu,
+                  let menuView = rootWindow.contentView else { throw HcWorkspaceModel.Failure.unavailable }
+            // Open the real native menu so SwiftUI's lazy menu delegate has the
+            // same opportunity to populate/validate it as a person's menu click.
+            let visible = HcVisibleMenuProbe(menu: fileMenu)
+            let timer = Timer(timeInterval: 0.2, target: visible, selector: #selector(HcVisibleMenuProbe.finish(_:)), userInfo: nil, repeats: false)
+            RunLoop.main.add(timer, forMode: .eventTracking)
+            RunLoop.main.add(timer, forMode: .common)
+            _ = fileMenu.popUp(positioning: nil, at: NSPoint(x: 10, y: max(10, menuView.bounds.height - 20)), in: menuView)
+            timer.invalidate()
+            try JSONSerialization.data(withJSONObject: ["inspectedWhileOpen":visible.inspected,"enabledWhileOpen":visible.enabled,
+                "menu":visible.snapshot]).write(to: root.appending(path: "visible-menu-probe.json"), options: .atomic)
+            guard visible.inspected, visible.enabled, NSApp.isActive, rootWindow.isKeyWindow,
+                  let key = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command],
+                    timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: rootWindow.windowNumber, context: nil,
+                    characters: "n", charactersIgnoringModifiers: "n", isARepeat: false, keyCode: 45) else { throw HcWorkspaceModel.Failure.unavailable }
+            // AppKit supports delegate-resolved key equivalents without first
+            // populating the visible menu (NSMenuDelegate.menuHasKeyEquivalent).
+            // Exercise the real native path once, not a forced enabled flag or
+            // direct Swift closure. The actual hc form/cancel must still pass.
+            let handled = menu.performKeyEquivalent(with: key)
+            try JSONSerialization.data(withJSONObject: ["handled":handled,"cachedEnabled":item.isEnabled,
+                "isActive":NSApp.isActive,"isKey":rootWindow.isKeyWindow,"menu":hcMenuDiagnostics(menu)]).write(to: root.appending(path: "native-key-equivalent.json"), options: .atomic)
+            guard handled else { throw HcWorkspaceModel.Failure.unavailable }
             let launchDeadline = ContinuousClock.now.advanced(by: .seconds(4))
             while hcFixtureElement("hc.launch.cancel") == nil || hcFixtureElement("hc.launch.program") == nil {
                 guard ContinuousClock.now < launchDeadline else { throw HcWorkspaceModel.Failure.unavailable }

@@ -125,7 +125,31 @@ involved, and `launchdLifecycleQualified` stays false.
 - `/private/tmp/hc-screen-regression.ofHCyB/{attach,board,protocol}` retains
   nine attach, twelve board and seven-stage protocol regression results.
 
-## Current foreground GUI gate is RED (not waived)
+## Current native New Tab foreground gate passes (limited scope)
+
+`/private/tmp/hc-screen-app.6zgntub_` passes **12 checks** on the exact retained
+source/product hashes: real active/key window, **actually opened native File menu
+with New Tab enabled**, native Cmd+N handled, actual launch form AX controls,
+Cancel, unchanged core terminal count, rendered cells, live explicit file preview,
+exact drop bytes, owned bitmap and full PID/socket/registration/bundle retirement.
+`visible-menu-probe.json`: inspectedWhileOpen/enabledWhileOpen=true;
+`native-key-equivalent.json`: handled/isActive/isKey=true. No forced enable,
+Swift closure invocation, borrowed app privilege or foreground bypass is used.
+
+The earlier cached disabled/action=nil menu snapshot was not sufficient to
+conclude functional menu unavailability: SwiftUI populates its menu on actual
+native opening/key-equivalent handling. The fixture now opens that native menu,
+observes enabled **while open**, closes only that menu with a bounded own timer,
+and dispatches Cmd+N through public AppKit. Form/cancel and program survival still
+must pass. The first new API build caught its Swift argument label; that failed
+attempt is retained at `/private/tmp/hc-visible-menu.S6A5BS`, not waived.
+
+This does not qualify other native command/modal flows, every pixel/layer of the
+bitmap, initial/reconnect OSC8, product gateway UI, or default backend/release
+cutover (`releaseCutover=false`). Source compilation/gates for future changes
+must be rerun. [Build log](/private/tmp/hc-native-menu-api.1s16Vj/macos.log).
+
+## Retained earlier foreground failures (not retroactively passed)
 
 The stricter current runner additionally requires actual foreground/key-window
 state and the native New Tab menu opening/canceling the human launch form.
@@ -190,12 +214,13 @@ enabled and no foreground/form/cancel assertion is skipped.
 `WindowCommandStateTests.swift`: 15 checks per Debug/optimized mode at
 `/private/tmp/hc-command-owner.dqMcZ2`; publication, stale owner/release,
 replacement, disabled dispatch and all current handlers. macOS Debug build:
-`/private/tmp/hc-command-build.vtvp1S/macos.log`. **Native verification of this
-fix is not complete:** its bounded automatic run
+`/private/tmp/hc-command-build.vtvp1S/macos.log`. **Native verification at that
+checkpoint was not complete:** its bounded automatic run
 `/private/tmp/hc-screen-app.1m8mfgjj` never obtained foreground activation, so
 it did not reach the menu stage; both staged bundles/resources were retired.
-Do not call the component tests a GUI pass. Extra clicks were not requested;
-another foreground run requires confirming the person's readiness.
+Do not call the component tests a GUI pass. The later actual-menu-opening gate
+above is the separate native evidence; it also corrects the earlier assumption
+that cached menu state alone diagnoses the Commands publication mechanism.
 
 ## Artifact retention after owned GUI tests
 

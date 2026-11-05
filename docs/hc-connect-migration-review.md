@@ -556,7 +556,11 @@ Ghostty #14711/#14725는 이미 upstream merge됐지만 hc에는 반영 PR이 �
 
 `/private/tmp/hc-review.9auGWf/`: unit257/mode+21stages+iOS17; `real-final` actual model/core56(다른client rename으로stale review거부, 새review후한번bind, 프로그램수/생존불변); `macos-final.log`/`ios-final.log` Debug builds통과. Review sheet가열리면 root menu/settings/switcher도잠근다. Native modalUI 자동화는아직아니며 foreground게이트면제가아니다. 자세한한계/실패기록은 `Tests/HcBackend/RECOVERY-README.md`.
 
-### 현재 GUI qualification 추가 한계
+### 현재 GUI qualification 결과와 범위
+
+`/private/tmp/hc-screen-app.6zgntub_`에서실제foreground/key,열린nativeFilemenu의NewTab enabled,publicAppKit CmdN handled,실제launchform AX+Cancel,terminal수불변,renderedcells/live filepreview/exactdrop/screenshot및전체owned자원퇴역까지12checks통과했다. 캐시된menu.disabled/action=nil만으로실제동작불가를단정한기존진단은정정한다. SwiftUIlazy menu를실제로열어검증하고활성상태를관찰한뒤publickey-equivalent path로한번dispatch한다. enabled강제설정/직접Swiftclosure호출/foreground면제/다른앱권한차용없음. source/producthash와실패시도는보존한다. 12검사범위의기존foreground blocker는해소됐지만추가modal/close/switcher/settings·gateway UI·전체렌더링·기본root/배포의통과는아니다.
+
+### 이전 GUI qualification 실패 기록
 
 URL비교수정후 `/private/tmp/hc-screen-app.aovolzks`는 실제active/key까지진입했지만canEdit=true에도NewTab native item이disabled였다. 4초유계진단 `/private/tmp/hc-screen-app.rhppg5ac`에서도ownerCanLaunch=true/ownerPresent=true인데native menu는초기legacy분기와action=nil/target=nil/disabled상태를유지했다. Observer전달을main-actor ObservableObject/@Published와Commands의@ObservedObject구독으로바꾸고snapshot을명시전달,실행은최신owner/enablement및Root의현재model/tabscope를검사한다. 강제isEnabled설정이나foreground/menu검사삭제없음. Debug/O15checks(`/private/tmp/hc-command-owner.dqMcZ2`)와macOS compile통과. 수정후자동실행 `.1m8mfgjj`는foreground미획득으로menu단계에도달못해GUI수정검증은아직아니다. 모든owned자원/bundle퇴역,추가클릭은요청하지않았고사람준비확인때만다시실행한다.
 
