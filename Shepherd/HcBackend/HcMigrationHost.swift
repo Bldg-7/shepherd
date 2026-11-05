@@ -129,14 +129,68 @@ private nonisolated struct HcMigrationStatus: Decodable, Sendable {
 @MainActor private func hcFixtureWait(_ id: String, present: Bool, enabled: Bool = false, window: NSWindow) async throws {
     let end = ContinuousClock.now.advanced(by: .seconds(5))
     while (hcFixtureElement(id) != nil) != present
-            || (present && enabled && (hcFixtureElement(id) as AnyObject?)?.isAccessibilityEnabled?() != true)
+            || (present && enabled && !hcFixturePressReady(id))
             || (!present && !window.isKeyWindow) {
         guard ContinuousClock.now < end else { throw HcWorkspaceModel.Failure.unavailable }
         try await Task.sleep(for: .milliseconds(20))
     }
 }
+@MainActor private func hcFixtureOwnedButton(_ cell: NSCell) -> NSButton? {
+    // Prefer AppKit's explicit association; never match button labels/positions.
+    if let button = cell.controlView as? NSButton, button.cell === cell,
+       let window = button.window, NSApp.windows.contains(where: { $0 === window }) { return button }
+    var candidates: [NSButton] = [], visited = Set<ObjectIdentifier>()
+    func inspect(_ view: NSView, depth: Int) {
+        guard depth < 60, visited.count < 16000, visited.insert(ObjectIdentifier(view)).inserted else { return }
+        if let button = view as? NSButton, button.cell === cell { candidates.append(button) }
+        for child in view.subviews { inspect(child, depth: depth + 1) }
+    }
+    for window in NSApp.windows { if let content = window.contentView { inspect(content, depth: 0) } }
+    return candidates.count == 1 ? candidates.first : nil
+}
+@MainActor private func hcFixtureNativeButtonReady(_ button: NSButton) -> Bool {
+    guard let window = button.window else { return false }
+    return NSApp.isActive && NSApp.windows.contains(where: { $0 === window })
+        && window.isVisible && window.isKeyWindow && button.isEnabled && !button.isHiddenOrHasHiddenAncestor
+}
+@MainActor private func hcFixturePressReady(_ id: String) -> Bool {
+    guard let control = hcFixtureElement(id), (control as AnyObject).isAccessibilityEnabled?() == true else { return false }
+    if let cell = control as? NSCell {
+        guard let button = hcFixtureOwnedButton(cell) else { return false }
+        return hcFixtureNativeButtonReady(button)
+    }
+    return control.responds(to: NSSelectorFromString("accessibilityPerformPress"))
+}
 @MainActor private func hcFixturePress(_ id: String) throws {
     let control = hcFixtureElement(id)
+    if let cell = control as? NSCell {
+        // Native NSAlert exposes its identifier on a cell whose AX Press may
+        // return false. Pick the real owning button BEFORE dispatch, never
+        // retry an uncertain AX action with a second route.
+        let button = hcFixtureOwnedButton(cell)
+        if let root = HcMigrationConfiguration.current?.root {
+            try JSONSerialization.data(withJSONObject: ["identifier":id,"route":"own-native-button-preflight",
+                "controlViewClass":cell.controlView.map { String(describing:type(of:$0)) } ?? "nil",
+                "ownerResolved":button != nil,"active":NSApp.isActive,"buttonEnabled":button?.isEnabled ?? false,
+                "buttonHidden":button?.isHiddenOrHasHiddenAncestor ?? true,"buttonWindowKey":button?.window?.isKeyWindow ?? false,
+                "buttonWindow":button?.window?.windowNumber ?? -1,"buttonWindowVisible":button?.window?.isVisible ?? false,
+                "windows":NSApp.windows.map { ["number":$0.windowNumber,"key":$0.isKeyWindow,"visible":$0.isVisible,"title":$0.title] as [String:Any] }])
+                .write(to: root.appending(path: "native-alert-button-preflight.json"), options: .atomic)
+        }
+        guard let button, button.cell === cell, hcFixtureNativeButtonReady(button) else {
+            throw HcWorkspaceModel.Failure.unavailable
+        }
+        if let root = HcMigrationConfiguration.current?.root {
+            try JSONSerialization.data(withJSONObject: ["identifier":id,"class":String(describing:type(of:cell)),
+                "route":"own-native-button","enabled":true,"isKey":true,"dispatched":false]).write(to: root.appending(path: "last-accessibility-press.json"), options: .atomic)
+        }
+        button.performClick(nil)
+        if let root = HcMigrationConfiguration.current?.root {
+            try JSONSerialization.data(withJSONObject: ["identifier":id,"class":String(describing:type(of:cell)),
+                "route":"own-native-button","enabled":true,"isKey":true,"dispatched":true]).write(to: root.appending(path: "last-accessibility-press.json"), options: .atomic)
+        }
+        return // Caller must still verify real dismissal and model/core effects.
+    }
     let enabled = (control as AnyObject?)?.isAccessibilityEnabled?() == true
     let supported = control?.responds(to: NSSelectorFromString("accessibilityPerformPress")) ?? false
     let handled = enabled && supported ? ((control as AnyObject?)?.accessibilityPerformPress?() ?? false) : false
@@ -437,7 +491,11 @@ struct HcMigrationHost: View {
             try await hcFixtureWait("hc.review.cancel", present: false, window: rootWindow)
             let afterForget = try await HcTerminalBoard(connection: c).list(all: true)
             guard m.recoveryRecords.count == historyCount - 1, !m.recoveryRecords.contains(where: { $0.id == historyRecord.id }),
-                  afterForget.count == records.count, afterForget.first(where: { $0.address == target })?.state == "live" else { throw HcWorkspaceModel.Failure.unavailable }
+                  afterForget.count == records.count, let before = records.first(where: { $0.address == target }),
+                  let after = afterForget.first(where: { $0.address == target }), after.state == "live", before.pid != nil,
+                  after.pid == before.pid, after.createdMs == before.createdMs else { throw HcWorkspaceModel.Failure.unavailable }
+            try JSONSerialization.data(withJSONObject: ["verified":true,"trackingRemovedOnly":true,"samePIDAndCreation":true,
+                "programCountUnchanged":true]).write(to: root.appending(path: "native-forget-tracking.json"), options: .atomic)
             checks += 1
             // Only this fixture's explicitly isolated core may be stopped.
             _ = try await c.call("server.stop")

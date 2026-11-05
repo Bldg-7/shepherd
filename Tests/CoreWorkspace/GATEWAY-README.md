@@ -96,9 +96,11 @@ and permanent IDs, ambiguity rejection and retired-model rejection. All private
 core/program/holder/bridge/connect PIDs and sockets retire. macOS/iOS Debug builds
 pass in that root's `{macos,ios}.log`. The native origin-sheet/content/Done flow later executes successfully in
 `/private/tmp/hc-screen-app.{i9o7jydz,ylj4sihv}` (partial assertions in **overall
-failed** extended UI runs). It is not a full gateway/native/release gate pass;
-this does not enable gateway mutations or qualify arbitrary concurrent config
-routing. Official baseline remains0.1.17.
+failed** extended UI runs). The later `/private/tmp/hc-screen-app.xnb0j6qo` passes the complete **18-check
+native workspace gate**, including that read-only origin flow and recovery
+Cancel/confirmed Forget with unchanged live PID/creation/count. That still is
+not full gateway navigation/actions or a release gate: it does not enable
+gateway mutations or qualify arbitrary concurrent config routing. Official baseline remains0.1.17.
 
 ## Gates
 

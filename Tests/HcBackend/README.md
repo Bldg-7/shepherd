@@ -162,7 +162,32 @@ The runner now hashes all macOS Swift sources, including the settings view.
 These are actual modal/command checks, not component-only mocks; native recovery
 review/forget and full product cutover remain separate work.
 
-### Current 18-check recovery/origin extension is still pending / red
+### Current 18-check recovery/origin gate passes (exact scope)
+
+`/private/tmp/hc-screen-app.xnb0j6qo/validation.json`: **passed=true, 18 checks**.
+The actual origin sheet/core ID/Done, history button, Review/Cancel/reopen,
+separately confirmed Forget tracking and all preceding native checks pass.
+`native-forget-tracking.json` proves only the tracking record was removed and
+program count, PID and creation time stayed unchanged with the program live.
+Actual foreground/key-window requirements remain mandatory. All owned
+processes/sockets/registrations/staged bundles retire, reports remain.
+Build log: `/private/tmp/hc-alert-window-ready.lnivYd/macos.log`.
+
+NSAlert exposes the confirmation identifier on `_NSAlertButtonCell`: its AX
+Press returned false in `.ztf048sx`. The fixture now chooses the exact associated
+own NSButton **before any dispatch**, using AppKit's cell/control association or
+bounded exact-cell view traversal, not labels/coordinates. It waits at most five
+seconds for that button's own window to be visible/key, app active, button
+visible/enabled. It dispatches `performClick` **once**, never falls back/replays
+a false/uncertain AX action, never forces enabled state, and still requires real
+sheet dismissal, bookkeeping change and unchanged live program identity.
+`native-alert-button-preflight.json` and `last-accessibility-press.json` retain
+that public native UI path. No direct model/Swift closure substitutes for the
+confirmation. This does not qualify native Apply of an unconfirmed layout,
+full gateway actions, every bitmap layer, service/installer lifecycle or release
+cutover (`releaseCutover=false`). Those remain separate gates.
+
+### Retained failed extension checkpoints (not retroactively passed)
 
 The runner additionally requires the actual read-only origin sheet, completed
 history, Review / Cancel and separately confirmed Forget tracking with unchanged
@@ -186,15 +211,19 @@ live programs. Do not apply the preceding 15-check pass to this newer source/gat
   seconds) for the actual AX-enabled state, never sets it, and checks Press's
   enabled/supported/handled values separately. Confirmation controls also require
   enabled state. This is not evidence that Forget tracking passed.
-- `._miz2a05`: latest source compiles, but the human-activation run never obtains
+- `._miz2a05`: that source compiles, but the human-activation run never obtains
   foreground (nine assertions, helper/app inactive, 150-second handoff deadline).
-  The new enabled-state wait and final Forget flow remain **unverified**.
+  The enabled-state wait and final Forget flow were **unverified at that checkpoint**.
 
 All named roots are under `/private/tmp/hc-screen-app`; each owned process/socket,
 registration and staged bundle retires, logs/reports remain. No automatic GUI
 retry is running. Confirm readiness before another foreground attempt; do not
 waive active/key-window, actual controls, content or program-survival requirements.
 Compilation/partial assertions are not an overall native UI or release pass.
+Later `.ztf048sx`, `.xa5gl12m`, `._4dn9c47` also remain overall false: the last
+found the exact native button but its window was not yet key, so no click was
+sent. Waiting for actual native window presentation fixes this readiness race;
+only the later exact-source 18-check gate above is passed.
 
 ## Retained earlier foreground failures (not retroactively passed)
 
