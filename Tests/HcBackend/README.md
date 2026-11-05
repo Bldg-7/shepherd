@@ -144,11 +144,15 @@ checks** in owned never-shown windows, including single Shell segment, Tab/Shift
 unable to select a hidden CLI, and Return requesting Shell only. No real CLI or
 provider account was run. Five source-wiring guards also pass.
 
-Full-app rebuilding this change is currently blocked by the installed Xcode27.2
-missing Metal Toolchain (`/private/tmp/hc-inspection-launch-policy.904Mtl/macos.log`).
-No component was downloaded or global toolchain changed. The source/component
-result is **not** a rebuilt-app or foreground GUI pass; the running older inspection
-instance is unchanged until an explicitly approved rebuild/relaunch.
+The first full-app rebuild failed because Xcode27.2 lacked Metal Toolchain
+(`/private/tmp/hc-inspection-launch-policy.904Mtl/macos.log`). After explicit
+operator approval, `xcodebuild -downloadComponent MetalToolchain` installed the
+Apple component; Metal32023.922 / targetdarwin27.2 was verified. The macOS Debug
+app then builds and all69 launcher checks pass again at
+`/private/tmp/hc-metal-toolchain.8tFfZE/{macos.log,launcher}`. No user core/CLI account
+was replaced or restarted. This is a rebuilt-app/component result, **not** a
+foreground product GUI pass. Already running inspection instances keep their
+previous code until a separate relaunch; no live instance is silently replaced.
 
 ## Current native New Tab foreground gate passes (limited scope)
 
