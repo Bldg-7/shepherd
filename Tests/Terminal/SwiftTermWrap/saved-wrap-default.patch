@@ -2,7 +2,7 @@ diff --git a/Sources/SwiftTerm/Buffer.swift b/Sources/SwiftTerm/Buffer.swift
 index ce4da0d1..c2a510da 100644
 --- a/Sources/SwiftTerm/Buffer.swift
 +++ b/Sources/SwiftTerm/Buffer.swift
-@@ -155,7 +155,7 @@ public final class Buffer {
+@@ -155,6 +155,6 @@ public final class Buffer {
      /// Saved state for the origin mode
      var savedMarginMode: Bool = false
      /// Saved state for the wrap around mode
@@ -10,7 +10,6 @@ index ce4da0d1..c2a510da 100644
 +    var savedWraparound: Bool = true
      /// Saved state for the reverse wrap around mode
      var savedReverseWraparound: Bool = false
- 
 @@ -742,7 +742,7 @@ public final class Buffer {
          savedCharset = CharSets.defaultCharset
          marginRight = cols-1
