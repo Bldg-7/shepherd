@@ -299,6 +299,14 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
   host switching, SSH/mobile GUI, production launchd or cutover. See
   `Tests/HcBackend/OWNER-README.md` for exact composition and failure limits.
 
+- `hc-current-compositions.GhRYC7` at c0e13f6: actual product SDK notification
+  coordinator28 (OS presenter/permissions remain in-memory seams), conversation
+  + mobile cache21, core terminal attach9, original UI component16 stages pass.
+  Each actual-core suite confirms owned core/socket/process retirement and denied
+  external network. The original UI component uses actual SwiftTerm/owned PTY,
+  but none qualifies current whole-app GUI, physical gestures, provider/native
+  association, real OS permissions or launchd lifetime.
+
 ## Evidence retained
 
 - `/private/tmp/hc-ui-behavior-audit.KpGlYF`: presentation rules19 per Debug/optimized;
