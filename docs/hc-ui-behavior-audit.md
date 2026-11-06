@@ -39,6 +39,16 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
 
 ## Current integrated results and remaining boundary
 
+- `.aw1r8cn5` passes23 actual-root ordinary-window checks, adding a real two-pane
+  tab and retained detail-level preview. Native pane rectangles do not overlap;
+  whole-tab preview expand/return preserves both terminal identities/frames/grids.
+- `.0saulfin` passes25 checks, adding actual filter typing/no-results overlay,
+  clearing the filter/restoring rows, and selected-terminal preservation while
+  its row is filtered out. Pure presentation/search rules24 pass. Search now
+  matches every whitespace-separated term across workspace/tab/title/directory
+  fields; empty/loading/error/retry overlays use original presentation patterns.
+  Error/loading transition E2E and full parity remain separately open.
+
 - `.9awxx30v`: ordinary-window14 checks, including real file contents, preview
   expand/return retaining exact terminal/frame/grid and keyboard return.
 - `.4impfiyo`: native switcher Cancel and Return selection/dismissal also pass.
@@ -87,6 +97,14 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
 - `.lcdhqqvc` fails at owned foreground readiness before preview tests. It does
   not prove preview behavior failed or passed. Preview integration assertions
   remain pending. No more unattended foreground retries are running.
+
+- `.ewfgknjn` passes26 ordinary-window checks, adding current-layout production
+  file-drop callback with an owned path containing a space/apostrophe and exact
+  escaped bytes verified at the owned program. This is **not** a physical Finder
+  drag qualification. All known owned programs/core/socket/staged bundles retire.
+- `/private/tmp/hc-board-state-regression.B5ae9k`: final optimized UI/search24,
+  original launcher69, iOS Debug and source-wiring8 regressions pass. Loading/
+  failure transitions remain source-wired, not falsely labeled exercised E2E.
 
 ## Evidence retained
 

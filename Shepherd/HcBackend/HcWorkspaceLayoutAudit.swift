@@ -180,7 +180,7 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
         guard let reference = model.selectedTab?.layout?.panes.first?.terminal else { throw Failure.assertion("known run receipt") }
         let status: HcLayoutAuditOwnedStatus = try await connection.call("server.status").result()
         let records = try await HcTerminalBoard(connection:connection).list(all:true)
-        let owned = [status.pid] + status.holders.map(\.pid) + records.compactMap(\.pid)
+        var owned = [status.pid] + status.holders.map(\.pid) + records.compactMap(\.pid)
         try JSONSerialization.data(withJSONObject:["ownedPIDs":owned,"auditPending":true]).write(to:root.appending(path:"audit-owned-identities.json"),options:.atomic)
         try await wait("actual hc terminal rendered", seconds: 12) { HcMigrationRenderProbe.shared.text.contains("HC-UI-RENDER-DONE") }
         guard let window = NSApp.windows.first(where: { $0.contentView?.bounds.width ?? 0 > 500 }),
@@ -406,6 +406,55 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
             try check(afterClose.count == beforeLaunchPrograms.count,"closing a view does not start/end another program")
             try clickRow("hc-workspace.tab.\(tabID)",content:content)
             try await wait("remaining row explicitly restores terminal") { terminals(content).count == 1 }
+            checks += 1
+            // Multiple panes use one detail-level preview, not a preview split
+            // inside an individual pane. Seed the second owned program only;
+            // panel expansion still goes through its real UI control.
+            guard let firstPane = model.selectedTab?.layout?.panes.first else { throw Failure.assertion("first scoped pane") }
+            try await model.launchSplit(paneID:firstPane.id,axis:.horizontal,argv:["/bin/sleep","90"],cwd:root.path)
+            let multipleStatus: HcLayoutAuditOwnedStatus = try await connection.call("server.status").result()
+            let multipleRecords = try await HcTerminalBoard(connection:connection).list(all:true)
+            owned = Array(Set(owned + [multipleStatus.pid] + multipleStatus.holders.map(\.pid) + multipleRecords.compactMap(\.pid))).sorted()
+            try JSONSerialization.data(withJSONObject:["ownedPIDs":owned,"auditPending":true]).write(to:root.appending(path:"audit-owned-identities.json"),options:.atomic)
+            try model.select(pane:firstPane.id)
+            try await wait("actual two-pane tab and retained side preview") { terminals(content).count == 2 && hcAccessibilityText(content).contains("HC-FILE-PREVIEW-CONTENT") }
+            let pair = terminals(content)
+            try await settleGeometry(pair[0],content:content)
+            try await settleGeometry(pair[1],content:content)
+            let pairIDs = pair.map(ObjectIdentifier.init), pairFrames = pair.map { frame($0,in:content) }, pairGrids = pair.map(grid)
+            try check(pairFrames.allSatisfy { $0.width >= 1 } && pairFrames[0].intersects(pairFrames[1]) == false,"multiple native pane rectangles do not overlap")
+            try press("preview.expand",content:content)
+            try await settleGeometry(pair[0],content:content)
+            try check(terminals(content).map(ObjectIdentifier.init) == pairIDs && pair.enumerated().allSatisfy { near(pairFrames[$0.offset],frame($0.element,in:content)) && grid($0.element) == pairGrids[$0.offset] },
+                      "whole-tab preview expansion preserves both native panes and grids")
+            try press("preview.expand",content:content)
+            try await settleGeometry(pair[0],content:content)
+            try check(terminals(content).map(ObjectIdentifier.init) == pairIDs,"whole-tab preview return does not recreate either terminal")
+            let filteredTerminalIDs = terminals(content).map(ObjectIdentifier.init)
+            try clickRow("workspace.board.filter",content:content)
+            try await wait("actual filter editor ready") { (window.firstResponder as? NSTextView)?.isFieldEditor == true }
+            guard let filterEditor = window.firstResponder as? NSTextView else { throw Failure.assertion("filter editor") }
+            filterEditor.selectAll(nil)
+            filterEditor.insertText("NO_MATCH_OWNED_FIXTURE",replacementRange:NSRange(location:NSNotFound,length:0))
+            try await wait("actual no-matches overlay") { elements(content)["workspace.board.no-matches"] != nil }
+            try check(terminals(content).map(ObjectIdentifier.init) == filteredTerminalIDs,"filtering rows does not close the selected terminal")
+            filterEditor.selectAll(nil)
+            filterEditor.insertText("",replacementRange:NSRange(location:NSNotFound,length:0))
+            try await wait("clearing filter restores rows") { elements(content)["workspace.board.no-matches"] == nil && elements(content)["hc-workspace.tab.\(tabID)"] != nil }
+            checks += 1
+            guard let originalNative = terminals(content).first(where: { view in
+                let screen = view.getTerminal()
+                return (0..<screen.rows).contains { screen.getLine(row:$0)?.translateToString(trimRight:true).contains("HC-UI-RENDER-DONE") == true }
+            }) else { throw Failure.assertion("known original fixture terminal") }
+            let dropFile = root.appending(path:"drop fixture's.png")
+            guard let escaped = TerminalDropPaste.escaped(dropFile.path) else { throw Failure.assertion("safe owned drop path") }
+            let expectedDrop = Data((escaped + " ").utf8)
+            try expectedDrop.write(to:root.appending(path:"drop-expected.txt"))
+            _ = try await connection.call("terminal.keys",parameters:JSONSerialization.data(withJSONObject:["terminal":reference.terminalID,"keys":["f","enter"]]))
+            try await wait("owned peer raw drop input ready") { HcMigrationRenderProbe.shared.text.contains("HC-DROP-READY") }
+            guard let drop = originalNative.onDropFiles else { throw Failure.assertion("production file-drop callback") }
+            drop([dropFile])
+            try await wait("exact owned file-drop bytes") { (try? Data(contentsOf:root.appending(path:"drop-received.bin"))) == expectedDrop }
             checks += 1
             let record = try await HcTerminalBoard(connection:connection).get(reference.terminalID)
             try check(record.pid == originalRecord.pid && record.createdMs == originalRecord.createdMs && record.state == "live",

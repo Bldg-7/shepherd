@@ -1,6 +1,14 @@
 import Foundation
 import Observation
 
+nonisolated enum HcBoardSearch {
+    static func matches(_ query: String, fields: [String]) -> Bool {
+        query.split(whereSeparator: \.isWhitespace).allSatisfy { term in
+            fields.contains { $0.localizedStandardContains(String(term)) }
+        }
+    }
+}
+
 /// Local presentation intent only. Never a core/native-session permission.
 nonisolated struct HcSelectionStamp: Equatable, Sendable {
     let tab: UUID

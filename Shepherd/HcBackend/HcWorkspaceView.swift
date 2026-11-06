@@ -23,7 +23,7 @@ struct HcWorkspaceView: View {
     var body: some View {
         WorkspaceNavigationSplitView(detailMinimumWidth: activePreview?.preview == nil ? 320 : 641) {
             Group {
-                if let model { HcAgentBoard(model: model, presentation: presentation, closeRequests: closeRequests, onTracking: onTracking,
+                if let model { HcAgentBoard(model: model, presentation: presentation, closeRequests: closeRequests, onTracking: onTracking, onRetry: onReconnect,
                         onRename: { _ = beginRename($0) }, onActivate: activateSelection) }
                 else { ContentUnavailableView("No Panes", systemImage: "terminal") }
             }
@@ -230,6 +230,7 @@ private struct HcAgentBoard: View {
     let presentation: HcWorkspacePresentation
     let closeRequests: Int
     let onTracking: () -> Void
+    let onRetry: () -> Void
     let onRename: (HcBoardSelection) -> Void
     let onActivate: () -> Void
     @AppStorage(AgentBoardView.showsTabsKey) private var showsTabs = false
@@ -258,10 +259,7 @@ private struct HcAgentBoard: View {
         List(selection: selection) {
             ForEach(model.document?.workspaces ?? [], id: \.id) { workspace in
                 if activeWorkspaces.isEmpty || activeWorkspaces.contains(workspace.id) {
-                    let tabs = workspace.tabs.filter { tab in
-                        search.isEmpty || [workspace.name,tab.name] .contains { $0.localizedStandardContains(search) }
-                            || (tab.layout?.panes ?? []).contains { matches($0, tab: tab) }
-                    }
+                    let tabs = visibleTabs(workspace)
                     if !tabs.isEmpty {
                         WorkspaceBoardSectionLabel(title: workspace.name)
                         ForEach(tabs, id: \.id) { tab in
@@ -273,7 +271,7 @@ private struct HcAgentBoard: View {
                                     .boardSelectionEmphasized(selection.wrappedValue == .tab(tab.id))
                                     .contextMenu { tabActions(tab) }
                             } else {
-                                ForEach((tab.layout?.panes ?? []).filter { search.isEmpty || workspace.name.localizedStandardContains(search) || matches($0, tab: tab) }, id: \.id) { pane in
+                                ForEach(visiblePanes(tab, workspace: workspace.name), id: \.id) { pane in
                                     WorkspaceBoardRow(title: paneTitle(pane, tab: tab), state: state(pane)) { EmptyView() } caption: {
                                         let cwd = record(pane)?.cwd ?? ""
                                         AgentPaneCaption(cwd.isEmpty ? "" : (cwd as NSString).lastPathComponent, agentName: nil)
@@ -301,6 +299,26 @@ private struct HcAgentBoard: View {
             }
         }
         .id(showsTabs)
+        .overlay {
+            if totalRows == 0 {
+                if model.state == .idle || model.state == .connecting { ProgressView("Loading panes…") }
+                else if model.state == .failed {
+                    ContentUnavailableView {
+                        Label("Connection Failed", systemImage: "exclamationmark.triangle")
+                    } description: { Text("Check the connection and retry. Existing programs are untouched.") }
+                    actions: { Button("Retry", action: onRetry) }
+                } else {
+                    ContentUnavailableView("No Panes", systemImage: "terminal", description: Text("The panes open on this machine appear here."))
+                }
+            } else if visibleRowCount == 0 {
+                ContentUnavailableView.search(text: search).accessibilityIdentifier("workspace.board.no-matches")
+            }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if model.state == .failed && totalRows > 0 {
+                HStack { Text("Connection Failed").font(.caption); Spacer(); Button("Retry", action: onRetry) }.padding(10)
+            }
+        }
         .safeAreaBar(edge: .top, spacing: 0) {
             WorkspaceBoardSearchBar(text: $search) { filterMenu }
         }
@@ -359,9 +377,28 @@ private struct HcAgentBoard: View {
         let states = (tab.layout?.panes ?? []).compactMap(state)
         return [AgentState.blocked,.working,.idle,.done].first { states.contains($0) }
     }
-    private func matches(_ pane: CoreWorkspaceDocument.Pane, tab: CoreWorkspaceDocument.Tab) -> Bool {
-        let record = record(pane)
-        return [pane.title ?? tab.name,record?.cwd ?? "",record?.name ?? "",tab.name].contains { $0.localizedStandardContains(search) }
+    private var totalRows: Int {
+        (model.document?.workspaces ?? []).reduce(0) { sum, workspace in
+            sum + (showsTabs ? workspace.tabs.count : workspace.tabs.reduce(0) { $0 + ($1.layout?.panes.count ?? 0) })
+        }
+    }
+    private var visibleRowCount: Int {
+        (model.document?.workspaces ?? []).filter { activeWorkspaces.isEmpty || activeWorkspaces.contains($0.id) }.reduce(0) { sum, workspace in
+            let tabs = visibleTabs(workspace)
+            return sum + (showsTabs ? tabs.count : tabs.reduce(0) { $0 + visiblePanes($1, workspace: workspace.name).count })
+        }
+    }
+    private func visibleTabs(_ workspace: CoreWorkspaceDocument.Workspace) -> [CoreWorkspaceDocument.Tab] {
+        workspace.tabs.filter { tab in
+            let panes = visiblePanes(tab,workspace:workspace.name)
+            return showsTabs ? (HcBoardSearch.matches(search,fields:[workspace.name,tab.name]) || !panes.isEmpty) : !panes.isEmpty
+        }
+    }
+    private func visiblePanes(_ tab: CoreWorkspaceDocument.Tab, workspace: String) -> [CoreWorkspaceDocument.Pane] {
+        (tab.layout?.panes ?? []).filter { pane in
+            let terminal = record(pane)
+            return HcBoardSearch.matches(search,fields:[workspace,tab.name,paneTitle(pane,tab:tab),terminal?.cwd ?? "",terminal?.name ?? ""])
+        }
     }
     @ViewBuilder private func tabActions(_ tab: CoreWorkspaceDocument.Tab) -> some View {
         Button("Rename Tab…") { onRename(.tab(tab.id)) }

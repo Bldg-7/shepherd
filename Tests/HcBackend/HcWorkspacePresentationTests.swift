@@ -51,6 +51,9 @@ import Darwin
         check(viewed(true,key:false).isEmpty, "background window is not viewed")
         check(viewed(true,covered:true).isEmpty, "covered surface is not viewed when caller applies cover policy")
         check(viewed(true,zoom:UUID()).isEmpty, "unknown zoom does not broaden viewed scope")
+        check(HcBoardSearch.matches("project claude",fields:["Project A","Claude Code"]), "search terms match across original workspace/title fields")
+        check(HcBoardSearch.matches("  PROject  ",fields:["project A"]), "search ignores casing and empty whitespace terms")
+        check(!HcBoardSearch.matches("project missing",fields:["project A","Shell"]), "all search terms must match, not any one term")
         print("PASS workspace presentation rules: \(n) checks; not physical fullscreen/UI approval")
     }
 }
