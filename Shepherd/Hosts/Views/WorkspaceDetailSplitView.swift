@@ -17,15 +17,18 @@ struct WorkspaceDetailSplitView<Terminal: View, Panel: View>: NSViewControllerRe
     let panelMinimum: CGFloat
     let panelIdeal: CGFloat
     let panelCoversTerminal: Bool
+    let allowsKeyboardRestore: () -> Bool
     private let terminal: Terminal
     private let panel: Panel
 
     init(showsPanel: Bool, panelMinimum: CGFloat, panelIdeal: CGFloat, panelCoversTerminal: Bool = false,
+         allowsKeyboardRestore: @escaping () -> Bool = { true },
          @ViewBuilder terminal: () -> Terminal, @ViewBuilder panel: () -> Panel) {
         self.showsPanel = showsPanel
         self.panelMinimum = panelMinimum
         self.panelIdeal = panelIdeal
         self.panelCoversTerminal = panelCoversTerminal
+        self.allowsKeyboardRestore = allowsKeyboardRestore
         self.terminal = terminal()
         self.panel = panel()
     }
@@ -35,6 +38,7 @@ struct WorkspaceDetailSplitView<Terminal: View, Panel: View>: NSViewControllerRe
     }
 
     func updateNSViewController(_ controller: Controller, context: Context) {
+        controller.allowsKeyboardRestore = allowsKeyboardRestore
         controller.terminalHost.rootView = WorkspaceInheritedContent(content: terminal, values: context.environment)
         controller.panelHost.rootView = WorkspaceInheritedContent(content: panel, values: context.environment)
         controller.panelMinimum = panelMinimum
@@ -58,6 +62,7 @@ struct WorkspaceDetailSplitView<Terminal: View, Panel: View>: NSViewControllerRe
         private var layingOut = false
         private var panelIsModal = false
         private weak var previousResponder: NSResponder?
+        var allowsKeyboardRestore: () -> Bool = { true }
 
         init(terminal: Terminal, panel: Panel, environment: EnvironmentValues) {
             terminalHost = NSHostingController(rootView: WorkspaceInheritedContent(content: terminal, values: environment))
@@ -119,6 +124,7 @@ struct WorkspaceDetailSplitView<Terminal: View, Panel: View>: NSViewControllerRe
                        focused.isDescendant(of: self.panelHost.view) { return }
                     if !window.makeFirstResponder(self.panelHost.view) { window.makeFirstResponder(nil) }
                 } else {
+                    guard self.allowsKeyboardRestore() else { self.previousResponder = nil; return }
                     if let prior = self.previousResponder as? NSView,
                        prior.window === window, prior.isDescendant(of: self.terminalHost.view) {
                         window.makeFirstResponder(prior)

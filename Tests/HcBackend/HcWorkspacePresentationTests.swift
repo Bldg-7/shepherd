@@ -20,6 +20,11 @@ import Darwin
         check(state.keyboardRequest?.pane == a && state.keyboardRequest?.epoch == epoch, "explicit row activation requests exact scoped pane")
         state.select(first, requestKeyboard: true)
         check(state.keyboardRequest?.token != token, "clicking the same row requests keyboard again")
+        let currentToken = state.keyboardRequest!.token
+        state.acknowledgeKeyboard(UUID())
+        check(state.keyboardRequest?.token == currentToken, "late acknowledgement cannot retire a newer request")
+        state.acknowledgeKeyboard(currentToken)
+        check(state.keyboardRequest == nil && state.hasSelection, "successful focus is consumed, not replayed by overlay updates")
         state.previewCoversTerminal = true
         state.select(second, requestKeyboard: true)
         check(!state.previewCoversTerminal && state.keyboardRequest?.pane == b, "activation reveals the terminal")

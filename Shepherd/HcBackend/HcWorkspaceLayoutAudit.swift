@@ -118,6 +118,29 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
             NSApp.sendEvent(event)
         }
     }
+    static func launcherField(_ view: NSView) -> NSTextField? {
+        if let field = view as? NSTextField, field.delegate is LauncherField.Coordinator { return field }
+        return view.subviews.lazy.compactMap(launcherField).first
+    }
+    static func launcherField(in window: NSWindow) -> NSTextField? {
+        if let view = window.contentView?.superview, let field = launcherField(view) { return field }
+        for own in NSApp.windows where own.isVisible && own !== window {
+            if let view = own.contentView?.superview, let field = launcherField(view) { return field }
+        }
+        return nil
+    }
+    static func ownedSheetContent(_ root: NSWindow) -> NSView? {
+        NSApp.windows.first(where: { $0.isVisible && ($0.sheetParent === root || root.attachedSheet === $0) })?.contentView
+    }
+    static func returnKey(in window: NSWindow) throws { try key("\r",code:36,in:window) }
+    static func key(_ characters: String, code: UInt16, in window: NSWindow) throws {
+        guard NSApp.isActive, window.isKeyWindow,
+              let event = NSEvent.keyEvent(with:.keyDown,location:.zero,modifierFlags:[],timestamp:ProcessInfo.processInfo.systemUptime,
+                windowNumber:window.windowNumber,context:nil,characters:characters,charactersIgnoringModifiers:characters,isARepeat:false,keyCode:code) else {
+            throw Failure.assertion("owned switcher key")
+        }
+        NSApp.sendEvent(event)
+    }
     static func grid(_ terminal: FocusReportingTerminalView) -> [Int] {
         let screen = terminal.getTerminal(); return [screen.cols,screen.rows]
     }
@@ -165,7 +188,8 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
         NSApp.setActivationPolicy(.regular); window.makeKeyAndOrderFront(nil)
         _ = NSApp.perform(NSSelectorFromString("accessibilitySetValue:forAttribute:"), with:NSNumber(value:true), with:"AXEnhancedUserInterface")
         try Data("{}".utf8).write(to: root.appending(path:"ui-wants-focus.json"), options:.atomic)
-        let activationEnd = ContinuousClock.now.advanced(by:.seconds(12))
+        let humanActivation = ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_HUMAN_ACTIVATION"] == "1"
+        let activationEnd = ContinuousClock.now.advanced(by:.seconds(humanActivation ? 150 : 12))
         var tried = false
         while !NSApp.isActive || !window.isKeyWindow {
             if !tried, FileManager.default.fileExists(atPath:root.appending(path:"activation-yielded.json").path),
@@ -325,6 +349,63 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
             try check(terminals(content).first === activeTerminal && grid(activeTerminal) == sideGrid,"preview return retains same terminal/grid")
             try clickRow("hc-workspace.tab.\(tabID)",content:content)
             try await wait("row returns keyboard after preview") { window.firstResponder === activeTerminal }
+            checks += 1
+            let beforeSwitchFocus = model.focus
+            try hcNativeFixtureCommand("p",code:35,label:"audit-switcher-cancel",window:window,root:root)
+            try await wait("actual pane switcher sheet") {
+                ownedSheetContent(window).map { elements($0)["workspace.switcher.search"] != nil } == true
+            }
+            guard let sheet = ownedSheetContent(window) else { throw Failure.assertion("owned switcher sheet") }
+            try press("workspace.switcher.cancel",content:sheet)
+            try await wait("switcher cancel restores main key window") { ownedSheetContent(window) == nil && window.isKeyWindow }
+            try check(model.focus == beforeSwitchFocus && terminals(content).first === activeTerminal,"switcher cancel preserves selection/terminal")
+            try hcNativeFixtureCommand("p",code:35,label:"audit-switcher-choose",window:window,root:root)
+            try await wait("actual switcher editor ready") {
+                ownedSheetContent(window)?.window?.isKeyWindow == true
+                    && (ownedSheetContent(window).map { elements($0)["workspace.switcher.search"] != nil } == true)
+            }
+            guard let choosing = ownedSheetContent(window)?.window else { throw Failure.assertion("switcher key sheet") }
+            try returnKey(in:choosing)
+            try await wait("switcher selection dismisses before keyboard return") { ownedSheetContent(window) == nil && window.isKeyWindow && window.firstResponder === activeTerminal }
+            try check(model.focus == beforeSwitchFocus,"same scoped pane selected without retarget")
+            let beforeLaunchTabs = model.document?.workspaces.flatMap(\.tabs).map(\.id)
+            let beforeLaunchPrograms = try await HcTerminalBoard(connection:connection).list(all:true)
+            try hcNativeFixtureCommand("n",code:45,label:"audit-original-launcher",window:window,root:root)
+            try await wait("actual original Spotlight launcher field") {
+                let field = launcherField(in:window)
+                let facts: [String:Any] = ["found":field != nil,"placeholder":field?.placeholderString ?? "nil",
+                    "fieldWindow":field?.window?.windowNumber ?? -1,"fieldKey":field?.window?.isKeyWindow ?? false,
+                    "editor":field?.currentEditor().map { String(describing:type(of:$0)) } ?? "nil",
+                    "firstResponder":window.firstResponder.map { String(describing:type(of:$0)) } ?? "nil",
+                    "editorIsFirstResponder":field?.currentEditor() === field?.window?.firstResponder]
+                try? JSONSerialization.data(withJSONObject:facts).write(to:root.appending(path:"launcher-focus-audit.json"),options:.atomic)
+                guard let field, let editor = field.currentEditor(), field.window === window else { return false }
+                return window.firstResponder === editor
+            }
+            try returnKey(in:window) // Choose the existing workspace; do not launch.
+            try await wait("original launcher tab-name step") { launcherField(in:window)?.placeholderString == String(localized:"Tab Name") }
+            try key("\u{1b}",code:53,in:window)
+            try await wait("actual launcher Esc cancellation") { elements(content)["workspace.launcher.field"] == nil }
+            let afterLaunchPrograms = try await HcTerminalBoard(connection:connection).list(all:true)
+            try check(model.document?.workspaces.flatMap(\.tabs).map(\.id) == beforeLaunchTabs && afterLaunchPrograms == beforeLaunchPrograms,
+                      "launcher navigation/cancel does not create placeholder or program")
+            // Create only another view of this exact already-owned program.
+            // Actual CmdW + confirmation must hide it, not end/restart it or
+            // automatically select a fallback row behind the person's back.
+            try await model.showTerminal(reference.terminalID,workspaceID:workspace)
+            guard let duplicate = model.selectedTab, duplicate.id != tabID else { throw Failure.assertion("explicit duplicate view") }
+            try await wait("actual duplicate view is selected") { elements(content)["hc-workspace.tab.\(duplicate.id)"] != nil && terminals(content).count == 1 }
+            try hcNativeFixtureCommand("w",code:13,label:"audit-close-confirm",window:window,root:root)
+            try await hcFixtureWait("hc.close.confirm",present:true,enabled:true,window:window)
+            try hcFixturePress("hc.close.confirm")
+            try await wait("closed view is absent and selection stays clear") {
+                model.document?.workspaces.flatMap(\.tabs).contains(where: { $0.id == duplicate.id }) == false && terminals(content).isEmpty && window.isKeyWindow
+            }
+            checks += 1
+            let afterClose = try await HcTerminalBoard(connection:connection).list(all:true)
+            try check(afterClose.count == beforeLaunchPrograms.count,"closing a view does not start/end another program")
+            try clickRow("hc-workspace.tab.\(tabID)",content:content)
+            try await wait("remaining row explicitly restores terminal") { terminals(content).count == 1 }
             checks += 1
             let record = try await HcTerminalBoard(connection:connection).get(reference.terminalID)
             try check(record.pid == originalRecord.pid && record.createdMs == originalRecord.createdMs && record.state == "live",

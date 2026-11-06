@@ -16,6 +16,8 @@ struct TerminalHostView {
     /// macOS only: on iOS that would also bring the on-screen keyboard up
     /// over it unasked.
     var focusesWhenShown = false
+    /// A live presentation gate for deferred autofocus; defaults preserve callers.
+    var keyboardFocusAllowed: () -> Bool = { true }
     /// Told a link clicked in the terminal, with how it was clicked.
     var onOpenLink: ((String, TerminalLinkClick) -> Void)? = nil
     /// Told the files dropped from Finder on the terminal. While this is
@@ -95,6 +97,7 @@ struct TerminalTextDrop {
 final class FocusReportingTerminalView: TerminalView {
     var onFocusChange: ((Bool) -> Void)?
     var focusesWhenShown = false
+    var keyboardFocusAllowed: () -> Bool = { true }
     var onOpenFileGesture: ((String, TerminalLinkClick) -> Void)?
     /// See `TerminalHostView.onDropFiles`. Setting it registers the view
     /// for file drags, or stops it taking them.
@@ -584,7 +587,7 @@ final class FocusReportingTerminalView: TerminalView {
         // the middle of SwiftUI's update, and the window's own handling of
         // that update could still move the keyboard on after this.
         DispatchQueue.main.async { [weak self] in
-            guard let self, let window = self.window else { return }
+            guard let self, let window = self.window, self.keyboardFocusAllowed() else { return }
             window.makeFirstResponder(self)
         }
     }
@@ -626,6 +629,7 @@ extension TerminalHostView: NSViewRepresentable {
         view.terminalDelegate = context.coordinator
         view.onFocusChange = onFocusChange
         view.focusesWhenShown = focusesWhenShown
+        view.keyboardFocusAllowed = keyboardFocusAllowed
         view.onOpenFileGesture = onOpenLink
         view.onDropFiles = onDropFiles
         view.textDrop = textDrop
@@ -634,6 +638,7 @@ extension TerminalHostView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: TerminalView, context: Context) {
+        (nsView as? FocusReportingTerminalView)?.keyboardFocusAllowed = keyboardFocusAllowed
         context.coordinator.onOpenLink = onOpenLink
         (nsView as? FocusReportingTerminalView)?.onOpenFileGesture = onOpenLink
         (nsView as? FocusReportingTerminalView)?.onDropFiles = onDropFiles

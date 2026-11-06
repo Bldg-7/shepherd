@@ -795,7 +795,7 @@ struct LauncherField: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSTextField {
-        let field = NSTextField()
+        let field = LauncherLandingTextField()
         field.setAccessibilityIdentifier("workspace.launcher.field")
         field.delegate = context.coordinator
         field.isBordered = false
@@ -806,15 +806,20 @@ struct LauncherField: NSViewRepresentable {
         field.cell?.isScrollable = true
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)
         update(field, context.coordinator)
-        // Once the field is in its window: the keyboard is taken on the next
-        // turn of the run loop, after SwiftUI's update that put it there.
-        DispatchQueue.main.async { [weak field, coordinator = context.coordinator] in
-            guard let field, let window = field.window else { return }
-            coordinator.window = window
-            coordinator.previousResponder = window.firstResponder
-            window.makeFirstResponder(field)
-            coordinator.parent.onWindow(window)
+        // A one-off callback from makeNSView can run before the view lands in
+        // the native hosting hierarchy. The actual landing owns readiness.
+        field.takeKeyboard = { [weak coordinator = context.coordinator] field in
+            guard let coordinator, let window = field.window else { return false }
+            if coordinator.window == nil {
+                coordinator.window = window
+                coordinator.previousResponder = window.firstResponder
+                coordinator.parent.onWindow(window)
+            }
+            guard field.isEnabled, window.makeFirstResponder(field), let editor = field.currentEditor() else { return false }
+            return window.firstResponder === editor
         }
+        field.scheduleKeyboard()
+
         return field
     }
 
@@ -837,11 +842,35 @@ struct LauncherField: NSViewRepresentable {
     }
 
     static func dismantleNSView(_ field: NSTextField, coordinator: Coordinator) {
+        (field as? LauncherLandingTextField)?.takeKeyboard = nil
         guard coordinator.parent.restoresFocusOnClose,
               let window = coordinator.window,
               let previous = coordinator.previousResponder,
               previous !== field.currentEditor() else { return }
         window.makeFirstResponder(previous)
+    }
+}
+
+/// One bounded landing request. Native hierarchy attachment, not SwiftUI view
+/// construction, determines when a field can actually obtain its editor.
+final class LauncherLandingTextField: NSTextField {
+    var takeKeyboard: ((NSTextField) -> Bool)?
+    private var scheduled = false
+    private var didTakeKeyboard = false
+    private var attempts = 0
+    override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); scheduleKeyboard() }
+    override func viewDidMoveToSuperview() { super.viewDidMoveToSuperview(); scheduleKeyboard() }
+    func scheduleKeyboard() {
+        guard !scheduled, !didTakeKeyboard, attempts < 25, takeKeyboard != nil else { return }
+        scheduled = true
+        DispatchQueue.main.asyncAfter(deadline:.now()+0.02) { [weak self] in
+            guard let self else { return }
+            self.scheduled = false
+            guard self.window != nil, let take = self.takeKeyboard else { return }
+            self.attempts += 1
+            if take(self) { self.didTakeKeyboard = true }
+            else { self.scheduleKeyboard() }
+        }
     }
 }
 #endif

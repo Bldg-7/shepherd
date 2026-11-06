@@ -16,6 +16,7 @@ nonisolated struct HcPaneKeyboardRequest: Equatable, Sendable {
     private(set) var hasSelection = false
     private(set) var keyboardRequest: HcPaneKeyboardRequest?
     var previewCoversTerminal = false
+    var keyboardSuppressed = false
     private var suppressedFocus: HcSelectionStamp?
 
     func scopeChanged(_ epoch: UUID?, focus: HcSelectionStamp?) {
@@ -30,6 +31,10 @@ nonisolated struct HcPaneKeyboardRequest: Equatable, Sendable {
         guard epoch != nil else { return }
         if focus == nil { hasSelection = false; keyboardRequest = nil }
         else if focus != suppressedFocus { hasSelection = true }
+    }
+    func acknowledgeKeyboard(_ token: UUID) {
+        guard keyboardRequest?.token == token else { return }
+        keyboardRequest = nil
     }
     func select(_ focus: HcSelectionStamp?, requestKeyboard: Bool) {
         guard let epoch, let focus else { return }

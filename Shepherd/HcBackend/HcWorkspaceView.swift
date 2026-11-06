@@ -51,16 +51,16 @@ struct HcWorkspaceView: View {
         } detail: {
             let shown = activePreview
             WorkspaceDetailSplitView(showsPanel: shown?.preview != nil, panelMinimum: 320, panelIdeal: 560,
-                                     panelCoversTerminal: shown?.expanded == true) {
+                                     panelCoversTerminal: shown?.expanded == true, allowsKeyboardRestore: { !presentation.keyboardSuppressed }) {
             Group {
                 if let model {
                     if model.state == .connecting || model.state == .idle { ProgressView("Connecting…") }
                     else if model.state != .connected { unavailable }
                     else if presentation.hasSelection, let tab = model.selectedTab, let layout = tab.layout {
                         if !showsTabs, let pane = layout.panes.first(where: { $0.id == model.focus.paneByTab[tab.id] }) ?? layout.panes.first {
-                            HcTerminalPane(model: model, pane: pane, machine: machine, machineStore: machineStore, presentations: presentations).id(pane.id)
+                            HcTerminalPane(model: model, pane: pane, machine: machine, machineStore: machineStore, presentations: presentations, keyboardIntent: presentation).id(pane.id)
                         } else if let zoom = model.focus.zoomByTab[tab.id], let pane = layout.panes.first(where: { $0.id == zoom }) {
-                            HcTerminalPane(model: model, pane: pane, machine: machine, machineStore: machineStore, presentations: presentations).id(pane.id)
+                            HcTerminalPane(model: model, pane: pane, machine: machine, machineStore: machineStore, presentations: presentations, keyboardIntent: presentation).id(pane.id)
                         } else { layoutView(layout, model: model) }
                     } else { ContentUnavailableView("No Pane Selected", systemImage: "terminal") }
                 } else { unavailable }
@@ -188,7 +188,7 @@ struct HcWorkspaceView: View {
     private func layoutView(_ layout: CoreWorkspaceDocument.Layout, model: HcWorkspaceModel) -> AnyView {
         switch layout {
         case .leaf(let pane):
-            return AnyView(HcTerminalPane(model: model, pane: pane, machine: machine, machineStore: machineStore, presentations: presentations).id(pane.id))
+            return AnyView(HcTerminalPane(model: model, pane: pane, machine: machine, machineStore: machineStore, presentations: presentations, keyboardIntent: presentation).id(pane.id))
         case .split(let axis, let ratio, let first, let second):
             return AnyView(GeometryReader { proxy in
                 if axis == .horizontal {

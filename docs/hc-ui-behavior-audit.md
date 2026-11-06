@@ -39,6 +39,35 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
 
 ## Current integrated results and remaining boundary
 
+- `.9awxx30v`: ordinary-window14 checks, including real file contents, preview
+  expand/return retaining exact terminal/frame/grid and keyboard return.
+- `.4impfiyo`: native switcher Cancel and Return selection/dismissal also pass.
+- `.havbsoi1`/`.1wpah6ma`/`.hxdah4wm` expose a real integrated launch-field focus
+  failure: the field is in the key window but has no editor; the terminal stays
+  first responder. One-shot focus tokens alone did not remove the repeat failure.
+- Focus intents now acknowledge once, deferred terminal landing/preview keyboard
+  restoration honor a live overlay/sheet gate, and the original launcher waits
+  for actual native field landing rather than a single makeNSView callback.
+- `.x0j1awvs` and `.lij0r0ag` then pass20 checks **consecutively** with the same
+  source/products: launcher real editor/step/Esc with no document/program change;
+  actual CmdW/confirmation closes only duplicate view; selection stays clear;
+  explicit remaining-row selection works; real program PID/creation/liveness
+  retained. All owned identities/sockets/registrations/staged apps retire.
+  Component launcher69 checks pass at `/private/tmp/hc-launcher-landing.HO4x0t`.
+  These ordinary-window results do not close the repeated-fullscreen boundary.
+- Repeating the first shield still failed at `.fda621si`; do not treat its
+  preceding successful iteration as a stable fix. The launcher's original
+  one-shot makeNSView callback could precede native window landing. The actual
+  `LauncherLandingTextField` now owns a bounded, once-successful editor request
+  from viewDidMoveToWindow/superview, invalidated on teardown, with no text
+  replacement or composition reset. `.x0j1awvs`/`.lij0r0ag` above are the later
+  final landing-source consecutive passes, not retroactive passes for the first
+  shield alone.
+- `/private/tmp/hc-focus-landing-regression.OEDiqX`: final optimized presentation21,
+  original title rules/IME field/native toolbar6 stages, window-minimum geometry,
+  shared sidebar136, iOS Debug and source-wiring8 checks pass. Actual global
+  keyboard/physical IME/physical divider drag remain separately unqualified.
+
 - `/private/tmp/hc-screen-app.33ge5kte` passes10 actual hc-root ordinary-window
   checks, including actual mode toggle clearing the terminal selection, actual
   tab-row click selecting it again, and same-row activation returning keyboard

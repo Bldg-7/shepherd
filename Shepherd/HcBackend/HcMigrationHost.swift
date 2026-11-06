@@ -116,7 +116,7 @@ private nonisolated struct HcMigrationStatus: Decodable, Sendable {
         menu.cancelTrackingWithoutAnimation()
     }
 }
-@MainActor private func hcNativeFixtureCommand(_ key: String, code: UInt16, label: String, window: NSWindow, root: URL) throws {
+@MainActor func hcNativeFixtureCommand(_ key: String, code: UInt16, label: String, window: NSWindow, root: URL) throws {
     guard NSApp.isActive, window.isKeyWindow, let menu = NSApp.mainMenu, let item = hcCommandItem(in: menu, key: key),
           let parent = item.menu, let view = window.contentView else { throw HcWorkspaceModel.Failure.unavailable }
     let probe = HcVisibleMenuProbe(menu: parent, key: key)
@@ -131,7 +131,7 @@ private nonisolated struct HcMigrationStatus: Decodable, Sendable {
     try JSONSerialization.data(withJSONObject: ["enabledWhileOpen":probe.enabled,"handled":handled,"menu":probe.snapshot]).write(to: root.appending(path: label + ".json"), options: .atomic)
     guard handled else { throw HcWorkspaceModel.Failure.unavailable }
 }
-@MainActor private func hcFixtureWait(_ id: String, present: Bool, enabled: Bool = false, window: NSWindow) async throws {
+@MainActor func hcFixtureWait(_ id: String, present: Bool, enabled: Bool = false, window: NSWindow) async throws {
     let end = ContinuousClock.now.advanced(by: .seconds(5))
     while (hcFixtureElement(id) != nil) != present
             || (present && enabled && !hcFixturePressReady(id))
@@ -166,7 +166,7 @@ private nonisolated struct HcMigrationStatus: Decodable, Sendable {
     }
     return control.responds(to: NSSelectorFromString("accessibilityPerformPress"))
 }
-@MainActor private func hcFixturePress(_ id: String) throws {
+@MainActor func hcFixturePress(_ id: String) throws {
     let control = hcFixtureElement(id)
     if let cell = control as? NSCell {
         // Native NSAlert exposes its identifier on a cell whose AX Press may

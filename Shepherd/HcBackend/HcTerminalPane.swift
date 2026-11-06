@@ -16,11 +16,15 @@ import AppKit
     @ObservationIgnored private var queuedActions = 0
     @ObservationIgnored private var generation = UUID()
     @ObservationIgnored private var size = (80, 24)
+    @ObservationIgnored private var handledKeyboardToken: UUID?
 
     func bind(_ view: TerminalView) { terminal = view }
-    @discardableResult func takeKeyboard() -> Bool {
+    @discardableResult func takeKeyboard(token: UUID) -> Bool {
+        if handledKeyboardToken == token { return true }
         guard let terminal, let window = terminal.window, NSApp.isActive, window.isKeyWindow else { return false }
-        return window.makeFirstResponder(terminal)
+        guard window.makeFirstResponder(terminal) else { return false }
+        handledKeyboardToken = token
+        return true
     }
     func start(makeSession: () throws -> HcTerminalSession) async {
         guard !Task.isCancelled else { return }
@@ -153,6 +157,7 @@ struct HcTerminalPane: View {
     let pane: CoreWorkspaceDocument.Pane
     var machine: Machine? = nil
     var machineStore: MachineStore? = nil
+    let keyboardIntent: HcWorkspacePresentation?
     @AppStorage(AgentBoardView.showsTabsKey) private var showsTabs = false
     @Environment(\.hcPaneKeyboardRequest) private var keyboardRequest
     @State private var presentation: HcPanePresentation
@@ -166,8 +171,8 @@ struct HcTerminalPane: View {
         nonmutating set { presentation.expanded = newValue }
     }
     init(model: HcWorkspaceModel, pane: CoreWorkspaceDocument.Pane, machine: Machine? = nil,
-         machineStore: MachineStore? = nil, presentations: HcPanePresentationStore? = nil) {
-        self.model = model; self.pane = pane; self.machine = machine; self.machineStore = machineStore
+         machineStore: MachineStore? = nil, presentations: HcPanePresentationStore? = nil, keyboardIntent: HcWorkspacePresentation? = nil) {
+        self.model = model; self.pane = pane; self.machine = machine; self.machineStore = machineStore; self.keyboardIntent = keyboardIntent
         _presentation = State(initialValue: presentations?.entry(epoch: model.workspace?.epoch, pane: pane) ?? HcPanePresentation())
     }
     @State private var operationError: String?
@@ -192,6 +197,7 @@ struct HcTerminalPane: View {
                             terminal.focus(focused)
                             if focused { try? model.select(pane: pane.id) }
                         }, focusesWhenShown: model.focus.paneByTab[model.selectedTab?.id ?? UUID()] == pane.id,
+                        keyboardFocusAllowed: { keyboardIntent?.keyboardSuppressed != true },
                         onOpenLink: { link, _ in open(link) },
                         onDropFiles: currentScope && terminal.connected && TerminalFileDropFeature.isEnabled && drops?.isUploading == false ? { drops?.drop($0) } : nil)
                     .task(id: pane.terminal) {
@@ -213,8 +219,12 @@ struct HcTerminalPane: View {
             let end = ContinuousClock.now.advanced(by: .seconds(1))
             while !Task.isCancelled, ContinuousClock.now < end {
                 guard currentScope, request.epoch == model.workspace?.epoch, !expandedPreview,
+                      keyboardIntent?.keyboardSuppressed != true,
                       model.document?.pane(pane.id)?.terminal == pane.terminal else { return }
-                if terminal.takeKeyboard() { return }
+                if terminal.takeKeyboard(token: request.token) {
+                    keyboardIntent?.acknowledgeKeyboard(request.token)
+                    return
+                }
                 try? await Task.sleep(for: .milliseconds(20))
             }
         }

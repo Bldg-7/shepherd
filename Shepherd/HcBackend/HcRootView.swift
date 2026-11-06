@@ -160,6 +160,7 @@ struct HcRootView: View {
     private func openLauncher(currentWorkspace: Bool) {
         guard scopedModel?.canEdit == true, !switcher, !settings, !installation, !origins, !tracking else { return }
         launcherUsesCurrentWorkspace = currentWorkspace
+        presentation.keyboardSuppressed = !launchSheet
         launchSheet.toggle()
     }
     private func launch(_ request: LaunchRequest, model: HcWorkspaceModel, handOff: @escaping @MainActor () -> Void) async throws {
@@ -234,6 +235,8 @@ struct HcRootView: View {
         Task { await HcNotificationCoordinator.shared.setViewed(machine: nil, coreID: nil); await connection.close() }
     }
     private func routeAndViewed() {
+        presentation.keyboardSuppressed = launchSheet || switcher || settings || installation || origins || tracking
+            || renamingTitle || scopedModel?.operationReview != nil || presentation.previewCoversTerminal
         HcWindowCommandState.shared.update(commandOwner, actions: actions)
         let epoch = UUID(); viewingEpoch = epoch
         let notifications = HcNotificationCoordinator.shared
