@@ -28,6 +28,7 @@ nonisolated struct HcSelectionStamp: Equatable, Sendable {
 nonisolated struct HcPaneKeyboardRequest: Equatable, Sendable {
     let epoch: UUID
     let pane: UUID
+    let inputGeneration: UUID
     let token = UUID()
 }
 @MainActor @Observable final class HcWorkspacePresentation {
@@ -37,6 +38,12 @@ nonisolated struct HcPaneKeyboardRequest: Equatable, Sendable {
     private(set) var selectionIntent = UUID()
     var previewCoversTerminal = false
     var keyboardSuppressed = false
+    // Native control callbacks may run during layout. This live ownership
+    // metadata must not publish a SwiftUI update from inside that callback.
+    @ObservationIgnored private(set) var inputGeneration = UUID()
+    @ObservationIgnored private(set) var textFieldOwnsKeyboard = false
+    func textEditingBegan() { inputGeneration = UUID(); textFieldOwnsKeyboard = true }
+    func textEditingEnded() { textFieldOwnsKeyboard = false }
     private var suppressedFocus: HcSelectionStamp?
 
     func scopeChanged(_ epoch: UUID?, focus: HcSelectionStamp?) {
@@ -68,7 +75,7 @@ nonisolated struct HcPaneKeyboardRequest: Equatable, Sendable {
         hasSelection = true; suppressedFocus = nil
         if requestKeyboard, let pane = focus.pane {
             previewCoversTerminal = false
-            keyboardRequest = .init(epoch: epoch, pane: pane)
+            keyboardRequest = .init(epoch: epoch, pane: pane, inputGeneration: inputGeneration)
         }
     }
     /// Exactly the rendered panes, not every terminal stored in the tab.

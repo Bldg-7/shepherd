@@ -102,9 +102,15 @@ import AppKit
         #endif
         if connected { enqueue { try await $0.resize(columns: cols, rows: rows) } }
     }
-    func focus(_ focused: Bool) {
+    @discardableResult func focus(_ focused: Bool) -> Bool {
+        let actual: Bool
+        if let terminal, let window = terminal.window {
+            actual = NSApp.isActive && window.isKeyWindow && window.firstResponder === terminal
+        } else { actual = false }
+        guard focused == actual else { return false } // A queued old callback is not current keyboard ownership.
         hasKeyboardFocus = focused
         if connected { enqueue { try await $0.focus(focused) } }
+        return true
     }
     func stop() {
         generation = UUID(); connected = false; hasKeyboardFocus = false
@@ -203,13 +209,17 @@ struct HcTerminalPane: View {
                 } else if pane.terminal?.coreID != model.coreID {
                     ContentUnavailableView("Remote terminal", systemImage: "network", description: Text("Connect directly to its origin before attaching."))
                 } else {
-                    TerminalHostView(onCreate: { terminal.bind($0) }, onInput: { if currentScope { terminal.send($0) } },
+                    TerminalHostView(onCreate: { view in
+                        terminal.bind(view)
+                        #if DEBUG && os(macOS)
+                        if currentScope { HcMigrationRenderProbe.shared.bind(view,paneModel:terminal,pane:pane.id,epoch:model.workspace?.epoch,reference:pane.terminal) }
+                        #endif
+                    }, onInput: { if currentScope { terminal.send($0) } },
                         onResize: { if currentScope { terminal.resize($0, $1) } }, onFocusChange: { focused in
-                            guard !focused || currentScope else { return }
-                            terminal.focus(focused)
+                            guard (!focused || currentScope), terminal.focus(focused) else { return }
                             if focused { try? model.select(pane: pane.id) }
                         }, focusesWhenShown: model.focus.paneByTab[model.selectedTab?.id ?? UUID()] == pane.id,
-                        keyboardFocusAllowed: { keyboardIntent?.keyboardSuppressed != true },
+                        keyboardFocusAllowed: { keyboardIntent?.keyboardSuppressed != true && keyboardIntent?.textFieldOwnsKeyboard != true },
                         onOpenLink: { link, _ in open(link) },
                         onDropFiles: currentScope && terminal.connected && TerminalFileDropFeature.isEnabled && drops?.isUploading == false ? { drops?.drop($0) } : nil,
                         textDrop: rowDrop)
@@ -236,6 +246,8 @@ struct HcTerminalPane: View {
             let end = ContinuousClock.now.advanced(by: .seconds(1))
             while !Task.isCancelled, ContinuousClock.now < end {
                 guard currentScope, request.epoch == model.workspace?.epoch, !expandedPreview,
+                      keyboardIntent?.keyboardRequest?.token == request.token,
+                      keyboardIntent?.inputGeneration == request.inputGeneration,
                       keyboardIntent?.keyboardSuppressed != true,
                       model.document?.pane(pane.id)?.terminal == pane.terminal else { return }
                 if terminal.takeKeyboard(token: request.token) {

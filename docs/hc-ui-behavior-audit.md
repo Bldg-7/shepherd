@@ -20,7 +20,7 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
 | Row activation | `BoardRowActivation`, original focus request path | Found same-row click had no way to return keyboard to an already mounted terminal. Added typed epoch/pane/token request; no force activation of another app/window. Current ordinary-window audit exercises same-row activation returning keyboard from the filter; fullscreen interaction remains open. |
 | List navigation | Original binding vs explicit row activation | List selection must not steal keyboard while moving in the list. Explicit activation is separate and can restore keyboard. Pure presentation rules cover this separation. |
 | Selection removal | Original board reconciliation | Closing selected view must not immediately display a reconciled fallback. New state suppresses that stale UI restoration; closing an unselected view must not clear the selected view. Exact event/race coverage still open. |
-| Split/zoom controls | Original pane framing/layout | Removed extra hc-only persistent pane header. Explicit new-shell/zoom actions stay in secondary pane actions, not new visible header geometry. Split geometry/resize/current program survival need integrated tests. |
+| Split/zoom controls | Original pane framing/layout | Removed extra hc-only persistent pane header. Explicit new-shell/zoom actions stay in secondary pane actions, not new visible header geometry. Current ordinary-window native context menus exercise zoom/unzoom and New shell to right: correct1/2/3-view topology and exactly one new shell, without ending existing programs. Fullscreen/physical divider behavior remains open. |
 | Preview placement | Original detail-level adjacent panel | Preview is beside the whole terminal/tab, not squeezed into an individual pane. Side minimum320/ideal560. One native host and divider proportion persist. Shared split component proves host stability; current tab composition still to measure. |
 | Preview expansion | Original covering panel | Expanding must cover rather than destroy/reparent live terminal. Root covering host retained; terminal hiding is accessibility/hit-testing only. Needs current attach-count/input/PTY proof. |
 | Preview history | Existing per-selection preview state | Bounded hc cache keys epoch + pane UUID + exact reference; stale/removed reference pruned, no silent eviction of another visited pane. Return from another pane must restore at side, not fullscreen. Further tab-level comparison open. |
@@ -32,6 +32,7 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
 | Quit with sheet | Original presentationPreventsAppTermination(false) | Added original behavior to transient settings/switcher/origin/tracking/install sheets. Needs actual CmdQ/owned service survival gate. |
 | Viewed/attention | Original key-window + actual selected pane/tab | Found hidden tab siblings marked viewed in pane mode and app-active used without key-window check. New policy uses actual rendered mode/zoom/selection + key window. Pure rules covered; OS notification behavior remains unqualified. |
 | Scope changes | Existing exact machine identity / connection provenance | Clear overlays and deferred navigation; typed epoch/reference keys for previews, focus, switcher. No alias/PID/label is native authorization. Native Retry is exercised; exact current owner-model identity now joins profile/epoch guards at board actions, attach/input/drop/upload and title submission. Full host switching and physical cross-window interactions remain gates. |
+| Existing native terminal discovery | Original board/switcher lists registered programs | Further source audit found restored board/switcher enumerate app-document panes only; externally created canonical hc terminals without a saved view are hidden. Restore explicit discovery/attach through the existing switcher, not a diagnostic sidebar, invented legacy IDs, inferred native sessions or automatic uncertain-run adoption. Open. |
 | Multi-origin groups | Original host/remote grouping, folding, ordering | Still incomplete in hc product. ID-shadow bug in0.1.17 means no unsafe remote mutation or alias fallback. Do not hide this parity gap behind the read-only directory or claim full migration. |
 | Drag/drop | Original row-ID drag + terminal file drag | Scoped row-reference providers and the original terminal text-drop/highlight pipeline are now wired using real workspace node UUIDs, not fake legacy identities. Policy25/mode and actual-core native-destination component integration pass; physical List/Finder gestures remain unqualified. |
 | Empty/loading/error | Original board overlays/search/retry | Actual initially empty board, multi-term/no-results filter and client-failure banner/program survival pass in the current root. Native Retry dispatch also passes32-check current-root audit; loading and stale-target transitions remain open. No diagnostic/editor sidebar substitutes for these. |
@@ -189,6 +190,33 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
   launchd/tmp housekeeping and why private HOME alone cannot qualify production
   service/GUI-quit survival in the operator's current namespace.
 
+- Native pane menus now resolve the actual row CellHostingView, open its real
+  NSMenu, observe tracking, and perform one enabled item action. No forced flags,
+  substitute model closures or global events. The first posted-event route did
+  not open a menu (`.a1gj8qmc`); it is retained as failed, not replayed.
+- `.imz4ty_f` passes48 checks including zoom/unzoom, grouped1/2-pane effects,
+  native New shell to right, exactly one new shell and three rendered terminals.
+  Its 16-column original view wraps the ASCII marker. DEBUG weak pane/reference/
+  epoch bindings replace screen-text lookup, never confer native-session authority.
+  `.f4cp_4dv`'s prior marker lookup failure remains a test failure, not a core-loss
+  attribution. Initial notification/AX diagnostic compiler errors remain in logs.
+- The pre-fix repeat `hc-screen-app._yyrmefu` passed48
+  but `hc-screen-app.hcixk8_t` failed at35: filter value still NO_MATCH, old editor delegate nil,
+  actual first responder FocusReportingTerminalView. This is a real reproduced
+  ownership regression, not retroactively waived by another pass.
+- **Final input-ownership source**: `.g3t2dc7w` and `.181q2zcl` consecutively pass49.
+  Native control begin/change/end notifications update ignored ownership metadata;
+  older terminal requests fail their input-generation/token guard, passive focus/
+  preview restore yields, and late focus callbacks must match the actual responder.
+  Both receipts show the actual filter editor retained and all three passive-focus
+  gates false. `hc-text-ownership.Z75x8l/presentation`:44 rules/mode plus7 owned,
+  never-shown-window notification-seam checks; `hc-input-ownership-release.vAjnZT`
+  macOS Release / iOS Debug, wiring13 and artifact rejection tests pass. Physical gestures,
+  whole parity and cutover remain false.
+- Runner readiness now distinguishes UI_FOCUS_REQUIRED from UI_RUNNING_NO_INPUT;
+  current active/key readiness is still mandatory. A late delivered request does
+  not justify another click after the running signal or process completion.
+
 ## Evidence retained
 
 - `/private/tmp/hc-ui-behavior-audit.KpGlYF`: presentation rules19 per Debug/optimized;
@@ -233,7 +261,7 @@ or activation. Its existence is **not evidence it passed**.
 - All known owned app/core/holder/program/connect identities, sockets,
   registrations and staged copies retire. Controller failures are not silently
   reclassified as successful GUI qualification. Matching-source Debug builds
-  succeed. Single-pane actual-root/fullscreen checks are now proven, not the full
+  succeed. One historical fullscreen pass does not qualify repeat reliability; retention failed on later runs. This is not the full
   UI audit: physical divider drag, multiple panes and preview/other workflows
   remain **open**.
 

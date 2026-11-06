@@ -30,6 +30,29 @@ struct HcMigrationConfiguration {
     private(set) var text = ""
     private(set) var bytes = 0
     private(set) var resizeEvents: [[Int]] = []
+    @ObservationIgnored private var bindings: [UUID: NativeBinding] = [:]
+    private final class NativeBinding {
+        weak var view: FocusReportingTerminalView?
+        weak var paneModel: HcTerminalPaneModel?
+        let epoch: UUID
+        let reference: CoreWorkspaceDocument.TerminalReference
+        init(view: FocusReportingTerminalView, paneModel: HcTerminalPaneModel, epoch: UUID, reference: CoreWorkspaceDocument.TerminalReference) {
+            self.view = view; self.paneModel = paneModel; self.epoch = epoch; self.reference = reference
+        }
+    }
+    func bind(_ view: TerminalView, paneModel: HcTerminalPaneModel, pane: UUID, epoch: UUID?, reference: CoreWorkspaceDocument.TerminalReference?) {
+        guard HcMigrationConfiguration.requested, let view = view as? FocusReportingTerminalView,
+              let epoch, let reference else { return }
+        bindings = bindings.filter { $0.value.view != nil }
+        guard bindings[pane] != nil || bindings.count < 128 else { return }
+        bindings[pane] = NativeBinding(view:view,paneModel:paneModel,epoch:epoch,reference:reference)
+    }
+    /// Actual UI binding only; never maps a program to a native-agent session.
+    func boundView(pane: UUID, epoch: UUID?, reference: CoreWorkspaceDocument.TerminalReference, window: NSWindow) -> FocusReportingTerminalView? {
+        guard let binding = bindings[pane], binding.epoch == epoch, binding.reference == reference,
+              binding.paneModel?.connected == true, let view = binding.view, view.window === window else { return nil }
+        return view
+    }
     func resized(columns: Int, rows: Int) {
         resizeEvents.append([columns,rows])
         if resizeEvents.count > 512 { resizeEvents.removeFirst(resizeEvents.count - 512) }

@@ -110,6 +110,20 @@ class PreservationWiring(unittest.TestCase):
         self.assertIn('[weak connection, machineStore]', root)
         self.assertIn('guard isCurrentScope(), model.state == .connected else { return false }', pane)
 
+    def test_new_text_editor_intent_retires_deferred_terminal_focus(self):
+        state = source('Shepherd/HcBackend/HcWorkspacePresentation.swift')
+        pane = source('Shepherd/HcBackend/HcTerminalPane.swift')
+        tracker = source('Shepherd/HcBackend/HcTextInputOwnership.swift')
+        self.assertIn('@ObservationIgnored private(set) var inputGeneration', state)
+        self.assertIn('keyboardIntent?.inputGeneration == request.inputGeneration', pane)
+        self.assertIn('keyboardIntent?.keyboardRequest?.token == request.token', pane)
+        self.assertIn('keyboardIntent?.textFieldOwnsKeyboard != true', pane)
+        self.assertIn('guard focused == actual else { return false }', pane)
+        self.assertIn('control.window === window', tracker)
+        self.assertIn('NSControl.textDidBeginEditingNotification', tracker)
+        self.assertNotIn('addLocalMonitorForEvents', tracker)
+        self.assertNotIn('makeFirstResponder', tracker)
+
     def test_actual_rendered_selection_not_hidden_siblings_is_viewed(self):
         root = source('Shepherd/HcBackend/HcRootView.swift')
         self.assertIn('controlActiveState == .key, presentation.hasSelection', root)

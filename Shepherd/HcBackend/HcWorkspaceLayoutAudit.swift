@@ -65,6 +65,11 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
            controller.splitViewItems.count == 2 { return controller }
         return view.subviews.lazy.compactMap { split($0) }.first
     }
+    static func renderedFlatText(_ view: FocusReportingTerminalView) -> String {
+        let screen = view.getTerminal()
+        return (0..<screen.rows).compactMap { screen.getLine(row:$0)?.translateToString(trimRight:true,
+            skipNullCellsFollowingWide:true,characterProvider:screen.getCharacter) }.joined()
+    }
     static func terminals(_ view: NSView) -> [FocusReportingTerminalView] {
         if let terminal = view as? FocusReportingTerminalView { return [terminal] }
         return view.subviews.flatMap(terminals)
@@ -286,6 +291,8 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
             guard ContinuousClock.now < activationEnd else { throw Failure.assertion("owned foreground readiness") }
             try await Task.sleep(for:.milliseconds(20))
         }
+        try JSONSerialization.data(withJSONObject:["active":NSApp.isActive,"key":window.isKeyWindow,"window":window.windowNumber])
+            .write(to:root.appending(path:"ui-foreground-ready.json"),options:.atomic)
         let toolbarFacts = (window.toolbar?.items ?? []).map { item in
             ["id":item.itemIdentifier.rawValue,"enabled":item.isEnabled,"view":item.view.map { String(describing:type(of:$0)) } ?? "nil",
              "action":item.action.map(NSStringFromSelector) ?? "nil"] as [String:Any]
@@ -553,6 +560,56 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
             try press("preview.expand",content:content)
             try await settleGeometry(pair[0],content:content)
             try check(terminals(content).map(ObjectIdentifier.init) == pairIDs,"whole-tab preview return does not recreate either terminal")
+            let beforeZoom = try await HcTerminalBoard(connection:connection).list(all:true)
+            try press("workspace.board.group-by-tab",content:content)
+            try await wait("pane mode clears selection before context action") { terminals(content).isEmpty }
+            try clickRow("hc-workspace.pane.\(firstPane.id)",content:content)
+            try await wait("pane row selected for native menu") { terminals(content).count == 1 }
+            try await HcNativeContextMenuAudit.perform("Zoom Pane",row:"hc-workspace.pane.\(firstPane.id)",content:content,root:root,label:"native-context-zoom")
+            try await wait("native menu sets scoped zoom") { model.focus.zoomByTab[tabID] == firstPane.id }
+            try press("workspace.board.group-by-tab",content:content)
+            try await wait("tab mode clears selection after zoom") { terminals(content).isEmpty }
+            try clickRow("hc-workspace.tab.\(tabID)",content:content)
+            try await wait("grouped zoom displays one actual terminal") { terminals(content).count == 1 }
+            checks += 1
+            try press("workspace.board.group-by-tab",content:content)
+            try await wait("pane mode clears zoom view selection") { terminals(content).isEmpty }
+            try clickRow("hc-workspace.pane.\(firstPane.id)",content:content)
+            try await wait("pane row selected for native unzoom") { terminals(content).count == 1 }
+            try await HcNativeContextMenuAudit.perform("Unzoom Pane",row:"hc-workspace.pane.\(firstPane.id)",content:content,root:root,label:"native-context-unzoom")
+            try await wait("native menu clears scoped zoom") { model.focus.zoomByTab[tabID] == nil }
+            try press("workspace.board.group-by-tab",content:content)
+            try await wait("tab mode clears unzoom selection") { terminals(content).isEmpty }
+            try clickRow("hc-workspace.tab.\(tabID)",content:content)
+            try await wait("unzoom restores both actual terminals") { terminals(content).count == 2 }
+            checks += 1
+            let afterZoom = try await HcTerminalBoard(connection:connection).list(all:true)
+            var zoomProgramsUnchanged = afterZoom.count == beforeZoom.count
+            for old in beforeZoom {
+                guard let current = afterZoom.first(where:{ $0.address == old.address }) else { zoomProgramsUnchanged = false; break }
+                if current.pid != old.pid || current.createdMs != old.createdMs || current.state != old.state { zoomProgramsUnchanged = false }
+            }
+            try check(zoomProgramsUnchanged,"native zoom/unzoom never starts or terminates a program")
+            try press("workspace.board.group-by-tab",content:content)
+            try await wait("pane mode ready for native split") { terminals(content).isEmpty }
+            try clickRow("hc-workspace.pane.\(firstPane.id)",content:content)
+            try await wait("actual pane selected before native split") { terminals(content).count == 1 }
+            try await HcNativeContextMenuAudit.perform("New shell to right",row:"hc-workspace.pane.\(firstPane.id)",content:content,root:root,label:"native-context-split")
+            try await wait("one native split binds one new shell",seconds:12) {
+                !model.operationBusy && model.selectedTab?.layout?.panes.count == 3
+                    && model.selectedTab?.layout?.panes.allSatisfy({ $0.terminal != nil }) == true
+            }
+            let splitStatus: HcLayoutAuditOwnedStatus = try await connection.call("server.status").result()
+            let splitPrograms = try await HcTerminalBoard(connection:connection).list(all:true)
+            owned = Array(Set(owned + [splitStatus.pid] + splitStatus.holders.map(\.pid) + splitPrograms.compactMap(\.pid))).sorted()
+            try JSONSerialization.data(withJSONObject:["ownedPIDs":owned,"auditPending":true]).write(to:root.appending(path:"audit-owned-identities.json"),options:.atomic)
+            let added = splitPrograms.filter { candidate in !afterZoom.contains(where:{ $0.address == candidate.address }) }
+            try check(splitPrograms.count == afterZoom.count + 1 && added.count == 1 && added[0].state == "live","one native split starts exactly one owned shell")
+            try press("workspace.board.group-by-tab",content:content)
+            try await wait("tab mode clears split selection") { terminals(content).isEmpty }
+            try clickRow("hc-workspace.tab.\(tabID)",content:content)
+            try await wait("actual grouped split shows three native terminals") { terminals(content).count == 3 }
+            checks += 1
             let filteredTerminalIDs = terminals(content).map(ObjectIdentifier.init)
             try clickRow("workspace.board.filter",content:content)
             try await wait("actual filter editor ready") { (window.firstResponder as? NSTextView)?.isFieldEditor == true }
@@ -561,14 +618,43 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
             filterEditor.insertText("NO_MATCH_OWNED_FIXTURE",replacementRange:NSRange(location:NSNotFound,length:0))
             try await wait("actual no-matches overlay") { elements(content)["workspace.board.no-matches"] != nil }
             try check(terminals(content).map(ObjectIdentifier.init) == filteredTerminalIDs,"filtering rows does not close the selected terminal")
+            let passiveFocusAllowed = terminals(content).map { $0.keyboardFocusAllowed() }
+            try JSONSerialization.data(withJSONObject:["editorIsFirstResponder":window.firstResponder === filterEditor,
+                "passiveFocusAllowed":passiveFocusAllowed,"firstResponder":window.firstResponder.map { String(describing:type(of:$0)) } ?? "nil"])
+                .write(to:root.appending(path:"filter-typing-focus.json"),options:.atomic)
+            try check(window.firstResponder === filterEditor && passiveFocusAllowed.allSatisfy({ !$0 }),"native editor ownership gates passive terminal focus")
             filterEditor.selectAll(nil)
             filterEditor.insertText("",replacementRange:NSRange(location:NSNotFound,length:0))
-            try await wait("clearing filter restores rows") { elements(content)["workspace.board.no-matches"] == nil && elements(content)["hc-workspace.tab.\(tabID)"] != nil }
+            try await wait("clearing filter restores rows") {
+                let tree = elements(content)
+                let field = tree["workspace.board.filter"]
+                let valueSelector = NSSelectorFromString("accessibilityValue")
+                let filterValue = field.flatMap { object -> String? in
+                    guard object.responds(to:valueSelector) else { return nil }
+                    return object.perform(valueSelector)?.takeUnretainedValue() as? String
+                }
+                let facts: [String:Any] = ["editorIsFirstResponder":window.firstResponder === filterEditor,
+                    "editorText":filterEditor.string,"editorDelegate":filterEditor.delegate.map { String(describing:type(of:$0)) } ?? "nil",
+                    "firstResponder":window.firstResponder.map { String(describing:type(of:$0)) } ?? "nil",
+                    "filterClass":field.map { String(describing:type(of:$0)) } ?? "nil",
+                    "filterValue":filterValue ?? "nil",
+                    "noMatches":tree["workspace.board.no-matches"] != nil,
+                    "tabRow":tree["hc-workspace.tab.\(tabID)"] != nil,
+                    "groupedPreference":UserDefaults.standard.bool(forKey:AgentBoardView.showsTabsKey),
+                    "modelTabIDs":(model.document?.workspaces.flatMap(\.tabs).map { $0.id.uuidString }) ?? [],
+                    "paneRows":tree.keys.filter { $0.hasPrefix("hc-workspace.pane.") }.count]
+                try? JSONSerialization.data(withJSONObject:facts).write(to:root.appending(path:"filter-clear-focus.json"),options:.atomic)
+                return tree["workspace.board.no-matches"] == nil && tree["hc-workspace.tab.\(tabID)"] != nil
+            }
             checks += 1
-            guard let originalNative = terminals(content).first(where: { view in
-                let screen = view.getTerminal()
-                return (0..<screen.rows).contains { screen.getLine(row:$0)?.translateToString(trimRight:true).contains("HC-UI-RENDER-DONE") == true }
-            }) else { throw Failure.assertion("known original fixture terminal") }
+            try await wait("actual original pane binding after native topology changes") {
+                HcMigrationRenderProbe.shared.boundView(pane:firstPane.id,epoch:model.workspace?.epoch,reference:reference,window:window) != nil
+            }
+            guard let originalNative = HcMigrationRenderProbe.shared.boundView(pane:firstPane.id,epoch:model.workspace?.epoch,reference:reference,window:window),
+                  originalNative.isDescendant(of:content) else { throw Failure.assertion("known original fixture view binding") }
+            try JSONSerialization.data(withJSONObject:["pane":firstPane.id.uuidString,"core":reference.coreID,"terminal":reference.terminalID,
+                "grid":grid(originalNative),"currentText":renderedFlatText(originalNative),"nativeSessionAuthority":false])
+                .write(to:root.appending(path:"original-pane-binding.json"),options:.atomic)
             let dropFile = root.appending(path:"drop fixture's.png")
             guard let escaped = TerminalDropPaste.escaped(dropFile.path) else { throw Failure.assertion("safe owned drop path") }
             let expectedDrop = Data((escaped + " ").utf8)
@@ -577,7 +663,7 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
             let expectedRow = Data((rowText + " ").utf8)
             try expectedRow.write(to:root.appending(path:"row-drop-expected.txt"))
             _ = try await connection.call("terminal.keys",parameters:JSONSerialization.data(withJSONObject:["terminal":reference.terminalID,"keys":["f","enter"]]))
-            try await wait("owned peer raw drop input ready") { HcMigrationRenderProbe.shared.text.contains("HC-DROP-READY") }
+            try await wait("owned peer raw drop input ready") { renderedFlatText(originalNative).contains("HC-DROP-READY") }
             guard let drop = originalNative.onDropFiles else { throw Failure.assertion("production file-drop callback") }
             drop([dropFile])
             try await wait("exact owned file-drop bytes") { (try? Data(contentsOf:root.appending(path:"drop-received.bin"))) == expectedDrop }

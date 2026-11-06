@@ -89,12 +89,20 @@ log=out/'app.log';report=out/'ui-report.json';failed=None
 try:
     command=[sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(stage_seconds),'--natural-exit-grace','10','--log',str(log),'--','/usr/bin/open','-n','-W','--env','SHEPHERD_OWNED_UI_LAUNCH_ROOT='+str(out),'--env','HOME='+str(out/'home'),'--env','CFFIXED_USER_HOME='+str(out/'home'),'--env','TMPDIR='+str(out/'tmp'),str(helper)]
     child=subprocess.Popen(command,env=env,cwd=out)
-    announced=False;deadline=time.monotonic()+stage_seconds+40
+    announced=False;focus_announced=False;focus_requested=None;deadline=time.monotonic()+stage_seconds+40
     try:
         while child.poll() is None:
-            marker='manual-ready.json' if a.manual_inspection else 'ui-wants-focus.json'
-            if not announced and (out/marker).exists():
-                print(('MANUAL_READY: ' if a.manual_inspection else 'UI_FOCUS_READY: ')+str(out),flush=True);announced=True
+            if not announced:
+                if a.manual_inspection and (out/'manual-ready.json').exists():
+                    print('MANUAL_READY: '+str(out),flush=True);announced=True
+                elif not a.manual_inspection and (out/'ui-foreground-ready.json').exists():
+                    print('UI_RUNNING_NO_INPUT: '+str(out),flush=True);announced=True
+                elif not a.manual_inspection and (out/'ui-wants-focus.json').exists():
+                    if focus_requested is None:focus_requested=time.monotonic()
+                    # Let the owned activation handoff settle before asking for
+                    # a human click that could arrive during an active test.
+                    if not focus_announced and time.monotonic()-focus_requested>=1:
+                        print('UI_FOCUS_REQUIRED: '+str(out),flush=True);focus_announced=True
             if time.monotonic()>=deadline:raise subprocess.TimeoutExpired(command,stage_seconds+40)
             time.sleep(.2)
         code=child.wait()

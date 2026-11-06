@@ -61,7 +61,7 @@ struct HcWorkspaceView: View {
         } detail: {
             let shown = activePreview
             WorkspaceDetailSplitView(showsPanel: shown?.preview != nil, panelMinimum: 320, panelIdeal: 560,
-                                     panelCoversTerminal: shown?.expanded == true, allowsKeyboardRestore: { !presentation.keyboardSuppressed }) {
+                                     panelCoversTerminal: shown?.expanded == true, allowsKeyboardRestore: { !presentation.keyboardSuppressed && !presentation.textFieldOwnsKeyboard }) {
             Group {
                 if let model {
                     if model.state == .connecting || model.state == .idle { ProgressView("Connecting…") }
@@ -92,6 +92,7 @@ struct HcWorkspaceView: View {
                 ZStack {
                     TitleDoubleClick(rename: { beginRename(currentSelection) })
                     TitleRenameToolbarRoom(active: titleRename != nil)
+                    HcTextInputOwnership(presentation:presentation)
                 }
             }
             .toolbar(removing: titleRename == nil ? nil : .title)

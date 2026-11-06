@@ -81,6 +81,23 @@ import Darwin
         let exhausted = HcWorkspaceMutationStamp(epoch:epoch,coreID:"core",version:UInt64.max)
         check(exhausted.matches(epoch:epoch,coreID:"core",version:UInt64.max), "stamp comparison never overflows; store separately refuses exhausted writes")
         check(!HcWorkspaceMutationStamp(epoch:epoch,coreID:"",version:0).matches(epoch:epoch,coreID:"",version:0), "empty origin is never a close baseline")
+        state.scopeChanged(epoch,focus:first)
+        state.select(first,requestKeyboard:true)
+        let oldKeyboard = state.keyboardRequest!
+        state.textEditingBegan()
+        check(state.textFieldOwnsKeyboard && state.inputGeneration != oldKeyboard.inputGeneration, "native editing retires older terminal keyboard intent immediately")
+        let typingGeneration = state.inputGeneration
+        state.textEditingEnded()
+        check(!state.textFieldOwnsKeyboard && state.inputGeneration == typingGeneration, "ending editing never revives obsolete focus")
+        state.select(first,requestKeyboard:true)
+        check(state.keyboardRequest?.inputGeneration == typingGeneration, "new explicit row intent may take keyboard back from the field")
+        state.textEditingBegan()
+        let beforeTyping = state.inputGeneration
+        state.textEditingBegan()
+        check(state.inputGeneration != beforeTyping, "typing in an existing editor is a newer input intent too")
+        state.scopeChanged(other,focus:first)
+        check(state.textFieldOwnsKeyboard && state.keyboardRequest == nil, "scope reset drops terminal requests, not real editor ownership")
+        state.textEditingEnded()
         print("PASS workspace presentation rules: \(n) checks; not physical fullscreen/UI approval")
     }
 }
