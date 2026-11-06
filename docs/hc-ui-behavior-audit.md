@@ -13,11 +13,11 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
 | Area | Original contract / evidence | Audit finding and current work |
 | --- | --- | --- |
 | Information hierarchy | Original toolbar/sidebar; `hc-ui-parity-contract.md` | Replacement global machine/diagnostic header and CRUD/journal sidebar removed. Shared original row/search/tab-mode presentation now used. Source guards cover the rejected composition. |
-| Fullscreen sidebar | `WorkspaceSidebarState`, `SidebarPeekREADME.md` | Same shell is necessary but not sufficient. Initial native restoration, reveal without pin, pin while revealed, dragged collapse, one-click reopen, width constraint and real terminal identity/grid must all hold. Shared native component positives/four negatives pass. Actual hc fullscreen failure was then reproduced (1714→1354pt,212→167 columns) and corrected with the public native inline-sidebar threshold only while fullscreen/unpinned. Actual root7-check fullscreen audit now passes; pointer/Space restore verified. Multi-pane/preview/physical-drag cases remain open. |
-| Detail hosting topology | `ContentView.workspace(on:)`, `WorkspaceDetailSplitView` | Found preview split inside each hc pane instead of beside the whole tab. Moved one native preview split to the detail root. No per-pane preview split or persistent header is intended. Needs current whole-composition geometry proof. |
+| Fullscreen sidebar | `WorkspaceSidebarState`, `SidebarPeekREADME.md` | Same shell is necessary but not sufficient. Initial native restoration, reveal without pin, pin while revealed, dragged collapse, one-click reopen, width constraint and real terminal identity/grid must all hold. Shared native component positives/four negatives pass. Actual hc fullscreen failure was then reproduced (1714→1354pt,212→167 columns) and corrected with the public native inline-sidebar threshold only while fullscreen/unpinned. One actual-root7-check pass preserved grid/pointer/Space, but repeated drawer-retention checks failed afterward. Fullscreen reliability remains **RED/open**, including multi-pane/preview/physical-drag cases. |
+| Detail hosting topology | `ContentView.workspace(on:)`, `WorkspaceDetailSplitView` | Found preview split inside each hc pane instead of beside the whole tab. Moved one native preview split to the detail root. Current two-pane ordinary-window audit measures non-overlapping pane frames and detail-level preview; no persistent pane header. Fullscreen topology remains open. |
 | Terminal gutter/focus | `TerminalPaneFrame`, original pane/tab terminal views | Found missing7pt gutter and different1pt focus border. Reuse original frame; focus indication now follows actual keyboard focus, not persisted last-pane selection. Needs current app geometry/focus proof. |
-| Pane/tab mode | `ContentView.onChange(showsTabs)` | Found old selection retained instead of cleared. Presentation state now clears the UI selection and prevents unchanged model focus from resurrecting it. Pure rules covered; actual toggle/end-to-end open. |
-| Row activation | `BoardRowActivation`, original focus request path | Found same-row click had no way to return keyboard to an already mounted terminal. Added typed epoch/pane/token request; no force activation of another app/window. Actual row-keyboard path remains an integrated gate. |
+| Pane/tab mode | `ContentView.onChange(showsTabs)` | Found old selection retained instead of cleared. Presentation state now clears the UI selection and prevents unchanged model focus from resurrecting it. Pure rules and current ordinary-window mode/selection clearing checks pass; fullscreen interaction remains open. |
+| Row activation | `BoardRowActivation`, original focus request path | Found same-row click had no way to return keyboard to an already mounted terminal. Added typed epoch/pane/token request; no force activation of another app/window. Current ordinary-window audit exercises same-row activation returning keyboard from the filter; fullscreen interaction remains open. |
 | List navigation | Original binding vs explicit row activation | List selection must not steal keyboard while moving in the list. Explicit activation is separate and can restore keyboard. Pure presentation rules cover this separation. |
 | Selection removal | Original board reconciliation | Closing selected view must not immediately display a reconciled fallback. New state suppresses that stale UI restoration; closing an unselected view must not clear the selected view. Exact event/race coverage still open. |
 | Split/zoom controls | Original pane framing/layout | Removed extra hc-only persistent pane header. Explicit new-shell/zoom actions stay in secondary pane actions, not new visible header geometry. Split geometry/resize/current program survival need integrated tests. |
@@ -27,14 +27,14 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
 | New Tab | Original `NewTabLauncher` | Actual original launcher used; separate CmdN/CmdT intent. Standalone CLI mode is not browser permission. Private inspection now Shell-only; real installed CLI integration is not inferred from a menu choice.69 actual launcher component checks pass. |
 | Failed launch | Existing launcher handling plus durable hc recovery | Public stable failure formatting, no internal NSError name. Unsupported inspection intent rejected before workspace/placeholder creation. Uncertain prior run never auto-deleted/adopted/replayed. Missing real CLI/race error UX remains separately reviewed. |
 | Title editing | Original title double-click/IME field/native toolbar | Same real field/toolbar implementation with typed hc target, epoch/version guard. Component tests cover simulated composition, stale callbacks and geometry. Physical IME/fullscreen rename is open. |
-| Switcher | Original deferred onDismiss navigation | Found selection/focus applied before sheet dismissal. Defer with exact epoch/pane/terminal reference check; reject stale retarget. Shared original switcher presentation used. Actual dismissal/focus test open. |
+| Switcher | Original deferred onDismiss navigation | Found selection/focus applied before sheet dismissal. Defer with exact epoch/pane/terminal reference check; reject stale retarget. Shared original switcher presentation used. Current ordinary-window audit exercises Cancel and Return/dismissal/keyboard return; stale-scope dismissal remains a separate gate. |
 | Closing | Original command/context confirmations | Explicit view close keeps programs; current selection required, cover disables close. Real confirmation and exact selected/unselected behavior need current E2E tests; older rejected-screen18-pass is not that evidence. |
 | Quit with sheet | Original presentationPreventsAppTermination(false) | Added original behavior to transient settings/switcher/origin/tracking/install sheets. Needs actual CmdQ/owned service survival gate. |
 | Viewed/attention | Original key-window + actual selected pane/tab | Found hidden tab siblings marked viewed in pane mode and app-active used without key-window check. New policy uses actual rendered mode/zoom/selection + key window. Pure rules covered; OS notification behavior remains unqualified. |
 | Scope changes | Existing exact machine identity / connection provenance | Clear overlays and deferred navigation; typed epoch/reference keys for previews, focus, switcher. No alias/PID/label is native authorization. Full host switch/reconnect interaction still a gate. |
 | Multi-origin groups | Original host/remote grouping, folding, ordering | Still incomplete in hc product. ID-shadow bug in0.1.17 means no unsafe remote mutation or alias fallback. Do not hide this parity gap behind the read-only directory or claim full migration. |
 | Drag/drop | Original row-ID drag + terminal file drag | File upload/drop has earlier scoped transport evidence; row identity drag and restored-layout gestures are not yet equivalent/qualified. No fake legacy terminal identities to obtain parity. |
-| Empty/loading/error | Original board overlays/search/retry | Full no-data/filter/error/retry and current target-staleness transitions still need matched fixtures. No diagnostic/editor sidebar substitutes for these. |
+| Empty/loading/error | Original board overlays/search/retry | Actual initially empty board, multi-term/no-results filter and client-failure banner/program survival pass in the current root. Native Retry dispatch also passes32-check current-root audit; loading and stale-target transitions remain open. No diagnostic/editor sidebar substitutes for these. |
 | Application entry/service | Existing root plus hc lifecycle requirements | Default root/legacy removal/install/update/service survival/cutover still open. UI work does not authorize deployment or user-core replacement. |
 
 ## Current integrated results and remaining boundary
@@ -113,6 +113,20 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
   verify the original program's same PID/creation/live state. Retry **dispatch**,
   loading transition, physical pointer/IME/Finder drag and whole UI approval are
   not inferred from these checks. Core, programs, socket and staged apps retire.
+
+- `.5oghpa8b` passes32 ordinary-window checks including the actual enabled Retry
+  button, a new connected model/transport, identical workspace metadata and
+  unchanged terminal addresses/PIDs/creation/state. The previous connect child
+  is reaped. Private transport injection now creates a fresh instance per attempt;
+  production still uses `MachineStore.makeHcConnection`, never a fixture binary.
+  The failed `.a8fmph9t` (29 checks, Retry AX identity absent) remains a failure:
+  the banner identifier was moved to its text, away from the child button, and
+  native enabled readiness is checked before one dispatch. `.gyisx1qu` failed
+  foreground readiness before feature tests. Earlier two build failures remain
+  in `hc-native-retry.zHcSgc` / `hc-native-retry-fixed.IywIXs`.
+- `/private/tmp/hc-retry-regression.gK0rkn`: macOS Release / iOS Debug, launcher69,
+  wiring9 and artifact cleanup rejection tests pass. This preceded the last AX
+  label placement; the latest Debug build is `hc-retry-controls.c3QmUi`.
 
 ## Evidence retained
 

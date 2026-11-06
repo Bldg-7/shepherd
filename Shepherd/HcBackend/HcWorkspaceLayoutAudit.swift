@@ -170,7 +170,7 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
         abs(a.minX-b.minX) < 1 && abs(a.minY-b.minY) < 1 && abs(a.width-b.width) < 1 && abs(a.height-b.height) < 1
     }
     static func run(model: HcWorkspaceModel, connection: CoreRPCConnection, root: URL,
-                    screenTransport: CoreProcessTransport, fullscreen: Bool) async throws -> [String:Any] {
+                    owner: HcMachineConnection, transports: HcFixtureConnectFactory, fullscreen: Bool) async throws -> [String:Any] {
         var checks = 0
         func check(_ value: Bool, _ label: String) throws {
             guard value else { throw Failure.assertion(label) }; checks += 1
@@ -466,6 +466,9 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
                       "sidebar does not replace or end actual hc program")
             // End only the app's owned connect client; the independent control
             // channel and core/programs stay live. Never retry the failed client.
+            guard transports.transports.count == 1, let screenTransport = transports.transports.first else { throw Failure.assertion("one initial owned connect") }
+            let beforeRetry = try await HcTerminalBoard(connection:connection).list(all:true)
+            let documentBeforeRetry = model.document
             try await screenTransport.close()
             try await wait("actual disconnected-board retry banner",seconds:10) {
                 model.state == .failed && elements(content)["workspace.board.connection-failure"] != nil
@@ -474,6 +477,32 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
             let afterFailure = try await HcTerminalBoard(connection:connection).get(reference.terminalID)
             try check(afterFailure.pid == originalRecord.pid && afterFailure.createdMs == originalRecord.createdMs && afterFailure.state == "live",
                       "connect failure presents retry without terminating the program")
+            try await wait("actual enabled Retry ready") {
+                let tree = elements(content)
+                let facts = tree.map { key, value in
+                    ["id":key,"class":String(describing:type(of:value)),"enabled":(value as AnyObject).isAccessibilityEnabled?() ?? false] as [String:Any]
+                }
+                try? JSONSerialization.data(withJSONObject:facts).write(to:root.appending(path:"retry-controls.json"),options:.atomic)
+                guard let retry = tree["workspace.board.retry"] else { return false }
+                return (retry as AnyObject).isAccessibilityEnabled?() == true
+            }
+            try press("workspace.board.retry", content:content)
+            try await wait("native Retry establishes a fresh connected model",seconds:12) {
+                owner.model !== model && owner.model?.state == .connected && owner.phase == .connected
+                    && elements(content)["workspace.board.connection-failure"] == nil
+            }
+            try check(transports.transports.count == 2 && owner.model?.document == documentBeforeRetry,
+                      "one explicit retry preserves exact workspace metadata")
+            let retried = try await HcTerminalBoard(connection:connection).list(all:true)
+            var programsUnchanged = retried.count == beforeRetry.count
+            for old in beforeRetry {
+                guard let current = retried.first(where: { $0.address == old.address }) else { programsUnchanged = false; break }
+                if current.pid != old.pid || current.createdMs != old.createdMs || current.state != old.state { programsUnchanged = false }
+            }
+            try check(programsUnchanged, "explicit retry neither replays a launch nor terminates a program")
+            let retiredConnect = await screenTransport.snapshot()
+            try check(retiredConnect.closed && retiredConnect.reaped,
+                      "previous connect child reaped before retry completes")
             guard await restore() else { throw Failure.assertion("owned fullscreen/pointer cleanup") }
             let result: [String:Any] = ["passed":true,"checks":checks,"actualHcRoot":true,"actualCore":true,
                 "fullscreenSpaceAndEdgeReveal":fullscreen,"fullscreenExitRestored":restoreSucceeded,"nativeRevealOnly":!fullscreen,"physicalDividerDrag":"NOTRUN",

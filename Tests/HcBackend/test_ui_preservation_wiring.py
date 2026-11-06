@@ -65,6 +65,15 @@ class PreservationWiring(unittest.TestCase):
         self.assertIn('window.isKeyWindow', pane)
         self.assertIn('presentation.hasSelection && !presentation.previewCoversTerminal', root)
 
+    def test_retry_uses_new_connect_not_recycled_stream(self):
+        root = source('Shepherd/HcBackend/HcRootView.swift')
+        host = source('Shepherd/HcBackend/HcMigrationHost.swift')
+        self.assertIn('let transport = try localTransportFactory?()', root)
+        self.assertIn('onReconnect: { Task { await openConnection() } }', root)
+        self.assertNotIn('private let localTransport: (any CoreByteTransport)?', root)
+        self.assertIn('let transport = try CoreProcessTransport(configuration: configuration)', host)
+        self.assertIn('Button("Retry", action: onRetry).accessibilityIdentifier("workspace.board.retry")', source('Shepherd/HcBackend/HcWorkspaceView.swift'))
+
     def test_actual_rendered_selection_not_hidden_siblings_is_viewed(self):
         root = source('Shepherd/HcBackend/HcRootView.swift')
         self.assertIn('controlActiveState == .key, presentation.hasSelection', root)

@@ -317,8 +317,11 @@ private struct HcAgentBoard: View {
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             if model.state == .failed && totalRows > 0 {
-                HStack { Text("Connection Failed").font(.caption); Spacer(); Button("Retry", action: onRetry) }.padding(10)
-                    .accessibilityIdentifier("workspace.board.connection-failure")
+                HStack {
+                    Text("Connection Failed").font(.caption).accessibilityIdentifier("workspace.board.connection-failure")
+                    Spacer()
+                    Button("Retry", action: onRetry).accessibilityIdentifier("workspace.board.retry")
+                }.padding(10)
             }
         }
         .safeAreaBar(edge: .top, spacing: 0) {

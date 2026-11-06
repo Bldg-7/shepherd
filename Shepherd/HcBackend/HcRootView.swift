@@ -30,7 +30,7 @@ private struct HcRootChanges: Equatable {
 struct HcRootView: View {
     let machineStore: MachineStore
     @State private var connection: HcMachineConnection
-    private let localTransport: (any CoreByteTransport)?
+    private let localTransportFactory: (@MainActor () throws -> any CoreByteTransport)?
     private let inspectionOnly: Bool
     @Environment(\.openWindow) private var openWindow
     @Environment(\.scenePhase) private var scenePhase
@@ -52,8 +52,9 @@ struct HcRootView: View {
     @State private var commandOwner = UUID()
     @State private var presentation = HcWorkspacePresentation()
     @AppStorage("hc.browserRetirementNoticeDismissed") private var retirementDismissed = false
-    init(machineStore: MachineStore, connection: HcMachineConnection? = nil, localTransport: (any CoreByteTransport)? = nil, inspectionOnly: Bool = false) {
-        self.machineStore = machineStore; self.localTransport = localTransport; self.inspectionOnly = inspectionOnly
+    init(machineStore: MachineStore, connection: HcMachineConnection? = nil,
+         localTransportFactory: (@MainActor () throws -> any CoreByteTransport)? = nil, inspectionOnly: Bool = false) {
+        self.machineStore = machineStore; self.localTransportFactory = localTransportFactory; self.inspectionOnly = inspectionOnly
         _connection = State(initialValue: connection ?? HcMachineConnection())
     }
     private var scopedModel: HcWorkspaceModel? {
@@ -72,8 +73,7 @@ struct HcRootView: View {
     var body: some View {
         dialogs
             .task(id: machineStore.activeMachine?.connectionIdentity) {
-                guard let machine = machineStore.activeMachine else { await connection.close(); return }
-                await connection.open(machine: machine, store: machineStore, localTransport: localTransport)
+                await openConnection()
             }
             .onAppear(perform: appeared)
             .onChange(of: changes) { routeAndViewed() }
@@ -81,6 +81,17 @@ struct HcRootView: View {
             .onChange(of: scenePhase) { if scenePhase == .active { HcNotificationCoordinator.shared.refreshAuthorization() }; routeAndViewed() }
             .onChange(of: HcNotificationCoordinator.shared.navigationRequest, initial: true) { routeAndViewed() }
             .onDisappear(perform: disappeared)
+    }
+    private func openConnection() async {
+        guard let machine = machineStore.activeMachine else { await connection.close(); return }
+        do {
+            // Each explicit retry gets a new connect transport, not a closed
+            // stream from an earlier RPC epoch. Production uses the factory in
+            // MachineStore; the optional override is for private local fixtures.
+            let transport = try localTransportFactory?()
+            guard !Task.isCancelled, machineStore.isCurrentConnection(machine) else { try await transport?.close(); return }
+            await connection.open(machine: machine, store: machineStore, localTransport: transport)
+        } catch { operationError = hcConnectionFailureDescription(error) }
     }
     private var dialogs: some View {
         contents
@@ -118,10 +129,7 @@ struct HcRootView: View {
             onLaunch: { openLauncher(currentWorkspace: false) },
             onSwitcher: { if !launchSheet && !tracking { switcher = true } },
             onOrigins: { origins = true }, onTracking: { tracking = true },
-            onReconnect: {
-                guard let machine = machineStore.activeMachine else { return }
-                Task { await connection.open(machine: machine, store: machineStore, localTransport: localTransport) }
-            }, onRenameVisibility: { renamingTitle = $0 }, presentation: presentation, unavailable: AnyView(unavailable))
+            onReconnect: { Task { await openConnection() } }, onRenameVisibility: { renamingTitle = $0 }, presentation: presentation, unavailable: AnyView(unavailable))
         .overlay {
             if launchSheet, let model = scopedModel {
                 NewTabLauncher(targets: launchTargets(model), preset: launcherPreset(model),

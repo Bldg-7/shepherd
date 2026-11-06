@@ -224,16 +224,28 @@ private nonisolated struct HcMigrationStatus: Decodable, Sendable {
     return result < 0 && [EPERM,EACCES].contains(errno)
 }
 
+@MainActor final class HcFixtureConnectFactory {
+    let configuration: CoreProcessTransport.Configuration
+    private(set) var transports: [CoreProcessTransport] = []
+    init(configuration: CoreProcessTransport.Configuration) { self.configuration = configuration }
+    func make() throws -> CoreProcessTransport {
+        guard transports.count < 8 else { throw HcWorkspaceModel.Failure.unavailable }
+        let transport = try CoreProcessTransport(configuration: configuration)
+        transports.append(transport)
+        return transport
+    }
+}
+
 struct HcMigrationHost: View {
     let configuration: HcMigrationConfiguration
     @State private var owner: HcMachineConnection?
     @State private var fixtureStore: MachineStore?
-    @State private var fixtureTransport: CoreProcessTransport?
+    @State private var fixtureTransports: HcFixtureConnectFactory?
     @State private var failure = false
     @State private var manualInspection = false
     var body: some View {
         Group {
-            if let owner, let fixtureStore { HcRootView(machineStore: fixtureStore, connection: owner, localTransport: fixtureTransport,
+            if let owner, let fixtureStore, let fixtureTransports { HcRootView(machineStore: fixtureStore, connection: owner, localTransportFactory: { try fixtureTransports.make() },
                     inspectionOnly: ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_MANUAL_SECONDS"] != nil || ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_LAYOUT_AUDIT"] == "1") }
             else if failure { Text("Private hc integration failed") }
             else { ProgressView("Preparing private hc integration…") }
@@ -264,9 +276,9 @@ struct HcMigrationHost: View {
             UserDefaults.standard.set(true, forKey: TerminalFileDropFeature.preferenceKey) // Only this explicitly isolated HOME.
             let storage = root.appending(path: "workspace-store", directoryHint: .isDirectory)
             let owner = HcMachineConnection(directory: storage)
-            let screenTransport = try CoreProcessTransport(configuration: .init(executable: configuration.binary,
+            let transports = HcFixtureConnectFactory(configuration: .init(executable: configuration.binary,
                 environment: HcCoreBootstrap.environment(for: scope), directory: scope.root))
-            fixtureTransport = screenTransport; fixtureStore = configuration.machineStore(); self.owner = owner
+            fixtureTransports = transports; fixtureStore = configuration.machineStore(); self.owner = owner
             // Let the real product root's .task call the production machine
             // factory and open its model, rather than constructing a model here.
             let openingDeadline = ContinuousClock.now.advanced(by: .seconds(10))
@@ -274,10 +286,11 @@ struct HcMigrationHost: View {
                 guard owner.phase != .failed, ContinuousClock.now < openingDeadline else { throw HcWorkspaceModel.Failure.unavailable }
                 try await Task.sleep(for: .milliseconds(20))
             }
+            guard let screenTransport = transports.transports.first else { throw HcWorkspaceModel.Failure.unavailable }
             let m = owner.model!; workspace = m; checks += 1
             if ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_LAYOUT_AUDIT"] == "1" {
                 let result = try await HcWorkspaceLayoutAudit.run(model: m, connection: c, root: root,
-                    screenTransport: screenTransport, fullscreen: ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_FULLSCREEN_AUDIT"] == "1")
+                    owner: owner, transports: transports, fullscreen: ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_FULLSCREEN_AUDIT"] == "1")
                 owned = result["ownedPIDs"] as? [UInt32] ?? owned
                 _ = try await c.call("server.stop")
                 await owner.close(); try await c.close()

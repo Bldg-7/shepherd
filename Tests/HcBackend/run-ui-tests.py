@@ -85,19 +85,18 @@ for name in ['app.stdout.log','app.stderr.log']:(out/name).touch(mode=0o600)
 log=out/'app.log';report=out/'ui-report.json';failed=None
 try:
     command=[sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(stage_seconds),'--natural-exit-grace','10','--log',str(log),'--','/usr/bin/open','-n','-W','--env','SHEPHERD_OWNED_UI_LAUNCH_ROOT='+str(out),'--env','HOME='+str(out/'home'),'--env','CFFIXED_USER_HOME='+str(out/'home'),'--env','TMPDIR='+str(out/'tmp'),str(helper)]
-    if a.manual_inspection:
-        child=subprocess.Popen(command,env=env,cwd=out)
-        announced=False;deadline=time.monotonic()+stage_seconds+40
-        try:
-            while child.poll() is None:
-                if not announced and (out/'manual-ready.json').exists():
-                    print('MANUAL_READY: '+str(out),flush=True);announced=True
-                if time.monotonic()>=deadline:raise subprocess.TimeoutExpired(command,stage_seconds+40)
-                time.sleep(.2)
-            code=child.wait()
-        finally:
-            if child.poll() is None:child.terminate();child.wait(timeout=15)
-    else:code=subprocess.run(command,env=env,cwd=out,timeout=stage_seconds+40).returncode
+    child=subprocess.Popen(command,env=env,cwd=out)
+    announced=False;deadline=time.monotonic()+stage_seconds+40
+    try:
+        while child.poll() is None:
+            marker='manual-ready.json' if a.manual_inspection else 'ui-wants-focus.json'
+            if not announced and (out/marker).exists():
+                print(('MANUAL_READY: ' if a.manual_inspection else 'UI_FOCUS_READY: ')+str(out),flush=True);announced=True
+            if time.monotonic()>=deadline:raise subprocess.TimeoutExpired(command,stage_seconds+40)
+            time.sleep(.2)
+        code=child.wait()
+    finally:
+        if child.poll() is None:child.terminate();child.wait(timeout=15)
     stage=json.loads(log.with_suffix('.stage.json').read_text())
     assert code==0 and stage['naturalExitConfirmed'] and not stage['signalsSent'] and stage['cleanupVerified'],'app stage failed'
 except BaseException as error:failed=error
