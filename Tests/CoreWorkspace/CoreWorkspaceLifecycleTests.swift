@@ -115,8 +115,73 @@ import Foundation
         try await rejects("wrong journal origin") { _ = try CoreWorkspaceRecovery(coreID: "c2", epoch: newEpoch, restoring: Data(contentsOf: file), persist: persist) }
         try await edgeCases(doc: doc, epoch: epoch, ref: ref, tabID: tab.id, persist: persist)
         try await explicitReviewRebase(epoch: epoch)
+        try await partialCloseAndStop(epoch: epoch)
         try JSONSerialization.data(withJSONObject: ["passed":true,"checks":checks]).write(to: report)
         print("PASS focus/recovery/notification lifecycle: \(checks) checks")
+    }
+    static func partialCloseAndStop(epoch: UUID) async throws {
+        let left = Doc.Pane(terminal:.init(coreID:"c1",terminalID:"t1"))
+        let right = Doc.Pane(terminal:.init(coreID:"c1",terminalID:"t2"))
+        let tab = Doc.Tab(name:"partial",layout:.split(axis:.horizontal,ratio:0.5,first:.leaf(left),second:.leaf(right)))
+        let doc = try Doc(workspaces:[.init(name:"w",tabs:[tab])])
+        let ref = right.terminal!
+        let journal = try CoreWorkspaceRecovery(coreID:"c1",epoch:epoch,persist:{ _ in })
+        let ticket = try await journal.beginClose(paneID:right.id,document:doc,endPrograms:true)
+        let attempt = try await journal.prepareLayoutAfterReview(ticket,snapshot:.init(version:12,document:doc))!
+        let removed = try attempt.edit.applying(to:doc)
+        try check(removed.pane(right.id) == nil && removed.pane(left.id)?.terminal == left.terminal,"partial close removes only its exact pane, not its sibling/tab")
+        try await journal.finishLayout(attempt,result:.acknowledged(version:13))
+        let stop = try await journal.beginStop(ticket,terminal:ref,currentDocument:removed)!
+        let reserved = try await journal.encoded()
+        try check((try JSONSerialization.jsonObject(with:reserved) as? [String:Any])?["schema"] as? Int == 2,"partial stop journal uses schema2")
+        let restored = try CoreWorkspaceRecovery(coreID:"c1",epoch:UUID(),restoring:reserved,persist:{ _ in })
+        try check(await restored.snapshot()[0].targets[0].state == .uncertain,"crash during partial stop restores uncertainty, never a dispatch ticket")
+        try await journal.finishStop(stop,confirmedEnded:false)
+        try await rejects("live done status is not proof of process termination") {
+            try await journal.confirmStoppedAfterRead(operationID:ticket.operationID,terminal:record("done",address:"t2"))
+        }
+        let reopened = Doc.Tab(name:"reopened",layout:.leaf(.init(terminal:ref)))
+        let reopenedDoc = try Doc(workspaces:[.init(name:"new",tabs:[reopened])])
+        let second = try await journal.beginClose(tabID:reopened.id,document:reopenedDoc,endPrograms:true)
+        let secondLayout = try await journal.prepareLayoutAfterReview(second,snapshot:.init(version:14,document:reopenedDoc))!
+        let removedAgain = try secondLayout.edit.applying(to:reopenedDoc)
+        try await journal.finishLayout(secondLayout,result:.acknowledged(version:15))
+        try await rejects("reopened view cannot replay another ticket's uncertain kill") { _ = try await journal.beginStop(second,terminal:ref,currentDocument:removedAgain) }
+        try await journal.confirmStoppedAfterRead(operationID:ticket.operationID,terminal:record(finished:true,reason:"killed",address:"t2"))
+        try check(await journal.snapshot()[0].complete,"direct finished read reconciles partial close without kill replay")
+        let sibling = Doc.Pane(terminal:ref)
+        let sharedTab = Doc.Tab(name:"shared",layout:.split(axis:.vertical,ratio:0.5,first:.leaf(right),second:.leaf(sibling)))
+        let sharedDoc = try Doc(workspaces:[.init(name:"s",tabs:[sharedTab])])
+        let shared = try CoreWorkspaceRecovery(coreID:"c1",epoch:epoch,persist:{ _ in })
+        let sharedTicket = try await shared.beginClose(paneID:right.id,document:sharedDoc,endPrograms:true)
+        try check(await shared.snapshot()[0].targets[0].state == .shared,"sibling view protects the same program inside the tab")
+        let sharedLayout = try await shared.prepareLayoutAfterReview(sharedTicket,snapshot:.init(version:1,document:sharedDoc))!
+        try await shared.finishLayout(sharedLayout,result:.acknowledged(version:2))
+        try check(await shared.snapshot()[0].complete,"shared program is deliberately retained, not falsely stopped")
+        let stale = try CoreWorkspaceRecovery(coreID:"c1",epoch:epoch,persist:{ _ in })
+        let staleTicket = try await stale.beginClose(paneID:right.id,document:doc,endPrograms:true)
+        let changed = try CoreWorkspaceEdit.bindPane(right.id,expected:ref,replacement:.init(coreID:"c1",terminalID:"t3")).applying(to:doc)
+        try await rejects("partial reapply cannot retarget a changed terminal reference") { _ = try await stale.prepareLayoutAfterReview(staleTicket,snapshot:.init(version:20,document:changed)) }
+        let legacy = try CoreWorkspaceRecovery(coreID:"c1",epoch:epoch,persist:{ _ in })
+        _ = try await legacy.beginClose(tabID:tab.id,document:doc,endPrograms:false)
+        let legacyBytes = try await legacy.encoded()
+        var old = try JSONSerialization.jsonObject(with:legacyBytes) as! [String:Any]
+        old["schema"] = 1
+        _ = try CoreWorkspaceRecovery(coreID:"c1",epoch:UUID(),restoring:JSONSerialization.data(withJSONObject:old),persist:{ _ in })
+        checks += 1
+        var invalidOld = try JSONSerialization.jsonObject(with:reserved) as! [String:Any]
+        invalidOld["schema"] = 1
+        try await rejects("schema1 never silently changes meaning to a partial close") { _ = try CoreWorkspaceRecovery(coreID:"c1",epoch:UUID(),restoring:JSONSerialization.data(withJSONObject:invalidOld),persist:{ _ in }) }
+        let failure = try CoreWorkspaceRecovery(coreID:"c1",epoch:epoch,persist:{ bytes in
+            let value = try JSONSerialization.jsonObject(with:bytes) as! [String:Any]
+            let records = value["records"] as? [[String:Any]] ?? []
+            if records.contains(where:{ ($0["targets"] as? [[String:Any]] ?? []).contains(where:{ $0["state"] as? String == "inFlight" }) }) { throw CoreWorkspaceRecoveryFailure.invalidJournal }
+        })
+        let failTicket = try await failure.beginClose(paneID:right.id,document:doc,endPrograms:true)
+        let failLayout = try await failure.prepareLayoutAfterReview(failTicket,snapshot:.init(version:1,document:doc))!
+        try await failure.finishLayout(failLayout,result:.acknowledged(version:2))
+        try await rejects("stop persistence failure yields no dispatch ticket") { _ = try await failure.beginStop(failTicket,terminal:ref,currentDocument:removed) }
+        try check(await failure.snapshot()[0].targets[0].state == .pending,"failed durable stop mark leaves in-memory target pending")
     }
     static func explicitReviewRebase(epoch: UUID) async throws {
         let pane = Doc.Pane(), tab = Doc.Tab(name: "review", layout: .leaf(pane))

@@ -29,6 +29,7 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
 | Title editing | Original title double-click/IME field/native toolbar | Same real field/toolbar implementation with typed hc target, epoch/version guard. Component tests cover simulated composition, stale callbacks and geometry. Current actual-root ordinary-window audit exercises native title-label double-click/local event monitor, real editor/Unicode submit, Escape without metadata change, title restore and no window zoom/layout replacement. Actual competing-CAS refusal also passes: the old title session cannot overwrite a newer layout snapshot. Physical IME/fullscreen rename is open. |
 | Switcher | Original deferred onDismiss navigation | Found selection/focus applied before sheet dismissal. Defer with exact epoch/pane/terminal reference check; reject stale retarget. Shared original switcher presentation used. Current ordinary-window audit exercises Cancel and Return/dismissal/keyboard return; stale-scope dismissal remains a separate gate. |
 | Closing | Original command/context confirmations | Explicit view close keeps programs; current selection required, cover disables close. Current native CmdW/confirmation closes only the selected duplicate view and leaves selection clear/programs live. Competing-CAS close refusal/reopen passes43 checks; unselected/context-menu close and post-dispatch pointer-focus races remain separate gates. |
+| Explicit program ending | Original Close confirmation can end programs | Source now keeps view-only close as default and declares a separate explicit close/end-unshared choice. Schema2 partial close + durable stop, old-schema read, fresh direct facts, shared/foreign protection and no uncertain replay pass SDK274/mode and actual-core76. New native end-button/default Return flow remains NOTRUN pending foreground readiness; no full UI qualification. |
 | Quit with sheet | Original presentationPreventsAppTermination(false) | Added original behavior to transient settings/switcher/origin/tracking/install sheets. Needs actual CmdQ/owned service survival gate. |
 | Viewed/attention | Original key-window + actual selected pane/tab | Found hidden tab siblings marked viewed in pane mode and app-active used without key-window check. New policy uses actual rendered mode/zoom/selection + key window. Pure rules covered; OS notification behavior remains unqualified. |
 | Scope changes | Existing exact machine identity / connection provenance | Clear overlays and deferred navigation; typed epoch/reference keys for previews, focus, switcher. No alias/PID/label is native authorization. Native Retry is exercised; exact current owner-model identity now joins profile/epoch guards at board actions, attach/input/drop/upload and title submission. Full host switching and physical cross-window interactions remain gates. |
@@ -233,6 +234,24 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
   before/after, not inherited provider environment. Physical GUI remains NOTRUN
   for this component suite. `hc-discovery-final.7LR6tm`: current Debug/native55,
   macOS Release, iOS Debug and wiring14 pass. See `DISCOVERY-README.md`.
+
+- `.dv03ndx6` passed57 on the pre-end-UI source: actual CmdT original launcher,
+  one real Return creates exactly one Shell and hands keyboard to its bound
+  FocusReportingTerminalView. This is not transferred to newer end UI.
+- Unselected context close extension `.9pzx86x2` failed owned foreground readiness
+  before feature actions; no active/key window was borrowed or forced. Actual
+  unselected/end UI now waits for operator readiness rather than blind retries.
+- `hc-end-reconcile.GAwbIP` final headless:274 SDK checks/mode (92+32+79+31+40),
+  21 stages, presentation48/mode + ownership7, actual official-core76,
+  macOS Debug/Release, iOS Debug, wiring15. Failed durable stop reservation sends
+  no kill; failed confirmation leaves uncertain, then explicit review confirms
+  only by same-origin terminal.get. Unknown/live/done/list absence never means
+  ended and no kill is replayed. Schema2 adds partial-pane close while reading
+  schema1 old plans without reinterpretation. See `ENDING-README.md`.
+- Selected close now immediately retires its input surface and holds model
+  fallback hidden during pending work. Newer explicit row intent wins. Stale
+  confirmation is refused before UI projection changes. Default native Return
+  is declared on view-only close; its actual new-button GUI proof is pending.
 
 ## Evidence retained
 

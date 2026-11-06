@@ -45,23 +45,34 @@ nonisolated struct HcPaneKeyboardRequest: Equatable, Sendable {
     func textEditingBegan() { inputGeneration = UUID(); textFieldOwnsKeyboard = true }
     func textEditingEnded() { textFieldOwnsKeyboard = false }
     private var suppressedFocus: HcSelectionStamp?
+    @ObservationIgnored private var closingSelectionIntent: UUID?
 
     func scopeChanged(_ epoch: UUID?, focus: HcSelectionStamp?) {
         guard self.epoch != epoch else { return }
-        selectionIntent = UUID()
+        closingSelectionIntent = nil; selectionIntent = UUID()
         self.epoch = epoch; hasSelection = epoch != nil && focus != nil
         suppressedFocus = nil; keyboardRequest = nil; previewCoversTerminal = false
     }
     func clearSelection(focus: HcSelectionStamp?) {
-        selectionIntent = UUID()
+        closingSelectionIntent = nil; selectionIntent = UUID()
         hasSelection = false; suppressedFocus = focus; keyboardRequest = nil; previewCoversTerminal = false
     }
     func clearSelection(ifUnchanged intent: UUID, focus: HcSelectionStamp?) {
         guard selectionIntent == intent else { return }
         clearSelection(focus: focus)
     }
+    func beginSelectedClose(focus: HcSelectionStamp?) -> UUID {
+        clearSelection(focus:focus)
+        closingSelectionIntent = selectionIntent
+        return selectionIntent
+    }
+    func finishSelectedClose(_ intent: UUID, focus: HcSelectionStamp?) {
+        guard closingSelectionIntent == intent, selectionIntent == intent else { return }
+        closingSelectionIntent = nil; clearSelection(focus:focus)
+    }
     func followFocus(_ focus: HcSelectionStamp?) {
         guard epoch != nil else { return }
+        if closingSelectionIntent == selectionIntent { suppressedFocus = focus; hasSelection = false; return }
         if focus == nil { hasSelection = false; keyboardRequest = nil }
         else if focus != suppressedFocus { hasSelection = true }
     }
@@ -71,7 +82,7 @@ nonisolated struct HcPaneKeyboardRequest: Equatable, Sendable {
     }
     func select(_ focus: HcSelectionStamp?, requestKeyboard: Bool) {
         guard let epoch, let focus else { return }
-        selectionIntent = UUID()
+        closingSelectionIntent = nil; selectionIntent = UUID()
         hasSelection = true; suppressedFocus = nil
         if requestKeyboard, let pane = focus.pane {
             previewCoversTerminal = false

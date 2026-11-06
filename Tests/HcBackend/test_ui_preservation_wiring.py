@@ -105,7 +105,8 @@ class PreservationWiring(unittest.TestCase):
         self.assertIn('let stamp: HcWorkspaceMutationStamp', board)
         self.assertIn('guard matches(request.stamp)', board)
         self.assertIn('stamp.matches(epoch:model.workspace?.epoch,coreID:model.coreID,version:model.workspace?.snapshot?.version)', board)
-        self.assertIn('presentation.clearSelection(ifUnchanged:intent,focus:focus)', board)
+        self.assertIn('presentation.beginSelectedClose(focus:beforeFocus)', board)
+        self.assertIn('presentation.finishSelectedClose(intent,focus:focus)', board)
         self.assertIn('connection.model === candidate && connection.identity == machine.connectionIdentity', root)
         self.assertIn('[weak connection, machineStore]', root)
         self.assertIn('guard isCurrentScope(), model.state == .connected else { return false }', pane)
@@ -137,6 +138,19 @@ class PreservationWiring(unittest.TestCase):
         self.assertIn('record.address == address', show)
         self.assertNotIn('terminal.run', show)
         self.assertNotIn('terminal.kill', show)
+
+    def test_program_end_is_separate_and_durable_not_default_close(self):
+        board = source('Shepherd/HcBackend/HcWorkspaceView.swift')
+        model = source('ShepherdKit/Sources/ShepherdKit/CoreKit/HcWorkspaceModel.swift')
+        self.assertIn('close(closing) }.keyboardShortcut(.defaultAction).accessibilityIdentifier("hc.close.confirm")', board)
+        self.assertIn('close(closing,endPrograms:true)', board)
+        self.assertIn('hc.close.end-programs.confirm', board)
+        self.assertIn('public func closeTab(_ id: UUID, endPrograms: Bool = false)', model)
+        ending = model[model.index('private func endClosedPrograms('):model.index('public func prepareOperationReview(')]
+        self.assertLess(ending.index('journal.beginStop('), ending.index('board.kill('))
+        self.assertIn('CoreTerminalID.isCanonical(reference.terminalID)', ending)
+        self.assertIn('after.state == "finished"', ending)
+        self.assertIn('journal.finishStop(stop,confirmedEnded:false)', ending)
 
     def test_actual_rendered_selection_not_hidden_siblings_is_viewed(self):
         root = source('Shepherd/HcBackend/HcRootView.swift')

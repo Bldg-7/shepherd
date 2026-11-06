@@ -516,6 +516,41 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
             try await model.showTerminal(reference.terminalID,workspaceID:workspace)
             guard let duplicate = model.selectedTab, duplicate.id != tabID else { throw Failure.assertion("explicit duplicate view") }
             try await wait("actual duplicate view is selected") { elements(content)["hc-workspace.tab.\(duplicate.id)"] != nil && terminals(content).count == 1 }
+            guard let external = HcWorkspaceSwitcherCandidates.unplaced(model.terminals,coreID:model.coreID ?? "",document:model.document,snapshotAvailable:true).first else { throw Failure.assertion("known unplaced discovery fixture") }
+            let beforeOtherView = try await HcTerminalBoard(connection:connection).get(external.address)
+            try hcNativeFixtureCommand("p",code:35,label:"native-other-view-discovery",window:window,root:root)
+            try await wait("existing-program switcher search editor") {
+                guard let own = ownedSheetContent(window)?.window else { return false }
+                return own.isKeyWindow && (own.firstResponder as? NSTextView)?.isFieldEditor == true
+            }
+            guard let searchWindow = ownedSheetContent(window)?.window, let searchEditor = searchWindow.firstResponder as? NSTextView else { throw Failure.assertion("existing-program search") }
+            searchEditor.selectAll(nil); searchEditor.insertText(external.address,replacementRange:NSRange(location:NSNotFound,length:0))
+            try await wait("searched canonical terminal is enabled") {
+                guard let own = ownedSheetContent(window), let row = elements(own)["workspace.switcher.terminal.\(external.address)"] else { return false }
+                return (row as AnyObject).isAccessibilityEnabled?() == true
+            }
+            try returnKey(in:searchWindow)
+            try await wait("searched external view selected",seconds:12) {
+                ownedSheetContent(window) == nil && model.selectedTab?.layout?.panes.first?.terminal?.terminalID == external.address
+            }
+            guard let otherView = model.selectedTab, let duplicatePane = duplicate.layout?.panes.first else { throw Failure.assertion("separate current/closing views") }
+            try clickRow("hc-workspace.tab.\(duplicate.id)",content:content)
+            try await wait("original selection is live before another row closes") {
+                model.selectedTab?.id == duplicate.id && HcMigrationRenderProbe.shared.boundView(pane:duplicatePane.id,epoch:model.workspace?.epoch,reference:reference,window:window) != nil
+            }
+            let selectedBeforeOtherClose = HcMigrationRenderProbe.shared.boundView(pane:duplicatePane.id,epoch:model.workspace?.epoch,reference:reference,window:window)
+            try await HcNativeContextMenuAudit.perform("Close Tab",row:"hc-workspace.tab.\(otherView.id)",content:content,root:root,label:"native-context-unselected-close")
+            try await hcFixtureWait("hc.close.confirm",present:true,enabled:true,window:window)
+            try check(model.selectedTab?.id == duplicate.id,"unselected row context close does not navigate the current detail")
+            try hcFixturePress("hc.close.confirm")
+            try await wait("unselected context close preserves selected native detail") {
+                model.document?.workspaces.flatMap(\.tabs).contains(where:{ $0.id == otherView.id }) == false
+                    && model.selectedTab?.id == duplicate.id && terminals(content).first === selectedBeforeOtherClose
+                    && window.isKeyWindow
+            }
+            let afterOtherView = try await HcTerminalBoard(connection:connection).get(external.address)
+            try check(afterOtherView.pid == beforeOtherView.pid && afterOtherView.createdMs == beforeOtherView.createdMs && afterOtherView.state == "live",
+                      "unselected close keeps its canonical program alive")
             try hcNativeFixtureCommand("w",code:13,label:"audit-stale-close",window:window,root:root)
             try await hcFixtureWait("hc.close.confirm",present:true,enabled:true,window:window)
             try await competingWorkspaceRename("Competing close edit",workspace:workspace,model:model,connection:connection)
@@ -687,6 +722,55 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
             try await wait("exact row reference reaches owned PTY") { (try? Data(contentsOf:root.appending(path:"row-drop-received.bin"))) == expectedRow }
             checks += 1
             UserDefaults.standard.set(true,forKey:TerminalFileDropFeature.preferenceKey)
+            let beforeCreate = try await HcTerminalBoard(connection:connection).list(all:true)
+            try hcNativeFixtureCommand("t",code:17,label:"native-launcher-create",window:window,root:root)
+            try await wait("current-workspace launcher has actual editor") {
+                guard let field = launcherField(in:window), let editor = field.currentEditor() else { return false }
+                return field.placeholderString == String(localized:"Tab Name") && window.firstResponder === editor
+            }
+            guard let createEditor = launcherField(in:window)?.currentEditor() as? NSTextView else { throw Failure.assertion("native create editor") }
+            createEditor.selectAll(nil); createEditor.insertText("Owned launcher shell",replacementRange:NSRange(location:NSNotFound,length:0))
+            try returnKey(in:window) // One Return, not a programmatic launch callback.
+            try await wait("native launcher binds one shell and dismisses",seconds:12) {
+                launcherField(in:window) == nil && !model.operationBusy && model.selectedTab?.name == "Owned launcher shell"
+                    && model.selectedTab?.layout?.panes.first?.terminal != nil
+            }
+            guard let createdPane = model.selectedTab?.layout?.panes.first, let createdRef = createdPane.terminal else { throw Failure.assertion("native created receipt") }
+            let createdStatus: HcLayoutAuditOwnedStatus = try await connection.call("server.status").result()
+            let afterCreate = try await HcTerminalBoard(connection:connection).list(all:true)
+            owned = Array(Set(owned + [createdStatus.pid] + createdStatus.holders.map(\.pid) + afterCreate.compactMap(\.pid))).sorted()
+            try JSONSerialization.data(withJSONObject:["ownedPIDs":owned,"auditPending":true]).write(to:root.appending(path:"audit-owned-identities.json"),options:.atomic)
+            try check(afterCreate.count == beforeCreate.count+1 && afterCreate.contains(where:{ $0.address == createdRef.terminalID && $0.state == "live" }),"one native launcher Return starts exactly one Shell")
+            try await wait("successful launcher hands keyboard to its actual terminal") {
+                let target = HcMigrationRenderProbe.shared.boundView(pane:createdPane.id,epoch:model.workspace?.epoch,reference:createdRef,window:window)
+                try? JSONSerialization.data(withJSONObject:["boundView":target != nil,"targetIsFirstResponder":target != nil && window.firstResponder === target,
+                    "firstResponder":window.firstResponder.map { String(describing:type(of:$0)) } ?? "nil",
+                    "passiveFocusAllowed":target?.keyboardFocusAllowed() ?? false,"active":NSApp.isActive,"key":window.isKeyWindow])
+                    .write(to:root.appending(path:"native-launcher-handoff.json"),options:.atomic)
+                return target != nil && window.firstResponder === target && window.isKeyWindow
+            }
+            checks += 1
+            try await wait("live created shell enables explicit end choice") {
+                model.terminals.contains { $0.address == createdRef.terminalID && $0.state == "live" }
+            }
+            let beforeExplicitEnd = try await HcTerminalBoard(connection:connection).list(all:true)
+            try hcNativeFixtureCommand("w",code:13,label:"native-created-program-end",window:window,root:root)
+            try await hcFixtureWait("hc.close.end-programs.confirm",present:true,enabled:true,window:window)
+            try hcFixturePress("hc.close.end-programs.confirm") // Explicit separate action; default close never kills.
+            try await wait("native explicit end closes its view and records completion",seconds:12) {
+                !model.operationBusy && model.document?.panes.contains(where:{ $0.id == createdPane.id }) == false
+                    && model.recoveryRecords.last?.complete == true && window.isKeyWindow
+            }
+            let afterExplicitEnd = try await HcTerminalBoard(connection:connection).list(all:true)
+            let endedShell = try await HcTerminalBoard(connection:connection).get(createdRef.terminalID)
+            var othersPreserved = afterExplicitEnd.count == beforeExplicitEnd.count
+            for old in beforeExplicitEnd where old.address != createdRef.terminalID {
+                guard let current = afterExplicitEnd.first(where:{ $0.address == old.address }) else { othersPreserved = false; break }
+                if old.pid != current.pid || old.createdMs != current.createdMs || old.state != current.state { othersPreserved = false }
+            }
+            try check(endedShell.state == "finished" && othersPreserved,"native explicit end stops only the consented owned shell")
+            try check(model.recoveryRecords.last?.targets.first?.state == .confirmed && terminals(content).isEmpty,
+                      "native stop confirmation is durable and selected view stays clear")
             let record = try await HcTerminalBoard(connection:connection).get(reference.terminalID)
             try check(record.pid == originalRecord.pid && record.createdMs == originalRecord.createdMs && record.state == "live",
                       "sidebar does not replace or end actual hc program")

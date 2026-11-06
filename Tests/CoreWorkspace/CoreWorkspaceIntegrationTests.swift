@@ -31,6 +31,17 @@ private nonisolated struct Notice: Decodable, Sendable {
 
 @main @MainActor private struct CoreWorkspaceIntegrationTests {
     static var checks = 0
+    private static var trackedModelPIDs: Set<UInt32> = []
+    private static func trackModel(_ connection: CoreRPCConnection, home: URL) async throws {
+        let status: Status = try await connection.call("server.status").result()
+        let records = try await HcTerminalBoard(connection:connection).list(all:true)
+        trackedModelPIDs.formUnion([status.pid]+status.holders.map(\.pid)+records.compactMap(\.pid))
+        let report = URL(fileURLWithPath:CommandLine.arguments[3])
+        let previous = (try? Data(contentsOf:report)).flatMap { try? JSONSerialization.jsonObject(with:$0) as? [String:Any] }
+        let before = previous?["ownedPIDs"] as? [UInt32] ?? []
+        try JSONSerialization.data(withJSONObject:["corePID":status.pid,"ownedPIDs":Array(Set(before).union(trackedModelPIDs)).sorted()])
+            .write(to:report,options:.atomic)
+    }
     static func check(_ value: Bool, _ label: String) throws {
         guard value else { throw NSError(domain: label, code: 1) }; checks += 1
     }
@@ -124,6 +135,55 @@ private nonisolated struct Notice: Decodable, Sendable {
         try check(await journal.snapshot().first(where: { $0.id == close.operationID })!.complete, "partial close reconciled by fresh finished read")
         // Final server.stop below owns and cleans the deliberately retained test orphan.
     }
+    static func stopPersistenceBoundaries(config: CoreProcessTransport.Configuration, home: URL) async throws {
+        for denyDispatch in [true,false] {
+            let suffix = denyDispatch ? "dispatch" : "confirmation"
+            let marker = home.appending(path:"stop-failure-\(suffix).marker")
+            let journal = home.appending(path:"stop-failure-\(suffix).json")
+            let transport = try CoreProcessTransport(configuration:config)
+            let rpc = try CoreRPCConnection(transport:transport)
+            let model = HcWorkspaceModel(connection:rpc,saveRecovery:{ bytes in
+                let value = try JSONSerialization.jsonObject(with:bytes) as! [String:Any]
+                let rows = value["records"] as? [[String:Any]] ?? []
+                let states = rows.flatMap { $0["targets"] as? [[String:Any]] ?? [] }.compactMap { $0["state"] as? String }
+                if denyDispatch && states.contains("inFlight") { throw CoreWorkspaceRecoveryFailure.invalidJournal }
+                if !denyDispatch && states.contains("confirmed") && !FileManager.default.fileExists(atPath:marker.path) {
+                    try Data([1]).write(to:marker,options:.atomic)
+                    throw CoreWorkspaceRecoveryFailure.invalidJournal
+                }
+                try bytes.write(to:journal,options:.atomic)
+            },saveFocus:{ _ in })
+            do {
+                try await model.start()
+                let workspace = try await model.createWorkspace(name:"stop persistence \(suffix)")
+                try await model.launchTab(workspaceID:workspace,name:"owned stop failure",argv:["/bin/sleep","60"],cwd:home.path)
+                guard let tab = model.selectedTab, let reference = tab.layout?.panes.first?.terminal else { throw CoreWorkspaceFailure.invalidDocument }
+                let before = try await HcTerminalBoard(connection:rpc).get(reference.terminalID)
+                try await trackModel(rpc,home:home)
+                let status: Status = try await rpc.call("server.status").result()
+                let programs = try await HcTerminalBoard(connection:rpc).list(all:true)
+                try JSONSerialization.data(withJSONObject:["corePID":status.pid,"ownedPIDs":status.holders.map(\.pid)+programs.compactMap(\.pid)])
+                    .write(to:home.appending(path:"stop-failure-\(suffix)-owned.json"),options:.atomic)
+                do { try await model.closeTab(tab.id,endPrograms:true); throw CoreWorkspaceFailure.invalidDocument }
+                catch CoreWorkspaceRecoveryFailure.invalidJournal { checks += 1 }
+                let after = try await HcTerminalBoard(connection:rpc).get(reference.terminalID)
+                if denyDispatch {
+                    try check(after.state == "live" && after.pid == before.pid && after.createdMs == before.createdMs,
+                              "failed durable stop reservation dispatches no kill and preserves its owned program")
+                    try check(model.recoveryRecords.last?.targets.first?.state == .pending,"no stop ticket escaped failed persistence")
+                } else {
+                    try check(after.state == "finished" && model.recoveryRecords.last?.targets.first?.state == .uncertain,
+                              "failed post-kill confirmation persists uncertainty, never replays kill")
+                    guard let record = model.recoveryRecords.last else { throw CoreWorkspaceFailure.invalidDocument }
+                    let review = try await model.prepareOperationReview(record.id)
+                    try check(review.record.complete && !review.canApplyLayout,"fresh ended read resolves stop without another dispatch")
+                    model.cancelOperationReview(review)
+                }
+                try await model.disconnect()
+                try check(await transport.snapshot().reaped,"failure-boundary connect child reaped")
+            } catch { try? await model.disconnect(); throw error }
+        }
+    }
     static func screenModel(config: CoreProcessTransport.Configuration, home: URL) async throws -> [UInt32] {
         let transport = try CoreProcessTransport(configuration: config)
         let connection = try CoreRPCConnection(transport: transport)
@@ -170,6 +230,41 @@ private nonisolated struct Notice: Decodable, Sendable {
             try check(model.recoveryRecords.allSatisfy(\.complete), "screen journal reconciles successful run/bind/close")
             let restored = try CoreWorkspaceFocus.restore(Data(contentsOf: focus), coreID: model.coreID!)
             try check(restored == model.focus, "screen persists device-local focus")
+            try await model.launchTab(workspaceID:id,name:"explicit end",argv:["/bin/sleep","60"],cwd:home.path)
+            guard let endTab = model.selectedTab, let endRef = endTab.layout?.panes.first?.terminal else { throw CoreWorkspaceFailure.invalidDocument }
+            try await trackModel(connection,home:home)
+            let beforeEnd: Status = try await connection.call("server.status").result()
+            try await model.closeTab(endTab.id,endPrograms:true)
+            let ended = try await HcTerminalBoard(connection:connection).get(endRef.terminalID)
+            let afterEnd: Status = try await connection.call("server.status").result()
+            try check(ended.state == "finished" && afterEnd.live == beforeEnd.live-1,"explicit journaled close/end stops exactly one owned program")
+            try check(model.recoveryRecords.last?.complete == true,"stop confirmation persists after fresh direct finished read")
+            try await model.launchTab(workspaceID:id,name:"partial end",argv:["/bin/sleep","60"],cwd:home.path)
+            guard let partialTab = model.selectedTab, let keepPane = partialTab.layout?.panes.first, let keepRef = keepPane.terminal else { throw CoreWorkspaceFailure.invalidDocument }
+            let keepBefore = try await HcTerminalBoard(connection:connection).get(keepRef.terminalID)
+            try await model.launchSplit(paneID:keepPane.id,axis:.horizontal,argv:["/bin/sleep","60"],cwd:home.path)
+            guard let endPane = model.selectedTab?.layout?.panes.first(where:{ $0.id != keepPane.id }), let partialRef = endPane.terminal else { throw CoreWorkspaceFailure.invalidDocument }
+            try await trackModel(connection,home:home)
+            try await model.closePane(endPane.id,endPrograms:true)
+            let partialEnd = try await HcTerminalBoard(connection:connection).get(partialRef.terminalID)
+            let keepAfter = try await HcTerminalBoard(connection:connection).get(keepRef.terminalID)
+            try check(partialEnd.state == "finished" && keepAfter.state == "live" && keepAfter.pid == keepBefore.pid && keepAfter.createdMs == keepBefore.createdMs,
+                      "partial end preserves exact sibling program")
+            try check(model.document?.pane(endPane.id) == nil && model.document?.pane(keepPane.id)?.terminal == keepRef,"partial stop closes only its planned pane")
+            try await model.closeTab(partialTab.id,endPrograms:true)
+            try await model.launchTab(workspaceID:id,name:"shared end",argv:["/bin/sleep","60"],cwd:home.path)
+            guard let sharedTab = model.selectedTab, let sharedRef = sharedTab.layout?.panes.first?.terminal else { throw CoreWorkspaceFailure.invalidDocument }
+            let sharedBefore = try await HcTerminalBoard(connection:connection).get(sharedRef.terminalID)
+            try await trackModel(connection,home:home)
+            let sharedView = try await model.showTerminal(sharedRef.terminalID,workspaceID:id)
+            try await model.closeTab(sharedView,endPrograms:true)
+            let sharedAfter = try await HcTerminalBoard(connection:connection).get(sharedRef.terminalID)
+            try check(sharedAfter.state == "live" && sharedAfter.pid == sharedBefore.pid && sharedAfter.createdMs == sharedBefore.createdMs,
+                      "explicit end of shared view does not kill another view's program")
+            try check(model.recoveryRecords.last?.targets.first?.state == .shared && model.recoveryRecords.last?.complete == true,"shared outcome is recorded, not falsely marked stopped")
+            try await model.closeTab(sharedTab.id,endPrograms:true)
+            try check(model.recoveryRecords.allSatisfy(\.complete),"owned end tests leave no ambiguous stop or run records")
+            try await stopPersistenceBoundaries(config:config,home:home)
             guard let completed = model.recoveryRecords.first else { throw CoreWorkspaceFailure.invalidDocument }
             let history = try await model.prepareOperationReview(completed.id)
             try check(!history.canApplyLayout && history.record.layout == .confirmed && !model.canEdit, "completed history never reapplies later-removed layout and disables editing during review")
@@ -338,7 +433,7 @@ private nonisolated struct Notice: Decodable, Sendable {
         var result: [String: Any] = ["passed":passed,"checks":checks,"stopAcknowledged":stop?.stopped == true,
                                    "connectChildrenReaped":aa.reaped && bb.reaped,"noMutationReplay":true]
         if let pid { result["corePID"] = pid }
-        result["ownedPIDs"] = ownedPIDs
+        result["ownedPIDs"] = Array(Set(ownedPIDs).union(trackedModelPIDs)).sorted()
         if let failure { result["failure"] = String(describing: failure) }
         try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys]).write(to: report, options: .atomic)
         guard passed else { throw failure ?? CoreWorkspaceSyncFailure.refreshRequired }

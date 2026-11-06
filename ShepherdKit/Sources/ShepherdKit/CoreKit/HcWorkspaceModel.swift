@@ -280,7 +280,8 @@ private nonisolated struct HcWorkspaceTerminalInitial: Decodable, Sendable { let
         if selectOnSuccess, let document { try focus.select(tab: tab.id, in: document); try persistFocus() }
         return tab.id
     }
-    public func closePane(_ id: UUID) async throws {
+    public func closePane(_ id: UUID, endPrograms: Bool = false) async throws {
+        if endPrograms { try await closeRecorded(tabID:nil,paneID:id,endPrograms:true); return }
         guard !operationBusy else { throw Failure.unavailable }
         let (store, snapshot) = try baseline()
         operationBusy = true; defer { operationBusy = false }
@@ -288,14 +289,29 @@ private nonisolated struct HcWorkspaceTerminalInitial: Decodable, Sendable { let
     }
     /// Closing the tab hides its views, not its programs. Termination must be a
     /// separate explicit user action; no unreviewed batch kill is dispatched.
-    public func closeTab(_ id: UUID) async throws {
+    public func closeTab(_ id: UUID, endPrograms: Bool = false) async throws {
+        try await closeRecorded(tabID:id,paneID:nil,endPrograms:endPrograms)
+    }
+    private func closeRecorded(tabID: UUID?, paneID: UUID?, endPrograms: Bool) async throws {
         guard !operationBusy, let journal else { throw Failure.unavailable }
         let (store, snapshot) = try baseline(), token = generation
         guard let document = snapshot.document else { throw Failure.unavailable }
+        if endPrograms {
+            let panes: [CoreWorkspaceDocument.Pane]
+            if let paneID, let pane = document.pane(paneID) { panes = [pane] }
+            else if let tabID, let tab = document.workspaces.flatMap(\.tabs).first(where:{ $0.id == tabID }) { panes = tab.layout?.panes ?? [] }
+            else { throw Failure.stale }
+            guard let origin = coreID, panes.compactMap(\.terminal).allSatisfy({ $0.coreID == origin && CoreTerminalID.isCanonical($0.terminalID) }) else { throw Failure.unavailable }
+        }
         operationBusy = true; defer { operationBusy = false }
-        let ticket = try await journal.beginClose(tabID: id, document: document, endPrograms: false)
+        let ticket: CoreWorkspaceRecovery.Ticket
+        if let paneID { ticket = try await journal.beginClose(paneID:paneID,document:document,endPrograms:endPrograms) }
+        else if let tabID { ticket = try await journal.beginClose(tabID:tabID,document:document,endPrograms:endPrograms) }
+        else { throw Failure.unavailable }
+        guard token == generation, state == .connected else { throw Failure.stale }
         let attempt = try await journal.prepareLayoutAfterReview(ticket, snapshot: snapshot)!
         do {
+            guard token == generation, state == .connected else { throw Failure.stale }
             let result = try await store.edit(attempt.edit, expectedVersion: attempt.expectedVersion)
             try await journal.finishLayout(attempt, result: result)
             recoveryRecords = await journal.snapshot()
@@ -304,6 +320,43 @@ private nonisolated struct HcWorkspaceTerminalInitial: Decodable, Sendable { let
             guard token == generation else { throw Failure.stale }
             apply(refreshed)
         } catch { try? await journal.finishLayout(attempt, result: .uncertain); recoveryRecords = await journal.snapshot(); throw error }
+        if endPrograms { try await endClosedPrograms(ticket,journal:journal,store:store,token:token) }
+    }
+    /// One explicit logical-terminal stop, not a native-session/incarnation
+    /// lease. Fresh reads and shared-view checks are not atomic server leases.
+    /// The durable in-flight mark precedes kill; no uncertain stop is replayed.
+    private func endClosedPrograms(_ ticket: CoreWorkspaceRecovery.Ticket, journal: CoreWorkspaceRecovery,
+                                   store: CoreWorkspaceStore, token: UUID) async throws {
+        guard let record = await journal.snapshot().first(where:{ $0.id == ticket.operationID }) else { throw Failure.recoveryRequired }
+        let board = HcTerminalBoard(connection:connection)
+        for target in record.targets where target.state == .pending {
+            let reference = target.terminal
+            guard token == generation, state == .connected, reference.coreID == coreID,
+                  CoreTerminalID.isCanonical(reference.terminalID) else { throw Failure.stale }
+            let before = try await board.get(reference.terminalID)
+            guard token == generation, state == .connected, before.address == reference.terminalID,
+                  before.state == "live" || before.state == "finished" else { throw Failure.stale }
+            let latest = try await store.refresh()
+            guard token == generation, state == .connected, let snapshot = latest.snapshot else { throw Failure.stale }
+            apply(latest)
+            let document = try snapshot.document ?? CoreWorkspaceDocument()
+            guard let stop = try await journal.beginStop(ticket,terminal:reference,currentDocument:document) else {
+                recoveryRecords = await journal.snapshot(); continue
+            }
+            do {
+                guard token == generation, state == .connected else { throw Failure.stale }
+                if before.state == "live" { _ = try await board.kill(reference.terminalID) }
+                let after = try await board.get(reference.terminalID)
+                guard token == generation, after.address == reference.terminalID, after.state == "finished" else { throw Failure.recoveryRequired }
+                try await journal.finishStop(stop,confirmedEnded:true)
+                recoveryRecords = await journal.snapshot()
+            } catch {
+                try? await journal.finishStop(stop,confirmedEnded:false)
+                recoveryRecords = await journal.snapshot(); failure = .recoveryRequired
+                throw error
+            }
+        }
+        recoveryRecords = await journal.snapshot()
     }
     /// Reading/reconciling is separate from a new human-approved layout CAS.
     /// This never reruns a launch, looks up operation labels or dispatches kills.
@@ -316,9 +369,27 @@ private nonisolated struct HcWorkspaceTerminalInitial: Decodable, Sendable { let
               let snapshot = latest.snapshot else { throw Failure.stale }
         apply(latest)
         guard let before = await journal.snapshot().first(where: { $0.id == operationID }) else { throw CoreWorkspaceRecoveryFailure.staleTicket }
-        if before.layout != .confirmed {
+        if before.layout != .confirmed || before.targets.contains(where:{ $0.state == .inFlight }) {
             try await journal.retireInFlightForReview(operationID)
-            try await journal.reconcileLayout(operationID: operationID, snapshot: snapshot)
+            if before.layout != .confirmed { try await journal.reconcileLayout(operationID: operationID, snapshot: snapshot) }
+        }
+        // Stop outcomes are read-only reconciliation. Missing/unavailable/live
+        // records never mean ended, and never authorize another kill.
+        if let pending = await journal.snapshot().first(where:{ $0.id == operationID }) {
+            for target in pending.targets where target.state == .uncertain && target.terminal.coreID == journal.coreID {
+                guard !Task.isCancelled, token == generation, state == .connected, coreID == journal.coreID,
+                      CoreTerminalID.isCanonical(target.terminal.terminalID) else { throw Failure.stale }
+                let fresh: CoreAttentionRecord
+                do {
+                    let params = try JSONSerialization.data(withJSONObject:["terminal":target.terminal.terminalID])
+                    fresh = try await connection.call("terminal.get",parameters:params).result()
+                } catch {
+                    guard !Task.isCancelled, token == generation, state == .connected else { throw Failure.stale }
+                    continue // Unavailable remains uncertain, not absence/end.
+                }
+                guard !Task.isCancelled, token == generation, state == .connected, fresh.address == target.terminal.terminalID else { throw Failure.stale }
+                if fresh.state == "finished" { try await journal.confirmStoppedAfterRead(operationID:operationID,terminal:fresh) }
+            }
         }
         let records = await journal.snapshot()
         guard token == generation, let record = records.first(where: { $0.id == operationID }) else { throw Failure.stale }

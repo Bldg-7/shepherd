@@ -98,6 +98,18 @@ import Darwin
         state.scopeChanged(other,focus:first)
         check(state.textFieldOwnsKeyboard && state.keyboardRequest == nil, "scope reset drops terminal requests, not real editor ownership")
         state.textEditingEnded()
+        state.scopeChanged(epoch,focus:first)
+        state.select(first,requestKeyboard:false)
+        let closePending = state.beginSelectedClose(focus:first)
+        check(!state.hasSelection && state.keyboardRequest == nil,"confirmed selected close immediately retires its input surface")
+        state.followFocus(second)
+        check(!state.hasSelection,"layout fallback stays hidden while end RPC is pending")
+        state.select(second,requestKeyboard:true)
+        state.finishSelectedClose(closePending,focus:first)
+        check(state.hasSelection && state.keyboardRequest?.pane == b,"new explicit row selection supersedes an in-flight close projection")
+        let anotherClose = state.beginSelectedClose(focus:second)
+        state.followFocus(first); state.finishSelectedClose(anotherClose,focus:first); state.followFocus(first)
+        check(!state.hasSelection,"finishing close cannot resurrect its reconciled fallback")
         print("PASS workspace presentation rules: \(n) checks; not physical fullscreen/UI approval")
     }
 }

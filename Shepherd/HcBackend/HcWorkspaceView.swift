@@ -222,6 +222,8 @@ private enum HcBoardSelection: Hashable { case pane(UUID), tab(UUID) }
 private struct HcCloseRequest {
     let target: HcBoardSelection
     let stamp: HcWorkspaceMutationStamp
+    let canEndPrograms: Bool
+    var endTitle: String { if case .tab = target { return "Close tab and end unshared programs" }; return "Close pane and end unshared program" }
     var title: String { if case .tab = target { return "Close Tab?" }; return "Close Pane?" }
 }
 @MainActor private final class HcTitleRenameSession: TitleRenameEditing {
@@ -366,10 +368,13 @@ private struct HcAgentBoard: View {
         .onChange(of: model.state) { if model.state != .connected { closing = nil } }
         .confirmationDialog(closing?.title ?? (showsTabs ? "Close Tab?" : "Close Pane?"), isPresented: Binding(get: { closing != nil }, set: { if !$0 { closing = nil } })) {
             if let closing {
-                Button("Close view", role: .destructive) { close(closing) }.accessibilityIdentifier("hc.close.confirm")
+                Button("Close view", role: .destructive) { close(closing) }.keyboardShortcut(.defaultAction).accessibilityIdentifier("hc.close.confirm")
+                if closing.canEndPrograms {
+                    Button(closing.endTitle, role: .destructive) { close(closing,endPrograms:true) }.accessibilityIdentifier("hc.close.end-programs.confirm")
+                }
             }
             Button("Cancel", role: .cancel) {}
-        } message: { Text("The view closes; its programs keep running.") }
+        } message: { Text("Close view keeps programs running. The separate end action stops current unshared programs on this core. Known shared views are retained; a stop also affects that terminal in other clients. An unconfirmed stop is never retried.") }
         .alert("Workspace operation", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
             Button("OK") { error = nil }.accessibilityIdentifier("hc.workspace.error.ok")
         } message: { Text(error ?? "") }
@@ -457,30 +462,45 @@ private struct HcAgentBoard: View {
         scopeIsCurrent() && model.canEdit && stamp.matches(epoch:model.workspace?.epoch,coreID:model.coreID,version:model.workspace?.snapshot?.version)
     }
     private func prepareClose(_ target: HcBoardSelection) {
-        guard let stamp = mutationStamp() else { return }
-        closing = .init(target:target,stamp:stamp)
+        guard let stamp = mutationStamp(), let document = model.document else { return }
+        let references: [CoreWorkspaceDocument.TerminalReference]
+        switch target {
+        case .pane(let id): references = [document.pane(id)?.terminal].compactMap { $0 }
+        case .tab(let id): references = document.workspaces.flatMap(\.tabs).first(where:{ $0.id == id })?.layout?.panes.compactMap(\.terminal) ?? []
+        }
+        let local = !references.isEmpty && references.allSatisfy { $0.coreID == model.coreID && CoreTerminalID.isCanonical($0.terminalID) }
+        let live = references.contains { ref in model.terminals.contains { $0.address == ref.terminalID && $0.state == "live" } }
+        closing = .init(target:target,stamp:stamp,canEndPrograms:local && live)
     }
-    private func close(_ request: HcCloseRequest) {
-        let target = request.target, intent = presentation.selectionIntent
+    private func close(_ request: HcCloseRequest, endPrograms: Bool = false) {
+        guard matches(request.stamp), !endPrograms || request.canEndPrograms else {
+            perform { throw HcWorkspaceModel.Failure.stale }; return
+        }
+        let target = request.target
         let wasSelected = selection.wrappedValue == target
+        let beforeFocus = model.selectedTab.map { HcSelectionStamp(tab:$0.id,pane:model.focus.paneByTab[$0.id]) }
+        let intent = wasSelected ? presentation.beginSelectedClose(focus:beforeFocus) : presentation.selectionIntent
         perform {
-            guard matches(request.stamp) else { throw HcWorkspaceModel.Failure.stale }
+            defer {
+                if wasSelected, scopeIsCurrent(), model.workspace?.epoch == request.stamp.epoch {
+                    let focus = model.selectedTab.map { HcSelectionStamp(tab:$0.id,pane:model.focus.paneByTab[$0.id]) }
+                    presentation.finishSelectedClose(intent,focus:focus)
+                }
+            }
+            guard matches(request.stamp), !endPrograms || request.canEndPrograms else { throw HcWorkspaceModel.Failure.stale }
             switch target {
             case .pane(let id):
                 if let tab = model.document?.workspaces.flatMap(\.tabs).first(where: { $0.layout?.panes.contains(where: { $0.id == id }) == true }),
-                   tab.layout?.panes.count == 1 { try await model.closeTab(tab.id) }
-                else { try await model.closePane(id) }
-            case .tab(let id): try await model.closeTab(id)
+                   tab.layout?.panes.count == 1 { try await model.closeTab(tab.id,endPrograms:endPrograms) }
+                else { try await model.closePane(id,endPrograms:endPrograms) }
+            case .tab(let id): try await model.closeTab(id,endPrograms:endPrograms)
             }
-            let focus = model.selectedTab.map { HcSelectionStamp(tab: $0.id, pane: model.focus.paneByTab[$0.id]) }
-            guard scopeIsCurrent(), model.workspace?.epoch == request.stamp.epoch else { return }
-            if wasSelected { presentation.clearSelection(ifUnchanged:intent,focus:focus) }
         }
     }
     private func perform(_ action: @escaping @MainActor () async throws -> Void) {
         Task { do {
             guard scopeIsCurrent() else { throw HcWorkspaceModel.Failure.stale }
             try await action()
-        } catch { self.error = "Operation unconfirmed. Review the saved outcome before retrying; nothing is automatically resent." } }
+        } catch { if scopeIsCurrent() { self.error = "Operation unconfirmed. Review the saved outcome before retrying; nothing is automatically resent." } } }
     }
 }

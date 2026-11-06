@@ -69,15 +69,17 @@ public actor CoreWorkspaceRecovery {
         if let data {
             guard data.count <= 1 << 20 else { throw CoreWorkspaceRecoveryFailure.limit }
             let saved = try JSONDecoder().decode(Saved.self, from: data)
-            guard saved.schema == 1, saved.coreID == coreID, saved.records.count <= 64,
+            guard (saved.schema == 1 || saved.schema == 2), saved.coreID == coreID, saved.records.count <= 64,
                   Set(saved.records.map(\.id)).count == saved.records.count else { throw CoreWorkspaceRecoveryFailure.invalidJournal }
             var restored = saved.records
             for index in restored.indices {
                 let record = restored[index]
+                let closeShape = record.tabID != nil && record.run == nil && record.terminal == nil
+                    && (record.paneID.map { pane in saved.schema == 2 && record.members.count == 1 && record.members.first?.paneID == pane } ?? true)
                 guard record.targets.count <= 128, record.members.count <= CoreWorkspaceDocument.maximumItems,
                       Set(record.targets.map(\.terminal)).count == record.targets.count,
                       Set(record.members.map(\.paneID)).count == record.members.count,
-                      (record.kind == .launch ? record.paneID != nil && record.tabID == nil && record.run != nil && record.targets.isEmpty : record.tabID != nil && record.paneID == nil && record.run == nil),
+                      (record.kind == .launch ? record.paneID != nil && record.tabID == nil && record.run != nil && record.targets.isEmpty : closeShape),
                       record.run != .returned || record.terminal?.coreID == coreID,
                       (record.terminal.map(Self.validReference) ?? true),
                       record.targets.allSatisfy({ Self.validReference($0.terminal) }),
@@ -106,7 +108,7 @@ public actor CoreWorkspaceRecovery {
     public func snapshot() -> [Record] { records }
     public func encoded() throws -> Data { try encode(records) }
     private func encode(_ records: [Record]) throws -> Data {
-        let data = try JSONEncoder().encode(Saved(schema: 1, coreID: coreID, records: records))
+        let data = try JSONEncoder().encode(Saved(schema: 2, coreID: coreID, records: records))
         guard data.count <= 1 << 20, records.count <= 64 else { throw CoreWorkspaceRecoveryFailure.limit }
         return data
     }
@@ -150,14 +152,33 @@ public actor CoreWorkspaceRecovery {
                             members: panes.map { Member(paneID: $0.id, terminal: $0.terminal) }, run: nil, terminal: nil, layout: .pending, targets: targets)
         try save(records + [record]); return ticket(record.id)
     }
+    /// Partial close reserves only this pane. A sibling reference to the same
+    /// program is shared, including a sibling inside the same tab.
+    public func beginClose(paneID: UUID, document: CoreWorkspaceDocument, endPrograms: Bool) throws -> Ticket {
+        guard let tab = document.workspaces.flatMap(\.tabs).first(where:{ $0.layout?.panes.contains(where:{ $0.id == paneID }) == true }),
+              let pane = document.pane(paneID) else { throw CoreWorkspaceRecoveryFailure.targetChanged }
+        guard !records.contains(where:{ $0.tabID == tab.id && !$0.complete }) else { throw CoreWorkspaceRecoveryFailure.busy }
+        let elsewhere = Set(document.panes.filter { $0.id != paneID }.compactMap(\.terminal))
+        let refs = [pane.terminal].compactMap { $0 }
+        guard refs.allSatisfy(Self.validReference) else { throw CoreWorkspaceRecoveryFailure.targetChanged }
+        let targets = endPrograms ? refs.map { ref in Target(terminal:ref,state:elsewhere.contains(ref) ? .shared : ref.coreID == coreID ? .pending : .foreign) } : []
+        let record = Record(id:UUID(),epoch:epoch,kind:.close,paneID:paneID,tabID:tab.id,
+            members:[Member(paneID:paneID,terminal:pane.terminal)],run:nil,terminal:nil,layout:.pending,targets:targets)
+        try save(records+[record]); return ticket(record.id)
+    }
     private func layoutEdit(_ record: Record, document: CoreWorkspaceDocument) throws -> CoreWorkspaceEdit {
         if record.kind == .launch {
             guard record.run == .returned, let paneID = record.paneID, let terminal = record.terminal,
                   let pane = document.pane(paneID), pane.terminal == nil else { throw CoreWorkspaceRecoveryFailure.targetChanged }
             return .bindPane(paneID, expected: nil, replacement: terminal)
         }
-        guard let tab = document.workspaces.flatMap(\.tabs).first(where: { $0.id == record.tabID }),
-              (tab.layout?.panes ?? []).map({ Member(paneID: $0.id, terminal: $0.terminal) }) == record.members else { throw CoreWorkspaceRecoveryFailure.targetChanged }
+        guard let tab = document.workspaces.flatMap(\.tabs).first(where: { $0.id == record.tabID }) else { throw CoreWorkspaceRecoveryFailure.targetChanged }
+        if let paneID = record.paneID {
+            guard let pane = tab.layout?.panes.first(where:{ $0.id == paneID }),
+                  record.members == [Member(paneID:paneID,terminal:pane.terminal)] else { throw CoreWorkspaceRecoveryFailure.targetChanged }
+            return .removePane(paneID)
+        }
+        guard (tab.layout?.panes ?? []).map({ Member(paneID: $0.id, terminal: $0.terminal) }) == record.members else { throw CoreWorkspaceRecoveryFailure.targetChanged }
         return .removeTab(tab.id)
     }
     /// Only for an explicit review after the dispatcher has stopped awaiting
@@ -228,7 +249,8 @@ public actor CoreWorkspaceRecovery {
         let complete: Bool
         if record.kind == .launch {
             complete = record.terminal != nil && document?.pane(record.paneID!)?.terminal == record.terminal
-        } else { complete = document?.workspaces.flatMap(\.tabs).contains(where: { $0.id == record.tabID }) != true }
+        } else if let paneID = record.paneID { complete = document?.pane(paneID) == nil }
+        else { complete = document?.workspaces.flatMap(\.tabs).contains(where: { $0.id == record.tabID }) != true }
         if complete, let floor = record.layoutVersion, snapshot.version <= floor { throw CoreWorkspaceRecoveryFailure.targetChanged }
         var next = records; next[i].layout = complete ? .confirmed : .conflict; try save(next)
     }
@@ -240,6 +262,9 @@ public actor CoreWorkspaceRecovery {
         let i = try index(ticket)
         guard records[i].kind == .close, records[i].layout == .confirmed,
               let t = records[i].targets.firstIndex(where: { $0.terminal == terminal }), records[i].targets[t].state == .pending else { throw CoreWorkspaceRecoveryFailure.requiresReview }
+        guard !records.contains(where:{ other in
+            other.id != ticket.operationID && other.targets.contains(where:{ $0.terminal == terminal && ($0.state == .inFlight || $0.state == .uncertain) })
+        }) else { throw CoreWorkspaceRecoveryFailure.requiresReview }
         var next = records
         if currentDocument.panes.contains(where: { $0.terminal == terminal }) {
             next[i].targets[t].state = .shared; try save(next); return nil
