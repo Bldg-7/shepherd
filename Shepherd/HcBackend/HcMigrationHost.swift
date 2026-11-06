@@ -29,6 +29,11 @@ struct HcMigrationConfiguration {
     static let shared = HcMigrationRenderProbe()
     private(set) var text = ""
     private(set) var bytes = 0
+    private(set) var resizeEvents: [[Int]] = []
+    func resized(columns: Int, rows: Int) {
+        resizeEvents.append([columns,rows])
+        if resizeEvents.count > 512 { resizeEvents.removeFirst(resizeEvents.count - 512) }
+    }
     func consumed(_ data: Data, rendered: String) {
         guard HcMigrationConfiguration.requested else { return }
         bytes += data.count
@@ -60,7 +65,7 @@ private nonisolated struct HcMigrationStatus: Decodable, Sendable {
     for child in view.subviews { if let result = hcTerminal(in: child) { return result } }
     return nil
 }
-@MainActor private func hcAccessibilityText(_ root: NSView) -> String {
+@MainActor func hcAccessibilityText(_ root: NSView) -> String {
     var visited = Set<ObjectIdentifier>(), text: [String] = []
     func walk(_ node: AnyObject, _ depth: Int) {
         guard depth < 60, visited.count < 16000, visited.insert(ObjectIdentifier(node)).inserted else { return }
@@ -229,7 +234,7 @@ struct HcMigrationHost: View {
     var body: some View {
         Group {
             if let owner, let fixtureStore { HcRootView(machineStore: fixtureStore, connection: owner, localTransport: fixtureTransport,
-                    inspectionOnly: ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_MANUAL_SECONDS"] != nil) }
+                    inspectionOnly: ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_MANUAL_SECONDS"] != nil || ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_LAYOUT_AUDIT"] == "1") }
             else if failure { Text("Private hc integration failed") }
             else { ProgressView("Preparing private hc integration…") }
         }
@@ -270,6 +275,16 @@ struct HcMigrationHost: View {
                 try await Task.sleep(for: .milliseconds(20))
             }
             let m = owner.model!; workspace = m; checks += 1
+            if ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_LAYOUT_AUDIT"] == "1" {
+                let result = try await HcWorkspaceLayoutAudit.run(model: m, connection: c, root: root,
+                    fullscreen: ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_FULLSCREEN_AUDIT"] == "1")
+                owned = result["ownedPIDs"] as? [UInt32] ?? owned
+                _ = try await c.call("server.stop")
+                await owner.close(); try await c.close()
+                try JSONSerialization.data(withJSONObject:result).write(to:report,options:.atomic)
+                NSApp.terminate(nil)
+                return
+            }
             if let value = ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_MANUAL_SECONDS"] {
                 guard let seconds = Int(value), (60...1800).contains(seconds) else { throw HcWorkspaceModel.Failure.unavailable }
                 manualInspection = true
@@ -549,6 +564,18 @@ struct HcMigrationHost: View {
                 "browserAuthorityUsed":false,"productCutover":false]).write(to: report, options: .atomic)
             NSApp.terminate(nil)
         } catch {
+            if ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_LAYOUT_AUDIT"] == "1" {
+                let label: String
+                if case HcWorkspaceLayoutAudit.Failure.assertion(let value) = error { label = value }
+                else { label = String(describing: type(of: error)) }
+                try? JSONSerialization.data(withJSONObject: ["passed":false,"stage":label,"appActive":NSApp.isActive,
+                    "keyWindow":NSApp.keyWindow?.windowNumber ?? -1,"wholeUIParityQualified":false])
+                    .write(to: root.appending(path:"layout-audit-stage-failure.json"),options:.atomic)
+            }
+            if ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_LAYOUT_AUDIT"] == "1",
+               let bytes = try? Data(contentsOf: root.appending(path: "audit-owned-identities.json")),
+               let values = try? JSONSerialization.jsonObject(with: bytes) as? [String:Any],
+               let recorded = values["ownedPIDs"] as? [UInt32] { owned = Array(Set(owned + recorded)).sorted() }
             failure = true
             try? Data(HcMigrationRenderProbe.shared.text.utf8).write(to: root.appending(path: "failed-screen.txt"))
             var ids = Set<String>()

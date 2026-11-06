@@ -16,9 +16,13 @@ p.add_argument('--products',type=Path,required=True)
 p.add_argument('--human-activation',action='store_true',help='Allow time for a person to click only the owned helper window; all GUI assertions still required')
 p.add_argument('--manual-inspection',action='store_true',help='Open an interactive private workspace, without running/claiming automated GUI checks')
 p.add_argument('--manual-seconds',type=int,default=1200,help='Manual session lifetime, 60–1800 seconds; owned programs retire on exit')
+p.add_argument('--layout-audit',action='store_true',help='Audit actual hc composition/sidebar using public native actions')
+p.add_argument('--fullscreen-audit',action='store_true',help='Also exercise the owned fullscreen Space/edge reveal; moves and restores pointer')
 a=p.parse_args()
+a.layout_audit=a.layout_audit or a.fullscreen_audit
+if a.manual_inspection and a.layout_audit:p.error('manual inspection and layout audit are separate modes')
 if not 60 <= a.manual_seconds <= 1800:p.error('manual-seconds must be 60–1800')
-stage_seconds=a.manual_seconds+90 if a.manual_inspection else (270 if a.human_activation else 60)
+stage_seconds=a.manual_seconds+90 if a.manual_inspection else (270 if a.human_activation else (120 if a.layout_audit else 60))
 out=Path(tempfile.mkdtemp(prefix='hc-screen-app.',dir='/private/tmp')).resolve()
 print(out,flush=True)
 for name in ['bin','home','tmp','core']:(out/name).mkdir(mode=0o700)
@@ -48,6 +52,8 @@ env={'PATH':'/usr/bin:/bin:/usr/sbin:/sbin','HOME':str(out/'home'),'CFFIXED_USER
      'LANG':'en_US.UTF-8','DO_NOT_TRACK':'1','SHEPHERD_HC_UI_ROOT':str(out),'SHEPHERD_HC_UI_BINARY':str(binary)}
 if a.human_activation or a.manual_inspection:env['SHEPHERD_HC_UI_HUMAN_ACTIVATION']='1'
 if a.manual_inspection:env['SHEPHERD_HC_UI_MANUAL_SECONDS']=str(a.manual_seconds)
+if a.layout_audit:env['SHEPHERD_HC_UI_LAYOUT_AUDIT']='1'
+if a.fullscreen_audit:env['SHEPHERD_HC_UI_FULLSCREEN_AUDIT']='1'
 # Network denial canary against only an owned loopback listener.
 with socket.socket() as listener:
     listener.bind(('127.0.0.1',0));listener.listen(1)
@@ -151,6 +157,19 @@ finally:
             artifact_cleanup = {'removed': [], 'error': type(error).__name__}
             failed = failed or error
     (out/'artifact-cleanup.json').write_text(json.dumps(artifact_cleanup,indent=2))
+if a.layout_audit:
+    audit_path=out/'layout-audit.json'
+    audit=json.loads(audit_path.read_text()) if audit_path.exists() else {}
+    good=failed is None and audit.get('passed') is True and bool(result.get('ownedPIDs'))
+    if a.fullscreen_audit:good=good and audit.get('fullscreenSpaceAndEdgeReveal') is True and audit.get('fullscreenExitRestored') is True
+    (out/'validation.json').write_text(json.dumps({'passed':good,'checks':audit.get('checks'),'actualHcRoot':True,
+        'fullscreenSpaceAndEdgeReveal':audit.get('fullscreenSpaceAndEdgeReveal',False),'fullscreenExitRestored':audit.get('fullscreenExitRestored',False),'wholeUIParityQualified':False,
+        'physicalDividerDrag':'NOTRUN','ownedProcessesExited':not alive,'socketRemoved':not sock.exists(),'releaseCutover':False},indent=2))
+    assert hashes=={str(p.relative_to(ROOT)):digest(p) for p in tracked},'source changed during audit'
+    if failed:raise failed
+    assert good,'actual hc composition/layout audit failed'
+    print('PASS actual hc root layout audit:',out,flush=True)
+    sys.exit(0)
 if a.manual_inspection:
     (out/'manual-result.json').write_text(json.dumps({'sessionEnded':True,'cleanupVerified':failed is None,'automatedGUIQualified':False,'releaseCutover':False,'ownedPIDs':result.get('ownedPIDs',[])},indent=2))
     if failed:raise failed

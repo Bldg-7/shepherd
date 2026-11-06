@@ -44,7 +44,7 @@ import Darwin
             self.window = window; window.makeKeyAndOrderFront(nil); NSApp.activate()
             let pid = process.processIdentifier
             Task {
-                let deadline = ContinuousClock.now.advanced(by: .seconds(manual.map { $0 + 60 } ?? (human ? 240 : 10)))
+                let deadline = ContinuousClock.now.advanced(by: .seconds(manual.map { $0 + 60 } ?? (human ? 240 : (environment["SHEPHERD_HC_UI_LAYOUT_AUDIT"] == "1" ? 120 : 10))))
                 while ContinuousClock.now < deadline {
                     let target = NSRunningApplication(processIdentifier: pid)
                     try? JSONSerialization.data(withJSONObject: ["helperActive":NSApp.isActive,"bundleMatches":HcFixtureBundlePath.matches(target?.bundleURL,expected:app),"processRunning":process.isRunning,"actualBundleURL":target?.bundleURL?.absoluteString ?? "nil","expectedBundleURL":app.absoluteString,"targetActive":target?.isActive ?? false,"targetBundle":target?.bundleURL?.path ?? "nil","expectedBundle":app.path,"targetFinished":target?.isFinishedLaunching ?? false,"focusRequested":FileManager.default.fileExists(atPath: root.appending(path: "ui-wants-focus.json").path)]).write(to: root.appending(path: "helper-stage.json"), options: .atomic)
