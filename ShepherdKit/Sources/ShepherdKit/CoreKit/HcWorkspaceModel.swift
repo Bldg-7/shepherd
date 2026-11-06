@@ -212,19 +212,47 @@ private nonisolated struct HcWorkspaceTerminalInitial: Decodable, Sendable { let
         let tab = CoreWorkspaceDocument.Tab(name: name, layout: .leaf(pane))
         let token = generation
         operationBusy = true; defer { operationBusy = false }
+        let directory = try await launchDirectory(workspaceID:workspaceID,requested:cwd,snapshot:snapshot,token:token)
+        guard token == generation, state == .connected else { throw Failure.stale }
         try await commit(.appendTab(workspace: workspaceID, tab: tab), snapshot: snapshot, store: store)
         guard token == generation, let document else { throw Failure.stale }
         try focus.select(tab: tab.id, in: document); try persistFocus()
-        try await launchInto(pane: pane, argv: argv, cwd: cwd ?? document.workspaces.first(where: { $0.id == workspaceID })?.cwd, journal: journal, store: store, token: token)
+        try await launchInto(pane: pane, argv: argv, cwd: directory, journal: journal, store: store, token: token)
+    }
+    /// Resolve context before placeholder CAS changes local focus. No labels,
+    /// remote-qualified selectors, interactive rc or host filesystem scans.
+    private func launchDirectory(workspaceID: UUID, requested: String?, snapshot: CoreWorkspaceCAS.Snapshot,
+                                 token: UUID) async throws -> String? {
+        if let requested { return requested }
+        guard let workspace = snapshot.document?.workspaces.first(where:{ $0.id == workspaceID }) else { throw Failure.stale }
+        if let saved = workspace.cwd, !saved.isEmpty { return saved }
+        guard let tabID = focus.tabByWorkspace[workspaceID], let tab = workspace.tabs.first(where:{ $0.id == tabID }),
+              let pane = tab.layout?.panes.first(where:{ $0.id == focus.paneByTab[tabID] }) ?? tab.layout?.panes.first,
+              let reference = pane.terminal else { return nil }
+        return try await confirmedDirectory(reference,token:token)
+    }
+    private func confirmedDirectory(_ reference: CoreWorkspaceDocument.TerminalReference, token: UUID) async throws -> String? {
+        guard reference.coreID == coreID, CoreTerminalID.isCanonical(reference.terminalID) else { throw Failure.unavailable }
+        let record = try await HcTerminalBoard(connection:connection).get(reference.terminalID)
+        guard !Task.isCancelled, token == generation, state == .connected,
+              coreID == reference.coreID, record.address == reference.terminalID else { throw Failure.stale }
+        return record.cwd.isEmpty ? nil : record.cwd
     }
     public func launchSplit(paneID: UUID, axis: CoreWorkspaceDocument.Axis, argv: [String], cwd: String? = nil) async throws {
         guard !operationBusy, let journal else { throw Failure.unavailable }
         let (store, snapshot) = try baseline(), pane = CoreWorkspaceDocument.Pane(), token = generation
+        guard let source = snapshot.document?.pane(paneID),
+              source.terminal.map({ $0.coreID == coreID && CoreTerminalID.isCanonical($0.terminalID) }) ?? true else { throw Failure.unavailable }
         operationBusy = true; defer { operationBusy = false }
+        let directory: String?
+        if let cwd { directory = cwd }
+        else if let reference = source.terminal { directory = try await confirmedDirectory(reference,token:token) }
+        else { directory = nil }
+        guard token == generation, state == .connected else { throw Failure.stale }
         try await commit(.splitPane(paneID, axis: axis, ratio: 0.5, newPane: pane), snapshot: snapshot, store: store)
         guard token == generation, let document else { throw Failure.stale }
         try focus.select(pane: pane.id, in: document); try persistFocus()
-        try await launchInto(pane: pane, argv: argv, cwd: cwd, journal: journal, store: store, token: token)
+        try await launchInto(pane: pane, argv: argv, cwd: directory, journal: journal, store: store, token: token)
     }
     private func launchInto(pane: CoreWorkspaceDocument.Pane, argv: [String], cwd: String?, journal: CoreWorkspaceRecovery, store: CoreWorkspaceStore, token: UUID) async throws {
         guard token == generation, let document else { throw Failure.stale }
@@ -274,7 +302,7 @@ private nonisolated struct HcWorkspaceTerminalInitial: Decodable, Sendable { let
         else {
             // Explicit selection on an empty board may create its workspace
             // and view in one CAS. Never run/kill/adopt/replay the program.
-            edit = .appendWorkspace(.init(name: "Workspace", tabs: [tab]))
+            edit = .appendWorkspace(.init(name: "Workspace", cwd: record.cwd.isEmpty ? nil : record.cwd, tabs: [tab]))
         }
         try await commit(edit, snapshot: snapshot, store: store)
         if selectOnSuccess, let document { try focus.select(tab: tab.id, in: document); try persistFocus() }

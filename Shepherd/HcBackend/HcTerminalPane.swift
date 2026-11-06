@@ -184,7 +184,6 @@ struct HcTerminalPane: View {
         self.isCurrentScope = isCurrentScope
         _presentation = State(initialValue: presentations?.entry(epoch: model.workspace?.epoch, pane: pane) ?? HcPanePresentation())
     }
-    @State private var operationError: String?
     @State private var drops: TerminalDropController?
     @State private var terminal = HcTerminalPaneModel()
     @State private var itemDropTargeted = false
@@ -281,13 +280,6 @@ struct HcTerminalPane: View {
                         terminal.paste(text)
                     }
         return controller
-    }
-    private func perform(_ operation: @escaping @MainActor () async throws -> Void) {
-        Task { do { try await operation() } catch { operationError = "Operation unconfirmed. Review the saved outcome before retrying; no program was automatically rerun or terminated." } }
-    }
-    private func split(_ axis: CoreWorkspaceDocument.Axis) {
-        let cwd = model.terminals.first { $0.address == pane.terminal?.terminalID }?.cwd
-        perform { try await model.launchSplit(paneID: pane.id, axis: axis, argv: [], cwd: cwd) }
     }
     private func open(_ link: String) {
         guard currentScope, let machine, let machineStore, machineStore.isCurrentConnection(machine),

@@ -152,6 +152,18 @@ class PreservationWiring(unittest.TestCase):
         self.assertIn('after.state == "finished"', ending)
         self.assertIn('journal.finishStop(stop,confirmedEnded:false)', ending)
 
+    def test_launch_directories_are_resolved_before_placeholder_cas(self):
+        model = source('ShepherdKit/Sources/ShepherdKit/CoreKit/HcWorkspaceModel.swift')
+        tab = model[model.index('public func launchTab('):model.index('private func launchDirectory(')]
+        split = model[model.index('public func launchSplit('):model.index('private func launchInto(')]
+        self.assertLess(tab.index('launchDirectory('),tab.index('commit(.appendTab'))
+        self.assertLess(split.index('confirmedDirectory('),split.index('commit(.splitPane'))
+        self.assertIn('source.terminal.map({ $0.coreID == coreID',split)
+        self.assertIn('cwd: record.cwd.isEmpty ? nil : record.cwd',model)
+        board = source('Shepherd/HcBackend/HcWorkspaceView.swift')
+        action = board[board.index('private func split('):board.index('private func mutationStamp(')]
+        self.assertNotIn('record(pane)?.cwd',action)
+
     def test_actual_rendered_selection_not_hidden_siblings_is_viewed(self):
         root = source('Shepherd/HcBackend/HcRootView.swift')
         self.assertIn('controlActiveState == .key, presentation.hasSelection', root)

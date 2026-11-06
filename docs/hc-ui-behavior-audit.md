@@ -253,6 +253,19 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
   confirmation is refused before UI projection changes. Default native Return
   is declared on view-only close; its actual new-button GUI proof is pending.
 
+- Working-directory regressions were reproduced on official0.1.17:
+  `hc-cwd-negative.C0B5Ww` (new current-workspace tab fell back to core HOME)
+  and `hc-split-cwd-negative.hud8oy` (default split did likewise). Both negative
+  receipts stopped the owned core and reaped clients; neither is reclassified.
+- `hc-cwd-origin.0Y8fJR`: actual-core84, SDK274/mode across21 stages,
+  macOS Debug/Release, iOS Debug, wiring16 pass. Explicit cwd then saved workspace
+  cwd takes precedence; otherwise a same-origin canonical pane GET supplies cwd
+  before placeholder CAS changes focus. Imported views preserve workspace cwd.
+  Foreign split/end and implicit foreign-context local launch are refused before
+  metadata/run/stop changes. No path/label inference, interactive rc or scans.
+  UI split no longer passes a cached cwd; dead rejected-header split helpers were
+  removed. This is headless/platform evidence, not new native/physical UI approval.
+
 ## Evidence retained
 
 - `/private/tmp/hc-ui-behavior-audit.KpGlYF`: presentation rules19 per Debug/optimized;

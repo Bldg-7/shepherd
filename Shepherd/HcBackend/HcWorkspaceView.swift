@@ -309,8 +309,8 @@ private struct HcAgentBoard: View {
                                     .boardSelectionEmphasized(selection.wrappedValue == .pane(pane.id))
                                     .contextMenu {
                                         Button("Rename Pane…") { onRename(.pane(pane.id)) }
-                                        Button("New shell to right") { split(pane, axis: .horizontal) }
-                                        Button("New shell below") { split(pane, axis: .vertical) }
+                                        Button("New shell to right") { split(pane, axis: .horizontal) }.disabled(pane.terminal?.coreID != model.coreID)
+                                        Button("New shell below") { split(pane, axis: .vertical) }.disabled(pane.terminal?.coreID != model.coreID)
                                         Button(model.focus.zoomByTab[tab.id] == pane.id ? "Unzoom Pane" : "Zoom Pane") {
                                             guard scopeIsCurrent(), model.state == .connected else { return }
                                             do { try model.zoom(pane: model.focus.zoomByTab[tab.id] == pane.id ? nil : pane.id) }
@@ -447,10 +447,9 @@ private struct HcAgentBoard: View {
     }
     private func split(_ pane: CoreWorkspaceDocument.Pane, axis: CoreWorkspaceDocument.Axis) {
         guard let stamp = mutationStamp(), model.document?.pane(pane.id)?.terminal == pane.terminal else { return }
-        let cwd = record(pane)?.cwd
         perform {
             guard matches(stamp) else { throw HcWorkspaceModel.Failure.stale }
-            try await model.launchSplit(paneID: pane.id, axis: axis, argv: [], cwd: cwd)
+            try await model.launchSplit(paneID: pane.id, axis: axis, argv: [])
         }
     }
     private func mutationStamp() -> HcWorkspaceMutationStamp? {

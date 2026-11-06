@@ -135,6 +135,44 @@ private nonisolated struct Notice: Decodable, Sendable {
         try check(await journal.snapshot().first(where: { $0.id == close.operationID })!.complete, "partial close reconciled by fresh finished read")
         // Final server.stop below owns and cleans the deliberately retained test orphan.
     }
+    static func foreignActionsRefused(connection: CoreRPCConnection, model: HcWorkspaceModel, workspaceID: UUID, home: URL) async throws {
+        let foreignPane = CoreWorkspaceDocument.Pane(terminal:.init(coreID:"foreign_core",terminalID:"t1"))
+        let foreignTab = CoreWorkspaceDocument.Tab(name:"read-only foreign",layout:.leaf(foreignPane))
+        let writer = try await CoreWorkspaceStore(connection:connection)
+        do {
+            let view = try await writer.start()
+            guard let version = view.snapshot?.version else { throw CoreWorkspaceFailure.invalidDocument }
+            let result = try await writer.edit(.appendTab(workspace:workspaceID,tab:foreignTab),expectedVersion:version)
+            guard case .acknowledged(let written) = result else { throw CoreWorkspaceSyncFailure.refreshRequired }
+            try await writer.close()
+            let deadline = ContinuousClock.now.advanced(by:.seconds(5))
+            while model.workspace?.snapshot?.version != written || !model.canEdit {
+                guard ContinuousClock.now < deadline else { throw CoreWorkspaceSyncFailure.refreshRequired }
+                try await Task.sleep(for:.milliseconds(10))
+            }
+            let before = model.document, journalCount = model.recoveryRecords.count
+            let previousTab = model.selectedTab?.id
+            let programs = try await HcTerminalBoard(connection:connection).list(all:true)
+            do {
+                try await model.launchSplit(paneID:foreignPane.id,axis:.horizontal,argv:["/bin/sleep","60"])
+                try await trackModel(connection,home:home)
+                throw CoreWorkspaceFailure.invalidDocument
+            } catch HcWorkspaceModel.Failure.unavailable { checks += 1 }
+            do { try await model.closeTab(foreignTab.id,endPrograms:true); throw CoreWorkspaceFailure.invalidDocument }
+            catch HcWorkspaceModel.Failure.unavailable { checks += 1 }
+            try model.select(pane:foreignPane.id)
+            do {
+                try await model.launchTab(workspaceID:workspaceID,name:"must not fall back",argv:["/bin/sleep","60"])
+                try await trackModel(connection,home:home)
+                throw CoreWorkspaceFailure.invalidDocument
+            } catch HcWorkspaceModel.Failure.unavailable { checks += 1 }
+            if let previousTab { try model.select(tab:previousTab) }
+            let after = try await HcTerminalBoard(connection:connection).list(all:true)
+            try check(model.document == before && model.recoveryRecords.count == journalCount,"foreign split/end refused before metadata, run or stop ticket")
+            try check(after == programs,"foreign reference never falls back to a local terminal or launch")
+            try await model.closeTab(foreignTab.id) // App-owned metadata only; never routes a foreign action.
+        } catch { try? await writer.close(); throw error }
+    }
     static func stopPersistenceBoundaries(config: CoreProcessTransport.Configuration, home: URL) async throws {
         for denyDispatch in [true,false] {
             let suffix = denyDispatch ? "dispatch" : "confirmation"
@@ -194,12 +232,25 @@ private nonisolated struct Notice: Decodable, Sendable {
             try await model.start()
             try check(model.state == .connected && model.canEdit, "screen model owns live RPC/storage subscriptions")
             let id = try await model.createWorkspace(name: "screen model")
-            try await model.launchTab(workspaceID: id, name: "owned sleeper", argv: ["/bin/sleep","60"], cwd: home.path)
+            let projectDirectory = home.appending(path:"project cwd's folder")
+            try FileManager.default.createDirectory(at:projectDirectory,withIntermediateDirectories:true)
+            try await model.launchTab(workspaceID: id, name: "owned sleeper", argv: ["/bin/sleep","60"], cwd: projectDirectory.path)
             guard let tab = model.selectedTab, let pane = tab.layout?.panes.first, let ref = pane.terminal else { throw CoreWorkspaceFailure.invalidReference }
             try check(model.focus.paneByTab[tab.id] == pane.id && ref.coreID == model.coreID, "actual launch journal binds selected pane")
-            try await model.launchSplit(paneID: pane.id, axis: .horizontal, argv: ["/bin/sleep", "60"], cwd: home.path)
+            try await model.launchTab(workspaceID:id,name:"inherited cwd",argv:["/bin/sleep","60"])
+            guard let inheritedTab = model.selectedTab, let inheritedRef = inheritedTab.layout?.panes.first?.terminal else { throw CoreWorkspaceFailure.invalidDocument }
+            try await trackModel(connection,home:home)
+            let inheritedProgram = try await HcTerminalBoard(connection:connection).get(inheritedRef.terminalID)
+            try check(inheritedProgram.cwd == projectDirectory.path,"current workspace new tab inherits focused canonical program cwd, not core HOME")
+            try await model.closeTab(inheritedTab.id,endPrograms:true)
+            try model.select(tab:tab.id)
+            try await foreignActionsRefused(connection:connection,model:model,workspaceID:id,home:home)
+            try await model.launchSplit(paneID: pane.id, axis: .horizontal, argv: ["/bin/sleep", "60"])
             guard let split = model.selectedTab?.layout?.panes.first(where: { $0.id != pane.id }), let splitRef = split.terminal else { throw CoreWorkspaceFailure.invalidReference }
             try check(model.selectedTab?.layout?.panes.count == 2 && model.focus.paneByTab[tab.id] == split.id, "split launch binds a second program and local focus")
+            try await trackModel(connection,home:home)
+            let splitDirectory = try await HcTerminalBoard(connection:connection).get(splitRef.terminalID)
+            try check(splitDirectory.cwd == projectDirectory.path,"default split inherits its exact canonical source pane cwd")
             try await model.closePane(split.id)
             let stillLive = try await HcTerminalBoard(connection: connection).get(splitRef.terminalID)
             try check(model.selectedTab?.layout?.panes.count == 1 && stillLive.state == "live", "close pane collapses layout, keeps program alive")
@@ -211,6 +262,8 @@ private nonisolated struct Notice: Decodable, Sendable {
                       "explicit existing-terminal workspace plus view is one exact CAS")
             try check(createdView?.layout?.panes.first?.terminal == splitRef && model.selectedTab?.id == tab.id,
                       "view-only discovery binds real reference without overriding newer UI focus")
+            try check(model.document?.workspaces.first(where:{ $0.tabs.contains(where:{ $0.id == extraView }) })?.cwd == stillLive.cwd,
+                      "explicit native discovery preserves its origin's working directory")
             let afterDiscovery: Status = try await connection.call("server.status").result()
             try check(afterDiscovery.live == before.live,"existing-terminal discovery never starts or kills a program")
             try await model.closeTab(extraView)
