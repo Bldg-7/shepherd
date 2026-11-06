@@ -266,6 +266,14 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
   UI split no longer passes a cached cwd; dead rejected-header split helpers were
   removed. This is headless/platform evidence, not new native/physical UI approval.
 
+- Recovery review now distinguishes partial-pane/full-tab layout plans and lists
+  bounded per-target stop outcomes. Pending/in-flight/uncertain/shared/foreign
+  never display as ended. View-only history states no termination was requested;
+  known launch layout does not imply restart. `hc-recovery-text.71Slem`:13 pure
+  rules/mode, macOS Debug/Release, iOS Debug pass; wiring17 pass. The ScrollView
+  is height-bounded and adds no dispatch authority. Actual new review-sheet GUI
+  remains part of the foreground qualification gate, not this text-policy pass.
+
 ## Evidence retained
 
 - `/private/tmp/hc-ui-behavior-audit.KpGlYF`: presentation rules19 per Debug/optimized;

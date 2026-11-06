@@ -11,12 +11,25 @@ struct HcOperationReviewSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Review saved operation").font(.title2)
-            Text(review.record.kind.rawValue.capitalized).font(.headline)
+            Text(HcRecoveryPresentationText.title(review.record)).font(.headline)
             Text("Reviewed layout version: \(review.expectedVersion)").font(.caption)
             if let reference = review.record.terminal {
                 Text(reference.coreID + "/" + reference.terminalID).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
             } else if review.record.kind == .launch { Text("Program identity unconfirmed").foregroundStyle(.secondary) }
-            Text(explanation)
+            Text(HcRecoveryPresentationText.explanation(review.record,canApplyLayout:review.canApplyLayout))
+            if !review.record.targets.isEmpty {
+                ScrollView {
+                    VStack(alignment:.leading,spacing:8) {
+                        ForEach(review.record.targets,id:\.terminal) { target in
+                            VStack(alignment:.leading,spacing:3) {
+                                Text(target.terminal.coreID + "/" + target.terminal.terminalID)
+                                    .font(.caption.monospaced()).lineLimit(1).truncationMode(.middle).textSelection(.enabled)
+                                Text(HcRecoveryPresentationText.stop(target.state)).font(.caption)
+                            }
+                        }
+                    }.frame(maxWidth:.infinity,alignment:.leading)
+                }.frame(maxHeight:180)
+            }
             Text("Only layout metadata can be applied here. Programs are never started, adopted or terminated. If the layout changes after this review, cancel and review it again.")
                 .font(.footnote).foregroundStyle(.secondary)
             if let error { Text(error).font(.footnote).foregroundStyle(.red) }
@@ -48,14 +61,5 @@ struct HcOperationReviewSheet: View {
         } message: {
             Text("A program whose launch was unconfirmed may still be running. This removes bookkeeping only; it does not stop, adopt or relaunch anything.")
         }
-    }
-    private var explanation: String {
-        if review.record.layout == .confirmed { return "The layout action is already confirmed. Later user edits will not be undone. Any unconfirmed program outcomes remain separate." }
-        if review.canApplyLayout {
-            return review.record.kind == .launch
-                ? "A successful run receipt is saved and its original pane is still unbound. You can explicitly bind that exact reference with one new CAS attempt."
-                : "The original tab still has the reviewed members. You can explicitly close those views while keeping all programs running."
-        }
-        return "There is no safe layout reapplication for this record: the launch outcome is unknown or its target fields changed. Inspect core terminals separately; operation labels are not ownership proof."
     }
 }

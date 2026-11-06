@@ -164,6 +164,18 @@ class PreservationWiring(unittest.TestCase):
         action = board[board.index('private func split('):board.index('private func mutationStamp(')]
         self.assertNotIn('record(pane)?.cwd',action)
 
+    def test_recovery_sheet_separates_layout_and_program_outcomes(self):
+        sheet = source('Shepherd/HcBackend/HcOperationReviewSheet.swift')
+        policy = source('Shepherd/HcBackend/HcRecoveryPresentationText.swift')
+        self.assertIn('HcRecoveryPresentationText.title(review.record)',sheet)
+        self.assertIn('ForEach(review.record.targets,id:\\.terminal)',sheet)
+        self.assertIn('HcRecoveryPresentationText.stop(target.state)',sheet)
+        self.assertIn('.frame(maxHeight:180)',sheet)
+        for state in ['pending','inFlight','uncertain','confirmed','shared','foreign']:
+            self.assertIn('case .'+state+':',policy)
+        self.assertNotIn('terminal.kill',policy)
+        self.assertNotIn('terminal.run',policy)
+
     def test_actual_rendered_selection_not_hidden_siblings_is_viewed(self):
         root = source('Shepherd/HcBackend/HcRootView.swift')
         self.assertIn('controlActiveState == .key, presentation.hasSelection', root)
