@@ -189,6 +189,17 @@ class PreservationWiring(unittest.TestCase):
         model = source('ShepherdKit/Sources/ShepherdKit/CoreKit/HcWorkspaceModel.swift')
         self.assertIn('if let closingTask { try await closingTask.value; return }',model)
 
+    def test_default_close_audit_uses_one_real_return_event(self):
+        host = source('Shepherd/HcBackend/HcMigrationHost.swift')
+        action = host[host.index('func hcFixtureDefaultReturn('):host.index('func hcFixturePress(')]
+        self.assertIn('hcFixtureNativeButtonReady(button)',action)
+        self.assertIn('window.defaultButtonCell === button.cell',action)
+        self.assertEqual(action.count('NSApp.sendEvent(event)'),1)
+        self.assertNotIn('performClick',action)
+        audit = source('Shepherd/HcBackend/HcWorkspaceLayoutAudit.swift')
+        self.assertIn('hcFixtureDefaultReturn("hc.close.confirm",owner:window,root:root)',audit)
+        self.assertIn('before.createdMs == after.createdMs && before.state == after.state',audit)
+
     def test_actual_rendered_selection_not_hidden_siblings_is_viewed(self):
         root = source('Shepherd/HcBackend/HcRootView.swift')
         self.assertIn('controlActiveState == .key, presentation.hasSelection', root)

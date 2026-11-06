@@ -573,15 +573,18 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
                       "stale close confirmation refuses to rebase or remove a changed view")
             try hcFixturePress("hc.workspace.error.ok")
             try await wait("stale close refusal dismissed") { window.attachedSheet == nil && window.isKeyWindow }
+            let defaultClosePrograms = try await HcTerminalBoard(connection:connection).list(all:true)
             try hcNativeFixtureCommand("w",code:13,label:"audit-close-confirm",window:window,root:root)
             try await hcFixtureWait("hc.close.confirm",present:true,enabled:true,window:window)
-            try hcFixturePress("hc.close.confirm")
+            try hcFixtureDefaultReturn("hc.close.confirm",owner:window,root:root)
             try await wait("closed view is absent and selection stays clear") {
                 model.document?.workspaces.flatMap(\.tabs).contains(where: { $0.id == duplicate.id }) == false && terminals(content).isEmpty && window.isKeyWindow
             }
             checks += 1
             let afterClose = try await HcTerminalBoard(connection:connection).list(all:true)
-            try check(afterClose.count == beforeLaunchPrograms.count,"closing a view does not start/end another program")
+            try check(afterClose.count == beforeLaunchPrograms.count && afterClose.count == defaultClosePrograms.count && afterClose.allSatisfy { after in
+                defaultClosePrograms.contains { before in before.address == after.address && before.pid == after.pid && before.createdMs == after.createdMs && before.state == after.state }
+            },"native default Return closes only a view and preserves every program incarnation/state")
             try clickRow("hc-workspace.tab.\(tabID)",content:content)
             try await wait("remaining row explicitly restores terminal") { terminals(content).count == 1 }
             checks += 1

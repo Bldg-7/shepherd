@@ -322,6 +322,15 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
   FilePreviewPanel-only method after `.id` changed its type). None of those
   unexecuted Release/iOS stages are counted as passing.
 
+- The pending default-close native audit now sends one actual Return key event
+  after resolving the real enabled visible button in the owned key window/sheet
+  and checking its Return key/default-cell association. It does not invoke a
+  substitute closure/performClick or retry an uncertain key. Fresh before/after
+  canonical address/PID/creation/state facts must prove all programs unchanged.
+  `hc-default-return-audit.C6fbUY`: macOS Debug/Release, iOS Debug, wiring19 pass.
+  The native Return event itself remains **NOTRUN** until foreground readiness;
+  neither the explicit end action nor this new Return gate is GUI-qualified.
+
 ## Evidence retained
 
 - `/private/tmp/hc-ui-behavior-audit.KpGlYF`: presentation rules19 per Debug/optimized;

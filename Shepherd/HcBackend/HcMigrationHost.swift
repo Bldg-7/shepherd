@@ -189,6 +189,31 @@ private nonisolated struct HcMigrationStatus: Decodable, Sendable {
     }
     return control.responds(to: NSSelectorFromString("accessibilityPerformPress"))
 }
+/// Exercise a real native default key, not a substitute button callback.
+/// Resolve/check the target before one event; never retry uncertain dispatch.
+@MainActor func hcFixtureDefaultReturn(_ id: String, owner: NSWindow, root: URL) throws {
+    let control = hcFixtureElement(id)
+    let button: NSButton?
+    if let native = control as? NSButton { button = native }
+    else if let cell = control as? NSCell { button = hcFixtureOwnedButton(cell) }
+    else { button = nil }
+    guard let button, let window = button.window,
+          window === owner || window.sheetParent === owner || owner.attachedSheet === window,
+          hcFixtureNativeButtonReady(button), button.keyEquivalent == "\r",
+          button.keyEquivalentModifierMask.isEmpty || window.defaultButtonCell === button.cell,
+          let event = NSEvent.keyEvent(with:.keyDown,location:.zero,modifierFlags:[],timestamp:ProcessInfo.processInfo.systemUptime,
+            windowNumber:window.windowNumber,context:nil,characters:"\r",charactersIgnoringModifiers:"\r",isARepeat:false,keyCode:36) else {
+        throw HcWorkspaceModel.Failure.unavailable
+    }
+    let receipt = root.appending(path:"native-default-return.json")
+    let before: [String:Any] = ["identifier":id,"window":window.windowNumber,"key":window.isKeyWindow,
+        "enabled":button.isEnabled,"nativeDefaultReturn":true,"defaultCell":window.defaultButtonCell === button.cell,
+        "modifiers":button.keyEquivalentModifierMask.rawValue,"dispatched":false]
+    try JSONSerialization.data(withJSONObject:before).write(to:receipt,options:.atomic)
+    NSApp.sendEvent(event)
+    var after = before; after["dispatched"] = true
+    try JSONSerialization.data(withJSONObject:after).write(to:receipt,options:.atomic)
+}
 @MainActor func hcFixturePress(_ id: String) throws {
     let control = hcFixtureElement(id)
     if let cell = control as? NSCell {
