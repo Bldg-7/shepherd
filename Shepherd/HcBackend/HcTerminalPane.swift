@@ -158,6 +158,7 @@ struct HcTerminalPane: View {
     var machine: Machine? = nil
     var machineStore: MachineStore? = nil
     let keyboardIntent: HcWorkspacePresentation?
+    let isCurrentScope: @MainActor () -> Bool
     @AppStorage(AgentBoardView.showsTabsKey) private var showsTabs = false
     @Environment(\.hcPaneKeyboardRequest) private var keyboardRequest
     @State private var presentation: HcPanePresentation
@@ -171,8 +172,10 @@ struct HcTerminalPane: View {
         nonmutating set { presentation.expanded = newValue }
     }
     init(model: HcWorkspaceModel, pane: CoreWorkspaceDocument.Pane, machine: Machine? = nil,
-         machineStore: MachineStore? = nil, presentations: HcPanePresentationStore? = nil, keyboardIntent: HcWorkspacePresentation? = nil) {
+         machineStore: MachineStore? = nil, presentations: HcPanePresentationStore? = nil, keyboardIntent: HcWorkspacePresentation? = nil,
+         isCurrentScope: @escaping @MainActor () -> Bool = { true }) {
         self.model = model; self.pane = pane; self.machine = machine; self.machineStore = machineStore; self.keyboardIntent = keyboardIntent
+        self.isCurrentScope = isCurrentScope
         _presentation = State(initialValue: presentations?.entry(epoch: model.workspace?.epoch, pane: pane) ?? HcPanePresentation())
     }
     @State private var operationError: String?
@@ -187,6 +190,7 @@ struct HcTerminalPane: View {
         },onTargetChange:{ itemDropTargeted = $0 })
     }
     private var currentScope: Bool {
+        guard isCurrentScope(), model.state == .connected else { return false }
         guard let machine else { return true }
         guard let machineStore else { return false }
         return machineStore.activeMachineID == machine.id && machineStore.isCurrentConnection(machine)
@@ -212,7 +216,10 @@ struct HcTerminalPane: View {
                     .itemDropHighlight(itemDropTargeted)
                     .task(id: pane.terminal) {
                         drops?.cancel(); drops = makeDrops()
-                        await terminal.start { try model.session(for: pane) }
+                        await terminal.start {
+                            guard currentScope else { throw HcWorkspaceModel.Failure.stale }
+                            return try model.session(for: pane)
+                        }
                     }
                     .onDisappear { drops?.cancel(); terminal.stop() }
                     if let drops { TerminalDropBanner(controller: drops) }
@@ -241,12 +248,13 @@ struct HcTerminalPane: View {
     }
     private func makeDrops() -> TerminalDropController {
                     let controller = TerminalDropController(isEnabled: { currentScope && TerminalFileDropFeature.isEnabled }, destination: {
-                        guard let machine, let machineStore else { throw TerminalDropError.unusableTarget }
+                        guard currentScope, let machine, let machineStore else { throw TerminalDropError.unusableTarget }
                         let current = try machineStore.currentMachine(matching: machine)
                         guard model.state == .connected, pane.terminal?.coreID == model.coreID else { throw TerminalDropError.unusableTarget }
                         if current.isLocal { return .thisMac }
                         #if canImport(Citadel)
                         return .elsewhere {
+                            guard currentScope, machineStore.isCurrentConnection(current) else { throw TerminalDropError.unusableTarget }
                             guard let pin = current.pinnedHostKeyFingerprint else { throw TerminalDropError.needsHostKey }
                             guard let secret = try machineStore.secret(for: current) else { throw MachineStore.EditError.missingCredential }
                             return RemoteExecDropUploader(host: current.hostname, port: current.port, username: current.username,
@@ -270,7 +278,7 @@ struct HcTerminalPane: View {
         perform { try await model.launchSplit(paneID: pane.id, axis: axis, argv: [], cwd: cwd) }
     }
     private func open(_ link: String) {
-        guard let machine, let machineStore, machineStore.isCurrentConnection(machine),
+        guard currentScope, let machine, let machineStore, machineStore.isCurrentConnection(machine),
               pane.terminal?.coreID == model.coreID, model.document?.pane(pane.id)?.terminal == pane.terminal,
               let record = model.terminals.first(where: { $0.address == pane.terminal?.terminalID }),
               let route = TerminalLinkRoute(link: link, directory: record.cwd, hostname: machine.hostname,

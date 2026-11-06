@@ -15,8 +15,9 @@ import UniformTypeIdentifiers
     private static var dragged: Drag?
 
     static func provider(kind: HcWorkspaceRowReference.Kind, id: UUID, model: HcWorkspaceModel,
-                         machine: Machine?, store: MachineStore?) -> NSItemProvider? {
-        guard let machine, let store, model.state == .connected, model.workspace?.canWrite == true, let core = model.coreID,
+                         machine: Machine?, store: MachineStore?,
+                         isCurrentModel: @escaping @MainActor (HcWorkspaceModel) -> Bool) -> NSItemProvider? {
+        guard isCurrentModel(model), let machine, let store, model.state == .connected, model.workspace?.canWrite == true, let core = model.coreID,
               let epoch = model.workspace?.epoch, let snapshot = model.workspace?.snapshot,
               let document = snapshot.document, store.activeMachineID == machine.id,
               store.isCurrentConnection(machine) else { return nil }
@@ -25,7 +26,7 @@ import UniformTypeIdentifiers
         guard reference.pasteText(reference.text,coreID:core,version:snapshot.version,document:document) != nil else { return nil }
         dragged = Drag(reference:reference,machine:machine.connectionIdentity,sourceIsCurrent:{ [weak model] in
             guard let model else { return false }
-            return model.state == .connected && model.workspace?.canWrite == true && model.workspace?.epoch == epoch && model.coreID == core
+            return isCurrentModel(model) && model.state == .connected && model.workspace?.canWrite == true && model.workspace?.epoch == epoch && model.coreID == core
                 && model.workspace?.snapshot?.version == snapshot.version
                 && store.activeMachineID == machine.id && store.isCurrentConnection(machine)
         })

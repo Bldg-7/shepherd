@@ -9,6 +9,17 @@ nonisolated enum HcBoardSearch {
     }
 }
 
+/// Caller baseline for a deferred layout confirmation, not a permission or a
+/// lease on server state. The store still performs the exact-version CAS.
+nonisolated struct HcWorkspaceMutationStamp: Equatable, Sendable {
+    let epoch: UUID
+    let coreID: String
+    let version: UInt64
+    func matches(epoch: UUID?, coreID: String?, version: UInt64?) -> Bool {
+        !self.coreID.isEmpty && self.epoch == epoch && self.coreID == coreID && self.version == version
+    }
+}
+
 /// Local presentation intent only. Never a core/native-session permission.
 nonisolated struct HcSelectionStamp: Equatable, Sendable {
     let tab: UUID
@@ -23,17 +34,24 @@ nonisolated struct HcPaneKeyboardRequest: Equatable, Sendable {
     private(set) var epoch: UUID?
     private(set) var hasSelection = false
     private(set) var keyboardRequest: HcPaneKeyboardRequest?
+    private(set) var selectionIntent = UUID()
     var previewCoversTerminal = false
     var keyboardSuppressed = false
     private var suppressedFocus: HcSelectionStamp?
 
     func scopeChanged(_ epoch: UUID?, focus: HcSelectionStamp?) {
         guard self.epoch != epoch else { return }
+        selectionIntent = UUID()
         self.epoch = epoch; hasSelection = epoch != nil && focus != nil
         suppressedFocus = nil; keyboardRequest = nil; previewCoversTerminal = false
     }
     func clearSelection(focus: HcSelectionStamp?) {
+        selectionIntent = UUID()
         hasSelection = false; suppressedFocus = focus; keyboardRequest = nil; previewCoversTerminal = false
+    }
+    func clearSelection(ifUnchanged intent: UUID, focus: HcSelectionStamp?) {
+        guard selectionIntent == intent else { return }
+        clearSelection(focus: focus)
     }
     func followFocus(_ focus: HcSelectionStamp?) {
         guard epoch != nil else { return }
@@ -46,6 +64,7 @@ nonisolated struct HcPaneKeyboardRequest: Equatable, Sendable {
     }
     func select(_ focus: HcSelectionStamp?, requestKeyboard: Bool) {
         guard let epoch, let focus else { return }
+        selectionIntent = UUID()
         hasSelection = true; suppressedFocus = nil
         if requestKeyboard, let pane = focus.pane {
             previewCoversTerminal = false

@@ -152,6 +152,20 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
         }
         return nil
     }
+    static func competingWorkspaceRename(_ name: String, workspace: UUID, model: HcWorkspaceModel,
+                                         connection: CoreRPCConnection) async throws {
+        let competitor = try await CoreWorkspaceStore(connection:connection)
+        do {
+            let view = try await competitor.start()
+            guard let version = view.snapshot?.version else { throw Failure.assertion("competing snapshot") }
+            let result = try await competitor.edit(.renameWorkspace(workspace,name),expectedVersion:version)
+            guard case .acknowledged = result else { throw Failure.assertion("competing CAS acknowledged") }
+            try await competitor.close()
+        } catch { try? await competitor.close(); throw error }
+        try await wait("competing snapshot reaches actual UI") {
+            model.document?.workspaces.first(where: { $0.id == workspace })?.name == name
+        }
+    }
     static func editNativeTitle(_ text: String, cancel: Bool, window: NSWindow,
                                 beforeEnding: (@MainActor () async throws -> Void)? = nil) async throws {
         guard NSApp.isActive, window.isKeyWindow, let content = window.contentView else { throw Failure.assertion("owned key title window") }
@@ -419,17 +433,7 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
             try await editNativeTitle("Stale title must not save",cancel:false,window:window) {
                 // A separate subscribed store supplies an actual competing CAS;
                 // it is not the UI's rename action and cannot launch/kill/input.
-                let competitor = try await CoreWorkspaceStore(connection:connection)
-                do {
-                    let view = try await competitor.start()
-                    guard let version = view.snapshot?.version else { throw Failure.assertion("competing snapshot") }
-                    let result = try await competitor.edit(.renameWorkspace(workspace,"Competing layout edit"),expectedVersion:version)
-                    guard case .acknowledged = result else { throw Failure.assertion("competing CAS acknowledged") }
-                    try await competitor.close()
-                } catch { try? await competitor.close(); throw error }
-                try await wait("competing snapshot reaches real editor") {
-                    model.document?.workspaces.first(where: { $0.id == workspace })?.name == "Competing layout edit"
-                }
+                try await competingWorkspaceRename("Competing layout edit",workspace:workspace,model:model,connection:connection)
             }
             try await hcFixtureWait("hc.rename.unconfirmed.ok",present:true,enabled:true,window:window)
             try check(model.selectedTab?.name == originalTitle && model.selectedTab?.layout == originalLayout,
@@ -504,6 +508,16 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
             try await model.showTerminal(reference.terminalID,workspaceID:workspace)
             guard let duplicate = model.selectedTab, duplicate.id != tabID else { throw Failure.assertion("explicit duplicate view") }
             try await wait("actual duplicate view is selected") { elements(content)["hc-workspace.tab.\(duplicate.id)"] != nil && terminals(content).count == 1 }
+            try hcNativeFixtureCommand("w",code:13,label:"audit-stale-close",window:window,root:root)
+            try await hcFixtureWait("hc.close.confirm",present:true,enabled:true,window:window)
+            try await competingWorkspaceRename("Competing close edit",workspace:workspace,model:model,connection:connection)
+            let afterCompetingClose = model.document
+            try hcFixturePress("hc.close.confirm")
+            try await hcFixtureWait("hc.workspace.error.ok",present:true,enabled:true,window:window)
+            try check(model.document == afterCompetingClose && model.selectedTab?.id == duplicate.id,
+                      "stale close confirmation refuses to rebase or remove a changed view")
+            try hcFixturePress("hc.workspace.error.ok")
+            try await wait("stale close refusal dismissed") { window.attachedSheet == nil && window.isKeyWindow }
             try hcNativeFixtureCommand("w",code:13,label:"audit-close-confirm",window:window,root:root)
             try await hcFixtureWait("hc.close.confirm",present:true,enabled:true,window:window)
             try hcFixturePress("hc.close.confirm")
@@ -571,7 +585,7 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
             // Component integration on the actual renderer/core, NOT a claim
             // that AppKit's physical list dragging gesture has been exercised.
             try await wait("fresh metadata for row reference") { model.workspace?.canWrite == true }
-            guard let provider = HcWorkspaceItemDrag.provider(kind:.pane,id:firstPane.id,model:model,machine:store.activeMachine,store:store),
+            guard let provider = HcWorkspaceItemDrag.provider(kind:.pane,id:firstPane.id,model:model,machine:store.activeMachine,store:store,isCurrentModel:{ [weak owner] in owner?.model === $0 }),
                   let rowTarget = originalNative.textDrop else { throw Failure.assertion("production row provider/target") }
             try check(provider.registeredTypeIdentifiers.contains(HcWorkspaceItemDrag.typeIdentifier),"row provider owns a private process marker")
             let pasteboard = NSPasteboard.withUniqueName()

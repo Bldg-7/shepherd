@@ -57,7 +57,7 @@ class PreservationWiring(unittest.TestCase):
         pane = source('Shepherd/HcBackend/HcTerminalPane.swift')
         root = source('Shepherd/HcBackend/HcRootView.swift')
         self.assertIn('presentation.clearSelection(focus: selectionStamp)', board)
-        self.assertIn('guard presentation.hasSelection, let tab', board)
+        self.assertIn('guard scopeIsCurrent(), presentation.hasSelection, let tab', board)
         self.assertIn('requestKeyboard: false', board)
         self.assertIn('requestKeyboard: true', board)
         self.assertIn('request.epoch == model.workspace?.epoch', pane)
@@ -97,6 +97,18 @@ class PreservationWiring(unittest.TestCase):
             self.assertIn(guard, drag)
         self.assertIn('visibility:.ownProcess', drag)
         self.assertNotIn('HerdrItemDrag.Item', drag)
+
+    def test_deferred_close_uses_original_scope_and_revision(self):
+        board = source('Shepherd/HcBackend/HcWorkspaceView.swift')
+        root = source('Shepherd/HcBackend/HcRootView.swift')
+        pane = source('Shepherd/HcBackend/HcTerminalPane.swift')
+        self.assertIn('let stamp: HcWorkspaceMutationStamp', board)
+        self.assertIn('guard matches(request.stamp)', board)
+        self.assertIn('stamp.matches(epoch:model.workspace?.epoch,coreID:model.coreID,version:model.workspace?.snapshot?.version)', board)
+        self.assertIn('presentation.clearSelection(ifUnchanged:intent,focus:focus)', board)
+        self.assertIn('connection.model === candidate && connection.identity == machine.connectionIdentity', root)
+        self.assertIn('[weak connection, machineStore]', root)
+        self.assertIn('guard isCurrentScope(), model.state == .connected else { return false }', pane)
 
     def test_actual_rendered_selection_not_hidden_siblings_is_viewed(self):
         root = source('Shepherd/HcBackend/HcRootView.swift')

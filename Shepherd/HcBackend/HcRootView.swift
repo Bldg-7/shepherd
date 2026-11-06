@@ -124,7 +124,11 @@ struct HcRootView: View {
     }
     private var contents: some View {
         HcWorkspaceView(model: scopedModel, machine: machineStore.activeMachine, machineStore: machineStore,
-            closeRequests: closeRequests,
+            isCurrentModel: { [weak connection, machineStore] candidate in
+                guard let connection, let machine = machineStore.activeMachine else { return false }
+                return connection.model === candidate && connection.identity == machine.connectionIdentity
+                    && machineStore.isCurrentConnection(machine)
+            }, closeRequests: closeRequests,
             onSettings: { if !launchSheet && !switcher && !tracking { settings = true } },
             onLaunch: { openLauncher(currentWorkspace: false) },
             onSwitcher: { if !launchSheet && !tracking { switcher = true } },

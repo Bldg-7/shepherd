@@ -28,10 +28,10 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
 | Failed launch | Existing launcher handling plus durable hc recovery | Public stable failure formatting, no internal NSError name. Unsupported inspection intent rejected before workspace/placeholder creation. Uncertain prior run never auto-deleted/adopted/replayed. Missing real CLI/race error UX remains separately reviewed. |
 | Title editing | Original title double-click/IME field/native toolbar | Same real field/toolbar implementation with typed hc target, epoch/version guard. Component tests cover simulated composition, stale callbacks and geometry. Current actual-root ordinary-window audit exercises native title-label double-click/local event monitor, real editor/Unicode submit, Escape without metadata change, title restore and no window zoom/layout replacement. Actual competing-CAS refusal also passes: the old title session cannot overwrite a newer layout snapshot. Physical IME/fullscreen rename is open. |
 | Switcher | Original deferred onDismiss navigation | Found selection/focus applied before sheet dismissal. Defer with exact epoch/pane/terminal reference check; reject stale retarget. Shared original switcher presentation used. Current ordinary-window audit exercises Cancel and Return/dismissal/keyboard return; stale-scope dismissal remains a separate gate. |
-| Closing | Original command/context confirmations | Explicit view close keeps programs; current selection required, cover disables close. Real confirmation and exact selected/unselected behavior need current E2E tests; older rejected-screen18-pass is not that evidence. |
+| Closing | Original command/context confirmations | Explicit view close keeps programs; current selection required, cover disables close. Current native CmdW/confirmation closes only the selected duplicate view and leaves selection clear/programs live. Competing-CAS close refusal/reopen passes43 checks; unselected/context-menu close and post-dispatch pointer-focus races remain separate gates. |
 | Quit with sheet | Original presentationPreventsAppTermination(false) | Added original behavior to transient settings/switcher/origin/tracking/install sheets. Needs actual CmdQ/owned service survival gate. |
 | Viewed/attention | Original key-window + actual selected pane/tab | Found hidden tab siblings marked viewed in pane mode and app-active used without key-window check. New policy uses actual rendered mode/zoom/selection + key window. Pure rules covered; OS notification behavior remains unqualified. |
-| Scope changes | Existing exact machine identity / connection provenance | Clear overlays and deferred navigation; typed epoch/reference keys for previews, focus, switcher. No alias/PID/label is native authorization. Full host switch/reconnect interaction still a gate. |
+| Scope changes | Existing exact machine identity / connection provenance | Clear overlays and deferred navigation; typed epoch/reference keys for previews, focus, switcher. No alias/PID/label is native authorization. Native Retry is exercised; exact current owner-model identity now joins profile/epoch guards at board actions, attach/input/drop/upload and title submission. Full host switching and physical cross-window interactions remain gates. |
 | Multi-origin groups | Original host/remote grouping, folding, ordering | Still incomplete in hc product. ID-shadow bug in0.1.17 means no unsafe remote mutation or alias fallback. Do not hide this parity gap behind the read-only directory or claim full migration. |
 | Drag/drop | Original row-ID drag + terminal file drag | Scoped row-reference providers and the original terminal text-drop/highlight pipeline are now wired using real workspace node UUIDs, not fake legacy identities. Policy25/mode and actual-core native-destination component integration pass; physical List/Finder gestures remain unqualified. |
 | Empty/loading/error | Original board overlays/search/retry | Actual initially empty board, multi-term/no-results filter and client-failure banner/program survival pass in the current root. Native Retry dispatch also passes32-check current-root audit; loading and stale-target transitions remain open. No diagnostic/editor sidebar substitutes for these. |
@@ -174,6 +174,20 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
   item-drop2-stage component tests, macOS Release, iOS Debug, wiring11 and
   artifact rejection tests pass. See `Tests/HcBackend/ROW-DRAG-README.md` for
   metadata-ID semantics and qualification boundaries.
+
+- `.09ejp5g7` passes43 actual-root checks. A separate subscribed CAS changes the
+  workspace while the native Close view confirmation is open; one real confirm
+  shows refusal and preserves the exact document/selected duplicate. Dismissal
+  and a fresh CmdW/confirm then close only that view, with programs preserved.
+  Deferred close/split now retain the original epoch/core/version; current-owner
+  identity is checked synchronously even before previous-model teardown ends.
+- `hc-close-intent.fV3j0p/presentation`:39 rules/mode including exact large UInt64
+  revision comparisons and newer explicit row-selection preservation after a
+  pending close. `hc-close-intent-regression.EsV0Mx` macOS Release / iOS Debug,
+  wiring12 and artifact rejection tests pass. This is not physical pointer-focus-race proof.
+- See `hc-install-service-qualification.md` for the actual pinned source's shared
+  launchd/tmp housekeeping and why private HOME alone cannot qualify production
+  service/GUI-quit survival in the operator's current namespace.
 
 ## Evidence retained
 

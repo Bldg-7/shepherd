@@ -54,6 +54,33 @@ import Darwin
         check(HcBoardSearch.matches("project claude",fields:["Project A","Claude Code"]), "search terms match across original workspace/title fields")
         check(HcBoardSearch.matches("  PROject  ",fields:["project A"]), "search ignores casing and empty whitespace terms")
         check(!HcBoardSearch.matches("project missing",fields:["project A","Shell"]), "all search terms must match, not any one term")
+        state.scopeChanged(epoch,focus:first)
+        let closingIntent = state.selectionIntent
+        state.followFocus(second)
+        check(state.selectionIntent == closingIntent, "model reconciliation is not a new explicit selection intent")
+        state.clearSelection(ifUnchanged:closingIntent,focus:second)
+        check(!state.hasSelection, "unchanged close intent clears reconciled fallback")
+        state.select(first,requestKeyboard:false)
+        let superseded = state.selectionIntent
+        state.select(second,requestKeyboard:true)
+        check(state.selectionIntent != superseded, "explicit row navigation retires pending close-selection intent")
+        state.clearSelection(ifUnchanged:superseded,focus:first)
+        check(state.hasSelection && state.keyboardRequest?.pane == b, "late close completion preserves newer row selection and keyboard intent")
+        let previousScopeIntent = state.selectionIntent
+        state.scopeChanged(other,focus:first)
+        check(state.selectionIntent != previousScopeIntent, "scope change retires old close-selection completion")
+        let revision = HcWorkspaceMutationStamp(epoch:epoch,coreID:"core",version:9007199254740993)
+        check(revision.matches(epoch:epoch,coreID:"core",version:9007199254740993), "exact caller close baseline")
+        check(!revision.matches(epoch:other,coreID:"core",version:revision.version), "different connection epoch refused")
+        check(!revision.matches(epoch:nil,coreID:"core",version:revision.version), "retired connection refused")
+        check(!revision.matches(epoch:epoch,coreID:"other",version:revision.version), "different permanent origin refused")
+        check(!revision.matches(epoch:epoch,coreID:nil,version:revision.version), "unavailable origin refused")
+        check(!revision.matches(epoch:epoch,coreID:"core",version:nil), "missing snapshot refused")
+        check(!revision.matches(epoch:epoch,coreID:"core",version:revision.version-1), "large UInt64 revisions are never rounded")
+        check(!revision.matches(epoch:epoch,coreID:"core",version:revision.version+1), "newer snapshot does not authorize automatic rebase")
+        let exhausted = HcWorkspaceMutationStamp(epoch:epoch,coreID:"core",version:UInt64.max)
+        check(exhausted.matches(epoch:epoch,coreID:"core",version:UInt64.max), "stamp comparison never overflows; store separately refuses exhausted writes")
+        check(!HcWorkspaceMutationStamp(epoch:epoch,coreID:"",version:0).matches(epoch:epoch,coreID:"",version:0), "empty origin is never a close baseline")
         print("PASS workspace presentation rules: \(n) checks; not physical fullscreen/UI approval")
     }
 }

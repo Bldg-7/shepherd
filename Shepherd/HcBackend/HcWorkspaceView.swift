@@ -6,6 +6,7 @@ struct HcWorkspaceView: View {
     let model: HcWorkspaceModel?
     let machine: Machine?
     let machineStore: MachineStore
+    let isCurrentModel: @MainActor (HcWorkspaceModel) -> Bool
     let closeRequests: Int
     let onSettings: () -> Void
     let onLaunch: () -> Void
@@ -20,16 +21,20 @@ struct HcWorkspaceView: View {
     @State private var presentations = HcPanePresentationStore()
     @State private var titleRename: HcTitleRenameSession?
     @State private var renameError: String?
+    private var currentConnection: Bool {
+        guard let machine, let model, isCurrentModel(model) else { return false }
+        return machineStore.activeMachineID == machine.id && machineStore.isCurrentConnection(machine)
+    }
     var body: some View {
         WorkspaceNavigationSplitView(detailMinimumWidth: activePreview?.preview == nil ? 320 : 641) {
             Group {
                 if let model { HcAgentBoard(model: model, presentation: presentation, closeRequests: closeRequests, onTracking: onTracking, onRetry: onReconnect,
                         itemProvider: { item in
                             switch item {
-                            case .pane(let id): return HcWorkspaceItemDrag.provider(kind:.pane,id:id,model:model,machine:machine,store:machineStore)
-                            case .tab(let id): return HcWorkspaceItemDrag.provider(kind:.tab,id:id,model:model,machine:machine,store:machineStore)
+                            case .pane(let id): return HcWorkspaceItemDrag.provider(kind:.pane,id:id,model:model,machine:machine,store:machineStore,isCurrentModel:isCurrentModel)
+                            case .tab(let id): return HcWorkspaceItemDrag.provider(kind:.tab,id:id,model:model,machine:machine,store:machineStore,isCurrentModel:isCurrentModel)
                             }
-                        }, onRename: { _ = beginRename($0) }, onActivate: activateSelection) }
+                        }, scopeIsCurrent: { currentConnection }, onRename: { _ = beginRename($0) }, onActivate: activateSelection) }
                 else { ContentUnavailableView("No Panes", systemImage: "terminal") }
             }
             .navigationTitle(machine?.displayName ?? "Shepherd")
@@ -63,9 +68,9 @@ struct HcWorkspaceView: View {
                     else if model.state != .connected { unavailable }
                     else if presentation.hasSelection, let tab = model.selectedTab, let layout = tab.layout {
                         if !showsTabs, let pane = layout.panes.first(where: { $0.id == model.focus.paneByTab[tab.id] }) ?? layout.panes.first {
-                            HcTerminalPane(model: model, pane: pane, machine: machine, machineStore: machineStore, presentations: presentations, keyboardIntent: presentation).id(pane.id)
+                            HcTerminalPane(model: model, pane: pane, machine: machine, machineStore: machineStore, presentations: presentations, keyboardIntent: presentation, isCurrentScope: { currentConnection }).id(pane.id)
                         } else if let zoom = model.focus.zoomByTab[tab.id], let pane = layout.panes.first(where: { $0.id == zoom }) {
-                            HcTerminalPane(model: model, pane: pane, machine: machine, machineStore: machineStore, presentations: presentations, keyboardIntent: presentation).id(pane.id)
+                            HcTerminalPane(model: model, pane: pane, machine: machine, machineStore: machineStore, presentations: presentations, keyboardIntent: presentation, isCurrentScope: { currentConnection }).id(pane.id)
                         } else { layoutView(layout, model: model) }
                     } else { ContentUnavailableView("No Pane Selected", systemImage: "terminal") }
                 } else { unavailable }
@@ -142,7 +147,7 @@ struct HcWorkspaceView: View {
         return showsTabs ? .tab(tab.id) : model.focus.paneByTab[tab.id].map(HcBoardSelection.pane)
     }
     private func beginRename(_ target: HcBoardSelection?) -> Bool {
-        guard titleRename == nil, let target, let model, model.canEdit,
+        guard currentConnection, titleRename == nil, let target, let model, model.canEdit,
               let snapshot = model.workspace?.snapshot, let document = snapshot.document else { return false }
         let text: String, prompt: String
         switch target {
@@ -172,7 +177,7 @@ struct HcWorkspaceView: View {
         guard !session.isTab || !name.isEmpty, name != session.startText, let model else { return }
         Task {
             do {
-                guard model.workspace?.epoch == session.epoch, model.workspace?.snapshot?.version == session.version,
+                guard currentConnection, model.workspace?.epoch == session.epoch, model.workspace?.snapshot?.version == session.version,
                       model.canEdit else { throw HcWorkspaceModel.Failure.stale }
                 switch session.target {
                 case .tab(let id): try await model.renameTab(id, name: name)
@@ -193,7 +198,7 @@ struct HcWorkspaceView: View {
     private func layoutView(_ layout: CoreWorkspaceDocument.Layout, model: HcWorkspaceModel) -> AnyView {
         switch layout {
         case .leaf(let pane):
-            return AnyView(HcTerminalPane(model: model, pane: pane, machine: machine, machineStore: machineStore, presentations: presentations, keyboardIntent: presentation).id(pane.id))
+            return AnyView(HcTerminalPane(model: model, pane: pane, machine: machine, machineStore: machineStore, presentations: presentations, keyboardIntent: presentation, isCurrentScope: { currentConnection }).id(pane.id))
         case .split(let axis, let ratio, let first, let second):
             return AnyView(GeometryReader { proxy in
                 if axis == .horizontal {
@@ -213,6 +218,11 @@ struct HcWorkspaceView: View {
 }
 
 private enum HcBoardSelection: Hashable { case pane(UUID), tab(UUID) }
+private struct HcCloseRequest {
+    let target: HcBoardSelection
+    let stamp: HcWorkspaceMutationStamp
+    var title: String { if case .tab = target { return "Close Tab?" }; return "Close Pane?" }
+}
 @MainActor private final class HcTitleRenameSession: TitleRenameEditing {
     let id = UUID()
     let target: HcBoardSelection
@@ -237,20 +247,22 @@ private struct HcAgentBoard: View {
     let onTracking: () -> Void
     let onRetry: () -> Void
     let itemProvider: (HcBoardSelection) -> NSItemProvider?
+    let scopeIsCurrent: @MainActor () -> Bool
     let onRename: (HcBoardSelection) -> Void
     let onActivate: () -> Void
     @AppStorage(AgentBoardView.showsTabsKey) private var showsTabs = false
     @State private var search = ""
     @State private var workspaces = Set<UUID>()
-    @State private var closing: HcBoardSelection?
+    @State private var closing: HcCloseRequest?
     @State private var error: String?
     private var activeWorkspaces: Set<UUID> { workspaces.intersection(Set((model.document?.workspaces ?? []).map(\.id))) }
     private var selection: Binding<HcBoardSelection?> {
         Binding(get: {
-            guard presentation.hasSelection, let tab = model.selectedTab else { return nil }
+            guard scopeIsCurrent(), presentation.hasSelection, let tab = model.selectedTab else { return nil }
             if showsTabs { return .tab(tab.id) }
             return model.focus.paneByTab[tab.id].map(HcBoardSelection.pane)
         }, set: { item in
+            guard scopeIsCurrent(), model.state == .connected, item != selection.wrappedValue else { return }
             do {
                 switch item {
                 case .pane(let id): try model.select(pane: id)
@@ -293,11 +305,12 @@ private struct HcAgentBoard: View {
                                         Button("New shell to right") { split(pane, axis: .horizontal) }
                                         Button("New shell below") { split(pane, axis: .vertical) }
                                         Button(model.focus.zoomByTab[tab.id] == pane.id ? "Unzoom Pane" : "Zoom Pane") {
+                                            guard scopeIsCurrent(), model.state == .connected else { return }
                                             do { try model.zoom(pane: model.focus.zoomByTab[tab.id] == pane.id ? nil : pane.id) }
                                             catch { self.error = "Selection could not be saved." }
                                         }
                                         Divider()
-                                        Button("Close Pane", role: .destructive) { closing = .pane(pane.id) }
+                                        Button("Close Pane", role: .destructive) { prepareClose(.pane(pane.id)) }
                                     }
                                 }
                             }
@@ -341,15 +354,17 @@ private struct HcAgentBoard: View {
                 HStack { Text("An operation needs review.").font(.caption); Spacer(); Button("Review", action: onTracking) }.padding(10)
             }
         }
-        .onChange(of: closeRequests) { if model.canEdit { closing = selection.wrappedValue } }
-        .confirmationDialog(showsTabs ? "Close Tab?" : "Close Pane?", isPresented: Binding(get: { closing != nil }, set: { if !$0 { closing = nil } })) {
+        .onChange(of: closeRequests) { if let target = selection.wrappedValue { prepareClose(target) } }
+        .onChange(of: model.workspace?.epoch) { closing = nil }
+        .onChange(of: model.state) { if model.state != .connected { closing = nil } }
+        .confirmationDialog(closing?.title ?? (showsTabs ? "Close Tab?" : "Close Pane?"), isPresented: Binding(get: { closing != nil }, set: { if !$0 { closing = nil } })) {
             if let closing {
                 Button("Close view", role: .destructive) { close(closing) }.accessibilityIdentifier("hc.close.confirm")
             }
             Button("Cancel", role: .cancel) {}
         } message: { Text("The view closes; its programs keep running.") }
         .alert("Workspace operation", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
-            Button("OK") { error = nil }
+            Button("OK") { error = nil }.accessibilityIdentifier("hc.workspace.error.ok")
         } message: { Text(error ?? "") }
     }
     private var filterMenu: some View {
@@ -416,15 +431,33 @@ private struct HcAgentBoard: View {
     @ViewBuilder private func tabActions(_ tab: CoreWorkspaceDocument.Tab) -> some View {
         Button("Rename Tab…") { onRename(.tab(tab.id)) }
         Divider()
-        Button("Close Tab", role: .destructive) { closing = .tab(tab.id) }
+        Button("Close Tab", role: .destructive) { prepareClose(.tab(tab.id)) }
     }
     private func split(_ pane: CoreWorkspaceDocument.Pane, axis: CoreWorkspaceDocument.Axis) {
+        guard let stamp = mutationStamp(), model.document?.pane(pane.id)?.terminal == pane.terminal else { return }
         let cwd = record(pane)?.cwd
-        perform { try await model.launchSplit(paneID: pane.id, axis: axis, argv: [], cwd: cwd) }
+        perform {
+            guard matches(stamp) else { throw HcWorkspaceModel.Failure.stale }
+            try await model.launchSplit(paneID: pane.id, axis: axis, argv: [], cwd: cwd)
+        }
     }
-    private func close(_ target: HcBoardSelection) {
+    private func mutationStamp() -> HcWorkspaceMutationStamp? {
+        guard scopeIsCurrent(), model.canEdit, let core = model.coreID,
+              let epoch = model.workspace?.epoch, let version = model.workspace?.snapshot?.version else { return nil }
+        return .init(epoch:epoch,coreID:core,version:version)
+    }
+    private func matches(_ stamp: HcWorkspaceMutationStamp) -> Bool {
+        scopeIsCurrent() && model.canEdit && stamp.matches(epoch:model.workspace?.epoch,coreID:model.coreID,version:model.workspace?.snapshot?.version)
+    }
+    private func prepareClose(_ target: HcBoardSelection) {
+        guard let stamp = mutationStamp() else { return }
+        closing = .init(target:target,stamp:stamp)
+    }
+    private func close(_ request: HcCloseRequest) {
+        let target = request.target, intent = presentation.selectionIntent
         let wasSelected = selection.wrappedValue == target
         perform {
+            guard matches(request.stamp) else { throw HcWorkspaceModel.Failure.stale }
             switch target {
             case .pane(let id):
                 if let tab = model.document?.workspaces.flatMap(\.tabs).first(where: { $0.layout?.panes.contains(where: { $0.id == id }) == true }),
@@ -433,10 +466,14 @@ private struct HcAgentBoard: View {
             case .tab(let id): try await model.closeTab(id)
             }
             let focus = model.selectedTab.map { HcSelectionStamp(tab: $0.id, pane: model.focus.paneByTab[$0.id]) }
-            if wasSelected { presentation.clearSelection(focus: focus) }
+            guard scopeIsCurrent(), model.workspace?.epoch == request.stamp.epoch else { return }
+            if wasSelected { presentation.clearSelection(ifUnchanged:intent,focus:focus) }
         }
     }
     private func perform(_ action: @escaping @MainActor () async throws -> Void) {
-        Task { do { try await action() } catch { self.error = "Operation unconfirmed. Review the saved outcome before retrying; nothing is automatically resent." } }
+        Task { do {
+            guard scopeIsCurrent() else { throw HcWorkspaceModel.Failure.stale }
+            try await action()
+        } catch { self.error = "Operation unconfirmed. Review the saved outcome before retrying; nothing is automatically resent." } }
     }
 }
