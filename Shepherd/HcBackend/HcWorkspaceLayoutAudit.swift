@@ -170,11 +170,16 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
         abs(a.minX-b.minX) < 1 && abs(a.minY-b.minY) < 1 && abs(a.width-b.width) < 1 && abs(a.height-b.height) < 1
     }
     static func run(model: HcWorkspaceModel, connection: CoreRPCConnection, root: URL,
-                    fullscreen: Bool) async throws -> [String:Any] {
+                    screenTransport: CoreProcessTransport, fullscreen: Bool) async throws -> [String:Any] {
         var checks = 0
         func check(_ value: Bool, _ label: String) throws {
             guard value else { throw Failure.assertion(label) }; checks += 1
         }
+        _ = NSApp.perform(NSSelectorFromString("accessibilitySetValue:forAttribute:"), with:NSNumber(value:true), with:"AXEnhancedUserInterface")
+        try await wait("actual initially empty board") {
+            NSApp.windows.compactMap(\.contentView).contains { elements($0)["workspace.board.empty"] != nil }
+        }
+        checks += 1
         let workspace = try await model.createWorkspace(name: "Owned UI behavior audit")
         try await model.launchTab(workspaceID: workspace, name: "Owned terminal", argv: ["/usr/bin/python3","-I","-S","-B",root.appending(path:"ui-peer.py").path])
         guard let reference = model.selectedTab?.layout?.panes.first?.terminal else { throw Failure.assertion("known run receipt") }
@@ -459,6 +464,16 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
             let record = try await HcTerminalBoard(connection:connection).get(reference.terminalID)
             try check(record.pid == originalRecord.pid && record.createdMs == originalRecord.createdMs && record.state == "live",
                       "sidebar does not replace or end actual hc program")
+            // End only the app's owned connect client; the independent control
+            // channel and core/programs stay live. Never retry the failed client.
+            try await screenTransport.close()
+            try await wait("actual disconnected-board retry banner",seconds:10) {
+                model.state == .failed && elements(content)["workspace.board.connection-failure"] != nil
+            }
+            checks += 1
+            let afterFailure = try await HcTerminalBoard(connection:connection).get(reference.terminalID)
+            try check(afterFailure.pid == originalRecord.pid && afterFailure.createdMs == originalRecord.createdMs && afterFailure.state == "live",
+                      "connect failure presents retry without terminating the program")
             guard await restore() else { throw Failure.assertion("owned fullscreen/pointer cleanup") }
             let result: [String:Any] = ["passed":true,"checks":checks,"actualHcRoot":true,"actualCore":true,
                 "fullscreenSpaceAndEdgeReveal":fullscreen,"fullscreenExitRestored":restoreSucceeded,"nativeRevealOnly":!fullscreen,"physicalDividerDrag":"NOTRUN",

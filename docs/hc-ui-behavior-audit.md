@@ -106,6 +106,14 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
   original launcher69, iOS Debug and source-wiring8 regressions pass. Loading/
   failure transitions remain source-wired, not falsely labeled exercised E2E.
 
+- `.alhq9684` passes29 current-source ordinary-window checks. Before seeding any
+  workspace it observes the actual No Panes board. At the end it closes only the
+  app's owned `hc connect` transport, observes model failure and the real board's
+  connection-failure/Retry banner, and uses a separate live control connection to
+  verify the original program's same PID/creation/live state. Retry **dispatch**,
+  loading transition, physical pointer/IME/Finder drag and whole UI approval are
+  not inferred from these checks. Core, programs, socket and staged apps retire.
+
 ## Evidence retained
 
 - `/private/tmp/hc-ui-behavior-audit.KpGlYF`: presentation rules19 per Debug/optimized;

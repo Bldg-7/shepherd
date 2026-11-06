@@ -309,6 +309,7 @@ private struct HcAgentBoard: View {
                     actions: { Button("Retry", action: onRetry) }
                 } else {
                     ContentUnavailableView("No Panes", systemImage: "terminal", description: Text("The panes open on this machine appear here."))
+                        .accessibilityIdentifier("workspace.board.empty")
                 }
             } else if visibleRowCount == 0 {
                 ContentUnavailableView.search(text: search).accessibilityIdentifier("workspace.board.no-matches")
@@ -317,6 +318,7 @@ private struct HcAgentBoard: View {
         .safeAreaInset(edge: .top, spacing: 0) {
             if model.state == .failed && totalRows > 0 {
                 HStack { Text("Connection Failed").font(.caption); Spacer(); Button("Retry", action: onRetry) }.padding(10)
+                    .accessibilityIdentifier("workspace.board.connection-failure")
             }
         }
         .safeAreaBar(edge: .top, spacing: 0) {

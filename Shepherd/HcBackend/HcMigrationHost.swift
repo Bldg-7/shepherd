@@ -277,7 +277,7 @@ struct HcMigrationHost: View {
             let m = owner.model!; workspace = m; checks += 1
             if ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_LAYOUT_AUDIT"] == "1" {
                 let result = try await HcWorkspaceLayoutAudit.run(model: m, connection: c, root: root,
-                    fullscreen: ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_FULLSCREEN_AUDIT"] == "1")
+                    screenTransport: screenTransport, fullscreen: ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_FULLSCREEN_AUDIT"] == "1")
                 owned = result["ownedPIDs"] as? [UInt32] ?? owned
                 _ = try await c.call("server.stop")
                 await owner.close(); try await c.close()
