@@ -331,6 +331,27 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
   The native Return event itself remains **NOTRUN** until foreground readiness;
   neither the explicit end action nor this new Return gate is GUI-qualified.
 
+- Current native `.vf0929fp` failed30 at searched external-view selection.
+  It had already exercised the preceding preview Show/Hide/re-read actions;
+  this is partial success, not NOTRUN for everything or overall approval.
+  Pure `hc-switcher-submit-negative.c2AiZ5` then reproduces submit losing the
+  choice when current filtered results no longer contain the old highlight.
+  Submit now resolves only current available results (current highlight or
+  first available), retaining all parent scope/reference/version guards.
+  `hc-switcher-submit-fixed.Mciepe`: original UI16 stages, wiring20, macOS
+  Debug/Release and iOS Debug pass.
+- Corrected native `.h_45eof_` progresses47: searched canonical discovery,
+  unselected context close, stale close refusal, actual default Return view-only
+  close with unchanged program incarnation/state, preview re-read and multi-pane
+  expansion, native zoom/unzoom/split and filter ownership were exercised before
+  failure. `native-default-return.json` confirms the owned enabled key/default
+  button and one dispatched Return. It fails at the subsequent raw-drop peer
+  readiness marker with the original renderer only6 columns wide. Core input
+  loss vs fixture/rendering cause is not established. File/row drop, later native
+  launcher handoff, end-programs button and Retry in this exact composition are
+  not qualified by this run. Both native attempts retired owned programs/socket
+  and staged apps. No further unattended foreground retries are running.
+
 ## Evidence retained
 
 - `/private/tmp/hc-ui-behavior-audit.KpGlYF`: presentation rules19 per Debug/optimized;

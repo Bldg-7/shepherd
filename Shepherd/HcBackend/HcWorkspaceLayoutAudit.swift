@@ -541,6 +541,11 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
                 guard let own = ownedSheetContent(window), let row = elements(own)["workspace.switcher.terminal.\(external.address)"] else { return false }
                 return (row as AnyObject).isAccessibilityEnabled?() == true
             }
+            let searchContent = ownedSheetContent(window)
+            try JSONSerialization.data(withJSONObject:["expectedTerminal":external.address,"editorText":searchEditor.string,
+                "keyWindow":searchWindow.isKeyWindow,"editorOwnsKeyboard":searchWindow.firstResponder === searchEditor,
+                "identifiers":searchContent.map { Array(elements($0).keys).sorted() } ?? []])
+                .write(to:root.appending(path:"native-search-before-return.json"),options:.atomic)
             try returnKey(in:searchWindow)
             try await wait("searched external view selected",seconds:12) {
                 ownedSheetContent(window) == nil && model.selectedTab?.layout?.panes.first?.terminal?.terminalID == external.address

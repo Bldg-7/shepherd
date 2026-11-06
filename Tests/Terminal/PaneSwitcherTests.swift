@@ -39,6 +39,13 @@ public nonisolated enum AgentKind: String, Sendable {
         check(result.pane.id == host.id, "grouped choice retains exact pane for keyboard focus")
         let a = TerminalPaneFocus(paneID: host.id), b = TerminalPaneFocus(paneID: host.id)
         check(a != b && a.paneID == b.paneID, "same-pane repeated navigation has fresh focus request without attach recreation")
+        let oldChoice = WorkspaceSwitcherItem(id:"old",title:"Old",location:"owned",searchTerms:[],hasAgent:false,isAvailable:true)
+        let searched = WorkspaceSwitcherItem(id:"searched",title:"Searched",location:"owned",searchTerms:[],hasAgent:false,isAvailable:true)
+        let disabled = WorkspaceSwitcherItem(id:"disabled",title:"Disabled",location:"owned",searchTerms:[],hasAgent:false,isAvailable:false)
+        check(WorkspaceSwitcherItem.submitted(in:[searched],highlightedID:oldChoice.id)?.id == searched.id,"Return resolves current search results before asynchronous highlight reconciliation")
+        check(WorkspaceSwitcherItem.submitted(in:[disabled,searched],highlightedID:disabled.id)?.id == searched.id,"stale or disabled highlight never selects unavailable choice")
+        check(WorkspaceSwitcherItem.submitted(in:[oldChoice,searched],highlightedID:searched.id)?.id == searched.id,"explicit current highlight remains selected")
+        check(WorkspaceSwitcherItem.submitted(in:[disabled],highlightedID:nil) == nil,"no available result never broadens selection")
         print("PASS \(checks) pane search/machine+nested identity/stale terminal/disconnection/tab destination/repeated focus checks; snapshots only, no network")
     }
 }

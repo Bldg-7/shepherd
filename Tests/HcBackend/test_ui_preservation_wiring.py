@@ -200,6 +200,13 @@ class PreservationWiring(unittest.TestCase):
         self.assertIn('hcFixtureDefaultReturn("hc.close.confirm",owner:window,root:root)',audit)
         self.assertIn('before.createdMs == after.createdMs && before.state == after.state',audit)
 
+    def test_switcher_submit_resolves_only_the_current_available_results(self):
+        switcher = source('Shepherd/Hosts/Views/PaneSwitcher.swift')
+        self.assertIn('?? results.first(where: \\.isAvailable)',switcher)
+        self.assertIn('WorkspaceSwitcherItem.submitted(in:results,highlightedID:highlightedID)',switcher)
+        submit = switcher[switcher.index('private func chooseHighlighted()'):]
+        self.assertNotIn('destinations.first',submit)
+
     def test_actual_rendered_selection_not_hidden_siblings_is_viewed(self):
         root = source('Shepherd/HcBackend/HcRootView.swift')
         self.assertIn('controlActiveState == .key, presentation.hasSelection', root)

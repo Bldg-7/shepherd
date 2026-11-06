@@ -36,6 +36,11 @@ struct WorkspaceSwitcherItem<ID: Hashable>: Identifiable, Equatable {
     let hasAgent: Bool
     let isAvailable: Bool
     var accessibilityID: String? = nil
+    static func submitted(in results: [Self], highlightedID: ID?) -> Self? {
+        // onChange reconciliation may follow the submit event. Never look up
+        // an old destination outside the CURRENT filtered snapshot.
+        results.first { $0.id == highlightedID && $0.isAvailable } ?? results.first(where: \.isAvailable)
+    }
     func matches(_ query: String) -> Bool {
         query.split(whereSeparator: \.isWhitespace).allSatisfy { term in
             ([title,location] + searchTerms).contains { $0.localizedStandardContains(String(term)) }
@@ -133,6 +138,6 @@ struct WorkspacePaneSwitcher<ID: Hashable>: View {
         highlightedID = choices[min(choices.count - 1, max(0, index + delta))].id
     }
     private func chooseHighlighted() {
-        if let destination = results.first(where: { $0.id == highlightedID && $0.isAvailable }) { onSelect(destination) }
+        if let destination = WorkspaceSwitcherItem.submitted(in:results,highlightedID:highlightedID) { onSelect(destination) }
     }
 }
