@@ -1,0 +1,18 @@
+{
+  "rendererRepository": "https://github.com/migueldeicaza/SwiftTerm",
+  "rendererVersion": "1.20.0",
+  "rendererBaseCommit": "5d14406844143538cd8f8851d2d8a67c1fe443e5",
+  "patch": "saved-wrap-default.patch",
+  "candidateBufferSHA256": "82faa133bdce44f427a21fa32a27d2a59bc6c6714b8d82893fe057347b2d4a5c",
+  "originalManifestSHA256": "29ffcf9cba318f9644d11ba082616694e6fe7cff545d085a263b748a77b88457",
+  "derivedDiagnosticManifestSHA256": "0e971edd2a32bf2afbe0321b0dc130dc5c6535c19a9cf18b734a0a32f7e047fd",
+  "candidateObjectSHA256": "ca92b4601d306f42b6a1fefdf2bf4be0416569a432b58e5185b66415cbaa4d83",
+  "candidateRoot": "/private/tmp/hc-swiftterm-wrap.EMRtlC",
+  "comparisonRoot": "/private/tmp/hc-wrap-comparison.4gFBMa",
+  "finalComparisonRoot": "/private/tmp/hc-wrap-final.3iYpFx",
+  "coreBaseline": "official 0.1.17 unchanged",
+  "derivedManifest": "same SwiftTerm source/resources/build-info plugin; unrelated Termcast/docs/benchmark targets/dependencies omitted",
+  "appRendererPinChanged": false,
+  "nativeGUIQualified": false,
+  "upstreamPushed": false
+}

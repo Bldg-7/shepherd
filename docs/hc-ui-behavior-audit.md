@@ -352,6 +352,21 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
   not qualified by this run. Both native attempts retired owned programs/socket
   and staged apps. No further unattended foreground retries are running.
 
+- The47-check raw-drop failure is now isolated headlessly: current product
+  SwiftTerm1.20.0 at5d144068 receives the full raw bytes and core text at6/80
+  columns, but6-column rendering overwrites the right edge (`HC-DRY`). DECSTR
+  resets savedWraparound=false, then normal-screen1049l restores it. Priming an
+  earlier saved cursor does not help because DECSTR resets that saved state.
+  A separate candidate changing only Buffer's two saved-wrap defaults to true
+  passes6/80 while preserving explicit wrap-OFF/alternate restore. There is no
+  application VT filtering/extra transport input or core fork. Final
+  `hc-wrap-final.3iYpFx`: default attach9 pass, expected renderer negative
+  explicitly confirmed, candidate2 viewport cases pass, owned scopes retired.
+  **This is a current app renderer blocker, not a new overall GUI pass.** The
+  app dependency/pin has NOT been changed; integration and native requalification
+  remain required. See `Tests/Terminal/SwiftTermWrap/{README.md,recipe.json}` and
+  patch for exact revision, derived diagnostic manifest and hashes.
+
 ## Evidence retained
 
 - `/private/tmp/hc-ui-behavior-audit.KpGlYF`: presentation rules19 per Debug/optimized;

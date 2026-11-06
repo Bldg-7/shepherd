@@ -5,7 +5,7 @@ is blocked except the private core's Unix sockets. Direct startup only (no
 machine-wide launchd), via the same SSH_CONNECTION fixture marker.
 """
 from pathlib import Path
-import argparse, hashlib, json, os, platform, socket, subprocess, sys, time
+import argparse, hashlib, json, os, platform, shutil, socket, subprocess, sys, time
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'Tests/CoreProtocol'))
@@ -14,7 +14,11 @@ import core_test_artifact as artifacts
 p = argparse.ArgumentParser()
 choice = artifacts.add_arguments(p)
 p.add_argument('--output', type=Path, required=True)
+p.add_argument('--narrow-render-tests',action='store_true',help='compare actual core and SwiftTerm at80/6 columns without a window')
+p.add_argument('--products',type=Path,help='current macOS Debug products, required for narrow renderer')
+p.add_argument('--renderer-products',type=Path,help='DIAGNOSTIC ONLY: separately built SwiftTerm candidate products; never changes the app pin')
 a = p.parse_args()
+if a.renderer_products and not a.narrow_render_tests:p.error('--renderer-products is only a diagnostic narrow-render override')
 assert platform.system() == 'Darwin' and platform.machine() == 'arm64', 'pinned archive is macOS ARM64 only'
 artifact = artifacts.select(a.archive, a.build_receipt, official_017_archive=a.official_017_archive)
 assert artifact['version'] == '0.1.17', 'this gate requires the official 0.1.17 artifact'
@@ -49,7 +53,7 @@ with socket.socket() as listener:
     result = subprocess.run(sandbox + [sys.executable, '-I', '-c', probe, str(listener.getsockname()[1])], env=core_env, capture_output=True, timeout=10)
     assert result.returncode == 0, 'TCP denial canary failed'
 sources = sorted(str(p.relative_to(ROOT)) for p in (ROOT/'ShepherdKit/Sources/ShepherdKit/CoreKit').glob('*.swift'))
-test = 'Tests/HcBackend/HcTerminalSessionTests.swift'
+test = 'Tests/HcBackend/HcNarrowRenderTests.swift' if a.narrow_render_tests else 'Tests/HcBackend/HcTerminalSessionTests.swift'
 peer = 'Tests/HcBackend/attach-peer.py'
 tracked = sources + [test, peer, 'Tests/CoreProtocol/core_test_artifact.py', str(Path(__file__).resolve().relative_to(ROOT))]
 (out/'source-hashes.json').write_text(json.dumps({n: hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in tracked}, indent=2))
@@ -67,7 +71,24 @@ for feature in ('MemberImportVisibility', 'NonisolatedNonsendingByDefault', 'Inf
     flags += ['-enable-upcoming-feature', feature]
 exe = out / 'hc-terminal-session-tests'
 report = out / 'core-report.json'
-stage('build', 120, flags + sources + [test, '-o', str(exe)])
+render_link=[]
+if a.narrow_render_tests:
+    assert a.products, '--products is required'
+    products=a.products.resolve()
+    renderer=a.renderer_products.resolve() if a.renderer_products else products
+    shutil.copytree(renderer/'SwiftTerm_SwiftTerm.bundle',out/'SwiftTerm_SwiftTerm.bundle')
+    sdk=subprocess.check_output(['xcrun','--sdk','macosx','--show-sdk-path'],env=env,text=True).strip()
+    derived=products.parents[2]
+    maps=list((derived/'Build/Intermediates.noindex/GeneratedModuleMaps').glob('*.modulemap'))
+    for base in [ROOT/'build/SourcePackages/checkouts',ROOT/'Vendor/Citadel',ROOT/'Vendor/swift-nio-ssh']:
+        maps += sorted(m for m in base.rglob('module.modulemap') if 'Benchmarks' not in m.parts)
+    flags += ['-sdk',sdk,'-I',str(renderer),'-I',str(products),*[x for m in maps for x in ['-Xcc','-fmodule-map-file='+str(m)]]]
+    objects=[v for v in products.glob('*.o') if v.name != 'SwiftTerm.o'] + [renderer/'SwiftTerm.o']
+    assert all((ROOT/s).stat().st_mtime <= (products/'ShepherdKit.o').stat().st_mtime for s in sources),'build current SDK first'
+    render_link=[*map(str,objects),'-framework','AppKit','-framework','QuartzCore','-framework','CoreText','-framework','UserNotifications','-framework','Security','-lz','-lsqlite3']
+    (out/'renderer-product-hashes.json').write_text(json.dumps({str(v):digest(v) for v in [*objects,*maps,*list((renderer/'SwiftTerm.swiftmodule').glob('*.swiftmodule'))]},indent=2))
+    sources=[] # Import the real product SDK rather than recompiling a different SSH composition.
+stage('build', 120, flags + sources + [test,*render_link,'-o',str(exe)])
 try:
     stage('attach', 60, sandbox + [str(exe), str(binary), str(home), str(ROOT/peer), str(report), artifact['version']])
 except AssertionError as failure:
@@ -89,11 +110,16 @@ finally:
         time.sleep(0.025)
 for name, expected in json.loads((out/'source-hashes.json').read_text()).items():
     assert digest(ROOT/name) == expected, 'source changed during validation: ' + name
+if a.narrow_render_tests:
+    for name,expected in json.loads((out/'renderer-product-hashes.json').read_text()).items():
+        assert digest(Path(name))==expected,'renderer product changed during diagnostic: '+name
 passed = result.get('passed') is True and result.get('stopAcknowledged') is True and result.get('connectChildReaped') is True and bool(pids)
 (out/'validation.json').write_text(json.dumps({'passed': passed, 'realCore': artifact['version'], 'artifactVariant': artifact['variant'],
     'officialRelease': artifact['officialRelease'], 'checks': result.get('checks'), 'failure': result.get('failure'),
     'ownCoreStopped': True, 'ownSocketRemoved': True, 'ownedProcessesExited': bool(pids),
     'launchdLifecycleQualified': False, 'isolatedHomeAndSession': True, 'externalNetworkDenied': True,
-    'userCoreOrConfigTouched': False, 'browserAuthorityUsed': False}, indent=2))
+    'userCoreOrConfigTouched': False, 'browserAuthorityUsed': False,
+    'narrowRenderDiagnostic':a.narrow_render_tests,'rendererCandidate':str(a.renderer_products) if a.renderer_products else None,
+    'appRendererPinChanged':False}, indent=2))
 assert passed
-print('PASS hc terminal attach/session:', out)
+print('PASS narrow-render diagnostic:' if a.narrow_render_tests else 'PASS hc terminal attach/session:', out)
