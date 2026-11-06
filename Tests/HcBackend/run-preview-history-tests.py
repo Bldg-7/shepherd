@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Actual hc preview bookkeeping/request/model; no window, files, credentials or core."""
+"""Actual hc preview state/request/model/owned file reads; no window/credentials/core."""
 from pathlib import Path
 import argparse, hashlib, json, subprocess, sys
 sys.dont_write_bytecode=True
@@ -30,7 +30,8 @@ def stage(name,command,seconds):
 for mode,extra in [('debug',[]),('optimized',['-O'])]:
     exe=out/('preview-history-'+mode)
     stage(mode+'-build',['xcrun','swiftc','-swift-version','6','-default-isolation','MainActor','-parse-as-library','-warnings-as-errors',*sdk,*extra,*files,'-o',exe],120)
-    stage(mode+'-tests',['/usr/bin/sandbox-exec','-f',profile,exe],20)
+    fixtures=out/('files-'+mode);fixtures.mkdir(mode=0o700)
+    stage(mode+'-tests',['/usr/bin/sandbox-exec','-f',profile,exe,fixtures],20)
 assert before==hashes(),'source changed during test'
-(out/'validation.json').write_text(json.dumps({'passed':True,'stages':stages,'actualStoreRequestModel':True,'physicalGUIQualified':False,'fileReads':False,'userCoreOrConfigUsed':False},indent=2))
+(out/'validation.json').write_text(json.dumps({'passed':True,'stages':stages,'actualStoreRequestModel':True,'physicalGUIQualified':False,'fileReads':'owned local files only','userCoreOrConfigUsed':False},indent=2))
 print('PASS hc preview history: '+str(out),flush=True)

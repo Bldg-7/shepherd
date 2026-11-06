@@ -307,6 +307,21 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
   but none qualifies current whole-app GUI, physical gestures, provider/native
   association, real OS permissions or launchd lifetime.
 
+- Preview read identity follow-up: original `ContentView.previewPanel` gives
+  each read model its own view identity. hc now likewise applies
+  `previewExpansion` before `.id(previewModel.id)` and isolates the panel in a
+  typed view helper. Actual store/model/owned local reader25 per mode pass at
+  `hc-preview-panel-split.OEnSpM/component`; that exact component source is
+  unchanged by the final modifier-order correction. Final macOS Debug/Release,
+  iOS Debug and wiring18 pass at `hc-preview-panel-order.M66qKN`.
+  The next bounded native audit now contains actual Show/Hide Preview controls
+  and owned-file rewrite/reopen checks, but these new actions are **NOTRUN**.
+  `hc-preview-identity.TIie6S` stopped after Debug25 due to runner variable
+  shadowing; `hc-preview-identity-fixed.xbUVUu` then failed macOS Debug type
+  checking; `hc-preview-panel-split.OEnSpM` isolated the actual error (calling a
+  FilePreviewPanel-only method after `.id` changed its type). None of those
+  unexecuted Release/iOS stages are counted as passing.
+
 ## Evidence retained
 
 - `/private/tmp/hc-ui-behavior-audit.KpGlYF`: presentation rules19 per Debug/optimized;

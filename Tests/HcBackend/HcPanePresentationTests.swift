@@ -7,8 +7,13 @@ public nonisolated enum AgentKind: String, Sendable {
     case claude, codex, pi
     var supportsLegacySessionInspection: Bool { self != .pi }
 }
+private final class PreviewNoSecrets: MachineSecretStore {
+    func saveSecret(_ data: Data, tag: String) throws { preconditionFailure("no credential write") }
+    func loadSecret(tag: String) throws -> Data? { preconditionFailure("no credential read") }
+    func deleteSecret(tag: String) throws { preconditionFailure("no credential delete") }
+}
 @main @MainActor private struct HcPanePresentationTests {
-    static func main() throws {
+    static func main() async throws {
         var count = 0
         func check(_ b: Bool, _ text: String) { precondition(b,text); count += 1 }
         let epoch = UUID(), tab = UUID(), other = UUID()
@@ -82,6 +87,28 @@ public nonisolated enum AgentKind: String, Sendable {
         let gone = small.entry(epoch:epoch,pane:a)
         small.retain(epoch:epoch,document:nil,missingDocumentConfirmed:true)
         check(small.entry(epoch:epoch,pane:a) !== gone,"confirmed missing document retires history rather than treating it as unavailable")
-        print("PASS hc preview history: \(count) checks; actual request/model/store, no file/credential/network/UI actions")
+        let files = URL(fileURLWithPath:CommandLine.arguments[1])
+        let file = files.appending(path:"owned-preview.txt")
+        try Data("first owned read".utf8).write(to:file)
+        let suite = "owned-hc-preview-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName:suite)!
+        defer { defaults.removePersistentDomain(forName:suite) }
+        let local = Machine(displayName:"Owned local",hostname:"localhost",username:"owned",isLocal:true)
+        let machines = MachineStore(defaults:defaults,localMachine:local,keychain:PreviewNoSecrets())
+        let localRequest = FilePreviewRequest(machine:local,hcPaneID:a.id,terminalID:"t1",directory:files.path,link:"owned-preview.txt")
+        let reading = HcPanePresentation(); reading.open(localRequest,from:a)
+        func contents(_ model: FilePreviewModel) -> String? {
+            if case .loaded(let document) = model.state, case .text(let value,_) = document.content { return value }
+            return nil
+        }
+        await reading.previewModel.loadIfNeeded(localRequest,store:machines)
+        check(contents(reading.previewModel) == "first owned read","actual local reader loads owned file")
+        let previousRead = reading.previewModel
+        reading.hide()
+        try Data("second owned read".utf8).write(to:file)
+        reading.show()
+        await reading.previewModel.loadIfNeeded(reading.preview!,store:machines)
+        check(reading.previewModel !== previousRead && contents(reading.previewModel) == "second owned read","hide/show retained request performs a new actual file read")
+        print("PASS hc preview history: \(count) checks; actual request/model/store/owned file reader; no credential/network/UI actions")
     }
 }

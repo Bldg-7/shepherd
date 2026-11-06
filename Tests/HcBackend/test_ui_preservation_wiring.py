@@ -222,6 +222,8 @@ class PreservationWiring(unittest.TestCase):
         self.assertIn('previewTabID: showsTabs ? tab.id : nil', workspace)
         self.assertIn('onClose: { shown.hide() }', workspace)
         self.assertIn('hc.preview.toggle', workspace)
+        self.assertIn('.id(shown.previewModel.id)', workspace)
+        self.assertLess(workspace.index('.previewExpansion('),workspace.index('.id(shown.previewModel.id)'))
         self.assertNotIn('@State private var presentation: HcPanePresentation', pane)
 
 if __name__ == '__main__':

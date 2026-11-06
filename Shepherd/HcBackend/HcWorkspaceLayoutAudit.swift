@@ -459,6 +459,18 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
             openFile(previewURL,.unknown)
             try await wait("actual preview file contents") { hcAccessibilityText(content).contains("HC-FILE-PREVIEW-CONTENT") }
             try check(terminals(content).first === activeTerminal,"preview opening retains native terminal")
+            try press("hc.preview.toggle",content:content)
+            try await wait("native Hide Preview keeps terminal without showing cached contents") {
+                !hcAccessibilityText(content).contains("HC-FILE-PREVIEW-CONTENT") && terminals(content).first === activeTerminal
+            }
+            let previewFile = root.appending(path:"owned-preview.md")
+            let originalPreview = try Data(contentsOf:previewFile)
+            try (originalPreview + Data("\nHC-FILE-PREVIEW-REOPENED\n".utf8)).write(to:previewFile,options:.atomic)
+            try press("hc.preview.toggle",content:content)
+            try await wait("native Show Preview rereads retained file request") {
+                hcAccessibilityText(content).contains("HC-FILE-PREVIEW-REOPENED") && terminals(content).first === activeTerminal
+            }
+            checks += 2
             let sideGrid = grid(activeTerminal), sideFrame = frame(activeTerminal,in:content)
             try press("preview.expand",content:content)
             try await wait("preview expansion takes keyboard from terminal") { window.firstResponder !== activeTerminal }

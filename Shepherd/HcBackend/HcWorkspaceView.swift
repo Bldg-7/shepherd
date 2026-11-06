@@ -80,16 +80,7 @@ struct HcWorkspaceView: View {
             .modifier(WorkspaceSidebarDetailLayout())
             } panel: {
                 if let shown, let request = shown.preview {
-                    FilePreviewPanel(request: request, model: shown.previewModel, machineStore: machineStore,
-                        onClose: { shown.hide() }, onFileLink: { shown.follow($0) })
-                        .previewExpansion(isExpanded: shown.expanded, onToggle: { shown.expanded.toggle() })
-                        .safeAreaInset(edge:.bottom) {
-                            if !shown.historyIsRetained {
-                                Text("Preview history is full. This preview is kept only while selected.").font(.caption).padding(6)
-                            }
-                        }
-                        .frame(minWidth: 320, idealWidth: 560, maxWidth: .infinity, maxHeight: .infinity)
-                        .modifier(WorkspaceSidebarDetailLayout())
+                    previewPanel(shown,request:request)
                 }
             }
             .navigationTitle(detailTitle)
@@ -139,6 +130,19 @@ struct HcWorkspaceView: View {
         .alert("Rename unconfirmed", isPresented: Binding(get: { renameError != nil }, set: { if !$0 { renameError = nil } })) {
             Button("OK") { renameError = nil }.accessibilityIdentifier("hc.rename.unconfirmed.ok")
         } message: { Text(renameError ?? "") }
+    }
+    private func previewPanel(_ shown: HcPanePresentation, request: FilePreviewRequest) -> some View {
+        FilePreviewPanel(request: request, model: shown.previewModel, machineStore: machineStore,
+            onClose: { shown.hide() }, onFileLink: { shown.follow($0) })
+            .previewExpansion(isExpanded: shown.expanded, onToggle: { shown.expanded.toggle() })
+            .id(shown.previewModel.id)
+            .safeAreaInset(edge:.bottom) {
+                if !shown.historyIsRetained {
+                    Text("Preview history is full. This preview is kept only while selected.").font(.caption).padding(6)
+                }
+            }
+            .frame(minWidth: 320, idealWidth: 560, maxWidth: .infinity, maxHeight: .infinity)
+            .modifier(WorkspaceSidebarDetailLayout())
     }
     private func retainPreviews() {
         presentations.retain(epoch:model?.workspace?.epoch,document:model?.document,
