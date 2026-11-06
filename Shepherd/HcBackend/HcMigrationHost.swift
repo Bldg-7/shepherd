@@ -310,6 +310,14 @@ struct HcMigrationHost: View {
                     .write(to: root.appending(path: "manual-ready.json"), options: .atomic)
                 try Data("{}".utf8).write(to: root.appending(path: "ui-wants-focus.json"), options: .atomic)
                 let end = ContinuousClock.now.advanced(by: .seconds(seconds))
+                let layoutObservation = HcManualLayoutObservation(root:root)
+                let observing = Task { @MainActor in
+                    while !Task.isCancelled {
+                        layoutObservation.sample()
+                        do { try await Task.sleep(for:.milliseconds(50)) } catch { return }
+                    }
+                }
+                defer { observing.cancel() }
                 var activationAttempted = false
                 while ContinuousClock.now < end {
                     if !activationAttempted, FileManager.default.fileExists(atPath: root.appending(path: "activation-yielded.json").path),
@@ -322,7 +330,8 @@ struct HcMigrationHost: View {
                     let current: HcMigrationStatus = try await c.call("server.status").result()
                     let terminals = try await HcTerminalBoard(connection: c).list(all: true)
                     owned = Array(Set(owned + [current.pid] + current.holders.map(\.pid) + terminals.compactMap(\.pid))).sorted()
-                    try JSONSerialization.data(withJSONObject: ["manualInspection":true,"ownedPIDs":owned,"automatedGUIQualified":false])
+                    try JSONSerialization.data(withJSONObject: ["manualInspection":true,"ownedPIDs":owned,"automatedGUIQualified":false,
+                        "passiveLayoutDiagnosticError":layoutObservation.error.map { $0 as Any } ?? NSNull()])
                         .write(to: report, options: .atomic)
                     try await Task.sleep(for: .seconds(1))
                 }

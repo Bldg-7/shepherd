@@ -265,6 +265,8 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
         let fullscreenEvents = HcAuditFullscreenObservation(window: window)
         let originalPointer = NSEvent.mouseLocation
         var lastWarp: NSPoint?
+        let warpOnly = ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_POINTER_WARP_ONLY"] == "1"
+        let edgeStimulus = fullscreen ? (warpOnly ? "warpOnly" : "warpAndSelfWindowEvent") : "nativeToggle"
         func movePointer(_ point: NSPoint) throws {
             guard NSApp.isActive, window.isKeyWindow else { throw Failure.assertion("owned foreground lost before pointer move") }
             let primaryTop = NSScreen.screens.first?.frame.maxY ?? 0
@@ -275,13 +277,13 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
             let trace = root.appending(path:"pointer-audit.jsonl")
             let eventWindow = NSApp.orderedWindows.first(where: { $0.isVisible && $0.frame.contains(point) }) ?? window
             let line = try JSONSerialization.data(withJSONObject:["requested":[target.x,target.y],"observed":[observed.x,observed.y],
-                "eventWindow":eventWindow.windowNumber,"rootWindow":window.windowNumber,
+                "eventWindow":eventWindow.windowNumber,"rootWindow":window.windowNumber,"edgeStimulus":edgeStimulus,
                 "windowFrame":[window.frame.minX,window.frame.minY,window.frame.width,window.frame.height]])
             if !FileManager.default.fileExists(atPath:trace.path) { _ = FileManager.default.createFile(atPath:trace.path,contents:nil) }
             let file = try FileHandle(forWritingTo:trace); try file.seekToEnd(); try file.write(contentsOf:line + Data([10])); try file.close()
             // Deliver movement only to this app's own window; no global CGEvent
             // injection, accessibility grant, external app or private API.
-            if let event = NSEvent.mouseEvent(with:.mouseMoved,location:eventWindow.convertPoint(fromScreen:point),modifierFlags:[],
+            if !warpOnly, let event = NSEvent.mouseEvent(with:.mouseMoved,location:eventWindow.convertPoint(fromScreen:point),modifierFlags:[],
                 timestamp:ProcessInfo.processInfo.systemUptime,windowNumber:eventWindow.windowNumber,context:nil,eventNumber:0,clickCount:0,pressure:0) {
                 NSApp.sendEvent(event)
             }
@@ -339,7 +341,8 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
                 "afterFrame":[after.minX,after.minY,after.width,after.height],"beforeGrid":beforeGrid,"afterGrid":grid(terminal),
                 "resizeEventsDuringReveal":Array(HcMigrationRenderProbe.shared.resizeEvents.dropFirst(resizeCount)),
                 "beforeAncestors":beforeAncestors,"afterAncestors":geometry(terminal,content:content),
-                "sameRootController":split(content) === controller,"fullscreen":fullscreen,
+                "sameRootController":split(content) === controller,"fullscreen":fullscreen,"edgeStimulus":edgeStimulus,
+                "pointerAfterReveal":[NSEvent.mouseLocation.x,NSEvent.mouseLocation.y],
                 "sidebarWidth":sidebar.viewController.view.bounds.width,"sidebarCollapsed":sidebar.isCollapsed,
                 "sidebarEvents":WorkspaceSidebarDiagnostics.events,
                 "ownWindows":NSApp.windows.map { ["number":$0.windowNumber,"visible":$0.isVisible,"frame":[ $0.frame.minX,$0.frame.minY,$0.frame.width,$0.frame.height]] as [String:Any] }])
@@ -583,12 +586,15 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
             guard await restore() else { throw Failure.assertion("owned fullscreen/pointer cleanup") }
             let result: [String:Any] = ["passed":true,"checks":checks,"actualHcRoot":true,"actualCore":true,
                 "fullscreenSpaceAndEdgeReveal":fullscreen,"fullscreenExitRestored":restoreSucceeded,"nativeRevealOnly":!fullscreen,"physicalDividerDrag":"NOTRUN",
-                "globalEventInjection":false,"borrowedPermissions":false,"releaseCutover":false,"ownedPIDs":owned]
+                "globalEventInjection":false,"borrowedPermissions":false,"releaseCutover":false,"ownedPIDs":owned,"edgeStimulus":edgeStimulus]
             try JSONSerialization.data(withJSONObject:result).write(to:root.appending(path:"layout-audit.json"),options:.atomic)
             return result
         } catch {
+            let failedPointer = NSEvent.mouseLocation
             let cleanup = await restore()
-            try? JSONSerialization.data(withJSONObject:["passed":false,"checks":checks,"error":String(describing:error),"fullscreenRequested":fullscreen,"fullscreenExitRestored":cleanup])
+            try? JSONSerialization.data(withJSONObject:["passed":false,"checks":checks,"error":String(describing:error),"fullscreenRequested":fullscreen,"fullscreenExitRestored":cleanup,
+                "edgeStimulus":edgeStimulus,"pointerAtFailure":[failedPointer.x,failedPointer.y],
+                "pointerAfterCleanup":[NSEvent.mouseLocation.x,NSEvent.mouseLocation.y]])
                 .write(to:root.appending(path:"layout-audit.json"),options:.atomic)
             throw error
         }

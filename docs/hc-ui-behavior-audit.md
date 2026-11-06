@@ -147,6 +147,22 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
   IME, non-title system double-click zoom and fullscreen title handling remain
   separate; current Debug build is `hc-stale-title.SZgOea`.
 
+- Fullscreen stimulus diagnostic `.74mkr9k4` (one bounded `--pointer-warp-only`
+  run): pointer positions matched requests but no native edge reveal occurred.
+  This is neither a product-regression attribution nor a fix; no retries were
+  looped. Earlier self-window-event retention failures remain open. That run's
+  `pointerAtFailure` was sampled after restoration; only its movement trace can
+  establish stimulus positions. Current source captures failure/restored points
+  separately and names the stimulus in receipts.
+- Passive manual `.5hbevcg5` ended after its600s bound and verified cleanup. Its
+  JSONL observer sent no events/warp/activation/model actions;581 samples, no
+  truncation, **zero fullscreen samples**. It supplies no physical/fullscreen
+  qualification. No additional automated fullscreen retries are justified by it.
+- `hc-full-migration-regression.DKaJXq`: SDK workspace92 + store32 + lifecycle66
+  + delivery31 + gateway40 checks in each Debug/optimized mode (261/mode),
+  21 stages including iOS typecheck; official0.1.17 attach9 pass with owned
+  core/socket/process retirement. These do not qualify launchd or UI parity.
+
 ## Evidence retained
 
 - `/private/tmp/hc-ui-behavior-audit.KpGlYF`: presentation rules19 per Debug/optimized;
