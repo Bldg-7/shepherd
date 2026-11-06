@@ -23,7 +23,7 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
 | Split/zoom controls | Original pane framing/layout | Removed extra hc-only persistent pane header. Explicit new-shell/zoom actions stay in secondary pane actions, not new visible header geometry. Current ordinary-window native context menus exercise zoom/unzoom and New shell to right: correct1/2/3-view topology and exactly one new shell, without ending existing programs. Fullscreen/physical divider behavior remains open. |
 | Preview placement | Original detail-level adjacent panel | Preview is beside the whole terminal/tab, not squeezed into an individual pane. Side minimum320/ideal560. One native host and divider proportion persist. Shared split component proves host stability; current tab composition still to measure. |
 | Preview expansion | Original covering panel | Expanding must cover rather than destroy/reparent live terminal. Root covering host retained; terminal hiding is accessibility/hit-testing only. Needs current attach-count/input/PTY proof. |
-| Preview history | Existing per-selection preview state | Bounded hc cache keys epoch + pane UUID + exact reference; stale/removed reference pruned, no silent eviction of another visited pane. Return from another pane must restore at side, not fullscreen. Further tab-level comparison open. |
+| Preview history | Existing per-selection preview state | Found per-pane-only state in tab mode and close discarding its request. Restored typed pane/tab selection caches, one shared preview per tab, original Show/Hide Preview toolbar, hide retaining file but retiring read, and return at side with source/find/scroll retained. Exact source UUID+core/terminal membership controls invalidation; unavailable reads are not missing proof. Actual store/request/model23 per mode and platform builds pass; current native toolbar/tab navigation/geometry remains open. |
 | New Tab | Original `NewTabLauncher` | Actual original launcher used; separate CmdN/CmdT intent. Standalone CLI mode is not browser permission. Private inspection now Shell-only; real installed CLI integration is not inferred from a menu choice.69 actual launcher component checks pass. |
 | Failed launch | Existing launcher handling plus durable hc recovery | Public stable failure formatting, no internal NSError name. Unsupported inspection intent rejected before workspace/placeholder creation. Uncertain prior run never auto-deleted/adopted/replayed. Missing real CLI/race error UX remains separately reviewed. |
 | Title editing | Original title double-click/IME field/native toolbar | Same real field/toolbar implementation with typed hc target, epoch/version guard. Component tests cover simulated composition, stale callbacks and geometry. Current actual-root ordinary-window audit exercises native title-label double-click/local event monitor, real editor/Unicode submit, Escape without metadata change, title restore and no window zoom/layout replacement. Actual competing-CAS refusal also passes: the old title session cannot overwrite a newer layout snapshot. Physical IME/fullscreen rename is open. |
@@ -273,6 +273,19 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
   rules/mode, macOS Debug/Release, iOS Debug pass; wiring17 pass. The ScrollView
   is height-bounded and adds no dispatch authority. Actual new review-sheet GUI
   remains part of the foreground qualification gate, not this text-policy pass.
+
+- `hc-preview-history-fixed.aP7AdM`: actual hc preview store/request/model23
+  per Debug/optimized mode, macOS Debug/Release, iOS Debug and wiring17 pass.
+  Pane/tab histories are separate; tab siblings share one preview. Hide keeps
+  its request for original Show Preview, retires its read and resets expansion;
+  following a file link within the panel preserves expansion. Source/scroll/find
+  survive selection. Exact membership/ref changes invalidate; confirmed missing
+  document differs from unavailable data. At128 retained histories one explicitly
+  warned transient current slot keeps rendering functional, without evicting
+  visited entries. No preview file, credential, network, core or native UI actions
+  were used by the component. GUI geometry/attach/control proof is still pending.
+  `hc-preview-history.T8ZWOr` failed at component compilation (missing CoreGraphics
+  import in test); later platform stages did not run and are not counted.
 
 ## Evidence retained
 

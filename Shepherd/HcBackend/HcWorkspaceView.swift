@@ -26,7 +26,7 @@ struct HcWorkspaceView: View {
         return machineStore.activeMachineID == machine.id && machineStore.isCurrentConnection(machine)
     }
     var body: some View {
-        WorkspaceNavigationSplitView(detailMinimumWidth: activePreview?.preview == nil ? 320 : 641) {
+        WorkspaceNavigationSplitView(detailMinimumWidth: activePreview?.isShown == true ? 641 : 320) {
             Group {
                 if let model { HcAgentBoard(model: model, presentation: presentation, closeRequests: closeRequests, onTracking: onTracking, onRetry: onReconnect,
                         itemProvider: { item in
@@ -59,7 +59,7 @@ struct HcWorkspaceView: View {
                 }
             }
         } detail: {
-            let shown = activePreview
+            let shown = activePreview.flatMap { $0.isShown ? $0 : nil }
             WorkspaceDetailSplitView(showsPanel: shown?.preview != nil, panelMinimum: 320, panelIdeal: 560,
                                      panelCoversTerminal: shown?.expanded == true, allowsKeyboardRestore: { !presentation.keyboardSuppressed && !presentation.textFieldOwnsKeyboard }) {
             Group {
@@ -68,9 +68,9 @@ struct HcWorkspaceView: View {
                     else if model.state != .connected { unavailable }
                     else if presentation.hasSelection, let tab = model.selectedTab, let layout = tab.layout {
                         if !showsTabs, let pane = layout.panes.first(where: { $0.id == model.focus.paneByTab[tab.id] }) ?? layout.panes.first {
-                            HcTerminalPane(model: model, pane: pane, machine: machine, machineStore: machineStore, presentations: presentations, keyboardIntent: presentation, isCurrentScope: { currentConnection }).id(pane.id)
+                            HcTerminalPane(model: model, pane: pane, machine: machine, machineStore: machineStore, presentations: presentations, previewTabID: showsTabs ? tab.id : nil, keyboardIntent: presentation, isCurrentScope: { currentConnection }).id(pane.id)
                         } else if let zoom = model.focus.zoomByTab[tab.id], let pane = layout.panes.first(where: { $0.id == zoom }) {
-                            HcTerminalPane(model: model, pane: pane, machine: machine, machineStore: machineStore, presentations: presentations, keyboardIntent: presentation, isCurrentScope: { currentConnection }).id(pane.id)
+                            HcTerminalPane(model: model, pane: pane, machine: machine, machineStore: machineStore, presentations: presentations, previewTabID: showsTabs ? tab.id : nil, keyboardIntent: presentation, isCurrentScope: { currentConnection }).id(pane.id)
                         } else { layoutView(layout, model: model) }
                     } else { ContentUnavailableView("No Pane Selected", systemImage: "terminal") }
                 } else { unavailable }
@@ -81,8 +81,13 @@ struct HcWorkspaceView: View {
             } panel: {
                 if let shown, let request = shown.preview {
                     FilePreviewPanel(request: request, model: shown.previewModel, machineStore: machineStore,
-                        onClose: { shown.preview = nil; shown.expanded = false }, onFileLink: { shown.preview = $0 })
+                        onClose: { shown.hide() }, onFileLink: { shown.follow($0) })
                         .previewExpansion(isExpanded: shown.expanded, onToggle: { shown.expanded.toggle() })
+                        .safeAreaInset(edge:.bottom) {
+                            if !shown.historyIsRetained {
+                                Text("Preview history is full. This preview is kept only while selected.").font(.caption).padding(6)
+                            }
+                        }
                         .frame(minWidth: 320, idealWidth: 560, maxWidth: .infinity, maxHeight: .infinity)
                         .modifier(WorkspaceSidebarDetailLayout())
                 }
@@ -105,34 +110,55 @@ struct HcWorkspaceView: View {
                     }.sharedBackgroundVisibility(.hidden)
                     ToolbarSpacer(.flexible, placement: .navigation)
                 }
+                ToolbarItem(placement:.primaryAction) {
+                    Button {
+                        guard let kept = activePreview else { return }
+                        if kept.isShown { kept.hide() } else { kept.show() }
+                    } label: {
+                        Label(activePreview?.isShown == true ? "Hide Preview" : "Show Preview",systemImage:"doc.text")
+                    }.disabled(activePreview?.preview == nil).help("File Preview")
+                        .accessibilityIdentifier("hc.preview.toggle")
+                }
             }
         }
-        .onChange(of: activePreview?.expanded, initial: true) { presentation.previewCoversTerminal = activePreview?.expanded == true }
+        .onChange(of: activePreview?.expanded, initial: true) { presentation.previewCoversTerminal = activePreview?.isShown == true && activePreview?.expanded == true }
         .onChange(of: titleRename?.id) { onRenameVisibility(titleRename != nil) }
         .onChange(of: model?.workspace?.epoch, initial: true) {
             titleRename = nil
             presentation.scopeChanged(model?.workspace?.epoch, focus: selectionStamp)
-            presentations.retain(epoch: model?.workspace?.epoch, panes: model?.document?.panes ?? [])
+            retainPreviews()
         }
-        .onChange(of: selectionStamp) {
-            presentations.collapsePreviews(epoch: model?.workspace?.epoch)
-            presentation.followFocus(selectionStamp)
-        }
+        .onChange(of: selectionStamp) { presentation.followFocus(selectionStamp) }
+        .onChange(of: previewSelection) { presentations.collapsePreviews(epoch: model?.workspace?.epoch) }
         .onChange(of: showsTabs) {
             if let titleRename { endRename(titleRename, .left) }
             presentation.clearSelection(focus: selectionStamp)
         }
         .environment(\.hcPaneKeyboardRequest, presentation.keyboardRequest)
-        .onChange(of: model?.document) { presentations.retain(epoch: model?.workspace?.epoch, panes: model?.document?.panes ?? []) }
+        .onChange(of: model?.document) { retainPreviews() }
         .alert("Rename unconfirmed", isPresented: Binding(get: { renameError != nil }, set: { if !$0 { renameError = nil } })) {
             Button("OK") { renameError = nil }.accessibilityIdentifier("hc.rename.unconfirmed.ok")
         } message: { Text(renameError ?? "") }
     }
+    private func retainPreviews() {
+        presentations.retain(epoch:model?.workspace?.epoch,document:model?.document,
+            missingDocumentConfirmed:model?.workspace?.canWrite == true && model?.document == nil)
+    }
+    private var previewSelection: HcPreviewSelection? {
+        guard presentation.hasSelection, let model, let tab = model.selectedTab else { return nil }
+        if showsTabs { return .tab(tab.id) }
+        return model.focus.paneByTab[tab.id].map(HcPreviewSelection.pane)
+    }
     private var activePreview: HcPanePresentation? {
         guard presentation.hasSelection, let model, let tab = model.selectedTab,
               let pane = tab.layout?.panes.first(where: { $0.id == model.focus.paneByTab[tab.id] }) ?? tab.layout?.panes.first,
-              pane.terminal?.coreID == model.coreID else { return nil }
-        return presentations.entry(epoch: model.workspace?.epoch, pane: pane)
+              showsTabs || pane.terminal?.coreID == model.coreID else { return nil }
+        let entry = presentations.entry(epoch:model.workspace?.epoch,pane:pane,tabID:showsTabs ? tab.id : nil)
+        let members = showsTabs ? tab.layout?.panes ?? [] : [pane]
+        guard entry.source.map({ source in
+            source.terminal?.coreID == model.coreID && members.contains(where:{ $0.id == source.id && $0.terminal == source.terminal })
+        }) ?? true else { return nil }
+        return entry
     }
     private var selectionStamp: HcSelectionStamp? {
         guard let model, let tab = model.selectedTab else { return nil }
@@ -140,7 +166,7 @@ struct HcWorkspaceView: View {
     }
     private func activateSelection() {
         guard let model, model.state == .connected, let stamp = selectionStamp else { return }
-        if let pane = stamp.pane { presentations.revealTerminal(epoch: model.workspace?.epoch, pane: pane) }
+        if let pane = stamp.pane { presentations.revealTerminal(epoch: model.workspace?.epoch, pane: pane, tabID: showsTabs ? stamp.tab : nil) }
         presentation.select(stamp, requestKeyboard: true)
     }
     private var currentSelection: HcBoardSelection? {
@@ -199,7 +225,7 @@ struct HcWorkspaceView: View {
     private func layoutView(_ layout: CoreWorkspaceDocument.Layout, model: HcWorkspaceModel) -> AnyView {
         switch layout {
         case .leaf(let pane):
-            return AnyView(HcTerminalPane(model: model, pane: pane, machine: machine, machineStore: machineStore, presentations: presentations, keyboardIntent: presentation, isCurrentScope: { currentConnection }).id(pane.id))
+            return AnyView(HcTerminalPane(model: model, pane: pane, machine: machine, machineStore: machineStore, presentations: presentations, previewTabID: showsTabs ? model.selectedTab?.id : nil, keyboardIntent: presentation, isCurrentScope: { currentConnection }).id(pane.id))
         case .split(let axis, let ratio, let first, let second):
             return AnyView(GeometryReader { proxy in
                 if axis == .horizontal {

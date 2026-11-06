@@ -125,35 +125,6 @@ import AppKit
     }
 }
 
-@MainActor @Observable final class HcPanePresentation {
-    var preview: FilePreviewRequest?
-    let previewModel = FilePreviewModel()
-    var expanded = false
-}
-@MainActor final class HcPanePresentationStore {
-    private struct Key: Hashable { let epoch: UUID; let pane: UUID; let terminal: CoreWorkspaceDocument.TerminalReference? }
-    private var entries: [Key:HcPanePresentation] = [:]
-    func entry(epoch: UUID?, pane: CoreWorkspaceDocument.Pane) -> HcPanePresentation {
-        guard let epoch else { return HcPanePresentation() }
-        let key = Key(epoch: epoch, pane: pane.id, terminal: pane.terminal)
-        if let value = entries[key] { return value }
-        let value = HcPanePresentation()
-        if entries.count < 128 { entries[key] = value } // Do not silently evict another pane's preview.
-        return value
-    }
-    func collapsePreviews(epoch: UUID?) {
-        for (key, entry) in entries where key.epoch == epoch { entry.expanded = false }
-    }
-    func revealTerminal(epoch: UUID?, pane: UUID) {
-        for (key, entry) in entries where key.epoch == epoch && key.pane == pane { entry.expanded = false }
-    }
-    func retain(epoch: UUID?, panes: [CoreWorkspaceDocument.Pane]) {
-        guard let epoch else { entries = [:]; return }
-        let valid = Set(panes.map { Key(epoch: epoch, pane: $0.id, terminal: $0.terminal) })
-        entries = entries.filter { valid.contains($0.key) }
-    }
-}
-
 extension EnvironmentValues {
     @Entry var hcPaneKeyboardRequest: HcPaneKeyboardRequest?
 }
@@ -167,22 +138,19 @@ struct HcTerminalPane: View {
     let isCurrentScope: @MainActor () -> Bool
     @AppStorage(AgentBoardView.showsTabsKey) private var showsTabs = false
     @Environment(\.hcPaneKeyboardRequest) private var keyboardRequest
-    @State private var presentation: HcPanePresentation
-    private var preview: FilePreviewRequest? {
-        get { presentation.preview }
-        nonmutating set { presentation.preview = newValue }
-    }
-    private var previewModel: FilePreviewModel { presentation.previewModel }
+    private let suppliedPresentation: HcPanePresentation?
+    @State private var standalonePresentation = HcPanePresentation()
+    private var presentation: HcPanePresentation { suppliedPresentation ?? standalonePresentation }
     private var expandedPreview: Bool {
         get { presentation.expanded }
         nonmutating set { presentation.expanded = newValue }
     }
     init(model: HcWorkspaceModel, pane: CoreWorkspaceDocument.Pane, machine: Machine? = nil,
-         machineStore: MachineStore? = nil, presentations: HcPanePresentationStore? = nil, keyboardIntent: HcWorkspacePresentation? = nil,
+         machineStore: MachineStore? = nil, presentations: HcPanePresentationStore? = nil, previewTabID: UUID? = nil, keyboardIntent: HcWorkspacePresentation? = nil,
          isCurrentScope: @escaping @MainActor () -> Bool = { true }) {
         self.model = model; self.pane = pane; self.machine = machine; self.machineStore = machineStore; self.keyboardIntent = keyboardIntent
         self.isCurrentScope = isCurrentScope
-        _presentation = State(initialValue: presentations?.entry(epoch: model.workspace?.epoch, pane: pane) ?? HcPanePresentation())
+        suppliedPresentation = presentations?.entry(epoch:model.workspace?.epoch,pane:pane,tabID:previewTabID)
     }
     @State private var drops: TerminalDropController?
     @State private var terminal = HcTerminalPaneModel()
@@ -236,8 +204,7 @@ struct HcTerminalPane: View {
                 }
             }
         }
-        .onAppear { expandedPreview = false }
-        .onChange(of: pane.terminal) { preview = nil; expandedPreview = false; drops?.cancel() }
+        .onChange(of: pane.terminal) { drops?.cancel() }
         .task(id: keyboardRequest) {
             guard let request = keyboardRequest, request.pane == pane.id else { return }
             // UI presentation readiness only, never a terminal-output timeout.
@@ -289,7 +256,7 @@ struct HcTerminalPane: View {
                 additionalHosts: machine.isLocal ? FilePreviewLink.localHostAliases : [], opensPages: machine.isLocal) else { return }
         switch route {
         case .file(let raw):
-            preview = FilePreviewRequest(machine: machine, hcPaneID: pane.id, terminalID: record.address, directory: record.cwd, link: raw)
+            presentation.open(FilePreviewRequest(machine: machine, hcPaneID: pane.id, terminalID: record.address, directory: record.cwd, link: raw),from:pane)
         case .web(let raw), .page(let raw):
             // Browser feature is retired: human links use the default browser,
             // never a saved agent lease, in-app engine, or injected MCP server.

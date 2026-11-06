@@ -202,7 +202,14 @@ class PreservationWiring(unittest.TestCase):
         self.assertNotIn('if !expandedPreview', pane)
         self.assertIn('TerminalPaneFrame(isFocused:', pane)
         self.assertNotIn('HStack {', pane[pane.index('var body: some View'):pane.index('private func makeDrops')])
-        self.assertIn('let epoch: UUID; let pane: UUID; let terminal:', pane)
+        store = source('Shepherd/HcBackend/HcPanePresentation.swift')
+        self.assertIn('let epoch: UUID; let item: HcPreviewSelection', store)
+        self.assertIn('$0.id == source.id && $0.terminal == source.terminal', store)
+        self.assertIn('case pane(UUID), tab(UUID)', store)
+        self.assertIn('previewTabID: showsTabs ? tab.id : nil', workspace)
+        self.assertIn('onClose: { shown.hide() }', workspace)
+        self.assertIn('hc.preview.toggle', workspace)
+        self.assertNotIn('@State private var presentation: HcPanePresentation', pane)
 
 if __name__ == '__main__':
     unittest.main()
