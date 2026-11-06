@@ -44,7 +44,7 @@ assert all(p.stat().st_mtime<=product.stat().st_mtime for p in tracked if p.suff
 (out/'products.json').write_text(json.dumps({str(p.relative_to(app)):digest(p) for p in [exe,product]},indent=2))
 (out/'owned-preview.md').write_text('# HC-FILE-PREVIEW-CONTENT\n\nOwned hc file preview, not browser content.\n')
 (out/"drop fixture's.png").write_bytes(b'owned-drop-fixture')
-(out/'ui-peer.py').write_text("import sys,time,tty,pathlib\nroot=pathlib.Path(__file__).parent\nprint('CJK 한글 😀 real SwiftTerm UI',flush=True)\nprint('HC-UI-RENDER-DONE',flush=True)\ninput()\nlink=(root/'owned-preview.md').as_uri()\nprint('\\x1b]8;;'+link+'\\x1b\\\\Open owned preview\\x1b]8;;\\x1b\\\\',flush=True)\ntty.setraw(sys.stdin.fileno())\nprint('HC-DROP-READY',flush=True)\nexpected=(root/'drop-expected.txt').read_bytes()\ndata=sys.stdin.buffer.read(len(expected))\n(root/'drop-received.bin').write_bytes(data)\nprint('HC-DROP-RECEIVED',flush=True)\ntime.sleep(60)\n")
+(out/'ui-peer.py').write_text("import sys,time,tty,pathlib\nroot=pathlib.Path(__file__).parent\nprint('CJK 한글 😀 real SwiftTerm UI',flush=True)\nprint('HC-UI-RENDER-DONE',flush=True)\ninput()\nlink=(root/'owned-preview.md').as_uri()\nprint('\\x1b]8;;'+link+'\\x1b\\\\Open owned preview\\x1b]8;;\\x1b\\\\',flush=True)\ntty.setraw(sys.stdin.fileno())\nprint('HC-DROP-READY',flush=True)\nexpected=(root/'drop-expected.txt').read_bytes()\ndata=sys.stdin.buffer.read(len(expected))\n(root/'drop-received.bin').write_bytes(data)\nprint('HC-DROP-RECEIVED',flush=True)\nrow=root/'row-drop-expected.txt'\nif row.exists():\n expected_row=row.read_bytes()\n (root/'row-drop-received.bin').write_bytes(sys.stdin.buffer.read(len(expected_row)))\n print('HC-ROW-DROP-RECEIVED',flush=True)\ntime.sleep(60)\n")
 if a.human_activation:
     peer=out/'ui-peer.py';peer.write_text(peer.read_text().replace('time.sleep(60)','time.sleep(300)'))
 profile=out/'private-unix.sb'
@@ -166,7 +166,7 @@ if a.layout_audit:
     if a.fullscreen_audit:good=good and audit.get('fullscreenSpaceAndEdgeReveal') is True and audit.get('fullscreenExitRestored') is True
     (out/'validation.json').write_text(json.dumps({'passed':good,'checks':audit.get('checks'),'actualHcRoot':True,
         'fullscreenSpaceAndEdgeReveal':audit.get('fullscreenSpaceAndEdgeReveal',False),'fullscreenExitRestored':audit.get('fullscreenExitRestored',False),'wholeUIParityQualified':False,
-        'physicalDividerDrag':'NOTRUN','ownedProcessesExited':not alive,'socketRemoved':not sock.exists(),'releaseCutover':False},indent=2))
+        'physicalDividerDrag':'NOTRUN','physicalRowDragQualified':False,'rowDragComponentIntegration':audit.get('rowDragComponentIntegration',False),'ownedProcessesExited':not alive,'socketRemoved':not sock.exists(),'releaseCutover':False},indent=2))
     assert hashes=={str(p.relative_to(ROOT)):digest(p) for p in tracked},'source changed during audit'
     if failed:raise failed
     assert good,'actual hc composition/layout audit failed'

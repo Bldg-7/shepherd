@@ -25,6 +25,30 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
     isolated deinit { for token in tokens { NotificationCenter.default.removeObserver(token) } }
 }
 
+/// Component stand-in for AppKit's destination protocol, NOT a physical drag.
+/// The pasteboard is uniquely owned and never the user's clipboard.
+@MainActor private final class HcAuditRowDrag: NSObject, NSDraggingInfo {
+    let draggingPasteboard: NSPasteboard
+    let source: AnyObject?
+    init(_ pasteboard: NSPasteboard, source: AnyObject?) { draggingPasteboard = pasteboard; self.source = source }
+    var draggingDestinationWindow: NSWindow? { nil }
+    var draggingSourceOperationMask: NSDragOperation { .move }
+    var draggingLocation: NSPoint { .zero }
+    var draggedImageLocation: NSPoint { .zero }
+    var draggedImage: NSImage? { nil }
+    var draggingSource: Any? { source }
+    var draggingSequenceNumber: Int { 1 }
+    func slideDraggedImage(to screenPoint: NSPoint) {}
+    nonisolated override func namesOfPromisedFilesDropped(atDestination dropDestination: URL) -> [String]? { nil }
+    var draggingFormation: NSDraggingFormation = .default
+    var animatesToDestination = false
+    var numberOfValidItemsForDrop = 0
+    func enumerateDraggingItems(options: NSDraggingItemEnumerationOptions = [], for view: NSView?, classes: [AnyClass],
+        searchOptions: [NSPasteboard.ReadingOptionKey: Any] = [:], using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void) {}
+    var springLoadingHighlight: NSSpringLoadingHighlight { .none }
+    func resetSpringLoading() {}
+}
+
 /// Actual hc-root composition audit, not a substitute for product approval.
 /// Operates only on the explicitly owned fixture window/core and public APIs.
 @MainActor enum HcWorkspaceLayoutAudit {
@@ -212,7 +236,7 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
         abs(a.minX-b.minX) < 1 && abs(a.minY-b.minY) < 1 && abs(a.width-b.width) < 1 && abs(a.height-b.height) < 1
     }
     static func run(model: HcWorkspaceModel, connection: CoreRPCConnection, root: URL,
-                    owner: HcMachineConnection, transports: HcFixtureConnectFactory, fullscreen: Bool) async throws -> [String:Any] {
+                    owner: HcMachineConnection, transports: HcFixtureConnectFactory, store: MachineStore, fullscreen: Bool) async throws -> [String:Any] {
         var checks = 0
         func check(_ value: Bool, _ label: String) throws {
             guard value else { throw Failure.assertion(label) }; checks += 1
@@ -535,12 +559,33 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
             guard let escaped = TerminalDropPaste.escaped(dropFile.path) else { throw Failure.assertion("safe owned drop path") }
             let expectedDrop = Data((escaped + " ").utf8)
             try expectedDrop.write(to:root.appending(path:"drop-expected.txt"))
+            let rowText = firstPane.id.uuidString
+            let expectedRow = Data((rowText + " ").utf8)
+            try expectedRow.write(to:root.appending(path:"row-drop-expected.txt"))
             _ = try await connection.call("terminal.keys",parameters:JSONSerialization.data(withJSONObject:["terminal":reference.terminalID,"keys":["f","enter"]]))
             try await wait("owned peer raw drop input ready") { HcMigrationRenderProbe.shared.text.contains("HC-DROP-READY") }
             guard let drop = originalNative.onDropFiles else { throw Failure.assertion("production file-drop callback") }
             drop([dropFile])
             try await wait("exact owned file-drop bytes") { (try? Data(contentsOf:root.appending(path:"drop-received.bin"))) == expectedDrop }
             checks += 1
+            // Component integration on the actual renderer/core, NOT a claim
+            // that AppKit's physical list dragging gesture has been exercised.
+            try await wait("fresh metadata for row reference") { model.workspace?.canWrite == true }
+            guard let provider = HcWorkspaceItemDrag.provider(kind:.pane,id:firstPane.id,model:model,machine:store.activeMachine,store:store),
+                  let rowTarget = originalNative.textDrop else { throw Failure.assertion("production row provider/target") }
+            try check(provider.registeredTypeIdentifiers.contains(HcWorkspaceItemDrag.typeIdentifier),"row provider owns a private process marker")
+            let pasteboard = NSPasteboard.withUniqueName()
+            defer { pasteboard.releaseGlobally() }
+            pasteboard.setData(Data(),forType:NSPasteboard.PasteboardType(HcWorkspaceItemDrag.typeIdentifier))
+            pasteboard.setString(rowText,forType:.string)
+            try check(!originalNative.performDragOperation(HcAuditRowDrag(pasteboard,source:nil)),"foreign-process marked row refused")
+            UserDefaults.standard.set(false,forKey:TerminalFileDropFeature.preferenceKey)
+            try await wait("row drop independent of file-drop setting") { originalNative.onDropFiles == nil && originalNative.textDrop != nil }
+            let rowDrag = HcAuditRowDrag(pasteboard,source:content)
+            try check(originalNative.draggingEntered(rowDrag) == .move && originalNative.performDragOperation(rowDrag),"production destination accepts scoped row component")
+            try await wait("exact row reference reaches owned PTY") { (try? Data(contentsOf:root.appending(path:"row-drop-received.bin"))) == expectedRow }
+            checks += 1
+            UserDefaults.standard.set(true,forKey:TerminalFileDropFeature.preferenceKey)
             let record = try await HcTerminalBoard(connection:connection).get(reference.terminalID)
             try check(record.pid == originalRecord.pid && record.createdMs == originalRecord.createdMs && record.state == "live",
                       "sidebar does not replace or end actual hc program")
@@ -580,13 +625,15 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
                 if current.pid != old.pid || current.createdMs != old.createdMs || current.state != old.state { programsUnchanged = false }
             }
             try check(programsUnchanged, "explicit retry neither replays a launch nor terminates a program")
+            try check(rowTarget.text(rowText) == nil,"retired source epoch cannot supply row text after reconnect")
             let retiredConnect = await screenTransport.snapshot()
             try check(retiredConnect.closed && retiredConnect.reaped,
                       "previous connect child reaped before retry completes")
             guard await restore() else { throw Failure.assertion("owned fullscreen/pointer cleanup") }
             let result: [String:Any] = ["passed":true,"checks":checks,"actualHcRoot":true,"actualCore":true,
                 "fullscreenSpaceAndEdgeReveal":fullscreen,"fullscreenExitRestored":restoreSucceeded,"nativeRevealOnly":!fullscreen,"physicalDividerDrag":"NOTRUN",
-                "globalEventInjection":false,"borrowedPermissions":false,"releaseCutover":false,"ownedPIDs":owned,"edgeStimulus":edgeStimulus]
+                "globalEventInjection":false,"borrowedPermissions":false,"releaseCutover":false,"ownedPIDs":owned,"edgeStimulus":edgeStimulus,
+                "rowDragComponentIntegration":true,"physicalRowDragQualified":false]
             try JSONSerialization.data(withJSONObject:result).write(to:root.appending(path:"layout-audit.json"),options:.atomic)
             return result
         } catch {

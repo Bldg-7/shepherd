@@ -33,7 +33,7 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
 | Viewed/attention | Original key-window + actual selected pane/tab | Found hidden tab siblings marked viewed in pane mode and app-active used without key-window check. New policy uses actual rendered mode/zoom/selection + key window. Pure rules covered; OS notification behavior remains unqualified. |
 | Scope changes | Existing exact machine identity / connection provenance | Clear overlays and deferred navigation; typed epoch/reference keys for previews, focus, switcher. No alias/PID/label is native authorization. Full host switch/reconnect interaction still a gate. |
 | Multi-origin groups | Original host/remote grouping, folding, ordering | Still incomplete in hc product. ID-shadow bug in0.1.17 means no unsafe remote mutation or alias fallback. Do not hide this parity gap behind the read-only directory or claim full migration. |
-| Drag/drop | Original row-ID drag + terminal file drag | File upload/drop has earlier scoped transport evidence; row identity drag and restored-layout gestures are not yet equivalent/qualified. No fake legacy terminal identities to obtain parity. |
+| Drag/drop | Original row-ID drag + terminal file drag | Scoped row-reference providers and the original terminal text-drop/highlight pipeline are now wired using real workspace node UUIDs, not fake legacy identities. Policy25/mode and actual-core native-destination component integration pass; physical List/Finder gestures remain unqualified. |
 | Empty/loading/error | Original board overlays/search/retry | Actual initially empty board, multi-term/no-results filter and client-failure banner/program survival pass in the current root. Native Retry dispatch also passes32-check current-root audit; loading and stale-target transitions remain open. No diagnostic/editor sidebar substitutes for these. |
 | Application entry/service | Existing root plus hc lifecycle requirements | Default root/legacy removal/install/update/service survival/cutover still open. UI work does not authorize deployment or user-core replacement. |
 
@@ -162,6 +162,18 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
   + delivery31 + gateway40 checks in each Debug/optimized mode (261/mode),
   21 stages including iOS typecheck; official0.1.17 attach9 pass with owned
   core/socket/process retirement. These do not qualify launchd or UI parity.
+
+- `.rrvo2dnm` passes42 current-root checks, adding scoped row-reference **component
+  integration** on the actual renderer/owned PTY. An explicitly synthetic
+  NSDraggingInfo/owned named pasteboard exercises the production destination,
+  external-source rejection, File Drop OFF independence, exact UUID-plus-space
+  bytes and retired-source refusal after native Retry. It is not physical List
+  dragging; receipt has `physicalRowDragQualified=false`.
+- `hc-row-drag.RU1p0a/policy`:25 strict policy checks per Debug/optimized mode.
+  `hc-row-drag-regression.YXBnFl`: existing actual-SwiftTerm/native owned-PTY
+  item-drop2-stage component tests, macOS Release, iOS Debug, wiring11 and
+  artifact rejection tests pass. See `Tests/HcBackend/ROW-DRAG-README.md` for
+  metadata-ID semantics and qualification boundaries.
 
 ## Evidence retained
 

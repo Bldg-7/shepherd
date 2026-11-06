@@ -289,8 +289,9 @@ struct HcMigrationHost: View {
             guard let screenTransport = transports.transports.first else { throw HcWorkspaceModel.Failure.unavailable }
             let m = owner.model!; workspace = m; checks += 1
             if ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_LAYOUT_AUDIT"] == "1" {
+                guard let store = fixtureStore else { throw HcWorkspaceModel.Failure.unavailable }
                 let result = try await HcWorkspaceLayoutAudit.run(model: m, connection: c, root: root,
-                    owner: owner, transports: transports, fullscreen: ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_FULLSCREEN_AUDIT"] == "1")
+                    owner: owner, transports: transports, store: store, fullscreen: ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_FULLSCREEN_AUDIT"] == "1")
                 owned = result["ownedPIDs"] as? [UInt32] ?? owned
                 _ = try await c.call("server.stop")
                 await owner.close(); try await c.close()

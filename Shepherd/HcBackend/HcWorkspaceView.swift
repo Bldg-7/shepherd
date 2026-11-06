@@ -24,7 +24,12 @@ struct HcWorkspaceView: View {
         WorkspaceNavigationSplitView(detailMinimumWidth: activePreview?.preview == nil ? 320 : 641) {
             Group {
                 if let model { HcAgentBoard(model: model, presentation: presentation, closeRequests: closeRequests, onTracking: onTracking, onRetry: onReconnect,
-                        onRename: { _ = beginRename($0) }, onActivate: activateSelection) }
+                        itemProvider: { item in
+                            switch item {
+                            case .pane(let id): return HcWorkspaceItemDrag.provider(kind:.pane,id:id,model:model,machine:machine,store:machineStore)
+                            case .tab(let id): return HcWorkspaceItemDrag.provider(kind:.tab,id:id,model:model,machine:machine,store:machineStore)
+                            }
+                        }, onRename: { _ = beginRename($0) }, onActivate: activateSelection) }
                 else { ContentUnavailableView("No Panes", systemImage: "terminal") }
             }
             .navigationTitle(machine?.displayName ?? "Shepherd")
@@ -231,6 +236,7 @@ private struct HcAgentBoard: View {
     let closeRequests: Int
     let onTracking: () -> Void
     let onRetry: () -> Void
+    let itemProvider: (HcBoardSelection) -> NSItemProvider?
     let onRename: (HcBoardSelection) -> Void
     let onActivate: () -> Void
     @AppStorage(AgentBoardView.showsTabsKey) private var showsTabs = false
@@ -265,6 +271,7 @@ private struct HcAgentBoard: View {
                         ForEach(tabs, id: \.id) { tab in
                             if showsTabs {
                                 WorkspaceBoardRow(title: tab.name, state: tabState(tab)) { EmptyView() } caption: { EmptyView() }
+                                    .itemProvider { itemProvider(.tab(tab.id)) }
                                     .tag(HcBoardSelection.tab(tab.id))
                                     .accessibilityIdentifier("hc-workspace.tab.\(tab.id)")
                                     .onBoardRowActivation { selection.wrappedValue = .tab(tab.id); onActivate() }
@@ -276,6 +283,7 @@ private struct HcAgentBoard: View {
                                         let cwd = record(pane)?.cwd ?? ""
                                         AgentPaneCaption(cwd.isEmpty ? "" : (cwd as NSString).lastPathComponent, agentName: nil)
                                     }
+                                    .itemProvider { itemProvider(.pane(pane.id)) }
                                     .tag(HcBoardSelection.pane(pane.id))
                                     .accessibilityIdentifier("hc-workspace.pane.\(pane.id)")
                                     .onBoardRowActivation { selection.wrappedValue = .pane(pane.id); onActivate() }

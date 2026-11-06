@@ -84,6 +84,20 @@ class PreservationWiring(unittest.TestCase):
         self.assertIn('model.renameTab(id, name: name)', ending)
         self.assertIn('model.renamePane(id, name: name)', ending)
 
+    def test_workspace_row_drag_is_scoped_and_separate_from_files(self):
+        board = source('Shepherd/HcBackend/HcWorkspaceView.swift')
+        pane = source('Shepherd/HcBackend/HcTerminalPane.swift')
+        drag = source('Shepherd/HcBackend/HcWorkspaceItemDrag.swift')
+        self.assertIn('.itemProvider { itemProvider(.tab(tab.id)) }', board)
+        self.assertIn('.itemProvider { itemProvider(.pane(pane.id)) }', board)
+        self.assertIn('textDrop: rowDrop', pane)
+        row = pane[pane.index('private var rowDrop:'):pane.index('private var currentScope:')]
+        self.assertNotIn('TerminalFileDropFeature', row)
+        for guard in ['dragged.machine == machine.connectionIdentity','dragged.sourceIsCurrent()', 'model.workspace?.epoch == epoch', 'model.workspace?.canWrite == true']:
+            self.assertIn(guard, drag)
+        self.assertIn('visibility:.ownProcess', drag)
+        self.assertNotIn('HerdrItemDrag.Item', drag)
+
     def test_actual_rendered_selection_not_hidden_siblings_is_viewed(self):
         root = source('Shepherd/HcBackend/HcRootView.swift')
         self.assertIn('controlActiveState == .key, presentation.hasSelection', root)

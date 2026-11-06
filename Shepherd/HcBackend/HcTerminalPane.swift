@@ -178,6 +178,14 @@ struct HcTerminalPane: View {
     @State private var operationError: String?
     @State private var drops: TerminalDropController?
     @State private var terminal = HcTerminalPaneModel()
+    @State private var itemDropTargeted = false
+    private var rowDrop: TerminalTextDrop? {
+        guard currentScope, terminal.connected, model.state == .connected,
+              let machine, let machineStore else { return nil }
+        return HcWorkspaceItemDrag.terminalDrop(model:model,machine:machine,store:machineStore,targetIsCurrent:{
+            currentScope && terminal.connected && model.document?.pane(pane.id)?.terminal == pane.terminal
+        },onTargetChange:{ itemDropTargeted = $0 })
+    }
     private var currentScope: Bool {
         guard let machine else { return true }
         guard let machineStore else { return false }
@@ -199,7 +207,9 @@ struct HcTerminalPane: View {
                         }, focusesWhenShown: model.focus.paneByTab[model.selectedTab?.id ?? UUID()] == pane.id,
                         keyboardFocusAllowed: { keyboardIntent?.keyboardSuppressed != true },
                         onOpenLink: { link, _ in open(link) },
-                        onDropFiles: currentScope && terminal.connected && TerminalFileDropFeature.isEnabled && drops?.isUploading == false ? { drops?.drop($0) } : nil)
+                        onDropFiles: currentScope && terminal.connected && TerminalFileDropFeature.isEnabled && drops?.isUploading == false ? { drops?.drop($0) } : nil,
+                        textDrop: rowDrop)
+                    .itemDropHighlight(itemDropTargeted)
                     .task(id: pane.terminal) {
                         drops?.cancel(); drops = makeDrops()
                         await terminal.start { try model.session(for: pane) }
