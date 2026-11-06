@@ -265,14 +265,6 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
             NSApp.windows.compactMap(\.contentView).contains { elements($0)["workspace.board.empty"] != nil }
         }
         checks += 1
-        let workspace = try await model.createWorkspace(name: "Owned UI behavior audit")
-        try await model.launchTab(workspaceID: workspace, name: "Owned terminal", argv: ["/usr/bin/python3","-I","-S","-B",root.appending(path:"ui-peer.py").path])
-        guard let reference = model.selectedTab?.layout?.panes.first?.terminal else { throw Failure.assertion("known run receipt") }
-        let status: HcLayoutAuditOwnedStatus = try await connection.call("server.status").result()
-        let records = try await HcTerminalBoard(connection:connection).list(all:true)
-        var owned = [status.pid] + status.holders.map(\.pid) + records.compactMap(\.pid)
-        try JSONSerialization.data(withJSONObject:["ownedPIDs":owned,"auditPending":true]).write(to:root.appending(path:"audit-owned-identities.json"),options:.atomic)
-        try await wait("actual hc terminal rendered", seconds: 12) { HcMigrationRenderProbe.shared.text.contains("HC-UI-RENDER-DONE") }
         guard let window = NSApp.windows.first(where: { $0.contentView?.bounds.width ?? 0 > 500 }),
               let content = window.contentView else { throw Failure.assertion("owned hc root window") }
         NSApp.setActivationPolicy(.regular); window.makeKeyAndOrderFront(nil)
@@ -293,6 +285,15 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
         }
         try JSONSerialization.data(withJSONObject:["active":NSApp.isActive,"key":window.isKeyWindow,"window":window.windowNumber])
             .write(to:root.appending(path:"ui-foreground-ready.json"),options:.atomic)
+        checks += try await HcNativeDiscoveryAudit.run(model:model,connection:connection,window:window,content:content,root:root)
+        let workspace = try await model.createWorkspace(name: "Owned UI behavior audit")
+        try await model.launchTab(workspaceID: workspace, name: "Owned terminal", argv: ["/usr/bin/python3","-I","-S","-B",root.appending(path:"ui-peer.py").path])
+        guard let reference = model.selectedTab?.layout?.panes.first?.terminal else { throw Failure.assertion("known run receipt") }
+        let status: HcLayoutAuditOwnedStatus = try await connection.call("server.status").result()
+        let records = try await HcTerminalBoard(connection:connection).list(all:true)
+        var owned = [status.pid] + status.holders.map(\.pid) + records.compactMap(\.pid)
+        try JSONSerialization.data(withJSONObject:["ownedPIDs":owned,"auditPending":true]).write(to:root.appending(path:"audit-owned-identities.json"),options:.atomic)
+        try await wait("actual hc terminal rendered",seconds:12) { HcMigrationRenderProbe.shared.text.contains("HC-UI-RENDER-DONE") }
         let toolbarFacts = (window.toolbar?.items ?? []).map { item in
             ["id":item.itemIdentifier.rawValue,"enabled":item.isEnabled,"view":item.view.map { String(describing:type(of:$0)) } ?? "nil",
              "action":item.action.map(NSStringFromSelector) ?? "nil"] as [String:Any]

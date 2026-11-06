@@ -257,6 +257,10 @@ private struct HcAgentBoard: View {
     @State private var closing: HcCloseRequest?
     @State private var error: String?
     private var activeWorkspaces: Set<UUID> { workspaces.intersection(Set((model.document?.workspaces ?? []).map(\.id))) }
+    private var hasUnplacedPrograms: Bool {
+        !HcWorkspaceSwitcherCandidates.unplaced(model.terminals,coreID:model.coreID ?? "",
+            document:model.document,snapshotAvailable:model.workspace?.snapshot != nil).isEmpty
+    }
     private var selection: Binding<HcBoardSelection?> {
         Binding(get: {
             guard scopeIsCurrent(), presentation.hasSelection, let tab = model.selectedTab else { return nil }
@@ -330,7 +334,9 @@ private struct HcAgentBoard: View {
                     } description: { Text("Check the connection and retry. Existing programs are untouched.") }
                     actions: { Button("Retry", action: onRetry) }
                 } else {
-                    ContentUnavailableView("No Panes", systemImage: "terminal", description: Text("The panes open on this machine appear here."))
+                    ContentUnavailableView("No Panes", systemImage: "terminal", description: Text(hasUnplacedPrograms
+                        ? "Press ⌘P to show an existing running program. This adds a view without starting it again."
+                        : "The panes open on this machine appear here."))
                         .accessibilityIdentifier("workspace.board.empty")
                 }
             } else if visibleRowCount == 0 {

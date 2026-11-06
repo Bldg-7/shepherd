@@ -260,16 +260,25 @@ private nonisolated struct HcWorkspaceTerminalInitial: Decodable, Sendable { let
     }
     /// Explicitly show a freshly fetched canonical terminal. This is a new view,
     /// not adoption from operation labels or a retry of an uncertain launch.
-    public func showTerminal(_ address: String, workspaceID: UUID) async throws {
-        guard !operationBusy else { throw Failure.unavailable }
+    @discardableResult public func showTerminal(_ address: String, workspaceID: UUID? = nil,
+                                               selectOnSuccess: Bool = true) async throws -> UUID {
+        guard !operationBusy, CoreTerminalID.isCanonical(address) else { throw Failure.unavailable }
         let (store, snapshot) = try baseline(), token = generation
         operationBusy = true; defer { operationBusy = false }
         let record = try await HcTerminalBoard(connection: connection).get(address)
-        guard token == generation, record.address == address, record.state == "live", let coreID else { throw Failure.stale }
+        guard state == .connected, token == generation, record.address == address, record.state == "live", let coreID else { throw Failure.stale }
         let pane = CoreWorkspaceDocument.Pane(terminal: .init(coreID: coreID, terminalID: record.address))
         let tab = CoreWorkspaceDocument.Tab(name: record.name ?? record.address, layout: .leaf(pane))
-        try await commit(.appendTab(workspace: workspaceID, tab: tab), snapshot: snapshot, store: store)
-        if let document { try focus.select(tab: tab.id, in: document); try persistFocus() }
+        let edit: CoreWorkspaceEdit
+        if let workspaceID { edit = .appendTab(workspace: workspaceID, tab: tab) }
+        else {
+            // Explicit selection on an empty board may create its workspace
+            // and view in one CAS. Never run/kill/adopt/replay the program.
+            edit = .appendWorkspace(.init(name: "Workspace", tabs: [tab]))
+        }
+        try await commit(edit, snapshot: snapshot, store: store)
+        if selectOnSuccess, let document { try focus.select(tab: tab.id, in: document); try persistFocus() }
+        return tab.id
     }
     public func closePane(_ id: UUID) async throws {
         guard !operationBusy else { throw Failure.unavailable }

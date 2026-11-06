@@ -2,16 +2,22 @@
 """Private-HOME, bounded parsing/navigation/native modal checks; no app/session operations."""
 from pathlib import Path
 import argparse,json,os,hashlib,subprocess,sys,platform,shutil
+sys.dont_write_bytecode=True
+from native_test_env import settings
 R=Path(__file__).resolve().parents[2]
 p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--swiftterm-products',type=Path,required=True);a=p.parse_args();o=a.output.resolve();o.mkdir(mode=0o700,parents=True,exist_ok=False)
 for n in ['home','tmp','cache']:(o/n).mkdir(mode=0o700)
-env=dict(os.environ,HOME=str(o/'home'),CFFIXED_USER_HOME=str(o/'home'),TMPDIR=str(o/'tmp'),CLANG_MODULE_CACHE_PATH=str(o/'cache'),DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer')
+env,sdk_flags=settings(o)
+tracked=[*sorted((R/'Shepherd').rglob('*.swift')),*sorted((R/'ShepherdKit/Sources/ShepherdKit').rglob('*.swift')),
+         *sorted((R/'Tests/Terminal').glob('*.swift')),R/'Shepherd/Localizable.xcstrings',Path(__file__).resolve(),R/'Tests/Terminal/native_test_env.py']
+def snapshot():return {str(p.relative_to(R)):hashlib.sha256(p.read_bytes()).hexdigest() for p in tracked}
+before=snapshot();(o/'all-source-hashes.json').write_text(json.dumps(before,indent=2))
 products=a.swiftterm_products.resolve();shutil.copytree(products/'SwiftTerm_SwiftTerm.bundle',o/'SwiftTerm_SwiftTerm.bundle')
 checks=[]
 def stage(name,timeout,command,mirrorsLog=False):
  log=o/(name+'.log');subprocess.run([sys.executable,str(R/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(timeout),'--natural-exit-grace','10','--log',str(log),'--',*command],cwd=R,env=dict(env,OS_ACTIVITY_DT_MODE='1') if mirrorsLog else env,timeout=timeout+40,check=True)
  j=json.loads(log.with_suffix('.stage.json').read_text());assert j['naturalExitConfirmed'] and j['cleanupVerified'] and not j['signalsSent'];checks.append(name)
-flags=['xcrun','swiftc','ShepherdKit/Sources/ShepherdKit/Resources.swift','-swift-version','6','-default-isolation','MainActor','-target',platform.machine()+'-apple-macos26.6.2','-parse-as-library']
+flags=['xcrun','swiftc','ShepherdKit/Sources/ShepherdKit/Resources.swift','-swift-version','6','-default-isolation','MainActor','-target',platform.machine()+'-apple-macos26.6.2','-parse-as-library']+sdk_flags
 markdown=['ShepherdKit/Sources/ShepherdKit/Rendering/PreviewMarkdownBlock.swift','ShepherdKit/Sources/ShepherdKit/Rendering/PreviewSyntaxLanguage.swift']+['Shepherd/FilePreview/MarkdownPreview.swift','Shepherd/FilePreview/PreviewOutline.swift','Shepherd/FilePreview/PreviewOutlineHover.swift','Shepherd/FilePreview/PreviewSyntaxHighlighter.swift','Shepherd/FilePreview/PreviewSyntaxRendering.swift','Tests/FilePreview/MarkdownParsingTests.swift']
 stage('markdown-build',90,flags+markdown+['-o',str(o/'markdown-tests')]);stage('markdown-tests',20,[str(o/'markdown-tests')])
 # Extract the complete real BoardItem declaration, not a replacement enum.
@@ -42,9 +48,12 @@ kit='ShepherdKit/Sources/ShepherdKit/';tabkeys=models+[kit+'Agents/AgentKind.swi
 stage('launcher-tab-build',120,flags+tabkeys+[str(board),'-framework','AppKit','-o',str(o/'launcher-tab-tests')]);stage('launcher-tab-tests',30,[str(o/'launcher-tab-tests')],mirrorsLog=True)
 assert 'Modifying state during view update' not in (o/'launcher-tab-tests.log').read_text()
 c=(R/'Shepherd/ContentView.swift').read_text();app=(R/'Shepherd/Shepherd.swift').read_text();m=(R/'Shepherd/Hosts/Views/MachinesSettingsView.swift').read_text()
-assert '.keyboardShortcut("p", modifiers: .command)' in app and '.focusedSceneValue(\\.isShowingPaneSwitcher' in c
+commands=(R/'Shepherd/HcBackend/HcWindowCommands.swift').read_text()
+assert 'HcPaneSwitcherMenuItem(actions: hcCommands.actions, legacy: switcher)' in app
+assert '.keyboardShortcut("p", modifiers: .command)' in commands and '.focusedSceneValue(\\.isShowingPaneSwitcher' in c
 assert 'Window(Text(verbatim: "hrdrhrdrhrdr"), id: "main")' in app and 'WindowGroup {' not in app and 'applicationShouldTerminateAfterLastWindowClosed' in app
-assert 'CommandGroup(replacing: .newItem)' in app and app.index('show(.blank)')<app.index('.keyboardShortcut("n")')<app.index('show(.currentWorkspace)')<app.index('.keyboardShortcut("t")')
+assert 'CommandGroup(replacing: .newItem)' in app and 'HcNewTabMenuItems(actions: hcCommands.actions, legacy: launcherStart, machine: herdrMachineCommand)' in app
+assert commands.index('show(.blank)')<commands.index('.keyboardShortcut("n")')<commands.index('show(.currentWorkspace)')<commands.index('.keyboardShortcut("t")')
 assert '.focusedSceneValue(\\.launcherStart' in c and 'LaunchPreset.current(for: selection(on: machine).wrappedValue, in: launchTargets)' in c
 assert 'paneDestinations = []' in c and 'PaneDestination.resolve' in c and 'onDismiss: navigateToPendingPane' in c
 assert m.count('.disabled(machine.isLocal || hoveredMachineID != machine.id)')==2 and '.onHover' in m
@@ -68,8 +77,9 @@ assert 'FilePreviewPanel(request: entry.request, model: entry.model, machineStor
 fp=(R/'Shepherd/FilePreview/FilePreviewPanel.swift').read_text()
 assert '@State private var model' not in fp and 'await model.loadIfNeeded(request, store: machineStore)' in fp and 'showsSource = false' not in fp
 b=(R/'Shepherd/Hosts/Views/AgentBoardView.swift').read_text();s=json.loads((R/'Shepherd/Localizable.xcstrings').read_text())['strings']
-assert 'CommandGroup(replacing: .saveItem)' in app and 'CloseCommands()' in app and app.count('.keyboardShortcut("w")')==1
-assert app.index('Button("Close Window")')<app.index('performClose')<app.index('"Close Tab" : "Close Pane"')<app.index('.keyboardShortcut("w")')
+assert 'CommandGroup(replacing: .saveItem)' in app and 'CloseCommands()' in app and commands.count('.keyboardShortcut("w")')==1
+assert 'HcCloseMenuItems(actions: hcCommands.actions, legacy: closeCommand)' in app
+assert commands.index('Button("Close Window")')<commands.index('performClose')<commands.index('"Close Tab" : "Close Pane"')<commands.index('.keyboardShortcut("w")')
 assert '.focusedSceneValue(\\.closeCommand' in c and 'closeRequests: closeRequests' in c
 assert 'coversTerminal: launcherStart != nil || isShowingSettings || isShowingPaneSwitcher\n                || previewCoversTerminal(on: machine) || webLinkFailure != nil' in c
 assert 'guard renaming == nil, closing == nil, actionFailure == nil else { return }\n            closing = selection' in b
@@ -77,4 +87,5 @@ assert all(s['Close Window']['localizations'][l]['stringUnit']['state']=='transl
 # The pane switcher and Settings close for a quit, an update's Install and Relaunch included, instead of stopping it with a beep.
 assert c.count('.presentationPreventsAppTermination(false)')==2
 for k,e in [('.sheet(isPresented: $isShowingPaneSwitcher','.onChange(of: showsTabs)'),('.sheet(isPresented: $isShowingSettings)','.onAppear {')]:i=c.index(k);assert '.presentationPreventsAppTermination(false)' in c[i:c.index(e,i)],k
+assert before==snapshot(),'source changed during original UI qualification'
 (o/'validation.json').write_text(json.dumps({'passed':True,'stages':checks,'snapshotsOnlyNavigation':True,'actualSwiftTermOwnedKernelPTY':True,'singleModalPanelTerminalIdentityPreserved':True,'installedAppOrSSHOrNetwork':False,'realGUIKeyboardHover':'NOTRUN'},indent=2))

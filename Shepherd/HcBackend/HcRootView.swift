@@ -7,8 +7,10 @@ private enum HcInspectionLaunchFailure: Error, LocalizedError {
 
 private struct HcPendingPaneSelection {
     let epoch: UUID
-    let pane: UUID
+    let pane: UUID?
     let terminal: CoreWorkspaceDocument.TerminalReference
+    let version: UInt64?
+    let workspaceID: UUID?
 }
 
 private struct HcRootChanges: Equatable {
@@ -98,10 +100,18 @@ struct HcRootView: View {
             .sheet(isPresented: $tracking) { if let model = scopedModel { HcOperationTrackingView(model: model).presentationPreventsAppTermination(false) } }
             .sheet(isPresented: $switcher, onDismiss: completeSwitcherSelection) {
                 if let model = scopedModel {
-                    HcPaneSwitcher(model: model, onSelectPane: { pane in
-                        guard scopedModel === model, let epoch = model.workspace?.epoch,
-                              let reference = model.document?.pane(pane)?.terminal, reference.coreID == model.coreID else { return }
-                        pendingSwitcherPane = .init(epoch: epoch, pane: pane, terminal: reference); switcher = false
+                    HcPaneSwitcher(model: model, onSelectTarget: { target in
+                        guard scopedModel === model, model.state == .connected, let epoch = model.workspace?.epoch else { return }
+                        switch target {
+                        case .pane(let pane):
+                            guard let reference = model.document?.pane(pane)?.terminal, reference.coreID == model.coreID else { return }
+                            pendingSwitcherPane = .init(epoch:epoch,pane:pane,terminal:reference,version:nil,workspaceID:nil)
+                        case .terminal(let address):
+                            guard model.canEdit, let core = model.coreID, let version = model.workspace?.snapshot?.version,
+                                  HcWorkspaceSwitcherCandidates.unplaced(model.terminals,coreID:core,document:model.document,snapshotAvailable:true).contains(where:{ $0.address == address }) else { return }
+                            pendingSwitcherPane = .init(epoch:epoch,pane:nil,terminal:.init(coreID:core,terminalID:address),version:version,workspaceID:model.focus.workspaceID)
+                        }
+                        switcher = false
                     }).presentationPreventsAppTermination(false)
                 }
             }
@@ -115,12 +125,31 @@ struct HcRootView: View {
     private func completeSwitcherSelection() {
         defer { pendingSwitcherPane = nil }
         guard let pending = pendingSwitcherPane, let model = scopedModel, model.state == .connected,
-              model.workspace?.epoch == pending.epoch,
-              pending.terminal.coreID == model.coreID, model.document?.pane(pending.pane)?.terminal == pending.terminal else { return }
-        do {
-            try model.select(pane: pending.pane)
-            if let tab = model.selectedTab { presentation.select(.init(tab: tab.id, pane: pending.pane), requestKeyboard: true) }
-        } catch { routeNotice = "Selection could not be saved." }
+              model.workspace?.epoch == pending.epoch, pending.terminal.coreID == model.coreID else { return }
+        if let pane = pending.pane {
+            guard model.document?.pane(pane)?.terminal == pending.terminal else { return }
+            do {
+                try model.select(pane:pane)
+                if let tab = model.selectedTab { presentation.select(.init(tab:tab.id,pane:pane),requestKeyboard:true) }
+            } catch { routeNotice = "Selection could not be saved." }
+            return
+        }
+        guard let version = pending.version else { return }
+        let intent = presentation.selectionIntent, input = presentation.inputGeneration
+        Task { [weak model] in
+            guard let model else { return }
+            do {
+                guard scopedModel === model, model.canEdit, model.workspace?.epoch == pending.epoch,
+                      model.coreID == pending.terminal.coreID, model.workspace?.snapshot?.version == version else { throw HcWorkspaceModel.Failure.stale }
+                let tab = try await model.showTerminal(pending.terminal.terminalID,workspaceID:pending.workspaceID,selectOnSuccess:false)
+                guard scopedModel === model, model.workspace?.epoch == pending.epoch,
+                      presentation.selectionIntent == intent, presentation.inputGeneration == input else { return }
+                try model.select(tab:tab)
+                presentation.select(.init(tab:tab,pane:model.focus.paneByTab[tab]),requestKeyboard:true)
+            } catch {
+                if scopedModel === model { operationError = "View attachment was not confirmed. Refresh and review the layout before trying again. No program was started, restarted or terminated." }
+            }
+        }
     }
     private var contents: some View {
         HcWorkspaceView(model: scopedModel, machine: machineStore.activeMachine, machineStore: machineStore,

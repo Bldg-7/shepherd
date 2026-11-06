@@ -124,6 +124,20 @@ class PreservationWiring(unittest.TestCase):
         self.assertNotIn('addLocalMonitorForEvents', tracker)
         self.assertNotIn('makeFirstResponder', tracker)
 
+    def test_existing_terminals_use_explicit_canonical_switcher_choices(self):
+        switcher = source('Shepherd/HcBackend/HcLaunchSheet.swift')
+        policy = source('Shepherd/HcBackend/HcWorkspaceSwitcherCandidates.swift')
+        model = source('ShepherdKit/Sources/ShepherdKit/CoreKit/HcWorkspaceModel.swift')
+        show = model[model.index('@discardableResult public func showTerminal('):model.index('public func closePane(')]
+        self.assertIn('case .terminal(let id)', switcher)
+        self.assertIn('CoreTerminalID.isCanonical($0.address)', policy)
+        self.assertIn('guard snapshotAvailable', policy)
+        self.assertIn('counts[$0.address] == 1', policy)
+        self.assertIn('terminal: .init(coreID: coreID, terminalID: record.address)', show)
+        self.assertIn('record.address == address', show)
+        self.assertNotIn('terminal.run', show)
+        self.assertNotIn('terminal.kill', show)
+
     def test_actual_rendered_selection_not_hidden_siblings_is_viewed(self):
         root = source('Shepherd/HcBackend/HcRootView.swift')
         self.assertIn('controlActiveState == .key, presentation.hasSelection', root)
@@ -135,7 +149,9 @@ class PreservationWiring(unittest.TestCase):
         switcher = source('Shepherd/HcBackend/HcLaunchSheet.swift')
         self.assertIn('onDismiss: completeSwitcherSelection', root)
         self.assertIn('model.workspace?.epoch == pending.epoch', root)
-        self.assertIn('model.document?.pane(pending.pane)?.terminal == pending.terminal', root)
+        self.assertIn('model.document?.pane(pane)?.terminal == pending.terminal', root)
+        self.assertIn('model.workspace?.snapshot?.version == version', root)
+        self.assertIn('selectOnSuccess:false', root)
         self.assertNotIn('model.select(', switcher)
         self.assertGreaterEqual(root.count('.presentationPreventsAppTermination(false)'), 5)
 

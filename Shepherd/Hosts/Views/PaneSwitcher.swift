@@ -35,6 +35,7 @@ struct WorkspaceSwitcherItem<ID: Hashable>: Identifiable, Equatable {
     let searchTerms: [String]
     let hasAgent: Bool
     let isAvailable: Bool
+    var accessibilityID: String? = nil
     func matches(_ query: String) -> Bool {
         query.split(whereSeparator: \.isWhitespace).allSatisfy { term in
             ([title,location] + searchTerms).contains { $0.localizedStandardContains(String(term)) }
@@ -102,6 +103,7 @@ struct WorkspacePaneSwitcher<ID: Hashable>: View {
                                     .background(destination.id == highlightedID ? Color.accentColor.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 8))
                                 }
                                 .buttonStyle(.plain).disabled(!destination.isAvailable)
+                                .accessibilityIdentifier(destination.accessibilityID ?? String(describing:destination.id))
                                 .id(destination.id)
                             }
                         }.padding(8)

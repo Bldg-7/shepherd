@@ -32,7 +32,7 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
 | Quit with sheet | Original presentationPreventsAppTermination(false) | Added original behavior to transient settings/switcher/origin/tracking/install sheets. Needs actual CmdQ/owned service survival gate. |
 | Viewed/attention | Original key-window + actual selected pane/tab | Found hidden tab siblings marked viewed in pane mode and app-active used without key-window check. New policy uses actual rendered mode/zoom/selection + key window. Pure rules covered; OS notification behavior remains unqualified. |
 | Scope changes | Existing exact machine identity / connection provenance | Clear overlays and deferred navigation; typed epoch/reference keys for previews, focus, switcher. No alias/PID/label is native authorization. Native Retry is exercised; exact current owner-model identity now joins profile/epoch guards at board actions, attach/input/drop/upload and title submission. Full host switching and physical cross-window interactions remain gates. |
-| Existing native terminal discovery | Original board/switcher lists registered programs | Further source audit found restored board/switcher enumerate app-document panes only; externally created canonical hc terminals without a saved view are hidden. Restore explicit discovery/attach through the existing switcher, not a diagnostic sidebar, invented legacy IDs, inferred native sessions or automatic uncertain-run adoption. Open. |
+| Existing native terminal discovery | Original board/switcher lists registered programs | Restored board/switcher initially hid externally created canonical hc terminals without saved views. Existing CmdP now offers explicit typed canonical choices, fresh read + exact-version view-only CAS after dismissal. A known-missing document gets workspace/view in one CAS; closing that view keeps the program. Native empty-board flow passes55, with an empty-state shortcut hint; no diagnostic sidebar, fake IDs, native-session inference or uncertain-run adoption. |
 | Multi-origin groups | Original host/remote grouping, folding, ordering | Still incomplete in hc product. ID-shadow bug in0.1.17 means no unsafe remote mutation or alias fallback. Do not hide this parity gap behind the read-only directory or claim full migration. |
 | Drag/drop | Original row-ID drag + terminal file drag | Scoped row-reference providers and the original terminal text-drop/highlight pipeline are now wired using real workspace node UUIDs, not fake legacy identities. Policy25/mode and actual-core native-destination component integration pass; physical List/Finder gestures remain unqualified. |
 | Empty/loading/error | Original board overlays/search/retry | Actual initially empty board, multi-term/no-results filter and client-failure banner/program survival pass in the current root. Native Retry dispatch also passes32-check current-root audit; loading and stale-target transitions remain open. No diagnostic/editor sidebar substitutes for these. |
@@ -216,6 +216,23 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
 - Runner readiness now distinguishes UI_FOCUS_REQUIRED from UI_RUNNING_NO_INPUT;
   current active/key readiness is still mandatory. A late delivered request does
   not justify another click after the running signal or process completion.
+
+- `.xm9fdig6` passes54, then current hint/source `.4e7zeclc` passes55. Real CmdP
+  on a missing version0 document offers an acknowledged external fixture program;
+  actual Return creates workspace/view in one CAS, preserves PID/creation/live
+  state and fabricates no launch receipt. Native CmdW removes its view but not
+  the program. Empty state exposes the same shortcut; subsequent49 checks remain
+  exercised. No direct switcher/model closure substitutes for selection.
+- `hc-discovery.wsQaMa`: canonical-candidate12/mode, official0.1.17 actual-core
+  workspace integration61. `hc-discovery-regression.9JgR6K/workspace`:261/mode,
+  21 stages including iOS typecheck. That batch then failed obsolete legacy menu
+  source guards after all16 native component stages; it is retained as failed.
+- `hc-original-ui-current.WsjlyC/run`: all16 original UI component stages and
+  corrected command-host + legacy binding/shortcut source checks pass. The
+  harness now uses a fresh environment/matching SDK and checks source hashes
+  before/after, not inherited provider environment. Physical GUI remains NOTRUN
+  for this component suite. `hc-discovery-final.7LR6tm`: current Debug/native55,
+  macOS Release, iOS Debug and wiring14 pass. See `DISCOVERY-README.md`.
 
 ## Evidence retained
 

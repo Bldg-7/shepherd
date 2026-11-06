@@ -144,6 +144,20 @@ private nonisolated struct Notice: Decodable, Sendable {
             let stillLive = try await HcTerminalBoard(connection: connection).get(splitRef.terminalID)
             try check(model.selectedTab?.layout?.panes.count == 1 && stillLive.state == "live", "close pane collapses layout, keeps program alive")
             let before: Status = try await connection.call("server.status").result()
+            let viewVersion = model.workspace!.snapshot!.version, workspaceCount = model.document!.workspaces.count
+            let extraView = try await model.showTerminal(splitRef.terminalID,selectOnSuccess:false)
+            let createdView = model.document?.workspaces.flatMap(\.tabs).first(where:{ $0.id == extraView })
+            try check(model.workspace?.snapshot?.version == viewVersion + 1 && model.document?.workspaces.count == workspaceCount + 1,
+                      "explicit existing-terminal workspace plus view is one exact CAS")
+            try check(createdView?.layout?.panes.first?.terminal == splitRef && model.selectedTab?.id == tab.id,
+                      "view-only discovery binds real reference without overriding newer UI focus")
+            let afterDiscovery: Status = try await connection.call("server.status").result()
+            try check(afterDiscovery.live == before.live,"existing-terminal discovery never starts or kills a program")
+            try await model.closeTab(extraView)
+            let beforeAlias = model.workspace?.snapshot?.version
+            do { _ = try await model.showTerminal("mutable-alias",workspaceID:id); throw CoreWorkspaceFailure.invalidDocument }
+            catch HcWorkspaceModel.Failure.unavailable { checks += 1 }
+            try check(model.workspace?.snapshot?.version == beforeAlias,"alias rejection does not dispatch a layout mutation")
             try await model.showTerminal(splitRef.terminalID, workspaceID: id)
             let shown = model.selectedTab!
             let afterShow: Status = try await connection.call("server.status").result()
