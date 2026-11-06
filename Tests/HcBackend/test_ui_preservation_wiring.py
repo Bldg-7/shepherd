@@ -52,11 +52,43 @@ class PreservationWiring(unittest.TestCase):
         self.assertIn('describeFailure:', root)
         self.assertIn('return hcConnectionFailureDescription(error)', root)
 
+    def test_selection_and_focus_are_explicit_ui_intents(self):
+        board = source('Shepherd/HcBackend/HcWorkspaceView.swift')
+        pane = source('Shepherd/HcBackend/HcTerminalPane.swift')
+        root = source('Shepherd/HcBackend/HcRootView.swift')
+        self.assertIn('presentation.clearSelection(focus: selectionStamp)', board)
+        self.assertIn('guard presentation.hasSelection, let tab', board)
+        self.assertIn('requestKeyboard: false', board)
+        self.assertIn('requestKeyboard: true', board)
+        self.assertIn('request.epoch == model.workspace?.epoch', pane)
+        self.assertIn('request.pane == pane.id', pane)
+        self.assertIn('window.isKeyWindow', pane)
+        self.assertIn('presentation.hasSelection && !presentation.previewCoversTerminal', root)
+
+    def test_actual_rendered_selection_not_hidden_siblings_is_viewed(self):
+        root = source('Shepherd/HcBackend/HcRootView.swift')
+        self.assertIn('controlActiveState == .key, presentation.hasSelection', root)
+        self.assertIn('HcWorkspacePresentation.viewedPanes(', root)
+        self.assertIn('all.filter { visible.contains($0.id) }', root)
+
+    def test_switcher_selection_waits_for_real_sheet_dismissal(self):
+        root = source('Shepherd/HcBackend/HcRootView.swift')
+        switcher = source('Shepherd/HcBackend/HcLaunchSheet.swift')
+        self.assertIn('onDismiss: completeSwitcherSelection', root)
+        self.assertIn('model.workspace?.epoch == pending.epoch', root)
+        self.assertIn('model.document?.pane(pending.pane)?.terminal == pending.terminal', root)
+        self.assertNotIn('model.select(', switcher)
+        self.assertGreaterEqual(root.count('.presentationPreventsAppTermination(false)'), 5)
+
     def test_preview_expansion_does_not_remove_live_terminal(self):
         pane = source('Shepherd/HcBackend/HcTerminalPane.swift')
-        self.assertIn('WorkspaceDetailSplitView(showsPanel:', pane)
-        self.assertIn('panelCoversTerminal: expandedPreview', pane)
+        workspace = source('Shepherd/HcBackend/HcWorkspaceView.swift')
+        self.assertIn('WorkspaceDetailSplitView(showsPanel:', workspace)
+        self.assertIn('panelCoversTerminal: shown?.expanded == true', workspace)
+        self.assertNotIn('WorkspaceDetailSplitView(', pane)  # One preview beside the whole tab, not one split per pane.
         self.assertNotIn('if !expandedPreview', pane)
+        self.assertIn('TerminalPaneFrame(isFocused:', pane)
+        self.assertNotIn('HStack {', pane[pane.index('var body: some View'):pane.index('private func makeDrops')])
         self.assertIn('let epoch: UUID; let pane: UUID; let terminal:', pane)
 
 if __name__ == '__main__':

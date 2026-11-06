@@ -97,6 +97,16 @@ enum WorkspaceWindowMetrics {
     }
 }
 
+#if DEBUG
+@MainActor enum WorkspaceSidebarDiagnostics {
+    static var events: [[String:Any]] = []
+    static func record(_ event: [String:Any]) {
+        events.append(event)
+        if events.count > 128 { events.removeFirst(events.count - 128) }
+    }
+}
+#endif
+
 /// Observe native collapse for the whole window lifetime, not only startup.
 /// The always-present detail still exists when the sidebar was dragged closed.
 private struct WorkspaceNativeSidebarVisibility: NSViewRepresentable {
@@ -111,13 +121,39 @@ private struct WorkspaceNativeSidebarVisibility: NSViewRepresentable {
         private var observation: NSKeyValueObservation?
         private var scheduled = false
         private var minimumWidthConstraint: NSLayoutConstraint?
+        private weak var inlineController: NSSplitViewController?
+        private var savedInlineThreshold: CGFloat?
+
+        private func restoreInlinePolicy() {
+            if let controller = inlineController, let savedInlineThreshold {
+                controller.minimumThicknessForInlineSidebars = savedInlineThreshold
+            }
+            inlineController = nil; savedInlineThreshold = nil
+        }
+        private func applyInlinePolicy(_ controller: NSSplitViewController) {
+            // AppKit only treats a fullscreen reveal as an overlay when the
+            // inline-sidebar size requirement is not satisfied. Native .all
+            // visibility is not pin intent; never let it tile an unpinned view.
+            let overlay = window?.styleMask.contains(.fullScreen) == true && !state.isPinned
+            if inlineController !== controller { restoreInlinePolicy() }
+            if overlay {
+                if savedInlineThreshold == nil {
+                    inlineController = controller
+                    savedInlineThreshold = controller.minimumThicknessForInlineSidebars
+                }
+                let threshold = max(controller.splitView.bounds.width, window?.contentView?.bounds.width ?? 0) + 1
+                if controller.minimumThicknessForInlineSidebars != threshold {
+                    controller.minimumThicknessForInlineSidebars = threshold
+                }
+            } else { restoreInlinePolicy() }
+        }
 
         init(state: WorkspaceSidebarState) {
             self.state = state
             super.init(frame: .zero)
         }
         required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
-        isolated deinit { minimumWidthConstraint?.isActive = false }
+        isolated deinit { minimumWidthConstraint?.isActive = false; restoreInlinePolicy() }
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
         override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); scheduleObservation() }
         override func layout() { super.layout(); scheduleObservation() }
@@ -133,6 +169,7 @@ private struct WorkspaceNativeSidebarVisibility: NSViewRepresentable {
                     self.observedItem = nil
                     self.minimumWidthConstraint?.isActive = false
                     self.minimumWidthConstraint = nil
+                    self.restoreInlinePolicy()
                     return
                 }
                 var ancestor = self.superview
@@ -143,6 +180,7 @@ private struct WorkspaceNativeSidebarVisibility: NSViewRepresentable {
                        let detail = controller.splitViewItems.last,
                        self.isDescendant(of: detail.viewController.view),
                        let sidebar = controller.splitViewItems.first {
+                        self.applyInlinePolicy(controller)
                         if self.observedItem !== sidebar {
                             self.observedItem = sidebar
                             self.minimumWidthConstraint?.isActive = false
@@ -172,6 +210,10 @@ private struct WorkspaceNativeSidebarVisibility: NSViewRepresentable {
                                     DispatchQueue.main.async { [weak self, weak item] in
                                         guard let self, let item, self.window != nil,
                                               self.observedItem === item, item.isCollapsed == collapsed else { return }
+                                        #if DEBUG
+                                        WorkspaceSidebarDiagnostics.record(["event":"collapse","pinned":self.state.isPinned,"collapsed":collapsed,
+                                            "width":item.viewController.view.bounds.width,"revision":revision])
+                                        #endif
                                         self.state.noteNativeSidebar(isCollapsed: collapsed)
                                         self.state.reconcileNativeSidebar(isCollapsed: collapsed, revision: revision)
                                         self.scheduleObservation()
@@ -179,6 +221,14 @@ private struct WorkspaceNativeSidebarVisibility: NSViewRepresentable {
                                 }
                             }
                         }
+                        #if DEBUG
+                        WorkspaceSidebarDiagnostics.record(["event":"layout","pinned":self.state.isPinned,"collapsed":sidebar.isCollapsed,
+                            "width":sidebar.viewController.view.bounds.width,"window":self.window?.windowNumber ?? -1,
+                            "sidebarWindow":sidebar.viewController.view.window?.windowNumber ?? -1,
+                            "constraintActive":self.minimumWidthConstraint?.isActive ?? false,
+                            "constraintMin":self.minimumWidthConstraint?.constant ?? -1,
+                            "threshold":controller.minimumThicknessForInlineSidebars])
+                        #endif
                         let minimumWidth = self.state.isPinned ? WorkspaceSidebarMetrics.minimum : WorkspaceSidebarMetrics.preferred
                         if self.minimumWidthConstraint?.constant != minimumWidth { self.minimumWidthConstraint?.constant = minimumWidth }
                         return

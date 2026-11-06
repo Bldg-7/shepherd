@@ -7,6 +7,7 @@ import AppKit
 @MainActor @Observable final class HcTerminalPaneModel {
     private(set) var message: String?
     private(set) var connected = false
+    private(set) var hasKeyboardFocus = false
     @ObservationIgnored private weak var terminal: TerminalView?
     @ObservationIgnored private var session: HcTerminalSession?
     @ObservationIgnored private var teardown: Task<Void, Never>?
@@ -17,6 +18,10 @@ import AppKit
     @ObservationIgnored private var size = (80, 24)
 
     func bind(_ view: TerminalView) { terminal = view }
+    @discardableResult func takeKeyboard() -> Bool {
+        guard let terminal, let window = terminal.window, NSApp.isActive, window.isKeyWindow else { return false }
+        return window.makeFirstResponder(terminal)
+    }
     func start(makeSession: () throws -> HcTerminalSession) async {
         guard !Task.isCancelled else { return }
         stop(); let token = generation
@@ -88,11 +93,17 @@ import AppKit
     func resize(_ cols: Int, _ rows: Int) {
         guard (1...2048).contains(cols), (1...2048).contains(rows), cols * rows <= 262_144 else { return }
         size = (cols, rows)
+        #if DEBUG && os(macOS)
+        if HcMigrationConfiguration.requested { HcMigrationRenderProbe.shared.resized(columns: cols, rows: rows) }
+        #endif
         if connected { enqueue { try await $0.resize(columns: cols, rows: rows) } }
     }
-    func focus(_ focused: Bool) { if connected { enqueue { try await $0.focus(focused) } } }
+    func focus(_ focused: Bool) {
+        hasKeyboardFocus = focused
+        if connected { enqueue { try await $0.focus(focused) } }
+    }
     func stop() {
-        generation = UUID(); connected = false
+        generation = UUID(); connected = false; hasKeyboardFocus = false
         writer?.cancel(); writer = nil; queuedBytes = 0; queuedActions = 0
         let old = session, previous = teardown; session = nil
         teardown = Task { await previous?.value; try? await old?.stop() }
@@ -120,11 +131,21 @@ import AppKit
         if entries.count < 128 { entries[key] = value } // Do not silently evict another pane's preview.
         return value
     }
+    func collapsePreviews(epoch: UUID?) {
+        for (key, entry) in entries where key.epoch == epoch { entry.expanded = false }
+    }
+    func revealTerminal(epoch: UUID?, pane: UUID) {
+        for (key, entry) in entries where key.epoch == epoch && key.pane == pane { entry.expanded = false }
+    }
     func retain(epoch: UUID?, panes: [CoreWorkspaceDocument.Pane]) {
         guard let epoch else { entries = [:]; return }
         let valid = Set(panes.map { Key(epoch: epoch, pane: $0.id, terminal: $0.terminal) })
         entries = entries.filter { valid.contains($0.key) }
     }
+}
+
+extension EnvironmentValues {
+    @Entry var hcPaneKeyboardRequest: HcPaneKeyboardRequest?
 }
 
 struct HcTerminalPane: View {
@@ -133,6 +154,7 @@ struct HcTerminalPane: View {
     var machine: Machine? = nil
     var machineStore: MachineStore? = nil
     @AppStorage(AgentBoardView.showsTabsKey) private var showsTabs = false
+    @Environment(\.hcPaneKeyboardRequest) private var keyboardRequest
     @State private var presentation: HcPanePresentation
     private var preview: FilePreviewRequest? {
         get { presentation.preview }
@@ -157,68 +179,43 @@ struct HcTerminalPane: View {
         return machineStore.activeMachineID == machine.id && machineStore.isCurrentConnection(machine)
     }
     var body: some View {
-        VStack(spacing: 0) {
-            if showsTabs && (model.selectedTab?.layout?.panes.count ?? 0) > 1 {
-            HStack {
-                Text(pane.title ?? pane.terminal?.terminalID ?? "Unbound pane").font(.caption)
-                Spacer()
-                if pane.terminal != nil {
-                    Menu {
-                        Button("New shell to right") { split(.horizontal) }
-                        Button("New shell below") { split(.vertical) }
-                        Button("Close pane view (keep program running)") { perform { try await model.closePane(pane.id) } }
-                    } label: { Image(systemName: "ellipsis") }
-                    .disabled(!model.canEdit)
-                    Button { try? model.zoom(pane: model.focus.zoomByTab[model.selectedTab?.id ?? UUID()] == pane.id ? nil : pane.id) }
-                    label: { Image(systemName: "arrow.up.left.and.arrow.down.right") }
-                    .buttonStyle(.borderless)
+        TerminalPaneFrame(isFocused: showsTabs && terminal.hasKeyboardFocus) {
+            VStack(spacing: 0) {
+                if pane.terminal == nil {
+                    ContentUnavailableView("Program not bound", systemImage: "terminal", description: Text("Check operation recovery before starting another program."))
+                } else if pane.terminal?.coreID != model.coreID {
+                    ContentUnavailableView("Remote terminal", systemImage: "network", description: Text("Connect directly to its origin before attaching."))
+                } else {
+                    TerminalHostView(onCreate: { terminal.bind($0) }, onInput: { if currentScope { terminal.send($0) } },
+                        onResize: { if currentScope { terminal.resize($0, $1) } }, onFocusChange: { focused in
+                            guard !focused || currentScope else { return }
+                            terminal.focus(focused)
+                            if focused { try? model.select(pane: pane.id) }
+                        }, focusesWhenShown: model.focus.paneByTab[model.selectedTab?.id ?? UUID()] == pane.id,
+                        onOpenLink: { link, _ in open(link) },
+                        onDropFiles: currentScope && terminal.connected && TerminalFileDropFeature.isEnabled && drops?.isUploading == false ? { drops?.drop($0) } : nil)
+                    .task(id: pane.terminal) {
+                        drops?.cancel(); drops = makeDrops()
+                        await terminal.start { try model.session(for: pane) }
+                    }
+                    .onDisappear { drops?.cancel(); terminal.stop() }
+                    if let drops { TerminalDropBanner(controller: drops) }
+                    if let message = terminal.message { Text(message).font(.caption).foregroundStyle(.secondary).padding(6) }
                 }
-            }.padding(6)
-            }
-            if pane.terminal == nil {
-                ContentUnavailableView("Program not bound", systemImage: "terminal", description: Text("Check operation recovery before starting another program."))
-            } else if pane.terminal?.coreID != model.coreID {
-                ContentUnavailableView("Remote terminal", systemImage: "network", description: Text("Connect directly to its origin before attaching."))
-            } else {
-                WorkspaceDetailSplitView(showsPanel: preview != nil, panelMinimum: 320, panelIdeal: 560,
-                                         panelCoversTerminal: expandedPreview) {
-                TerminalHostView(onCreate: { terminal.bind($0) }, onInput: { if currentScope { terminal.send($0) } },
-                                 onResize: { if currentScope { terminal.resize($0, $1) } }, onFocusChange: { focused in
-                    guard !focused || currentScope else { return }
-                    terminal.focus(focused)
-                    if focused { try? model.select(pane: pane.id) }
-                }, focusesWhenShown: model.focus.paneByTab[model.selectedTab?.id ?? UUID()] == pane.id,
-                    onOpenLink: { link, _ in open(link) },
-                    onDropFiles: currentScope && terminal.connected && TerminalFileDropFeature.isEnabled && drops?.isUploading == false ? { drops?.drop($0) } : nil)
-                .task(id: pane.terminal) {
-                    drops?.cancel(); drops = makeDrops()
-                    await terminal.start { try model.session(for: pane) }
-                }
-                .onDisappear { drops?.cancel(); terminal.stop() }
-                .accessibilityHidden(expandedPreview)
-                .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
-                .modifier(WorkspaceSidebarDetailLayout())
-                } panel: {
-                if let preview, let machineStore {
-                    FilePreviewPanel(request: preview, model: previewModel, machineStore: machineStore,
-                        onClose: { self.preview = nil; expandedPreview = false }, onFileLink: { self.preview = $0 })
-                        .previewExpansion(isExpanded: expandedPreview, onToggle: { expandedPreview.toggle() })
-                        .frame(minWidth: 320, idealWidth: 560, maxWidth: .infinity, maxHeight: .infinity)
-                        .modifier(WorkspaceSidebarDetailLayout())
-                }
-                }
-                if let drops { TerminalDropBanner(controller: drops) }
-                if let message = terminal.message { Text(message).font(.caption).foregroundStyle(.secondary).padding(6) }
             }
         }
-        .preference(key: HcWorkspacePreviewVisible.self, value: preview != nil)
         .onAppear { expandedPreview = false }
         .onChange(of: pane.terminal) { preview = nil; expandedPreview = false; drops?.cancel() }
-        .alert("Terminal operation", isPresented: Binding(get: { operationError != nil }, set: { if !$0 { operationError = nil } })) { Button("OK") { operationError = nil } } message: { Text(operationError ?? "") }
-        .overlay {
-            if showsTabs && (model.selectedTab?.layout?.panes.count ?? 0) > 1 {
-                Rectangle().stroke(model.focus.paneByTab[model.selectedTab?.id ?? UUID()] == pane.id ? Color.accentColor : Color.secondary.opacity(0.3), lineWidth: 1)
-                    .allowsHitTesting(false)
+        .task(id: keyboardRequest) {
+            guard let request = keyboardRequest, request.pane == pane.id else { return }
+            // UI presentation readiness only, never a terminal-output timeout.
+            // Do not focus another window while a sheet is dismissing.
+            let end = ContinuousClock.now.advanced(by: .seconds(1))
+            while !Task.isCancelled, ContinuousClock.now < end {
+                guard currentScope, request.epoch == model.workspace?.epoch, !expandedPreview,
+                      model.document?.pane(pane.id)?.terminal == pane.terminal else { return }
+                if terminal.takeKeyboard() { return }
+                try? await Task.sleep(for: .milliseconds(20))
             }
         }
     }

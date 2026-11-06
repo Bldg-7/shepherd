@@ -5,6 +5,12 @@ private enum HcInspectionLaunchFailure: Error, LocalizedError {
     var errorDescription: String? { "This private inspection environment supports Shell only. Claude Code, Codex and Pi are not connected to your installed CLIs or accounts. No program was started." }
 }
 
+private struct HcPendingPaneSelection {
+    let epoch: UUID
+    let pane: UUID
+    let terminal: CoreWorkspaceDocument.TerminalReference
+}
+
 private struct HcRootChanges: Equatable {
     let machine: Machine.ConnectionIdentity?
     let state: HcWorkspaceModel.State?
@@ -13,6 +19,10 @@ private struct HcRootChanges: Equatable {
     let busy: Bool
     let writable: Bool
     let sheets: [Bool]
+    let hasSelection: Bool
+    let grouped: Bool
+    let windowIsKey: Bool
+    let previewCoversTerminal: Bool
 }
 
 /// Product root. Scope selection invalidates the old screen synchronously;
@@ -24,10 +34,12 @@ struct HcRootView: View {
     private let inspectionOnly: Bool
     @Environment(\.openWindow) private var openWindow
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.controlActiveState) private var controlActiveState
     @State private var settings = false
     @State private var installation = false
     @State private var launchSheet = false
     @State private var switcher = false
+    @State private var pendingSwitcherPane: HcPendingPaneSelection?
     @State private var origins = false
     @State private var tracking = false
     @State private var closeRequests = 0
@@ -38,6 +50,7 @@ struct HcRootView: View {
     @State private var operationError: String?
     @State private var viewingEpoch = UUID()
     @State private var commandOwner = UUID()
+    @State private var presentation = HcWorkspacePresentation()
     @AppStorage("hc.browserRetirementNoticeDismissed") private var retirementDismissed = false
     init(machineStore: MachineStore, connection: HcMachineConnection? = nil, localTransport: (any CoreByteTransport)? = nil, inspectionOnly: Bool = false) {
         self.machineStore = machineStore; self.localTransport = localTransport; self.inspectionOnly = inspectionOnly
@@ -52,7 +65,9 @@ struct HcRootView: View {
         let model = scopedModel
         return HcRootChanges(machine: machineStore.activeMachine?.connectionIdentity, state: model?.state,
             document: model?.document, focus: model?.focus, busy: model?.operationBusy ?? false,
-            writable: model?.workspace?.canWrite ?? false, sheets: [launchSheet,switcher,settings,installation,origins,tracking,renamingTitle,model?.operationReview != nil])
+            writable: model?.workspace?.canWrite ?? false, sheets: [launchSheet,switcher,settings,installation,origins,tracking,renamingTitle,model?.operationReview != nil],
+            hasSelection: presentation.hasSelection, grouped: showsTabs, windowIsKey: controlActiveState == .key,
+            previewCoversTerminal: presentation.previewCoversTerminal)
     }
     var body: some View {
         dialogs
@@ -62,21 +77,39 @@ struct HcRootView: View {
             }
             .onAppear(perform: appeared)
             .onChange(of: changes) { routeAndViewed() }
-            .onChange(of: machineStore.activeMachine?.connectionIdentity) { origins = false; tracking = false; launchSheet = false; switcher = false }
+            .onChange(of: machineStore.activeMachine?.connectionIdentity) { origins = false; tracking = false; launchSheet = false; switcher = false; pendingSwitcherPane = nil }
             .onChange(of: scenePhase) { if scenePhase == .active { HcNotificationCoordinator.shared.refreshAuthorization() }; routeAndViewed() }
             .onChange(of: HcNotificationCoordinator.shared.navigationRequest, initial: true) { routeAndViewed() }
             .onDisappear(perform: disappeared)
     }
     private var dialogs: some View {
         contents
-            .sheet(isPresented: $tracking) { if let model = scopedModel { HcOperationTrackingView(model: model) } }
-            .sheet(isPresented: $switcher) { if let model = scopedModel { HcPaneSwitcher(model: model) } }
-            .sheet(isPresented: $settings) { MachinesSettingsView(machineStore: machineStore) }
-            .sheet(isPresented: $installation) { HcInstallationView(machine: machineStore.activeMachine) }
-            .sheet(isPresented: $origins) { if let model = scopedModel { HcGatewayDirectoryView(model: model) } }
+            .sheet(isPresented: $tracking) { if let model = scopedModel { HcOperationTrackingView(model: model).presentationPreventsAppTermination(false) } }
+            .sheet(isPresented: $switcher, onDismiss: completeSwitcherSelection) {
+                if let model = scopedModel {
+                    HcPaneSwitcher(model: model, onSelectPane: { pane in
+                        guard scopedModel === model, let epoch = model.workspace?.epoch,
+                              let reference = model.document?.pane(pane)?.terminal, reference.coreID == model.coreID else { return }
+                        pendingSwitcherPane = .init(epoch: epoch, pane: pane, terminal: reference); switcher = false
+                    }).presentationPreventsAppTermination(false)
+                }
+            }
+            .sheet(isPresented: $settings) { MachinesSettingsView(machineStore: machineStore).presentationPreventsAppTermination(false) }
+            .sheet(isPresented: $installation) { HcInstallationView(machine: machineStore.activeMachine).presentationPreventsAppTermination(false) }
+            .sheet(isPresented: $origins) { if let model = scopedModel { HcGatewayDirectoryView(model: model).presentationPreventsAppTermination(false) } }
             .alert("Workspace operation", isPresented: Binding(get: { operationError != nil }, set: { if !$0 { operationError = nil } })) {
                 Button("OK") { operationError = nil }
             } message: { Text(operationError ?? "") }
+    }
+    private func completeSwitcherSelection() {
+        defer { pendingSwitcherPane = nil }
+        guard let pending = pendingSwitcherPane, let model = scopedModel, model.state == .connected,
+              model.workspace?.epoch == pending.epoch,
+              pending.terminal.coreID == model.coreID, model.document?.pane(pending.pane)?.terminal == pending.terminal else { return }
+        do {
+            try model.select(pane: pending.pane)
+            if let tab = model.selectedTab { presentation.select(.init(tab: tab.id, pane: pending.pane), requestKeyboard: true) }
+        } catch { routeNotice = "Selection could not be saved." }
     }
     private var contents: some View {
         HcWorkspaceView(model: scopedModel, machine: machineStore.activeMachine, machineStore: machineStore,
@@ -88,7 +121,7 @@ struct HcRootView: View {
             onReconnect: {
                 guard let machine = machineStore.activeMachine else { return }
                 Task { await connection.open(machine: machine, store: machineStore, localTransport: localTransport) }
-            }, onRenameVisibility: { renamingTitle = $0 }, unavailable: AnyView(unavailable))
+            }, onRenameVisibility: { renamingTitle = $0 }, presentation: presentation, unavailable: AnyView(unavailable))
         .overlay {
             if launchSheet, let model = scopedModel {
                 NewTabLauncher(targets: launchTargets(model), preset: launcherPreset(model),
@@ -120,7 +153,7 @@ struct HcRootView: View {
             }, unavailableReason: model.canEdit ? nil : "Connection is not writable.")]
     }
     private func launcherPreset(_ model: HcWorkspaceModel) -> LaunchPreset? {
-        guard launcherUsesCurrentWorkspace, let id = model.focus.workspaceID,
+        guard launcherUsesCurrentWorkspace, presentation.hasSelection, let id = model.focus.workspaceID,
               let workspace = model.document?.workspaces.first(where: { $0.id == id }) else { return nil }
         return .init(targetID: "host", workspace: .init(workspaceID: id.uuidString, label: workspace.name))
     }
@@ -175,13 +208,13 @@ struct HcRootView: View {
     private var actions: HcWindowActions {
         let model = scopedModel, tab = model?.selectedTab
         let available = !launchSheet && !switcher && !settings && !installation && !origins && !tracking && !renamingTitle && model?.operationReview == nil
-        return HcWindowActions(canLaunch: available && model?.canEdit == true, canClose: available && model?.canEdit == true && tab != nil,
+        return HcWindowActions(canLaunch: available && model?.canEdit == true, canClose: available && presentation.hasSelection && !presentation.previewCoversTerminal && model?.canEdit == true && tab != nil,
             canSwitch: available && model?.state == .connected, canSettings: available, closeTitle: showsTabs ? "Close Tab" : "Close Pane",
             launch: {
                 guard let current = scopedModel, current.canEdit, !launchSheet, !switcher, !settings, !installation, !origins else { return }
                 openLauncher(currentWorkspace: false)
             }, close: {
-                guard scopedModel?.canEdit == true, !origins, !tracking else { return }
+                guard scopedModel?.canEdit == true, presentation.hasSelection, !presentation.previewCoversTerminal, !origins, !tracking else { return }
                 closeRequests += 1
             }, switcher: {
                 guard scopedModel?.state == .connected, scopedModel?.operationReview == nil,
@@ -206,16 +239,23 @@ struct HcRootView: View {
         let notifications = HcNotificationCoordinator.shared
         if let route = notifications.navigationRequest, let model = scopedModel, model.state == .connected, machineStore.activeMachineID == route.machineID {
             if model.coreID == route.coreID, let pane = model.document?.panes.first(where: { $0.terminal?.coreID == route.coreID && $0.terminal?.terminalID == route.terminalID }) {
-                do { try model.select(pane: pane.id); routeNotice = nil } catch { routeNotice = "Could not save the local selection." }
+                do {
+                    try model.select(pane: pane.id)
+                    if let tab = model.selectedTab { presentation.select(.init(tab: tab.id, pane: pane.id), requestKeyboard: true) }
+                    routeNotice = nil
+                } catch { routeNotice = "Could not save the local selection." }
             } else { routeNotice = "That notification no longer has a view in this origin. Nothing was launched or retargeted; choose a live core terminal explicitly." }
             notifications.navigationRequest = nil
         }
-        guard scenePhase == .active, let model = scopedModel, model.state == .connected, let tab = model.selectedTab else {
+        guard scenePhase == .active, controlActiveState == .key, presentation.hasSelection,
+              let model = scopedModel, model.state == .connected, let tab = model.selectedTab else {
             Task { guard viewingEpoch == epoch else { return }; await notifications.setViewed(machine: nil, coreID: nil) }; return
         }
-        let zoom = model.focus.zoomByTab[tab.id]
-        let panes = (tab.layout?.panes ?? []).filter { zoom == nil || $0.id == zoom }
-        let ids = Set(panes.compactMap { $0.terminal?.coreID == model.coreID ? $0.terminal?.terminalID : nil })
+        let all = tab.layout?.panes ?? []
+        let visible = HcWorkspacePresentation.viewedPanes(panes: all.map(\.id), focused: model.focus.paneByTab[tab.id],
+            zoom: model.focus.zoomByTab[tab.id], grouped: showsTabs, selected: presentation.hasSelection,
+            windowIsKey: controlActiveState == .key, covered: false)
+        let ids = Set(all.filter { visible.contains($0.id) }.compactMap { $0.terminal?.coreID == model.coreID ? $0.terminal?.terminalID : nil })
         let machine = machineStore.activeMachine
         Task {
             guard viewingEpoch == epoch, scopedModel === model, machineStore.activeMachineID == machine?.id else { return }
