@@ -287,6 +287,18 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
   `hc-preview-history.T8ZWOr` failed at component compilation (missing CoreGraphics
   import in test); later platform stages did not run and are not counted.
 
+- Product owner retirement now serializes close/open and repeated replacements,
+  tracks pending/initializing RPCs/models, and guards late close phase changes.
+  Model disconnect shares one cleanup job. Cleanup uncertainty blocks later
+  dispatch. `hc-owner-negative-local.98VrFO` reproduces early replacement/stale
+  close inconsistency; `hc-owner-boundaries.WKwFI1` retains the later failed
+  initialization boundary (fixture ordering also changed, not a single-fix
+  attribution). Final `hc-owner-idempotent.zPStVX`: owner24, workspace84 official
+  core, SDK274/mode/21 stages, macOS Debug/Release, iOS Debug and wiring18 pass.
+  This is controlled local transport/product-owner evidence, not physical
+  host switching, SSH/mobile GUI, production launchd or cutover. See
+  `Tests/HcBackend/OWNER-README.md` for exact composition and failure limits.
+
 ## Evidence retained
 
 - `/private/tmp/hc-ui-behavior-audit.KpGlYF`: presentation rules19 per Debug/optimized;

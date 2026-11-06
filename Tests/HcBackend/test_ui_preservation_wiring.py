@@ -176,6 +176,19 @@ class PreservationWiring(unittest.TestCase):
         self.assertNotIn('terminal.kill',policy)
         self.assertNotIn('terminal.run',policy)
 
+    def test_machine_owner_tracks_initialization_and_serializes_retirement(self):
+        owner = source('ShepherdKit/Sources/ShepherdKit/Machines/HcMachineConnection.swift')
+        self.assertIn('private var retirement: Task<Void, Error>?',owner)
+        self.assertIn('let previous = model ?? preparing',owner)
+        self.assertIn('try await earlier?.value',owner)
+        self.assertIn('opening = nil; starting = rpc',owner)
+        self.assertIn('preparing = next',owner)
+        closing = owner[owner.index('public func close()'):]
+        self.assertIn('let cleanup = retireCurrent()',closing)
+        self.assertGreaterEqual(closing.count('guard token == generation'),2)
+        model = source('ShepherdKit/Sources/ShepherdKit/CoreKit/HcWorkspaceModel.swift')
+        self.assertIn('if let closingTask { try await closingTask.value; return }',model)
+
     def test_actual_rendered_selection_not_hidden_siblings_is_viewed(self):
         root = source('Shepherd/HcBackend/HcRootView.swift')
         self.assertIn('controlActiveState == .key, presentation.hasSelection', root)

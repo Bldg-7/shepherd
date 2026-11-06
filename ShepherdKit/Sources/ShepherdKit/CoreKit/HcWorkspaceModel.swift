@@ -31,6 +31,7 @@ private nonisolated struct HcWorkspaceTerminalInitial: Decodable, Sendable { let
     @ObservationIgnored private var events: CoreStream?
     @ObservationIgnored private var documentTask: Task<Void, Never>?
     @ObservationIgnored private var terminalTask: Task<Void, Never>?
+    @ObservationIgnored private var closingTask: Task<Void, Error>?
     @ObservationIgnored private var generation = UUID()
     @ObservationIgnored private let savedRecovery: Data?
     @ObservationIgnored private let savedFocus: Data?
@@ -475,14 +476,19 @@ private nonisolated struct HcWorkspaceTerminalInitial: Decodable, Sendable { let
     public func disconnect(markClosed: Bool = true) async throws {
         generation = UUID(); operationReview = nil
         if markClosed { state = .closed }
-        let docTask = documentTask, termTask = terminalTask, events = events, store = store
+        if let closingTask { try await closingTask.value; return }
+        let docTask = documentTask, termTask = terminalTask, events = events, store = store, connection = connection
         documentTask = nil; terminalTask = nil; self.events = nil; self.store = nil
         docTask?.cancel(); termTask?.cancel()
-        var error: (any Error)?
-        do { try await events?.close() } catch let caught { error = caught }
-        do { try await store?.close() } catch let caught { error = caught }
-        do { try await connection.close() } catch let caught { error = caught }
-        await docTask?.value; await termTask?.value
-        if let error { throw error }
+        let job = Task<Void, Error> {
+            var error: (any Error)?
+            do { try await events?.close() } catch let caught { error = caught }
+            do { try await store?.close() } catch let caught { error = caught }
+            do { try await connection.close() } catch let caught { error = caught }
+            await docTask?.value; await termTask?.value
+            if let error { throw error }
+        }
+        closingTask = job
+        try await job.value
     }
 }

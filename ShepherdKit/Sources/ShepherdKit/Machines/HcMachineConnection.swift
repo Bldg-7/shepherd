@@ -14,6 +14,9 @@ import CryptoKit
     private var token = UUID()
     private var approval: Machine?
     private var opening: Task<CoreRPCConnection, Error>?
+    private var starting: CoreRPCConnection?
+    private var preparing: HcWorkspaceModel?
+    private var retirement: Task<Void, Error>?
     private let directory: URL
     public init(directory: URL? = nil) {
         self.directory = directory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -31,14 +34,31 @@ import CryptoKit
         try data.write(to: file, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
     }
+    private nonisolated static func requestedHostKey(_ error: any Error) -> String? {
+        #if canImport(NIOSSH) && canImport(Citadel) && canImport(Crypto)
+        if case CoreSSHFailure.hostKeyApprovalRequired(let fingerprint) = error { return fingerprint }
+        #endif
+        return nil
+    }
+    /// Every replacement joins the same cleanup tail, including a close/open
+    /// that is already suspended. A failed retirement stays fail-closed.
+    private func retireCurrent() -> Task<Void, Error> {
+        let previous = model ?? preparing, pending = opening, rpc = starting, earlier = retirement
+        model = nil; preparing = nil; opening = nil; starting = nil
+        pending?.cancel()
+        let job = Task<Void, Error> {
+            try await earlier?.value
+            if let pending, case .success(let connected) = await pending.result { try await connected.close() }
+            if let previous { try await previous.disconnect() }
+            else { try await rpc?.close() }
+        }
+        retirement = job
+        return job
+    }
     public func open(machine: Machine, store: MachineStore, localTransport: (any CoreByteTransport)? = nil) async {
         let generation = UUID(); token = generation; approval = nil; message = nil; phase = .connecting; identity = nil
-        let previous = model, pending = opening; model = nil; opening = nil
-        pending?.cancel()
-        do {
-            if let pending, case .success(let rpc) = await pending.result { try await rpc.close() }
-            try await previous?.disconnect()
-        }
+        let cleanup = retireCurrent()
+        do { try await cleanup.value }
         catch { guard token == generation else { return }; message = "Previous connection cleanup failed. Retry after checking the host."; phase = .failed; return }
         guard token == generation, !Task.isCancelled else { return }
         var connection: CoreRPCConnection?
@@ -47,8 +67,10 @@ import CryptoKit
             opening = job
             let rpc = try await withTaskCancellationHandler { try await job.value } onCancel: { job.cancel() }
             connection = rpc
-            if token == generation { opening = nil }
-            guard token == generation, !Task.isCancelled, store.isCurrentConnection(machine), let hello = await rpc.hello else { throw CancellationError() }
+            guard token == generation, !Task.isCancelled else { throw CancellationError() }
+            opening = nil; starting = rpc
+            let receivedHello = await rpc.hello
+            guard token == generation, !Task.isCancelled, store.isCurrentConnection(machine), let hello = receivedHello else { throw CancellationError() }
             // A changed core or connection identity must not inherit another
             // origin's focus/recovery journal. No raw host/core string in paths.
             var scope = machine; scope.displayName = ""; scope.pinnedHostKeyFingerprint = nil
@@ -61,14 +83,16 @@ import CryptoKit
             let recovery = folder.appending(path: "recovery.json"), focus = folder.appending(path: "focus.json")
             let next = HcWorkspaceModel(connection: rpc, savedRecovery: try Self.load(recovery), savedFocus: try Self.load(focus),
                 saveRecovery: { try Self.persist($0, to: recovery) }, saveFocus: { try Self.persist($0, to: focus) })
+            preparing = next
             try await next.start()
             guard token == generation, !Task.isCancelled, store.isCurrentConnection(machine) else { try await next.disconnect(); throw CancellationError() }
+            preparing = nil; starting = nil
             model = next; self.identity = machine.connectionIdentity; phase = .connected
         } catch {
             try? await connection?.close()
             guard token == generation else { return }
             opening = nil
-            if case CoreSSHFailure.hostKeyApprovalRequired(let fingerprint) = error {
+            if let fingerprint = Self.requestedHostKey(error) {
                 approval = machine; phase = .approveHostKey(fingerprint)
                 message = "Verify this fingerprint with the host owner before approving. No SSH credential was read or offered."
             } else if case HcConnectionPolicy.Failure.noExecutable = error {
@@ -87,13 +111,15 @@ import CryptoKit
         await open(machine: current, store: store)
     }
     public func close() async {
-        token = UUID(); approval = nil; identity = nil
-        let previous = model, pending = opening; model = nil; opening = nil
-        pending?.cancel()
+        let generation = UUID(); token = generation; approval = nil; identity = nil
+        let cleanup = retireCurrent()
         do {
-            if let pending, case .success(let rpc) = await pending.result { try await rpc.close() }
-            try await previous?.disconnect(); phase = .idle
+            try await cleanup.value
+            guard token == generation else { return }
+            phase = .idle; message = nil
+        } catch {
+            guard token == generation else { return }
+            phase = .failed; message = "Connection cleanup could not be confirmed."
         }
-        catch { phase = .failed; message = "Connection cleanup could not be confirmed." }
     }
 }
