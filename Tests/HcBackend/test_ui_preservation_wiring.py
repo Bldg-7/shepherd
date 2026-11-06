@@ -74,6 +74,16 @@ class PreservationWiring(unittest.TestCase):
         self.assertIn('let transport = try CoreProcessTransport(configuration: configuration)', host)
         self.assertIn('Button("Retry", action: onRetry).accessibilityIdentifier("workspace.board.retry")', source('Shepherd/HcBackend/HcWorkspaceView.swift'))
 
+    def test_title_submit_retains_exact_epoch_and_version(self):
+        board = source('Shepherd/HcBackend/HcWorkspaceView.swift')
+        ending = board[board.index('private func endRename('):board.index('private var detailTitle:')]
+        self.assertIn('model.workspace?.epoch == session.epoch', ending)
+        self.assertIn('model.workspace?.snapshot?.version == session.version', ending)
+        self.assertIn('session.end()', ending)
+        self.assertIn('if case .cancel = ending { return }', ending)
+        self.assertIn('model.renameTab(id, name: name)', ending)
+        self.assertIn('model.renamePane(id, name: name)', ending)
+
     def test_actual_rendered_selection_not_hidden_siblings_is_viewed(self):
         root = source('Shepherd/HcBackend/HcRootView.swift')
         self.assertIn('controlActiveState == .key, presentation.hasSelection', root)

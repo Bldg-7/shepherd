@@ -118,6 +118,48 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
             NSApp.sendEvent(event)
         }
     }
+    static func renameField(_ view: NSView) -> TitleRenameTextField? {
+        if let field = view as? TitleRenameTextField { return field }
+        return view.subviews.lazy.compactMap(renameField).first
+    }
+    static func renameField(in window: NSWindow) -> TitleRenameTextField? {
+        for item in window.toolbar?.visibleItems ?? [] {
+            if let view = item.view, let field = renameField(view) { return field }
+        }
+        return nil
+    }
+    static func editNativeTitle(_ text: String, cancel: Bool, window: NSWindow,
+                                beforeEnding: (@MainActor () async throws -> Void)? = nil) async throws {
+        guard NSApp.isActive, window.isKeyWindow, let content = window.contentView else { throw Failure.assertion("owned key title window") }
+        var root = content
+        while let parent = root.superview { root = parent }
+        func titlePoint(_ view: NSView) -> NSPoint? {
+            if let label = view as? NSTextField, !label.isEditable, !label.isHiddenOrHasHiddenAncestor,
+               label.stringValue == window.title, label.bounds.width > 0 {
+                let point = label.convert(NSPoint(x:label.bounds.midX,y:label.bounds.midY),to:nil)
+                if TitleDoubleClickView.isTitleText(at:point,in:window,of:window) { return point }
+            }
+            return view.subviews.lazy.compactMap(titlePoint).first
+        }
+        guard let point = titlePoint(root) else { throw Failure.assertion("actual title text hit target") }
+        // The app's own event queue runs the real local event monitor. Never
+        // call the rename model closure or post events to another application.
+        for type in [NSEvent.EventType.leftMouseDown,.leftMouseUp] {
+            guard let event = NSEvent.mouseEvent(with:type,location:point,modifierFlags:[],timestamp:ProcessInfo.processInfo.systemUptime,
+                windowNumber:window.windowNumber,context:nil,eventNumber:0,clickCount:2,pressure:type == .leftMouseDown ? 1 : 0) else { throw Failure.assertion("owned title event") }
+            NSApp.postEvent(event,atStart:false)
+        }
+        try await wait("real title field owns keyboard") {
+            guard let field = renameField(in:window), let editor = field.currentEditor() else { return false }
+            return window.firstResponder === editor && field.window === window
+        }
+        guard let editor = renameField(in:window)?.currentEditor() as? NSTextView else { throw Failure.assertion("title editor") }
+        editor.selectAll(nil); editor.insertText(text,replacementRange:NSRange(location:NSNotFound,length:0))
+        try await beforeEnding?()
+        guard editor.string == text else { throw Failure.assertion("title text survives intervening snapshot") }
+        if cancel { try key("\u{1b}",code:53,in:window) } else { try returnKey(in:window) }
+        try await wait("title field dismissed") { renameField(in:window) == nil }
+    }
     static func launcherField(_ view: NSView) -> NSTextField? {
         if let field = view as? NSTextField, field.delegate is LauncherField.Coordinator { return field }
         return view.subviews.lazy.compactMap(launcherField).first
@@ -335,6 +377,41 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
             try clickRow("hc-workspace.tab.\(tabID)",content:content)
             try await wait("same-row activation restores keyboard") { window.firstResponder === activeTerminal }
             checks += 1
+            guard let originalTitle = model.selectedTab?.name else { throw Failure.assertion("selected title") }
+            let titleFrame = window.frame
+            let originalLayout = model.selectedTab?.layout
+            try await editNativeTitle("Audited 한글 title",cancel:false,window:window)
+            try await wait("native title edit persisted by hc CAS") { model.selectedTab?.name == "Audited 한글 title" }
+            try check(model.selectedTab?.layout == originalLayout && near(window.frame,titleFrame),"title double-click does not zoom or replace pane layout")
+            let cancelledDocument = model.document
+            try await editNativeTitle("Do not save this title",cancel:true,window:window)
+            try check(model.document == cancelledDocument,"native title Escape leaves workspace unchanged")
+            try await editNativeTitle(originalTitle,cancel:false,window:window)
+            try await wait("original title restored through native field") { model.selectedTab?.name == originalTitle }
+            checks += 1
+            try await editNativeTitle("Stale title must not save",cancel:false,window:window) {
+                // A separate subscribed store supplies an actual competing CAS;
+                // it is not the UI's rename action and cannot launch/kill/input.
+                let competitor = try await CoreWorkspaceStore(connection:connection)
+                do {
+                    let view = try await competitor.start()
+                    guard let version = view.snapshot?.version else { throw Failure.assertion("competing snapshot") }
+                    let result = try await competitor.edit(.renameWorkspace(workspace,"Competing layout edit"),expectedVersion:version)
+                    guard case .acknowledged = result else { throw Failure.assertion("competing CAS acknowledged") }
+                    try await competitor.close()
+                } catch { try? await competitor.close(); throw error }
+                try await wait("competing snapshot reaches real editor") {
+                    model.document?.workspaces.first(where: { $0.id == workspace })?.name == "Competing layout edit"
+                }
+            }
+            try await hcFixtureWait("hc.rename.unconfirmed.ok",present:true,enabled:true,window:window)
+            try check(model.selectedTab?.name == originalTitle && model.selectedTab?.layout == originalLayout,
+                      "stale title submit refuses retarget/rebase after competing CAS")
+            let refusedDocument = model.document
+            try hcFixturePress("hc.rename.unconfirmed.ok")
+            try await wait("rename refusal dismissed") { window.attachedSheet == nil && window.isKeyWindow }
+            try check(model.document == refusedDocument,"dismissing rename refusal never replays it")
+            // Plain Unicode typing above is not a physical IME qualification.
             // Real preview reader/panel on the selected hc pane. Opening uses
             // the production file-gesture callback; expansion/return use the
             // actual panel control and must not detach the live terminal.

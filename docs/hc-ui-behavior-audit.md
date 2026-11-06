@@ -26,7 +26,7 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
 | Preview history | Existing per-selection preview state | Bounded hc cache keys epoch + pane UUID + exact reference; stale/removed reference pruned, no silent eviction of another visited pane. Return from another pane must restore at side, not fullscreen. Further tab-level comparison open. |
 | New Tab | Original `NewTabLauncher` | Actual original launcher used; separate CmdN/CmdT intent. Standalone CLI mode is not browser permission. Private inspection now Shell-only; real installed CLI integration is not inferred from a menu choice.69 actual launcher component checks pass. |
 | Failed launch | Existing launcher handling plus durable hc recovery | Public stable failure formatting, no internal NSError name. Unsupported inspection intent rejected before workspace/placeholder creation. Uncertain prior run never auto-deleted/adopted/replayed. Missing real CLI/race error UX remains separately reviewed. |
-| Title editing | Original title double-click/IME field/native toolbar | Same real field/toolbar implementation with typed hc target, epoch/version guard. Component tests cover simulated composition, stale callbacks and geometry. Physical IME/fullscreen rename is open. |
+| Title editing | Original title double-click/IME field/native toolbar | Same real field/toolbar implementation with typed hc target, epoch/version guard. Component tests cover simulated composition, stale callbacks and geometry. Current actual-root ordinary-window audit exercises native title-label double-click/local event monitor, real editor/Unicode submit, Escape without metadata change, title restore and no window zoom/layout replacement. Actual competing-CAS refusal also passes: the old title session cannot overwrite a newer layout snapshot. Physical IME/fullscreen rename is open. |
 | Switcher | Original deferred onDismiss navigation | Found selection/focus applied before sheet dismissal. Defer with exact epoch/pane/terminal reference check; reject stale retarget. Shared original switcher presentation used. Current ordinary-window audit exercises Cancel and Return/dismissal/keyboard return; stale-scope dismissal remains a separate gate. |
 | Closing | Original command/context confirmations | Explicit view close keeps programs; current selection required, cover disables close. Real confirmation and exact selected/unselected behavior need current E2E tests; older rejected-screen18-pass is not that evidence. |
 | Quit with sheet | Original presentationPreventsAppTermination(false) | Added original behavior to transient settings/switcher/origin/tracking/install sheets. Needs actual CmdQ/owned service survival gate. |
@@ -127,6 +127,25 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
 - `/private/tmp/hc-retry-regression.gK0rkn`: macOS Release / iOS Debug, launcher69,
   wiring9 and artifact cleanup rejection tests pass. This preceded the last AX
   label placement; the latest Debug build is `hc-retry-controls.c3QmUi`.
+
+- `.4lo3n1qx` passes35 ordinary-window checks, adding actual title-label hit
+  target and double-click events through this app's own queue/local monitor, real
+  field-editor Unicode typing/Return, Escape without mutation and original title
+  restoration. The label double-click does not zoom the window or replace the
+  pane layout. No direct rename closure/model action substitutes for these UI
+  gestures. Physical IME and fullscreen title editing remain unqualified.
+
+- `.mo8wutwv` passes37 ordinary-window checks. While the real title editor owns
+  keyboard, a separate subscribed store on the independent control connection
+  commits a competing workspace CAS. The editor retains its text; Return shows
+  the actual Rename unconfirmed alert instead of rebasing/retargeting the old
+  session. Its real enabled OK button dismisses without replay/document change.
+  Program/reference preservation and native Retry remain exercised afterward.
+- `hc-title-current-regression.yvFUq8`: title/IME/toolbar6-stage component tests,
+  macOS Release, iOS Debug, wiring9 and artifact rejection tests passed before
+  the final alert-button identifier. Current wiring10 pass separately. Physical
+  IME, non-title system double-click zoom and fullscreen title handling remain
+  separate; current Debug build is `hc-stale-title.SZgOea`.
 
 ## Evidence retained
 

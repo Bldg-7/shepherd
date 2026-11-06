@@ -114,7 +114,7 @@ struct HcWorkspaceView: View {
         .environment(\.hcPaneKeyboardRequest, presentation.keyboardRequest)
         .onChange(of: model?.document) { presentations.retain(epoch: model?.workspace?.epoch, panes: model?.document?.panes ?? []) }
         .alert("Rename unconfirmed", isPresented: Binding(get: { renameError != nil }, set: { if !$0 { renameError = nil } })) {
-            Button("OK") { renameError = nil }
+            Button("OK") { renameError = nil }.accessibilityIdentifier("hc.rename.unconfirmed.ok")
         } message: { Text(renameError ?? "") }
     }
     private var activePreview: HcPanePresentation? {
