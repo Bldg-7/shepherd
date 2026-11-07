@@ -18,6 +18,10 @@ is an explicit process-isolation exception pending shared-daemon qualification.
 Basic native OSC status is independent of the old Pi app bridge; actual plain-Pi
 end-to-end and physical/OS gates remain separate. Current scoped evidence and
 retirement details: [PLAIN-CLI-README.md](PLAIN-CLI-README.md).
+Actual plain-Pi startup/idle without flags or status overrides, and the corrected
+native `blocked`/`error` sidebar mapping, have their own
+[scoped evidence](../CoreObservation/PI-PLAIN-STATUS-README.md). This does not
+qualify real provider workloads, OS notification delivery or a foreground Pi UI.
 
 ```sh
 python3 Tests/HcBackend/run-tests.py \

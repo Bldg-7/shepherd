@@ -112,7 +112,7 @@ struct HcMobileTerminalView: View {
             }.refreshable { try? await model.refresh() }
         } bottomBar: {
             VStack(spacing: 8) {
-                Text(model.record?.status?.state ?? String(localized: "Status unreported")).font(.caption).foregroundStyle(.secondary)
+                Text(model.record.flatMap { $0.reported ? $0.status?.state : nil } ?? String(localized: "Status unreported")).font(.caption).foregroundStyle(.secondary)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack {
                         ForEach(["enter", "esc", "up", "down", "tab", "ctrl+c", "y", "n"], id: \.self) { key in

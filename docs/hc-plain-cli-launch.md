@@ -85,9 +85,14 @@ support negotiation. Do not automatically force `PI_PROGRAM_STATUS` or infer
 reported statuses; status is presentation data, never native-session/input/kill
 or credential authority.
 
-Synthetic OSC/core tests and source/document inspection do **not** qualify an
-actual plain-Pi → official hc → app run. That end-to-end gate remains separate.
-The pre-existing official initial/reconnect OSC8 limitations are also unchanged.
+Actual Pi 1.5.0 plain startup now reports native `idle` through official hc
+0.1.17, the product SDK/renderer, actual workspace-model subscriber and exact sidebar presentation mapper,
+without flags or `PI_*` overrides. See the [scoped execution evidence](../Tests/CoreObservation/PI-PLAIN-STATUS-README.md).
+This qualifies startup/idle/event decoding and attach/detach, not a provider
+workload or actual foreground Pi sidebar. Real Pi working/blocked/done/error
+remain NOTRUN; their unit/synthetic-core positives are not relabeled as actual
+provider execution. The pre-existing official initial/reconnect OSC8 limitations
+are also unchanged.
 
 ## Validation boundaries
 

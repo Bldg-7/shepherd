@@ -434,14 +434,8 @@ private struct HcAgentBoard: View {
         return tab.name
     }
     private func state(_ pane: CoreWorkspaceDocument.Pane) -> AgentState? {
-        guard let record = record(pane), record.reported else { return nil }
-        switch record.status?.state {
-        case "needs_input": return .blocked
-        case "working", "running", "active": return .working
-        case "idle": return .idle
-        case "done": return .done
-        default: return nil
-        }
+        guard let record = record(pane) else { return nil }
+        return HcProgramStatusPresentation.state(reported: record.reported, word: record.status?.state)
     }
     private func tabState(_ tab: CoreWorkspaceDocument.Tab) -> AgentState? {
         let states = (tab.layout?.panes ?? []).compactMap(state)

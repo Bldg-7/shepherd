@@ -82,6 +82,17 @@ class PreservationWiring(unittest.TestCase):
         self.assertIn('describeFailure:', root)
         self.assertIn('return hcConnectionFailureDescription(error)', root)
 
+    def test_native_program_status_uses_shared_reported_only_presentation(self):
+        board = source('Shepherd/HcBackend/HcWorkspaceView.swift')
+        self.assertIn('HcProgramStatusPresentation.state(reported: record.reported, word: record.status?.state)', board)
+        presentation = source('Shepherd/Hosts/Views/WorkspaceBoardPresentation.swift')
+        self.assertIn('guard reported else { return nil }', presentation)
+        self.assertIn('case "blocked", "error": return .blocked', presentation)
+        self.assertNotIn('case "needs_input"', board)
+        mobile = source('ShepherdMobile/HcMobileBoardView.swift')
+        self.assertIn('model.record.flatMap { $0.reported ? $0.status?.state : nil }', mobile)
+        self.assertNotIn('Text(model.record?.status?.state', mobile)
+
     def test_selection_and_focus_are_explicit_ui_intents(self):
         board = source('Shepherd/HcBackend/HcWorkspaceView.swift')
         pane = source('Shepherd/HcBackend/HcTerminalPane.swift')

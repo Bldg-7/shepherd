@@ -53,8 +53,10 @@ private fixture evidence and current app/platform products remain available.
   browser blocking, user-command rewrite or hidden equivalent is added to hc
   execution.
 - Native OSC status is not native-session or mutation authority. An actual
-  plain-Pi → official hc → app status run remains separate; installed Pi docs are
-  not an execution receipt.
+  foreground Pi sidebar/provider workload remains separate. Follow-up actual
+  plain-Pi startup/idle through hc/product SDK/renderer/shared mapper is recorded
+  in [PI-PLAIN-STATUS-README.md](../CoreObservation/PI-PLAIN-STATUS-README.md);
+  that is a new scoped execution receipt, not a retroactive pass for this batch.
 - No new foreground/native UI audit was run in this batch. Earlier native 78,
   physical edge-hover/IME/drag gaps, mobile runtime, OS notifications and service
   lifecycle gates keep their original scope/status.

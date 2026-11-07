@@ -1,5 +1,21 @@
 import SwiftUI
 
+/// Presentation of the official OSC 7501 vocabulary, not a process/native-session
+/// authority or a heuristic based on titles/output. Missing and unknown reports
+/// stay unavailable. Errors use the existing board's needs-attention category.
+nonisolated enum HcProgramStatusPresentation {
+    static func state(reported: Bool, word: String?) -> AgentState? {
+        guard reported else { return nil }
+        switch word {
+        case "blocked", "error": return .blocked
+        case "working": return .working
+        case "idle": return .idle
+        case "done": return .done
+        default: return nil
+        }
+    }
+}
+
 /// Existing board presentation, shared by the old data source and hc. These
 /// views have no transport, process/session identity or mutation authority.
 struct WorkspaceBoardStatusIndicator: View {
