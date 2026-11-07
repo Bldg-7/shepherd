@@ -18,10 +18,14 @@ import SwiftUI
         // The notifications watch every machine whether or not the window
         // is open, so they get the machines from here rather than from it.
         // They start once the app has finished launching (see `AppDelegate`).
+        #if DEBUG
         if ShepherdBrowserFeature.isAvailable {
             NotificationCoordinator.shared.machineStore = machineStore
             MachineMonitors.shared.makeListener = { NotificationFeed(machine: $0) }
         } else { HcNotificationCoordinator.shared.machineStore = machineStore }
+        #else
+        HcNotificationCoordinator.shared.machineStore = machineStore
+        #endif
         #endif
     }
 
@@ -29,23 +33,33 @@ import SwiftUI
         #if DEBUG && os(macOS)
         if let configuration = HcMigrationConfiguration.current {
             HcMigrationHost(configuration: configuration)
+        } else if ShepherdLegacyFixtureRouting.enabled {
+            legacyFixtureContent
         } else {
-            legacyContent
+            hcContent
         }
         #else
-        legacyContent
+        hcContent
         #endif
     }
 
-    private var legacyContent: some View {
-        ContentView(machineStore: machineStore)
-            #if DEBUG && os(macOS)
-            .defaultAppStorage(OwnedOperatorFixture.configuration?.defaults ?? .standard)
-            #endif
+    /// Ordinary Debug and Release use hc, including unavailable/error states.
+    /// Installation/service qualification does not select another backend.
+    private var hcContent: some View {
+        ShepherdHcContent(machineStore: machineStore)
             #if os(macOS)
             .environment(softwareUpdater)
             #endif
     }
+
+    #if DEBUG && os(macOS)
+    /// Retained only for explicitly isolated legacy fixtures, never fallback.
+    private var legacyFixtureContent: some View {
+        ContentView(machineStore: machineStore)
+            .defaultAppStorage(OwnedOperatorFixture.configuration?.defaults ?? .standard)
+            .environment(softwareUpdater)
+    }
+    #endif
 
     var body: some Scene {
         // The app has one window. A `Window` rather than a `WindowGroup`:
@@ -81,6 +95,42 @@ import SwiftUI
 }
 
 #if os(macOS)
+/// Not a product backend switch: only validated, isolated DEBUG fixtures may
+/// supply legacy content/menu bindings. A failed hc connection cannot enable it.
+@MainActor enum ShepherdLegacyFixtureRouting {
+    static var enabled: Bool {
+        #if DEBUG
+        guard !HcMigrationConfiguration.requested else { return false }
+        return OwnedOperatorFixture.configuration != nil || ShepherdBrowserFeature.isAvailable
+        #else
+        return false
+        #endif
+    }
+}
+
+/// One hc product composition for ordinary entry and resource-isolated tests.
+/// Fixtures may supply an owned store/connection, never a different backend.
+struct ShepherdHcContent: View {
+    let machineStore: MachineStore
+    var connection: HcMachineConnection? = nil
+    var localTransportFactory: (@MainActor () throws -> any CoreByteTransport)? = nil
+    var inspectionOnly = false
+    var body: some View {
+        HcRootView(machineStore: machineStore, connection: connection,
+                   localTransportFactory: localTransportFactory, inspectionOnly: inspectionOnly)
+            .onAppear {
+                #if DEBUG
+                if let configuration = HcMigrationConfiguration.current {
+                    let receipt: [String: Any] = ["root": "HcRootView", "composition": "ShepherdHcContent",
+                        "sharedProductComposition": true, "legacyFixtureRouting": ShepherdLegacyFixtureRouting.enabled]
+                    try? JSONSerialization.data(withJSONObject: receipt, options: .sortedKeys)
+                        .write(to: configuration.root.appending(path: "product-root.json"), options: .atomic)
+                }
+                #endif
+            }
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         // macOS 26 AppKit draws large `draw(_:)`-backed view layers (the
@@ -93,15 +143,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #if DEBUG
         if HcMigrationConfiguration.requested { return } // Private hc root never initializes legacy/browser/proxy services.
         #endif
-        guard ShepherdBrowserFeature.isAvailable else {
-            HcNotificationCoordinator.shared.prepare()
-            // Ordinary terminal startup does not install, start or reconcile
-            // deferred capture/runtime services. Preserve their saved settings,
-            // archives and already-running programs; do not stop them here.
+        #if DEBUG
+        if ShepherdBrowserFeature.isAvailable {
+            prepareLegacyFixture()
             return
         }
+        #endif
+        // No legacy/capture/runtime startup, including when hc is missing.
+        HcNotificationCoordinator.shared.prepare()
+    }
+
+    #if DEBUG
+    private func prepareLegacyFixture() {
         if ShepherdBrowserFeature.shared.isEnabled { BrowserEngine.prepare() }
-        #if DEBUG
         if ProcessInfo.processInfo.environment["SHEPHERD_BROWSER_FEATURE_FIXTURE"] != nil {
             ShepherdBrowserFeatureFixture.run()
             return
@@ -124,7 +178,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             BrowserSelfTest.runIfRequested()
             return
         }
-        #endif
         // Before launching finishes, so that a click on a notification that
         // launched the app gets to it.
         NotificationCoordinator.shared.prepare()
@@ -135,41 +188,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard ShepherdBrowserFeature.shared.isEnabled else { return }
         AgentLaunchService.shared.start()
         Task {
-            #if DEBUG
             let port = OwnedOperatorFixture.configuration == nil ? UserDefaults.standard.object(forKey: "browserAgentPort") as? Int ?? CDPProxy.defaultPort : 0
-            #else
-            let port = UserDefaults.standard.object(forKey: "browserAgentPort") as? Int ?? CDPProxy.defaultPort
-            #endif
             await CDPProxy.shared.start(port: port)
         }
     }
+    #endif
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         #if DEBUG
         if HcMigrationConfiguration.requested { return }
         OwnedOperatorFixture.didLaunch()
+        if ShepherdBrowserFeature.isAvailable { NotificationCoordinator.shared.start(); return }
         #endif
-        guard ShepherdBrowserFeature.isAvailable else { HcNotificationCoordinator.shared.start(); return }
-        NotificationCoordinator.shared.start()
+        HcNotificationCoordinator.shared.start()
     }
 
     /// Closing the window is not quitting, which is what an app whose one
     /// scene is a `Window` does unless told otherwise. The app stays up
-    /// without it — the browsers keep running in their holder window — and
-    /// a click on the Dock icon brings the window back.
+    /// without it; hc owns the programs independently. A click on the Dock
+    /// icon brings the window back. This does not stop or replace the core.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
     }
 
-    /// The browser's pages are closed and its engine shut down before the
-    /// app goes, so that cookies and the rest reach the disk (plan item F8
-    /// in docs/agent-browser-plan.md). It has to happen in here, before
-    /// returning: nothing asynchronous gets to run once the app is quitting.
+    /// Ordinary hc quit does not stop the core or its programs. Browser
+    /// shutdown is retained only for explicitly isolated DEBUG fixtures.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         #if DEBUG
         if HcMigrationConfiguration.requested { return .terminateNow }
+        if ShepherdBrowserFeature.isAvailable { return terminateLegacyFixture(sender) }
         #endif
-        guard ShepherdBrowserFeature.isAvailable else { HcNotificationCoordinator.shared.clearBadgeBeforeQuitting(); return .terminateNow }
+        HcNotificationCoordinator.shared.clearBadgeBeforeQuitting()
+        return .terminateNow
+    }
+
+    #if DEBUG
+    private func terminateLegacyFixture(_ sender: NSApplication) -> NSApplication.TerminateReply {
         if CDPProxy.shared.activeConnections > 0 {
             let alert = NSAlert()
             alert.messageText = String(localized: "Disconnect browser agents and quit?")
@@ -191,12 +245,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         MachineBrowserService.shared.stop()
         NotificationCoordinator.shared.clearBadgeBeforeQuitting()
-        #if DEBUG
         ShepherdBrowserFeature.shared.removeFixtureDefaults()
         OwnedOperatorFixture.cleanUp()
-        #endif
         return .terminateNow
     }
+    #endif
 }
 
 extension FocusedValues {
@@ -249,20 +302,20 @@ struct CloseCommand {
 private struct CloseCommands: Commands {
     @ObservedObject private var hcCommands = HcWindowCommandState.shared
     @FocusedValue(\.closeCommand) private var closeCommand
-    var body: some Commands { CommandGroup(replacing: .saveItem) { HcCloseMenuItems(actions: hcCommands.actions, legacy: closeCommand) } }
+    var body: some Commands { CommandGroup(replacing: .saveItem) { HcCloseMenuItems(actions: hcCommands.actions, legacy: ShepherdLegacyFixtureRouting.enabled ? closeCommand : nil) } }
 }
 private struct NewTabCommands: Commands {
     @ObservedObject private var hcCommands = HcWindowCommandState.shared
     @FocusedValue(\.launcherStart) private var launcherStart
     @FocusedValue(\.herdrMachineCommand) private var herdrMachineCommand
-    var body: some Commands { CommandGroup(replacing: .newItem) { HcNewTabMenuItems(actions: hcCommands.actions, legacy: launcherStart, machine: herdrMachineCommand) } }
+    var body: some Commands { CommandGroup(replacing: .newItem) { HcNewTabMenuItems(actions: hcCommands.actions, legacy: ShepherdLegacyFixtureRouting.enabled ? launcherStart : nil, machine: ShepherdLegacyFixtureRouting.enabled ? herdrMachineCommand : nil) } }
 }
 private struct PaneSwitcherCommands: Commands {
     @ObservedObject private var hcCommands = HcWindowCommandState.shared
     @FocusedValue(\.isShowingPaneSwitcher) private var switcher
     var body: some Commands {
         CommandGroup(replacing: .printItem) {}
-        CommandGroup(after: .newItem) { HcPaneSwitcherMenuItem(actions: hcCommands.actions, legacy: switcher) }
+        CommandGroup(after: .newItem) { HcPaneSwitcherMenuItem(actions: hcCommands.actions, legacy: ShepherdLegacyFixtureRouting.enabled ? switcher : nil) }
     }
 }
 
@@ -275,7 +328,7 @@ private struct SettingsCommands: Commands {
     @FocusedValue(\.isShowingSettings) private var isShowingSettings
 
     var body: some Commands {
-        CommandGroup(replacing: .appSettings) { HcSettingsMenuItem(actions: hcCommands.actions, legacy: isShowingSettings) }
+        CommandGroup(replacing: .appSettings) { HcSettingsMenuItem(actions: hcCommands.actions, legacy: ShepherdLegacyFixtureRouting.enabled ? isShowingSettings : nil) }
     }
 }
 #endif

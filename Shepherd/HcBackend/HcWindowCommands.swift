@@ -12,7 +12,7 @@ struct HcNewTabMenuItems: View {
             .disabled(actions.map { !$0.canLaunch } ?? (legacy == nil))
         Button("New Tab in Current Workspace…") { show(.currentWorkspace) }.keyboardShortcut("t")
             .disabled(actions.map { !$0.canLaunch } ?? (legacy == nil))
-        if actions == nil {
+        if actions == nil && (legacy != nil || machine != nil) {
             Divider()
             AddHerdrMachineMenuItem(unavailableReason: machine?.addUnavailableReason, isEnabled: machine?.canAdd == true) { machine?.add() }
             if let selected = machine?.selectedMachine {

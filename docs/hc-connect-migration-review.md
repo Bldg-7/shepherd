@@ -11,9 +11,17 @@ provider-native session 연결, IPC/bootstrap 보조기, capture 전용 서비�
 과거 미완료 기록은 역사적 자료이며 이번 범위 결정으로 대체된다. terminal/screen,
 일반 CLI 실행, core 이벤트 알림 및 그 밖의 범위 내 회귀 gate는 그대로 유지한다.
 
+## 기본 소스 진입점 전환 — 후속 사용자 지시
+
+일반 macOS Debug/Release 진입점을 hc로 전환하며 연결 실패 시 legacy fallback을 제공하지
+않는다. 아래 단계별 기록의 “아직 기본 root 전환 전”은 당시 상태다. 설치/서비스/출시
+자격 검증은 계속하되 소스 전환을 무기한 미루는 조건으로 섞지 않는다.
+[hc-default-backend-cutover.md](hc-default-backend-cutover.md)를 따른다. 사용자 설치 앱/core,
+서비스, 기존 프로그램/데이터의 교체나 종료는 별도 승인이며 실행하지 않는다.
+
 ## 제품 UI 보존 차단 요인 — 수동 확인 피드백
 
-사용자가 직접 확인한 hc 화면은 기존 레이아웃과 완전히 달라 거부됐다. backend 교체를 하면서 별도 sidebar/toolbar/launcher 구성을 제품 UI처럼 제시한 것은 회귀다. **기존 UI/사용 흐름을 유지하고 그 아래 backend만 hc로 교체하는 것이 기준**이며, 브라우저·주입 runtime 및 capture 대화 기능의 명시적 연기는 예외다. 18개 native 동작 검사는 해당 새 화면의 기능 증거이지 UI 동등성/제품 승인 증거가 아니다. 기본 root 전환과 legacy UI 제거는 이 차단 요인을 해소하기 전 진행하지 않는다. 기준과 원본 소스 대응은 [hc-ui-parity-contract.md](hc-ui-parity-contract.md)에 기록했다.
+사용자가 직접 확인한 hc 화면은 기존 레이아웃과 완전히 달라 거부됐다. backend 교체를 하면서 별도 sidebar/toolbar/launcher 구성을 제품 UI처럼 제시한 것은 회귀다. **기존 UI/사용 흐름을 유지하고 그 아래 backend만 hc로 교체하는 것이 기준**이며, 브라우저·주입 runtime 및 capture 대화 기능의 명시적 연기는 예외다. 18개 native 동작 검사는 해당 새 화면의 기능 증거이지 UI 동등성/제품 승인 증거가 아니다. 이 피드백은 기존 UI 복원의 기준이며 전체 UI 승인으로 대체하지 않는다. 이후 사용자 지시에 따른 기본 소스 root 전환과 남은 출시/legacy 제거 자격 검증은 위 전환 경계대로 구분한다. 기준과 원본 소스 대응은 [hc-ui-parity-contract.md](hc-ui-parity-contract.md)에 기록했다.
 
 ### UI 복원 구현 현황 (승인과 구분)
 

@@ -1,5 +1,10 @@
 # hc backend replacement (SHPHRD-153)
 
+Default macOS Debug/Release source entry now uses hc through the shared
+`ShepherdHcContent → HcRootView` composition; missing/failed hc never selects
+legacy. See [source cutover boundary](../../docs/hc-default-backend-cutover.md).
+This is not installed-app deployment or completed service/release qualification.
+
 The app backend moves from legacy herdr (`HerdrClient` + `herdr terminal attach`
 over an SSH PTY) to hc (`CoreRPCConnection` + `terminal.attach` framed streams).
 The experimental browser/`3rdr-browser` injection layer and capture-based API

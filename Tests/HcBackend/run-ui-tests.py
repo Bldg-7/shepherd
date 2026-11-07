@@ -219,6 +219,9 @@ finally:
             artifact_cleanup = {'removed': [], 'error': type(error).__name__}
             failed = failed or error
     (out/'artifact-cleanup.json').write_text(json.dumps(artifact_cleanup,indent=2))
+product_root=json.loads((out/'product-root.json').read_text()) if (out/'product-root.json').exists() else {}
+shared_product=product_root.get('root')=='HcRootView' and product_root.get('composition')=='ShepherdHcContent' and product_root.get('sharedProductComposition') is True and product_root.get('legacyFixtureRouting') is False
+if not shared_product:failed=failed or AssertionError('shared hc product composition was not observed')
 if a.layout_audit:
     audit_path=out/'layout-audit.json'
     audit=json.loads(audit_path.read_text()) if audit_path.exists() else {}
@@ -226,7 +229,7 @@ if a.layout_audit:
     if a.profile_audit:good=good and audit.get('directSSHProfileUI') is True and result.get('passed') is True and remote_report.get('credentialFileRemoved') is True and not (remote_root/'remote core/c.sock').exists()
     if a.fullscreen_audit:good=good and audit.get('fullscreenSpaceAndEdgeReveal') is True and audit.get('fullscreenExitRestored') is True
     if a.fullscreen_native_layout:good=good and audit.get('fullscreenNativeLayout') is True and audit.get('fullscreenSpaceAndEdgeReveal') is False and audit.get('fullscreenExitRestored') is True
-    (out/'validation.json').write_text(json.dumps({'passed':good,'checks':audit.get('checks'),'actualHcRoot':True,
+    (out/'validation.json').write_text(json.dumps({'passed':good,'checks':audit.get('checks'),'actualHcRoot':True,'sharedProductComposition':shared_product,
         'fullscreenNativeLayout':audit.get('fullscreenNativeLayout',False),'fullscreenSpaceAndEdgeReveal':audit.get('fullscreenSpaceAndEdgeReveal',False),'fullscreenExitRestored':audit.get('fullscreenExitRestored',False),'wholeUIParityQualified':False,
         'directSSHProfileUI':audit.get('directSSHProfileUI',False),'remoteCredentialFileRemoved':remote_report.get('credentialFileRemoved',False),'remoteSocketRemoved':not (remote_root/'remote core/c.sock').exists() if a.profile_audit else None,
         'physicalDividerDrag':'NOTRUN','physicalRowDragQualified':False,'rowDragComponentIntegration':audit.get('rowDragComponentIntegration',False),'ownedProcessesExited':not alive,'socketRemoved':not sock.exists(),'releaseCutover':False},indent=2))
@@ -243,7 +246,7 @@ if a.manual_inspection:
 passed=failed is None and result.get('passed') is True and bool(result.get('ownedPIDs')) and result.get('screenshot') is True and result.get('sidebarAccessibilityVerified') is True and result.get('productFactoryVerified') is True and result.get('filePreviewVerified') is True and result.get('fileDropVerified') is True and result.get('windowCommandsVerified') is True and result.get('paneSwitcherVerified') is True and result.get('settingsVerified') is True and result.get('closeViewKeepsProgram') is True and result.get('recoveryReviewVerified') is True and result.get('forgetTrackingKeepsProgram') is True and result.get('originDirectoryVerified') is True
 assert hashes=={str(p.relative_to(ROOT)):digest(p) for p in tracked},'sources changed during validation'
 (out/'validation.json').write_text(json.dumps({'passed':passed,'checks':result.get('checks'),'renderedBytes':result.get('renderedBytes'),
-    'actualSwiftUI':True,'nativeSwiftTerm':True,'humanActivationRequested':a.human_activation,'foregroundAssertionsRequired':True,'windowCommandsVerified':result.get('windowCommandsVerified'),'paneSwitcherVerified':result.get('paneSwitcherVerified'),'settingsVerified':result.get('settingsVerified'),'closeViewKeepsProgram':result.get('closeViewKeepsProgram'),'recoveryReviewVerified':result.get('recoveryReviewVerified'),'forgetTrackingKeepsProgram':result.get('forgetTrackingKeepsProgram'),'originDirectoryVerified':result.get('originDirectoryVerified'),'filePreviewVerified':result.get('filePreviewVerified'),'fileDropVerified':result.get('fileDropVerified'),'productFactoryVerified':result.get('productFactoryVerified'),'sidebarAccessibilityVerified':result.get('sidebarAccessibilityVerified'),'screenshot':result.get('screenshot'),'browserAuthorityUsed':False,'legacyServicesStarted':False,
+    'actualSwiftUI':True,'nativeSwiftTerm':True,'sharedProductComposition':shared_product,'humanActivationRequested':a.human_activation,'foregroundAssertionsRequired':True,'windowCommandsVerified':result.get('windowCommandsVerified'),'paneSwitcherVerified':result.get('paneSwitcherVerified'),'settingsVerified':result.get('settingsVerified'),'closeViewKeepsProgram':result.get('closeViewKeepsProgram'),'recoveryReviewVerified':result.get('recoveryReviewVerified'),'forgetTrackingKeepsProgram':result.get('forgetTrackingKeepsProgram'),'originDirectoryVerified':result.get('originDirectoryVerified'),'filePreviewVerified':result.get('filePreviewVerified'),'fileDropVerified':result.get('fileDropVerified'),'productFactoryVerified':result.get('productFactoryVerified'),'sidebarAccessibilityVerified':result.get('sidebarAccessibilityVerified'),'screenshot':result.get('screenshot'),'browserAuthorityUsed':False,'legacyServicesStarted':False,
     'ownedProcessesExited':bool(result.get('ownedPIDs')),'socketRemoved':not sock.exists(),'releaseCutover':False},indent=2))
 if failed:raise failed
 assert passed,'UI rendering/cleanup incomplete'

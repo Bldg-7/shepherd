@@ -72,8 +72,10 @@ legacy fixtures can still exercise the retained capture implementation.
 
 This is not installed-service retirement or handover qualification. Do not stop
 user programs/services, delete existing data, or use legacy terminal fallback to
-keep excluded features alive at cutover. The default root is still legacy until
-the remaining in-scope gates authorize its replacement.
+keep excluded features alive at cutover. The operator subsequently directed the
+[default source entry switch](hc-default-backend-cutover.md): ordinary Debug/Release
+now uses hc. Remaining qualification does not restore legacy fallback or authorize
+deployment; legacy target/dependency retirement is still separate.
 
 ## Basic status does not need the Pi extension
 

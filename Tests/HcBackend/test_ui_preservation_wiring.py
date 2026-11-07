@@ -7,6 +7,28 @@ ROOT = Path(__file__).resolve().parents[2]
 def source(name):
     return (ROOT / name).read_text()
 
+def macos_source(text, *, debug):
+    """Static conditional-source guard only; actual builds remain separate."""
+    active, stack, lines = True, [], []
+    conditions = {'DEBUG': debug, 'os(macOS)': True, 'DEBUG&&os(macOS)': debug}
+    for line in text.splitlines():
+        directive = line.strip()
+        if directive.startswith('#if '):
+            expression = directive[4:].replace(' ', '')
+            if expression not in conditions:
+                raise ValueError('unreviewed conditional: ' + expression)
+            condition = conditions[expression]
+            stack.append((active, condition)); active = active and condition
+        elif directive == '#else':
+            parent, condition = stack[-1]; active = parent and not condition
+        elif directive == '#endif':
+            active, _ = stack.pop()
+        elif active:
+            lines.append(line)
+    if stack:
+        raise ValueError('unbalanced conditional source')
+    return '\n'.join(lines)
+
 def reject_old_composition(root, board):
     for fragment in ['Picker("Machine"', 'Text("hc · "', 'Button("New Terminal…")']:
         if fragment in root:
@@ -16,6 +38,56 @@ def reject_old_composition(root, board):
             raise ValueError('diagnostic/editor sidebar returned')
 
 class PreservationWiring(unittest.TestCase):
+    def test_default_macos_entry_is_hc_in_debug_and_release(self):
+        app = source('Shepherd/Shepherd.swift')
+        for debug in [False, True]:
+            active = macos_source(app, debug=debug)
+            root = active[active.index('private var hcContent:'):active.index('var body: some Scene')]
+            self.assertIn('ShepherdHcContent(machineStore: machineStore)', root)
+            self.assertIn('HcRootView(machineStore: machineStore, connection: connection', active)
+        release = macos_source(app, debug=False)
+        for name in ['ContentView(', 'legacyFixtureContent', 'HcMigrationHost(', 'AgentProxyService.shared',
+                     'AgentLaunchService.shared', 'MachineMonitors.shared', 'NotificationCoordinator.shared.prepare()']:
+            if name == 'NotificationCoordinator.shared.prepare()':
+                self.assertNotRegex(release, r'(?<!Hc)NotificationCoordinator\.shared\.prepare\(\)')
+            else:
+                self.assertNotIn(name, release)
+        routing = release[release.index('enum ShepherdLegacyFixtureRouting'):release.index('/// One hc product composition')]
+        self.assertIn('return false', routing)
+        self.assertNotIn('configuration', routing)
+        main = release[release.index('private var mainContent:'):release.index('private var hcContent:')]
+        self.assertIn('hcContent', main)
+        self.assertNotIn('if ', main)
+
+    def test_only_isolated_debug_fixtures_can_select_legacy(self):
+        debug = macos_source(source('Shepherd/Shepherd.swift'), debug=True)
+        self.assertIn('else if ShepherdLegacyFixtureRouting.enabled', debug)
+        routing = debug[debug.index('enum ShepherdLegacyFixtureRouting'):debug.index('/// One hc product composition')]
+        self.assertIn('guard !HcMigrationConfiguration.requested else { return false }', routing)
+        self.assertIn('OwnedOperatorFixture.configuration != nil || ShepherdBrowserFeature.isAvailable', routing)
+        for name in ['phase', 'missingExecutable', 'connection', 'UserDefaults']:
+            self.assertNotIn(name, routing)
+        host = source('Shepherd/HcBackend/HcMigrationHost.swift')
+        self.assertIn('ShepherdHcContent(machineStore: fixtureStore', host)
+        self.assertNotIn('HcRootView(machineStore: fixtureStore', host)
+
+    def test_ordinary_menus_never_receive_legacy_bindings(self):
+        app = source('Shepherd/Shepherd.swift')
+        for binding in ['closeCommand', 'launcherStart', 'herdrMachineCommand', 'switcher', 'isShowingSettings']:
+            self.assertIn('ShepherdLegacyFixtureRouting.enabled ? ' + binding + ' : nil', app)
+        menus = source('Shepherd/HcBackend/HcWindowCommands.swift')
+        self.assertIn('if actions == nil && (legacy != nil || machine != nil)', menus)
+
+    def test_missing_or_failed_hc_has_no_legacy_screen_or_transport(self):
+        root = source('Shepherd/HcBackend/HcRootView.swift')
+        owner = source('ShepherdKit/Sources/ShepherdKit/Machines/HcMachineConnection.swift')
+        for value in [root, owner]:
+            for name in ['ContentView(', 'HerdrClient(', 'makeHerdrTransport(', 'AgentLaunchService.shared']:
+                self.assertNotIn(name, value)
+        self.assertIn('phase = .missingExecutable', owner)
+        self.assertIn('HcWorkspacePresentation()', root)
+        self.assertIn('unavailable: AnyView(unavailable)', root)
+
     def test_rejected_composition_stays_removed(self):
         reject_old_composition(source('Shepherd/HcBackend/HcRootView.swift'), source('Shepherd/HcBackend/HcWorkspaceView.swift'))
         for root, board in [('Picker("Machine"',''), ('Text("hc · "',''), ('','Section("Core terminals")'), ('','TextField("Workspace name"')]:
@@ -57,10 +129,11 @@ class PreservationWiring(unittest.TestCase):
 
     def test_deferred_startup_does_not_start_capture_or_agent_runtime(self):
         app = source('Shepherd/Shepherd.swift')
-        branch = app.split('guard ShepherdBrowserFeature.isAvailable else {', 1)[1].split('return', 1)[0]
-        self.assertIn('HcNotificationCoordinator.shared.prepare()', branch)
+        release = macos_source(app, debug=False)
+        self.assertIn('HcNotificationCoordinator.shared.prepare()', release)
+        self.assertIn('HcNotificationCoordinator.shared.start()', release)
         for name in ['AgentProxyService', 'AgentLaunchService', 'CDPProxy', 'BrowserEngine']:
-            self.assertNotIn(name, branch)
+            self.assertNotIn(name, release)
         settings = source('Shepherd/Hosts/Views/ExperimentalFeaturesSettingsView.swift')
         form = settings[settings.index('private var featuresForm:'):settings.index('private var browserSettings:')]
         self.assertIn('if ShepherdBrowserFeature.isAvailable {\n                browserSettings', form)

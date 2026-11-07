@@ -16,7 +16,7 @@ hc 0.1.17의 `hc connect`로 교체**하는 것이다. 영구적인 이중 backe
 - 정확한 origin/epoch/CAS, durable 실행·종료 복구, 불확실한 요청 재실행 금지.
 - local/직접 SSH 및 허용된 원격 범위, 파일 작업, pairing, 모바일 terminal/screen 흐름.
 - core event 기반 attention/알림, hc 탐색·호환성·설치 UX와 필요한 lifecycle 검증.
-- 위 범위의 실제 제품 회귀 검증 후 기본 backend 전환 및 legacy backend 제거.
+- 일반 Debug/Release 소스의 기본 backend를 hc로 전환하고 legacy fallback을 차단한다. 나머지 제품 회귀·설치/서비스·출시 검증과 legacy target/dependency 제거는 별도로 완료한다.
 
 ## 일반 CLI 실행 원칙 — 자동 주입 최소화
 
@@ -55,8 +55,9 @@ core event 알림까지 제외하는 결정은 아니다. hc 자체의 설치·�
 - hc launcher에는 capture route/env/runtime/helper를 연결하지 않는다. capture를 위해
   사용자 proxy를 자동 설치·시작·재시작하거나 provider credential을 복사하지 않는다.
 - hc cutover 때 미지원 capture는 명확히 비활성/비노출 처리한다. 기능을 유지한다는
-  이유로 legacy terminal backend를 fallback으로 되살리지 않는다. 현재 기본 legacy
-  제품의 동작을 이번 문서 변경만으로 즉시 삭제하는 것은 아니다.
+  이유로 legacy terminal backend를 fallback으로 되살리지 않는다. 사용자 지시에 따라 일반
+  소스 진입점은 hc로 전환한다([전환 경계](hc-default-backend-cutover.md)). 설치된 사용자 앱,
+  기존 프로그램/데이터/서비스를 이 소스 변경으로 교체·삭제·재시작하는 것은 아니다.
 - 공식0.1.17의 caller env 평문 저장 관측은 유효한 보안 기록으로 남긴다. capture가
   연기됐다고 token/credential을 argv/env/labels/docs/로그에 넣는 것이 허용되지는 않는다.
 - 이 범위 결정은 배포·설치된 앱/core 교체·사용자 서비스 변경·개인정보 권한 변경의

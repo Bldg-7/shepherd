@@ -4,7 +4,9 @@
 
 The selected product baseline remains official **0.1.17**. No installed user app,
 core, package-manager binary or service was replaced/restarted by these tests.
-The default macOS root has not switched and legacy removal remains gated.
+The operator has separately directed the [default macOS source root switch](hc-default-backend-cutover.md)
+to hc. This does not qualify deployment/service lifetime; remaining legacy
+target/dependency removal and release gates stay explicit.
 
 | Boundary | Current evidence | Not implied |
 | --- | --- | --- |

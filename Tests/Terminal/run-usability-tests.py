@@ -49,10 +49,10 @@ stage('launcher-tab-build',120,flags+tabkeys+[str(board),'-framework','AppKit','
 assert 'Modifying state during view update' not in (o/'launcher-tab-tests.log').read_text()
 c=(R/'Shepherd/ContentView.swift').read_text();app=(R/'Shepherd/Shepherd.swift').read_text();m=(R/'Shepherd/Hosts/Views/MachinesSettingsView.swift').read_text()
 commands=(R/'Shepherd/HcBackend/HcWindowCommands.swift').read_text()
-assert 'HcPaneSwitcherMenuItem(actions: hcCommands.actions, legacy: switcher)' in app
+assert 'HcPaneSwitcherMenuItem(actions: hcCommands.actions, legacy: ShepherdLegacyFixtureRouting.enabled ? switcher : nil)' in app
 assert '.keyboardShortcut("p", modifiers: .command)' in commands and '.focusedSceneValue(\\.isShowingPaneSwitcher' in c
 assert 'Window(Text(verbatim: "hrdrhrdrhrdr"), id: "main")' in app and 'WindowGroup {' not in app and 'applicationShouldTerminateAfterLastWindowClosed' in app
-assert 'CommandGroup(replacing: .newItem)' in app and 'HcNewTabMenuItems(actions: hcCommands.actions, legacy: launcherStart, machine: herdrMachineCommand)' in app
+assert 'CommandGroup(replacing: .newItem)' in app and 'HcNewTabMenuItems(actions: hcCommands.actions, legacy: ShepherdLegacyFixtureRouting.enabled ? launcherStart : nil, machine: ShepherdLegacyFixtureRouting.enabled ? herdrMachineCommand : nil)' in app
 assert commands.index('show(.blank)')<commands.index('.keyboardShortcut("n")')<commands.index('show(.currentWorkspace)')<commands.index('.keyboardShortcut("t")')
 assert '.focusedSceneValue(\\.launcherStart' in c and 'LaunchPreset.current(for: selection(on: machine).wrappedValue, in: launchTargets)' in c
 assert 'paneDestinations = []' in c and 'PaneDestination.resolve' in c and 'onDismiss: navigateToPendingPane' in c
@@ -78,7 +78,7 @@ fp=(R/'Shepherd/FilePreview/FilePreviewPanel.swift').read_text()
 assert '@State private var model' not in fp and 'await model.loadIfNeeded(request, store: machineStore)' in fp and 'showsSource = false' not in fp
 b=(R/'Shepherd/Hosts/Views/AgentBoardView.swift').read_text();s=json.loads((R/'Shepherd/Localizable.xcstrings').read_text())['strings']
 assert 'CommandGroup(replacing: .saveItem)' in app and 'CloseCommands()' in app and commands.count('.keyboardShortcut("w")')==1
-assert 'HcCloseMenuItems(actions: hcCommands.actions, legacy: closeCommand)' in app
+assert 'HcCloseMenuItems(actions: hcCommands.actions, legacy: ShepherdLegacyFixtureRouting.enabled ? closeCommand : nil)' in app
 assert commands.index('Button("Close Window")')<commands.index('performClose')<commands.index('"Close Tab" : "Close Pane"')<commands.index('.keyboardShortcut("w")')
 assert '.focusedSceneValue(\\.closeCommand' in c and 'closeRequests: closeRequests' in c
 assert 'coversTerminal: launcherStart != nil || isShowingSettings || isShowingPaneSwitcher\n                || previewCoversTerminal(on: machine) || webLinkFailure != nil' in c

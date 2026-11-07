@@ -102,9 +102,11 @@ file access approval.
 
 ## Independent unfinished release gates
 
-The current strict foreground/key-window/native-command GUI gate remains red;
-this decision does not waive it. Default macOS root/gateway/installation
-integration and legacy retirement also remain unfinished. In-app browser and
+Scoped foreground/key-window/native-command runs now pass, but whole-UI and
+physical edge/IME/drag gates remain unqualified; this decision does not waive them.
+The operator separately directed the [default source root switch](hc-default-backend-cutover.md)
+to hc. Gateway/installation integration, deployment qualification and full legacy
+target/dependency retirement remain unfinished. In-app browser and
 capture-based conversation collection/mobile display are explicitly deferred
 under [hc-migration-scope.md](hc-migration-scope.md), not release gates for this
 migration. Their unqualified results remain unqualified, not passed. Release

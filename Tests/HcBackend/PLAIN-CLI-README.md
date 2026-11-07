@@ -44,8 +44,9 @@ private fixture evidence and current app/platform products remain available.
 
 ## Boundaries
 
-- Existing default product root is still legacy. Installed app/core/services were
-  not replaced or restarted. Existing capture archives/routes/settings and user
+- At this batch the default product root was still legacy. A subsequent
+  [source-entry switch](../../docs/hc-default-backend-cutover.md) selects hc for
+  ordinary Debug/Release. Installed app/core/services were not replaced or restarted. Existing capture archives/routes/settings and user
   programs are untouched.
 - The sole added ordinary-CLI option remains Codex `--no-daemon`, explicitly kept
   for process isolation until actual shared-daemon ownership/lifecycle evidence.

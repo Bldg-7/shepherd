@@ -4,9 +4,9 @@ import AppKit
 import SwiftTerm
 import Darwin
 
-/// Explicit private integration route while release UI parity is incomplete.
-/// Never a user preference/backend fallback; release builds cannot select it.
-/// The default app remains unchanged until installation/remote/file parity gates.
+/// Explicit owned resources/audit driver for the shared hc product composition.
+/// Never a backend preference/fallback; ordinary Debug and Release also use hc.
+/// This fixture does not install/replace user cores or qualify production launchd.
 struct HcMigrationConfiguration {
     let root: URL
     let binary: URL
@@ -295,7 +295,7 @@ struct HcMigrationHost: View {
     @State private var manualInspection = false
     var body: some View {
         Group {
-            if let owner, let fixtureStore, let fixtureTransports { HcRootView(machineStore: fixtureStore, connection: owner, localTransportFactory: { try fixtureTransports.make() },
+            if let owner, let fixtureStore, let fixtureTransports { ShepherdHcContent(machineStore: fixtureStore, connection: owner, localTransportFactory: { try fixtureTransports.make() },
                     inspectionOnly: ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_MANUAL_SECONDS"] != nil || ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_LAYOUT_AUDIT"] == "1") }
             else if failure { Text("Private hc integration failed") }
             else { ProgressView("Preparing private hc integration…") }
