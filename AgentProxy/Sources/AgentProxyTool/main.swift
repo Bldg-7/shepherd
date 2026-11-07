@@ -86,30 +86,18 @@ let build = AgentProxyServer.build(ofExecutableAt: executable)
     FileHandle.standardError.write(Data("\(AgentProxyPaths.executableName): \(line)\n".utf8))
 }
 
-nonisolated(unsafe) var server: AgentProxyServer?
+let lifecycle = ForwarderLifecycle(onExit: { exit($0) })
 let configuration = AgentProxyServer.Configuration(
     stateDirectory: stateDirectory, controlSocketPath: controlSocket, recorderCommand: [executable, "recorder", "--socket", AgentProxyPaths.recorderSocket(forControlSocket: controlSocket), "--state-dir", stateDirectory, "--producer-fd", "4"], build: build,
     log: { log($0) },
-    onExitRequest: { code in
-        // Off the event loop: shutting down waits for it.
-        DispatchQueue.global().async {
-            server?.shutdown()
-            exit(code)
-        }
-    })
-server = AgentProxyServer(configuration: configuration)
+    onExitRequest: { lifecycle.requestStop(code:$0) })
+let server = AgentProxyServer(configuration: configuration)
+
+// The lifecycle already installed its nonisolated signal callback, before
+// start() can publish a socket. It serializes stop behind in-progress startup.
 do {
-    try server?.start()
+    try lifecycle.start(server)
 } catch {
     fail("cannot start: \(error)")
 }
-
-signal(SIGTERM, SIG_IGN)
-let termination = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .global())
-termination.setEventHandler {
-    log("stopping")
-    server?.shutdown()
-    exit(0)
-}
-termination.resume()
 dispatchMain()

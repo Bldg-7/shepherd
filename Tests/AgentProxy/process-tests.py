@@ -83,6 +83,14 @@ def http(port, data):
         return s.recv(65536).split(b'\r\n', 1)[0]
 
 
+def stop_owned(proc, label):
+    proc.send_signal(signal.SIGTERM)
+    code = proc.wait(timeout=5)
+    with (work / 'termination-receipts.jsonl').open('a') as receipt:
+        receipt.write(json.dumps({'case': label, 'pid': proc.pid, 'signal': 'SIGTERM', 'exitCode': code}) + '\n')
+    assert code == 0, f'SIGTERM: exits with 0, actual {code}'
+
+
 def case(name):
     def wrap(function):
         started = time.monotonic()
@@ -169,8 +177,7 @@ def _():
     routes = result(main_sock, 'routes.list')['routes']
     assert [r['routeID'] for r in routes] == [remembered['routeID']], 'the route survived'
     recorder = status['recorder']['pid']
-    proc.send_signal(signal.SIGTERM)
-    assert proc.wait(timeout=5) == 0, 'SIGTERM: exits with 0'
+    stop_owned(proc, 'restart-keeps-port-and-routes')
     assert wait_for(lambda: not alive(recorder), 3), 'its recorder exits too'
 
 
@@ -181,8 +188,7 @@ def _():
     stale.close()  # a socket file no one answers on
     proc = start('main-stale', main_state, main_sock)
     assert wait_for(lambda: answers(main_sock)), 'started over a stale socket'
-    proc.send_signal(signal.SIGTERM)
-    assert proc.wait(timeout=5) == 0
+    stop_owned(proc, 'stale-socket-replaced')
 
 
 @case('taken-port-replaced')
@@ -209,8 +215,7 @@ def _():
     port = result(sock, 'proxy.status')['port']
     assert port != taken and json.loads((state / 'state.json').read_text())['port'] == port, 'another port, saved'
     holder.close()
-    proc.send_signal(signal.SIGTERM)
-    assert proc.wait(timeout=5) == 0
+    stop_owned(proc, 'taken-port-replaced')
 
 
 @case('wide-folder-narrowed')
@@ -222,8 +227,20 @@ def _():
     proc = start('wide', state, sock)
     assert wait_for(sock.exists), 'started'
     assert mode(state) == 0o700, 'narrowed to 0700'
-    proc.send_signal(signal.SIGTERM)
-    assert proc.wait(timeout=5) == 0
+    stop_owned(proc, 'wide-folder-narrowed')
+
+
+@case('immediate-stop-after-publish-repeat')
+def _():
+    for index in range(10):
+        state = work / f'rapid{index}'
+        sock = work / f'r{index}.sock'
+        proc = start(f'rapid{index}', state, sock)
+        assert wait_for(lambda: answers(sock)), 'owned control status is public'
+        # No extra recorder-ready wait or sleep: publication must already be
+        # protected by the signal handler and serialized shutdown path.
+        stop_owned(proc, f'immediate-publish-{index}')
+        assert not sock.exists(), 'each immediate stop removes its own socket'
 
 
 @case('symlinked-folder-refused')
