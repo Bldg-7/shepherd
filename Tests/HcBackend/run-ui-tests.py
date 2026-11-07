@@ -10,6 +10,7 @@ ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'Tests/CoreProtocol'))
 import core_test_artifact as artifacts
 from ui_artifacts import remove_staged_bundles
+from ui_network_policy import policy as private_network_policy
 p=argparse.ArgumentParser()
 p.add_argument('--official-017-archive',type=Path,required=True)
 p.add_argument('--products',type=Path,required=True)
@@ -42,7 +43,7 @@ exe=app/'Contents/MacOS/hrdrhrdrhrdr'
 assert exe.is_file(),'build macOS Debug products first'
 tracked=[*sorted((ROOT/'ShepherdKit/Sources/ShepherdKit').rglob('*.swift')),
          *sorted((ROOT/'Shepherd').rglob('*.swift')),
-         *sorted((ROOT/'Vendor/SwiftTerm/Sources').rglob('*.swift')),ROOT/'Tests/HcBackend/OwnedUILauncher.swift',ROOT/'Tests/HcBackend/ui_artifacts.py',Path(__file__).resolve()]
+         *sorted((ROOT/'Vendor/SwiftTerm/Sources').rglob('*.swift')),ROOT/'Tests/HcBackend/OwnedUILauncher.swift',ROOT/'Tests/HcBackend/ui_artifacts.py',ROOT/'Tests/HcBackend/ui_network_policy.py',Path(__file__).resolve()]
 def digest(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 if a.profile_audit:
     tracked += [ROOT/'Tests/CoreProtocol/OwnedProfileSSHServer.swift',ROOT/'Tests/CoreProtocol/OwnedProfileSSHClientTests.swift']
@@ -62,10 +63,7 @@ if a.profile_audit:
     with socket.socket() as reservation:
         reservation.bind(('127.0.0.1',0));remote_port=reservation.getsockname()[1]
 profile=out/'private-unix.sb'
-network_rules=''
-if remote_port:
-    network_rules='(allow network* (subpath '+json.dumps(str(remote_root))+'))\n(allow network-outbound (remote ip "127.0.0.1:'+str(remote_port)+'"))\n(allow network-inbound (local ip "127.0.0.1:'+str(remote_port)+'"))\n'
-profile.write_text('(version 1)\n(allow default)\n(deny network*)\n(allow network* (subpath '+json.dumps(str(out/'core'))+'))\n'+network_rules)
+profile.write_text(private_network_policy(out/'core',remote_root if remote_port else None,remote_port))
 sandbox=['/usr/bin/sandbox-exec','-f',str(profile)]
 env={'PATH':'/usr/bin:/bin:/usr/sbin:/sbin','HOME':str(out/'home'),'CFFIXED_USER_HOME':str(out/'home'),'TMPDIR':str(out/'tmp'),
      'LANG':'en_US.UTF-8','DO_NOT_TRACK':'1','SHEPHERD_HC_UI_ROOT':str(out),'SHEPHERD_HC_UI_BINARY':str(binary)}
