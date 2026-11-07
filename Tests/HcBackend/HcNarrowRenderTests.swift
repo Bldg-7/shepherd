@@ -94,7 +94,8 @@ private nonisolated enum NarrowFailure: Error { case assertion(String) }
         let closed = await transport.snapshot()
         let passed = failure == nil && cases.count == 2 && cases.allSatisfy { $0["rawReady"] as? Bool == true && $0["renderedReady"] as? Bool == true && $0["explicitDisabledWrapPreserved"] as? Bool == true }
         var result: [String:Any] = ["passed":passed,"checks":checks,"cases":cases,"ownedPIDs":Array(pids).sorted(),
-            "stopAcknowledged":stopped?.stopped == true,"connectChildReaped":closed.reaped,"physicalGUIQualified":false]
+            "stopAcknowledged":stopped?.stopped == true,"connectChildReaped":closed.reaped,"physicalGUIQualified":false,
+            "rendererVersion":SwiftTermBuildInfo.version,"rendererBaseCommit":SwiftTermBuildInfo.commit ?? "unknown"]
         if let failure { result["failure"] = String(describing:failure) }
         try JSONSerialization.data(withJSONObject:result,options:[.sortedKeys,.prettyPrinted]).write(to:report,options:.atomic)
         guard passed else { throw failure ?? NarrowFailure.assertion("narrow renderer divergence; inspect raw/core/render evidence") }

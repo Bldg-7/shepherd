@@ -45,8 +45,29 @@ core. A paired explicit wrap-OFF/alternate-screen/restore remains wrap-OFF.
   private scopes retire. This confirms the diagnostic override did not break
   the default attach runner.
 
-No current app renderer pin has been changed. Neither this candidate nor its
-headless result qualifies installed app replacement, native GUI, full UI parity,
+At the diagnostic checkpoint the app renderer pin had not changed. With the
+operator's subsequent approval, `Vendor/SwiftTerm` now supplies the product
+renderer; see its PROVENANCE.md and `verify-vendor.py`. Integrated build/runtime
+validation is a separate gate from the candidate evidence above.
+
+Integrated evidence: `/private/tmp/hc-renderer-direct.Ts3ya4` passes the69 selected
+renderer/parser tests (including8 new parameter cases), actual product6/80
+rendering with explicit disabled-wrap preservation, macOS Debug/Release,
+iOS Debug, original UI component suite and UI wiring20. Actual product identity
+is `1.20.0-shepherd.saved-wrap-default.1-modified`, with no diagnostic renderer
+override. Every stage exits naturally with zero runner signals. This is still
+not an overall native GUI/release pass.
+
+Earlier roots `hc-renderer-integrated.dKY6kl`, `hc-renderer-locked.157s03`, and
+`hc-renderer-ios.GLOpoA` remain failed bounded-stage attempts: compilation itself
+succeeded but owned helper retirement required SIGTERM. The executable-only
+receipt identified Xcode's `ibtoold` pool, not the app/core. Final private build
+environment sets `IBToolNeverDeque=1` (this pinned Xcode's direct-exec path),
+without changing global preferences, extending grace or waiving any signal.
+`run-stage.py` now records executable names only for verified owned survivors;
+it still records no argv and keeps the same failure/teardown criteria.
+
+Neither the candidate nor its headless result qualifies installed app replacement, native GUI, full UI parity,
 fullscreen, provider/native identity, service lifetime or release cutover. The
 core baseline stays official0.1.17. No upstream push has been performed.
 
@@ -78,8 +99,14 @@ python3 -B Tests/HcBackend/run-tests.py --narrow-render-tests \
   --output /private/tmp/<new-candidate-root>
 ```
 
+For the integrated product, omit `--renderer-products`: the runner checks the
+modified renderer identity and vendored-source freshness in the actual app's
+products. `python3 -B Tests/Terminal/SwiftTermWrap/verify-vendor.py` separately
+checks source provenance and the local-package binding.
+
 The override is diagnostic-only, recorded explicitly, and rejected without
 `--narrow-render-tests`. Raw VT and per-case core/render results are retained.
 The selected SDK/product/module-map hashes are checked before/after execution.
 Do not weaken the failed assertion or remove it from the GUI audit to manufacture
-an overall pass. Dependency integration and current native rerun remain next gates.
+an overall pass. The current native rerun remains a separate gate after integrated
+headless/build validation.

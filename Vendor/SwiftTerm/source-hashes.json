@@ -1,0 +1,609 @@
+{
+  "baseCommit": "5d14406844143538cd8f8851d2d8a67c1fe443e5",
+  "files": {
+    "LICENSE": {
+      "upstreamSHA256": "0dc6bdd99b652c675586854efcacd59de21e2679d64fcaa20424aeb951df6856",
+      "vendoredSHA256": "0dc6bdd99b652c675586854efcacd59de21e2679d64fcaa20424aeb951df6856"
+    },
+    "Package.upstream.swift": {
+      "upstreamSHA256": "29ffcf9cba318f9644d11ba082616694e6fe7cff545d085a263b748a77b88457",
+      "vendoredSHA256": "29ffcf9cba318f9644d11ba082616694e6fe7cff545d085a263b748a77b88457"
+    },
+    "README.upstream.md": {
+      "upstreamSHA256": "ef2c86027d473389d6d57d74151db342d23e2d7495be235bc8d6e472a190c824",
+      "vendoredSHA256": "ef2c86027d473389d6d57d74151db342d23e2d7495be235bc8d6e472a190c824"
+    },
+    "Sources/SwiftTerm/Apple/AppleTerminalView.swift": {
+      "upstreamSHA256": "2d733672f27d6277eac630c4189da7b6e377792c543ec6ef6e172104848857f7",
+      "vendoredSHA256": "2d733672f27d6277eac630c4189da7b6e377792c543ec6ef6e172104848857f7"
+    },
+    "Sources/SwiftTerm/Apple/ArabicShapingData.swift": {
+      "upstreamSHA256": "1c0b4690bf68b04e3188f9363029c4347cd9d27238fb1c683f2bbc5c8f96c64d",
+      "vendoredSHA256": "1c0b4690bf68b04e3188f9363029c4347cd9d27238fb1c683f2bbc5c8f96c64d"
+    },
+    "Sources/SwiftTerm/Apple/BellStyle.swift": {
+      "upstreamSHA256": "7ed89667c187f3ec6d618dbe0f8d22d772e4bb27126a520901e74a080b55678d",
+      "vendoredSHA256": "7ed89667c187f3ec6d618dbe0f8d22d772e4bb27126a520901e74a080b55678d"
+    },
+    "Sources/SwiftTerm/Apple/BidiMirroringData.swift": {
+      "upstreamSHA256": "2f2b8ff175850ef3cedf1153bdcd20fbc76c70a4aa98c5e3fb6ba3ef74821b2b",
+      "vendoredSHA256": "2f2b8ff175850ef3cedf1153bdcd20fbc76c70a4aa98c5e3fb6ba3ef74821b2b"
+    },
+    "Sources/SwiftTerm/Apple/BlockElementRenderer.swift": {
+      "upstreamSHA256": "ba7172df4b8fd5131a9d77feeac845b786555e05cfd29056aa65a2f796d6f7f9",
+      "vendoredSHA256": "ba7172df4b8fd5131a9d77feeac845b786555e05cfd29056aa65a2f796d6f7f9"
+    },
+    "Sources/SwiftTerm/Apple/BoxDrawingRenderer.swift": {
+      "upstreamSHA256": "0c821be920622fbfd98646e0939eab7489c24c32ce573b393222580077be8fab",
+      "vendoredSHA256": "0c821be920622fbfd98646e0939eab7489c24c32ce573b393222580077be8fab"
+    },
+    "Sources/SwiftTerm/Apple/CaretView.swift": {
+      "upstreamSHA256": "7330ba79294d38d5f4d6140127f939bc52cd9a6ce82cc5240ac3bff872fa66a8",
+      "vendoredSHA256": "7330ba79294d38d5f4d6140127f939bc52cd9a6ce82cc5240ac3bff872fa66a8"
+    },
+    "Sources/SwiftTerm/Apple/ColorBridge.swift": {
+      "upstreamSHA256": "9434f95a4ef2489875dd476b02bad2b0519f18f47b22bcc94fa45c5c5f90ad75",
+      "vendoredSHA256": "9434f95a4ef2489875dd476b02bad2b0519f18f47b22bcc94fa45c5c5f90ad75"
+    },
+    "Sources/SwiftTerm/Apple/Extensions.swift": {
+      "upstreamSHA256": "06b28e1ba404efa11f16d6980cc0537cc83b88ee978bcb332cc970bc21129ce0",
+      "vendoredSHA256": "06b28e1ba404efa11f16d6980cc0537cc83b88ee978bcb332cc970bc21129ce0"
+    },
+    "Sources/SwiftTerm/Apple/Metal/CoreTextGlyphRasterizer.swift": {
+      "upstreamSHA256": "004b090d29af185136598aeed372dee4ad2d5611018441b64e0e57f39723082c",
+      "vendoredSHA256": "004b090d29af185136598aeed372dee4ad2d5611018441b64e0e57f39723082c"
+    },
+    "Sources/SwiftTerm/Apple/Metal/GlyphAtlas.swift": {
+      "upstreamSHA256": "2e17cc6724f3f68c81f5a04d21b5e155f1f8891a92d783cb9051609c31a07fa0",
+      "vendoredSHA256": "2e17cc6724f3f68c81f5a04d21b5e155f1f8891a92d783cb9051609c31a07fa0"
+    },
+    "Sources/SwiftTerm/Apple/Metal/MetalBufferingMode.swift": {
+      "upstreamSHA256": "47f5393b98875198b29d2d89788da97ccea10184b6fa675e2c6eda47a4719a8f",
+      "vendoredSHA256": "47f5393b98875198b29d2d89788da97ccea10184b6fa675e2c6eda47a4719a8f"
+    },
+    "Sources/SwiftTerm/Apple/Metal/MetalError.swift": {
+      "upstreamSHA256": "e15ed4a2213b2665452ba2f8c59290ae25699ff4123862d44c74581cea07cb27",
+      "vendoredSHA256": "e15ed4a2213b2665452ba2f8c59290ae25699ff4123862d44c74581cea07cb27"
+    },
+    "Sources/SwiftTerm/Apple/Metal/MetalRendererRecovery.swift": {
+      "upstreamSHA256": "79c4f904e55d67025ed9b216ae9ba942501a6d7e724cc9f04a4881c919901501",
+      "vendoredSHA256": "79c4f904e55d67025ed9b216ae9ba942501a6d7e724cc9f04a4881c919901501"
+    },
+    "Sources/SwiftTerm/Apple/Metal/MetalTerminalRenderer.swift": {
+      "upstreamSHA256": "b118197c3158545f88c77ba4944091cf1c5035758468ae0c37cf18030110f161",
+      "vendoredSHA256": "b118197c3158545f88c77ba4944091cf1c5035758468ae0c37cf18030110f161"
+    },
+    "Sources/SwiftTerm/Apple/Metal/Shaders.metal": {
+      "upstreamSHA256": "5f9f1d64f238821d11e4eda5f33c933d85d4e7f124a2c3bd8a930f8726b2fc12",
+      "vendoredSHA256": "5f9f1d64f238821d11e4eda5f33c933d85d4e7f124a2c3bd8a930f8726b2fc12"
+    },
+    "Sources/SwiftTerm/Apple/PowerlineRenderer.swift": {
+      "upstreamSHA256": "d0e0a386a249502822d697fcc15e4aad984bbae7ab5410a5447a4584be94e519",
+      "vendoredSHA256": "d0e0a386a249502822d697fcc15e4aad984bbae7ab5410a5447a4584be94e519"
+    },
+    "Sources/SwiftTerm/Apple/TerminalBidi.swift": {
+      "upstreamSHA256": "7e52ed23547ad27034ceae5724a06e8df7d9ef499f99bd01b8d58928ef773fdc",
+      "vendoredSHA256": "7e52ed23547ad27034ceae5724a06e8df7d9ef499f99bd01b8d58928ef773fdc"
+    },
+    "Sources/SwiftTerm/Apple/TerminalProgressBarView.swift": {
+      "upstreamSHA256": "8a0222151f0aa4dc77767b1f8efdabaa458c6e3af7819a38daa3627dec0c1515",
+      "vendoredSHA256": "8a0222151f0aa4dc77767b1f8efdabaa458c6e3af7819a38daa3627dec0c1515"
+    },
+    "Sources/SwiftTerm/Apple/TerminalViewDelegate.swift": {
+      "upstreamSHA256": "b0630b9b1b1ae976b491097128abd8d5355c026f8805d47c845963a84bab97c4",
+      "vendoredSHA256": "b0630b9b1b1ae976b491097128abd8d5355c026f8805d47c845963a84bab97c4"
+    },
+    "Sources/SwiftTerm/Bidi.swift": {
+      "upstreamSHA256": "2157ba1b773046164e8c330858b90a5cd8fa567ca2f4ee889ca6abe7da3c0a38",
+      "vendoredSHA256": "2157ba1b773046164e8c330858b90a5cd8fa567ca2f4ee889ca6abe7da3c0a38"
+    },
+    "Sources/SwiftTerm/Buffer.swift": {
+      "upstreamSHA256": "c3961ac379e51bb4a5eaf958c247b1e3a6298361d90579fe51ac38b6f09c98f6",
+      "vendoredSHA256": "82faa133bdce44f427a21fa32a27d2a59bc6c6714b8d82893fe057347b2d4a5c"
+    },
+    "Sources/SwiftTerm/BufferLine.swift": {
+      "upstreamSHA256": "b7ef96cf87c097e9f2bb79610025aa5d587f9fe036da17923ebfc38ebe58ff56",
+      "vendoredSHA256": "b7ef96cf87c097e9f2bb79610025aa5d587f9fe036da17923ebfc38ebe58ff56"
+    },
+    "Sources/SwiftTerm/BufferSet.swift": {
+      "upstreamSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "vendoredSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "Sources/SwiftTerm/CharData.swift": {
+      "upstreamSHA256": "79c2f5692a91287a00dd375cc6b7001a9e1bfb9e61b0a0a77643dbedad873eae",
+      "vendoredSHA256": "79c2f5692a91287a00dd375cc6b7001a9e1bfb9e61b0a0a77643dbedad873eae"
+    },
+    "Sources/SwiftTerm/CharSets.swift": {
+      "upstreamSHA256": "f44e0ea758512dfac7b82dc9745fdc171ff10135ccd6a4c74a9a4da4bccd8778",
+      "vendoredSHA256": "f44e0ea758512dfac7b82dc9745fdc171ff10135ccd6a4c74a9a4da4bccd8778"
+    },
+    "Sources/SwiftTerm/CircularList.swift": {
+      "upstreamSHA256": "edb2c7ac6e4908390d69b16b94f7d92c4697790896114ed700c0344880748842",
+      "vendoredSHA256": "edb2c7ac6e4908390d69b16b94f7d92c4697790896114ed700c0344880748842"
+    },
+    "Sources/SwiftTerm/Colors.swift": {
+      "upstreamSHA256": "8b9e35d4c6b89b63a5686490bf550056afd8cca90a5e1b048f5262f076f22a52",
+      "vendoredSHA256": "8b9e35d4c6b89b63a5686490bf550056afd8cca90a5e1b048f5262f076f22a52"
+    },
+    "Sources/SwiftTerm/Documentation.docc/BiDi.md": {
+      "upstreamSHA256": "703b69919ed482aa76406cd104cf9686c6318d82864e78fcc9719f15f502f0f1",
+      "vendoredSHA256": "703b69919ed482aa76406cd104cf9686c6318d82864e78fcc9719f15f502f0f1"
+    },
+    "Sources/SwiftTerm/Documentation.docc/Customization.md": {
+      "upstreamSHA256": "ef143e97c866dc55c9375ff297c3d5a715b04f2ec893fd5b03ee8a6cafe9e0b2",
+      "vendoredSHA256": "ef143e97c866dc55c9375ff297c3d5a715b04f2ec893fd5b03ee8a6cafe9e0b2"
+    },
+    "Sources/SwiftTerm/Documentation.docc/Documentation.md": {
+      "upstreamSHA256": "2c46267f6df4ee017451161c9c2dd30a8a789da2115029d94eaa7dd27ec6c019",
+      "vendoredSHA256": "2c46267f6df4ee017451161c9c2dd30a8a789da2115029d94eaa7dd27ec6c019"
+    },
+    "Sources/SwiftTerm/Documentation.docc/Extensions/HeadlessTerminal.md": {
+      "upstreamSHA256": "79dcaa9166e6a133c0db6e6ca57ee1c79e8ecddbde63954583148953d4137e00",
+      "vendoredSHA256": "79dcaa9166e6a133c0db6e6ca57ee1c79e8ecddbde63954583148953d4137e00"
+    },
+    "Sources/SwiftTerm/Documentation.docc/Extensions/Terminal.md": {
+      "upstreamSHA256": "bf8b7c1506d16508d8b69ee3352ea5b73fecd1e58aad7babd52935df9976e1c0",
+      "vendoredSHA256": "bf8b7c1506d16508d8b69ee3352ea5b73fecd1e58aad7babd52935df9976e1c0"
+    },
+    "Sources/SwiftTerm/Documentation.docc/Extensions/TerminalOptions.md": {
+      "upstreamSHA256": "914e2d2323a5294ff9bc6b77b30733a0513f183f164d2a15e7fcb194002fce9e",
+      "vendoredSHA256": "914e2d2323a5294ff9bc6b77b30733a0513f183f164d2a15e7fcb194002fce9e"
+    },
+    "Sources/SwiftTerm/Documentation.docc/GPURendering.md": {
+      "upstreamSHA256": "7b2c04599d8abffa9feba3ed88b6f972790ec6e6fe4f8f1d8cbedbe8b2f12134",
+      "vendoredSHA256": "7b2c04599d8abffa9feba3ed88b6f972790ec6e6fe4f8f1d8cbedbe8b2f12134"
+    },
+    "Sources/SwiftTerm/Documentation.docc/GettingStarted.md": {
+      "upstreamSHA256": "d564c5157b44ba0a525821d3be1b829276254be032b8bfa2ec5f19ca8b9de0c8",
+      "vendoredSHA256": "d564c5157b44ba0a525821d3be1b829276254be032b8bfa2ec5f19ca8b9de0c8"
+    },
+    "Sources/SwiftTerm/Documentation.docc/GraphicsSupport.md": {
+      "upstreamSHA256": "332a2b46e5915992616dd6231480a35434fcba911382ddb1e4739a83b3b3eae8",
+      "vendoredSHA256": "332a2b46e5915992616dd6231480a35434fcba911382ddb1e4739a83b3b3eae8"
+    },
+    "Sources/SwiftTerm/Documentation.docc/HeadlessUsage.md": {
+      "upstreamSHA256": "ea68d279a440b431b9419931bbcf1a01b9bdca50d376084799da2c5ceaae8398",
+      "vendoredSHA256": "ea68d279a440b431b9419931bbcf1a01b9bdca50d376084799da2c5ceaae8398"
+    },
+    "Sources/SwiftTerm/Documentation.docc/SSHIntegration.md": {
+      "upstreamSHA256": "72495d15878eae9b4ecd201039d9588548e4efd8c9dd7e2ee746f9d2b13d18a2",
+      "vendoredSHA256": "72495d15878eae9b4ecd201039d9588548e4efd8c9dd7e2ee746f9d2b13d18a2"
+    },
+    "Sources/SwiftTerm/Documentation.docc/Search.md": {
+      "upstreamSHA256": "3e2a369cc7c8c28f0134864694c959ac210ac5bb99dd26abb8d8175f96f08c44",
+      "vendoredSHA256": "3e2a369cc7c8c28f0134864694c959ac210ac5bb99dd26abb8d8175f96f08c44"
+    },
+    "Sources/SwiftTerm/EscapeSequenceParser.swift": {
+      "upstreamSHA256": "b8bed0484a777146542cfa040db27223d93c7621edfefd3dde34aa61b4ff3b60",
+      "vendoredSHA256": "b8bed0484a777146542cfa040db27223d93c7621edfefd3dde34aa61b4ff3b60"
+    },
+    "Sources/SwiftTerm/EscapeSequences.swift": {
+      "upstreamSHA256": "8c7fe19e12add7162aa14cb88c289af2411cd59e91d1ec3bde404d8fc6cc4819",
+      "vendoredSHA256": "8c7fe19e12add7162aa14cb88c289af2411cd59e91d1ec3bde404d8fc6cc4819"
+    },
+    "Sources/SwiftTerm/ExtensionsTerminal.swift": {
+      "upstreamSHA256": "00f05be76c1c52337d39c042e6cf81bebc7aebaad2c93504446566a5c6689a6b",
+      "vendoredSHA256": "00f05be76c1c52337d39c042e6cf81bebc7aebaad2c93504446566a5c6689a6b"
+    },
+    "Sources/SwiftTerm/File.swift": {
+      "upstreamSHA256": "7a29c8292465ea565b05d498ad848be82b3f767a5fa8a506b70d302f0e2176b4",
+      "vendoredSHA256": "7a29c8292465ea565b05d498ad848be82b3f767a5fa8a506b70d302f0e2176b4"
+    },
+    "Sources/SwiftTerm/HangulInput.swift": {
+      "upstreamSHA256": "326a866c75b388ef77bace06be4b857ffaf3d94ea86edcef0de927a9de9ec930",
+      "vendoredSHA256": "326a866c75b388ef77bace06be4b857ffaf3d94ea86edcef0de927a9de9ec930"
+    },
+    "Sources/SwiftTerm/HeadlessTerminal.swift": {
+      "upstreamSHA256": "b1b7d37a6fb7c403f6b26b64abdda1d653c3a8471fc2a605283b294db78d97e4",
+      "vendoredSHA256": "b1b7d37a6fb7c403f6b26b64abdda1d653c3a8471fc2a605283b294db78d97e4"
+    },
+    "Sources/SwiftTerm/KittyGraphics.swift": {
+      "upstreamSHA256": "8b1ff8e7aecb300664ced61c27920c217065e0c004641a0b986891dbb17c8c86",
+      "vendoredSHA256": "8b1ff8e7aecb300664ced61c27920c217065e0c004641a0b986891dbb17c8c86"
+    },
+    "Sources/SwiftTerm/KittyKeyboardEncoder.swift": {
+      "upstreamSHA256": "baeb3966acb710e9af2f5f771bd40df11d69f2b141e901c7335c034c1eacd0ec",
+      "vendoredSHA256": "baeb3966acb710e9af2f5f771bd40df11d69f2b141e901c7335c034c1eacd0ec"
+    },
+    "Sources/SwiftTerm/KittyKeyboardProtocol.swift": {
+      "upstreamSHA256": "e496cbaa5e5fbd060583a9ebd6e8eaf570aac232c0bfe79d0b05e817cbdeb8eb",
+      "vendoredSHA256": "e496cbaa5e5fbd060583a9ebd6e8eaf570aac232c0bfe79d0b05e817cbdeb8eb"
+    },
+    "Sources/SwiftTerm/KittyPlaceholder.swift": {
+      "upstreamSHA256": "335db7dc64840e80b56b90b128ad8d44494525e19c17836e85e627b4b0ae75ff",
+      "vendoredSHA256": "335db7dc64840e80b56b90b128ad8d44494525e19c17836e85e627b4b0ae75ff"
+    },
+    "Sources/SwiftTerm/Line.swift": {
+      "upstreamSHA256": "bdd9e5c43af9317597fb1b03feead8adcf4d216ff2031524b049c2970cca3829",
+      "vendoredSHA256": "bdd9e5c43af9317597fb1b03feead8adcf4d216ff2031524b049c2970cca3829"
+    },
+    "Sources/SwiftTerm/LocalProcess.swift": {
+      "upstreamSHA256": "99a9681a09a20fef8c72d1554d16519f4b05c977cad85e78751e3e7f45b42721",
+      "vendoredSHA256": "99a9681a09a20fef8c72d1554d16519f4b05c977cad85e78751e3e7f45b42721"
+    },
+    "Sources/SwiftTerm/Mac/MacAccessibilityService.swift": {
+      "upstreamSHA256": "ecd8901d228bd199f520cbeccf5e075bd60e639b948ef6b28b70a984d25df8fe",
+      "vendoredSHA256": "ecd8901d228bd199f520cbeccf5e075bd60e639b948ef6b28b70a984d25df8fe"
+    },
+    "Sources/SwiftTerm/Mac/MacCaretView.swift": {
+      "upstreamSHA256": "2d414dd6384872ae95d44a14fca302a4c513560969f56fc14406ed0601da0f07",
+      "vendoredSHA256": "2d414dd6384872ae95d44a14fca302a4c513560969f56fc14406ed0601da0f07"
+    },
+    "Sources/SwiftTerm/Mac/MacDebugView.swift": {
+      "upstreamSHA256": "cfb9a5c4bf8979df3d201aee4ffcff5b0db6d114a0bc079719181da16cdfe6ca",
+      "vendoredSHA256": "cfb9a5c4bf8979df3d201aee4ffcff5b0db6d114a0bc079719181da16cdfe6ca"
+    },
+    "Sources/SwiftTerm/Mac/MacExtensions.swift": {
+      "upstreamSHA256": "b0a5c753dd9fc73adf8d6b2ba385533174dba11a0aca501fef2e685f7bf97284",
+      "vendoredSHA256": "b0a5c753dd9fc73adf8d6b2ba385533174dba11a0aca501fef2e685f7bf97284"
+    },
+    "Sources/SwiftTerm/Mac/MacFindBarView.swift": {
+      "upstreamSHA256": "06f35c08c42a0d7b46329d3912a7d3b75ec46030b9a42794182b2649bafa5a54",
+      "vendoredSHA256": "06f35c08c42a0d7b46329d3912a7d3b75ec46030b9a42794182b2649bafa5a54"
+    },
+    "Sources/SwiftTerm/Mac/MacLocalTerminalView.swift": {
+      "upstreamSHA256": "b3d0645467832a0b8d7bd7d9210e5b1b1348b590f23992df027cf6ed519a73bc",
+      "vendoredSHA256": "b3d0645467832a0b8d7bd7d9210e5b1b1348b590f23992df027cf6ed519a73bc"
+    },
+    "Sources/SwiftTerm/Mac/MacTerminalView.swift": {
+      "upstreamSHA256": "e427b7930fe77a1b42b8b7d3de084d26c3b59744b368ac77868261228fa2a2d4",
+      "vendoredSHA256": "e427b7930fe77a1b42b8b7d3de084d26c3b59744b368ac77868261228fa2a2d4"
+    },
+    "Sources/SwiftTerm/Mac/README.md": {
+      "upstreamSHA256": "5fb0585cc5605516c1aa61e1d0e3a9331e2883f96df445554bfb59356d61c78f",
+      "vendoredSHA256": "5fb0585cc5605516c1aa61e1d0e3a9331e2883f96df445554bfb59356d61c78f"
+    },
+    "Sources/SwiftTerm/Position.swift": {
+      "upstreamSHA256": "0df20db9c1902801835bbb760cb15c22b71195bce2b58871cd8c3fb0aa124605",
+      "vendoredSHA256": "0df20db9c1902801835bbb760cb15c22b71195bce2b58871cd8c3fb0aa124605"
+    },
+    "Sources/SwiftTerm/Pty.swift": {
+      "upstreamSHA256": "1d0d58b08576187897fb99b1d93426f6da949e2f4821ff0b436be47882250e6f",
+      "vendoredSHA256": "1d0d58b08576187897fb99b1d93426f6da949e2f4821ff0b436be47882250e6f"
+    },
+    "Sources/SwiftTerm/SearchEngine.swift": {
+      "upstreamSHA256": "f1ea091d83a34fee83a43f774c1f2148429e9241946a78bac60c697fc5d4aaac",
+      "vendoredSHA256": "f1ea091d83a34fee83a43f774c1f2148429e9241946a78bac60c697fc5d4aaac"
+    },
+    "Sources/SwiftTerm/SearchLineCache.swift": {
+      "upstreamSHA256": "b5af5ee373839691bf1abf7ef22295fcb076842b08bbbabb52f90ab8a11abe4a",
+      "vendoredSHA256": "b5af5ee373839691bf1abf7ef22295fcb076842b08bbbabb52f90ab8a11abe4a"
+    },
+    "Sources/SwiftTerm/SearchOptions.swift": {
+      "upstreamSHA256": "ab3958f635ae48dc04c82922b8370e5a4215cc1775eb8a81c12b11f0390c2ba3",
+      "vendoredSHA256": "ab3958f635ae48dc04c82922b8370e5a4215cc1775eb8a81c12b11f0390c2ba3"
+    },
+    "Sources/SwiftTerm/SearchService.swift": {
+      "upstreamSHA256": "51c765c023d14e266a1487a51232aac085542f098cf17031d2c4ba2537f6bce6",
+      "vendoredSHA256": "51c765c023d14e266a1487a51232aac085542f098cf17031d2c4ba2537f6bce6"
+    },
+    "Sources/SwiftTerm/SearchState.swift": {
+      "upstreamSHA256": "8393ab60fa5895b494e8cd40e25d26942be6638709d889c4ff21692d3d913d4d",
+      "vendoredSHA256": "8393ab60fa5895b494e8cd40e25d26942be6638709d889c4ff21692d3d913d4d"
+    },
+    "Sources/SwiftTerm/SelectionService.swift": {
+      "upstreamSHA256": "f3070eb6ee63d966ca5d3bbdc246ea9ba26fab72fee40e4bab6d824b15b88c87",
+      "vendoredSHA256": "f3070eb6ee63d966ca5d3bbdc246ea9ba26fab72fee40e4bab6d824b15b88c87"
+    },
+    "Sources/SwiftTerm/SemanticPrompt.swift": {
+      "upstreamSHA256": "fb9cfcaeb111073ab572225cb01350b6d3b99a4e5d73cd6c1eebf03208126e18",
+      "vendoredSHA256": "fb9cfcaeb111073ab572225cb01350b6d3b99a4e5d73cd6c1eebf03208126e18"
+    },
+    "Sources/SwiftTerm/SixelDcsHandler.swift": {
+      "upstreamSHA256": "cda8080568d01104395af8a698d0f8b370036aaa9358413cfa26447410a5f6d2",
+      "vendoredSHA256": "cda8080568d01104395af8a698d0f8b370036aaa9358413cfa26447410a5f6d2"
+    },
+    "Sources/SwiftTerm/SyncDebug.swift": {
+      "upstreamSHA256": "fdf013ba65dbc054d9f70936c15e5cf62b4c3c7b54da79c538b5c97475e00113",
+      "vendoredSHA256": "fdf013ba65dbc054d9f70936c15e5cf62b4c3c7b54da79c538b5c97475e00113"
+    },
+    "Sources/SwiftTerm/Terminal.swift": {
+      "upstreamSHA256": "1b49eefe757cb612801d0b55eb1086d9ce746654d34318b8001cdd33b4d3ccd1",
+      "vendoredSHA256": "1b49eefe757cb612801d0b55eb1086d9ce746654d34318b8001cdd33b4d3ccd1"
+    },
+    "Sources/SwiftTerm/TerminalOptions.swift": {
+      "upstreamSHA256": "eaa979a14336e01e4e5f5051774fe85bb2fa616b8d21d64b77b6c428636c3b42",
+      "vendoredSHA256": "eaa979a14336e01e4e5f5051774fe85bb2fa616b8d21d64b77b6c428636c3b42"
+    },
+    "Sources/SwiftTerm/TerminalViewSearch.swift": {
+      "upstreamSHA256": "20445ab93ce3bc403bea2ddaf5045dbac917534b9645685d4757e0260e0a1a02",
+      "vendoredSHA256": "20445ab93ce3bc403bea2ddaf5045dbac917534b9645685d4757e0260e0a1a02"
+    },
+    "Sources/SwiftTerm/UnicodeWidthData.swift": {
+      "upstreamSHA256": "e55e263345e0cd34c8b905587d84d44b72f8f44a3dd686d4e08251465339260c",
+      "vendoredSHA256": "e55e263345e0cd34c8b905587d84d44b72f8f44a3dd686d4e08251465339260c"
+    },
+    "Sources/SwiftTerm/Utilities.swift": {
+      "upstreamSHA256": "d4ffeb12083f37649ec21895441b0ec2a8ece2df37adc0563ee35546bc993b19",
+      "vendoredSHA256": "d4ffeb12083f37649ec21895441b0ec2a8ece2df37adc0563ee35546bc993b19"
+    },
+    "Sources/SwiftTerm/iOS/SwiftUITerminalView.swift": {
+      "upstreamSHA256": "9d4043eaf31ddd99533aec28423cb2c2b98602e877e316421ddc7fe918e16997",
+      "vendoredSHA256": "9d4043eaf31ddd99533aec28423cb2c2b98602e877e316421ddc7fe918e16997"
+    },
+    "Sources/SwiftTerm/iOS/iOSAccessoryView.swift": {
+      "upstreamSHA256": "11c54b97da22dca0b858c22064d4abc5ea36787ea5a68609291f06162b58ade7",
+      "vendoredSHA256": "11c54b97da22dca0b858c22064d4abc5ea36787ea5a68609291f06162b58ade7"
+    },
+    "Sources/SwiftTerm/iOS/iOSCaretView.swift": {
+      "upstreamSHA256": "9fdb3c4136d47440ab821c15049729d58dad04d6049f483c49e2c2fa2e7f5755",
+      "vendoredSHA256": "9fdb3c4136d47440ab821c15049729d58dad04d6049f483c49e2c2fa2e7f5755"
+    },
+    "Sources/SwiftTerm/iOS/iOSDoubleButton.swift": {
+      "upstreamSHA256": "4af25d44b9f25ea1200e6f59f440960b62d197bf129dbc47e5b3389234ae42db",
+      "vendoredSHA256": "4af25d44b9f25ea1200e6f59f440960b62d197bf129dbc47e5b3389234ae42db"
+    },
+    "Sources/SwiftTerm/iOS/iOSExtensions.swift": {
+      "upstreamSHA256": "861e8a1e52c4f75ef730e3fe87552d7ef3e18e0d4795684a40d6ad166afacd8b",
+      "vendoredSHA256": "861e8a1e52c4f75ef730e3fe87552d7ef3e18e0d4795684a40d6ad166afacd8b"
+    },
+    "Sources/SwiftTerm/iOS/iOSKeyboardView.swift": {
+      "upstreamSHA256": "a11c5c714768738a21ca1a0ab375091db3cbd28cce0430e8d26b59cc086c6104",
+      "vendoredSHA256": "a11c5c714768738a21ca1a0ab375091db3cbd28cce0430e8d26b59cc086c6104"
+    },
+    "Sources/SwiftTerm/iOS/iOSTerminalView.swift": {
+      "upstreamSHA256": "1ab65491906c029d3581e674f63e4d748f08a6f8a85595b2bd26ca4567625ab4",
+      "vendoredSHA256": "1ab65491906c029d3581e674f63e4d748f08a6f8a85595b2bd26ca4567625ab4"
+    },
+    "Sources/SwiftTerm/iOS/iOSTextInput.swift": {
+      "upstreamSHA256": "11d503dcb13a55f6fc32650fee531ed2aeffad67bfd09bda5370e6fd9d22ed48",
+      "vendoredSHA256": "11d503dcb13a55f6fc32650fee531ed2aeffad67bfd09bda5370e6fd9d22ed48"
+    },
+    "Sources/SwiftTerm/iOS/iOSTextStorage.swift": {
+      "upstreamSHA256": "65e5883d202e5f722b3f5f05ffbbac65835fb24f94ca527fa8afd490cebfc045",
+      "vendoredSHA256": "65e5883d202e5f722b3f5f05ffbbac65835fb24f94ca527fa8afd490cebfc045"
+    },
+    "Tests/SwiftTermTests/AlternateScrollModeTests.swift": {
+      "upstreamSHA256": "c73de5dc1918d2b9b807f1d1bf9cd9af53f33f60f59abc7812e56834cf18d09f",
+      "vendoredSHA256": "c73de5dc1918d2b9b807f1d1bf9cd9af53f33f60f59abc7812e56834cf18d09f"
+    },
+    "Tests/SwiftTermTests/BidiCacheTests.swift": {
+      "upstreamSHA256": "be62176701a1548090d85cd7f76edb3515c58f9df44ea90ed73a876b55b4a2ad",
+      "vendoredSHA256": "be62176701a1548090d85cd7f76edb3515c58f9df44ea90ed73a876b55b4a2ad"
+    },
+    "Tests/SwiftTermTests/BidiEscapeTests.swift": {
+      "upstreamSHA256": "a9fba61366a479f4233159b5728c4ac90935b42bb6ebda45f250b12c7801e32f",
+      "vendoredSHA256": "a9fba61366a479f4233159b5728c4ac90935b42bb6ebda45f250b12c7801e32f"
+    },
+    "Tests/SwiftTermTests/BidiRenderTests.swift": {
+      "upstreamSHA256": "bcff3629ebee24c4fd9a1de671869b3fb5a4b8ae66309ef3ea5b60dbcf9fb2c9",
+      "vendoredSHA256": "bcff3629ebee24c4fd9a1de671869b3fb5a4b8ae66309ef3ea5b60dbcf9fb2c9"
+    },
+    "Tests/SwiftTermTests/BidiTests.swift": {
+      "upstreamSHA256": "5f7af1ba486196d2c84217f98e1e6dfcc94a16f83c91759c928552b8300b1b96",
+      "vendoredSHA256": "5f7af1ba486196d2c84217f98e1e6dfcc94a16f83c91759c928552b8300b1b96"
+    },
+    "Tests/SwiftTermTests/BufferTests.swift": {
+      "upstreamSHA256": "cc787829cf3a2aaf60a0b38549b8f95d30f1a0b03e7fffffaf81492fb1c8cc9d",
+      "vendoredSHA256": "cc787829cf3a2aaf60a0b38549b8f95d30f1a0b03e7fffffaf81492fb1c8cc9d"
+    },
+    "Tests/SwiftTermTests/ColorQueryTests.swift": {
+      "upstreamSHA256": "3ed3b3176a6df8881df38cfaa231762a1d9ac2aa306f846f0d30fa57302d00ad",
+      "vendoredSHA256": "3ed3b3176a6df8881df38cfaa231762a1d9ac2aa306f846f0d30fa57302d00ad"
+    },
+    "Tests/SwiftTermTests/ColorTests.swift": {
+      "upstreamSHA256": "7a7838704931ac9ca0a0edadd88517c6413bd75b416e138080004bd7f45d0f0a",
+      "vendoredSHA256": "7a7838704931ac9ca0a0edadd88517c6413bd75b416e138080004bd7f45d0f0a"
+    },
+    "Tests/SwiftTermTests/CsiParameterParsingTests.swift": {
+      "upstreamSHA256": "1ed870b28d08bd894f09cbd066ccae7bbd38e91ce78ebb658be6f9f6df1276fc",
+      "vendoredSHA256": "1ed870b28d08bd894f09cbd066ccae7bbd38e91ce78ebb658be6f9f6df1276fc"
+    },
+    "Tests/SwiftTermTests/DcsTests.swift": {
+      "upstreamSHA256": "8faede902b2eedbe603faeb8667d2a1163482113b73dbb42073f923355a7b1bf",
+      "vendoredSHA256": "8faede902b2eedbe603faeb8667d2a1163482113b73dbb42073f923355a7b1bf"
+    },
+    "Tests/SwiftTermTests/EscapeSequenceParserHardeningTests.swift": {
+      "upstreamSHA256": "0cfe0958f7d57e5858fb254ed45ca267bde92b1edccc62c683e2ef186a96d367",
+      "vendoredSHA256": "0cfe0958f7d57e5858fb254ed45ca267bde92b1edccc62c683e2ef186a96d367"
+    },
+    "Tests/SwiftTermTests/Fixtures/swifterm-terminfo.infocmp": {
+      "upstreamSHA256": "6e70463e8a6dd249afe79b785acdadca3572dda15f70ae1bdf7d56f589955091",
+      "vendoredSHA256": "6e70463e8a6dd249afe79b785acdadca3572dda15f70ae1bdf7d56f589955091"
+    },
+    "Tests/SwiftTermTests/Fixtures/xterm-ghostty.infocmp": {
+      "upstreamSHA256": "8badb52d693a292fd4f1900db2d84bd5911a3f91fff87a4365621ec87092761f",
+      "vendoredSHA256": "8badb52d693a292fd4f1900db2d84bd5911a3f91fff87a4365621ec87092761f"
+    },
+    "Tests/SwiftTermTests/FocusReportTests.swift": {
+      "upstreamSHA256": "31733696be6fb40687252a7ebbac604265507ae6c8d6b2d7c7430018ca494a62",
+      "vendoredSHA256": "31733696be6fb40687252a7ebbac604265507ae6c8d6b2d7c7430018ca494a62"
+    },
+    "Tests/SwiftTermTests/FontDimensionTests.swift": {
+      "upstreamSHA256": "1182bb1f7b99b6fbaf5c68348bc647c29d1dda326366150e66ba2b10dcc34367",
+      "vendoredSHA256": "1182bb1f7b99b6fbaf5c68348bc647c29d1dda326366150e66ba2b10dcc34367"
+    },
+    "Tests/SwiftTermTests/FontResizeColumnsTests.swift": {
+      "upstreamSHA256": "27b7889ad66b9234692336ce2aaca27ee4514b18f20fe1fbebb0bfa1826efae0",
+      "vendoredSHA256": "27b7889ad66b9234692336ce2aaca27ee4514b18f20fe1fbebb0bfa1826efae0"
+    },
+    "Tests/SwiftTermTests/FuzzerTests.swift": {
+      "upstreamSHA256": "25fd4d166226d39d2e1f23a1a9f17591908b8f48fc83a8da6491602b4c17b37b",
+      "vendoredSHA256": "25fd4d166226d39d2e1f23a1a9f17591908b8f48fc83a8da6491602b4c17b37b"
+    },
+    "Tests/SwiftTermTests/GhosttyImplicitLinkDetectionTests.swift": {
+      "upstreamSHA256": "ee9485ade7d3f0278aded85cdb6ad72c3fcb1f0bccd1ed4bc506f559f5ca5366",
+      "vendoredSHA256": "ee9485ade7d3f0278aded85cdb6ad72c3fcb1f0bccd1ed4bc506f559f5ca5366"
+    },
+    "Tests/SwiftTermTests/GlyphAtlasTests.swift": {
+      "upstreamSHA256": "0f879b1c53064469be3296bdb8904bd90478b678dda11f4a69a8b728b1b3f7a5",
+      "vendoredSHA256": "0f879b1c53064469be3296bdb8904bd90478b678dda11f4a69a8b728b1b3f7a5"
+    },
+    "Tests/SwiftTermTests/HangulInputTests.swift": {
+      "upstreamSHA256": "6de5a7d2b86f30cfe8b468c0e20ece46b24e45f95f55ca634b4f59bcac978066",
+      "vendoredSHA256": "6de5a7d2b86f30cfe8b468c0e20ece46b24e45f95f55ca634b4f59bcac978066"
+    },
+    "Tests/SwiftTermTests/HistoryTests.swift": {
+      "upstreamSHA256": "f626e26fb694f6d0a08072835bda88d2deb529a16466449421bf8e2691b97078",
+      "vendoredSHA256": "f626e26fb694f6d0a08072835bda88d2deb529a16466449421bf8e2691b97078"
+    },
+    "Tests/SwiftTermTests/IOSTextInputOffsetTests.swift": {
+      "upstreamSHA256": "248bc641a3fbd2a120152ab8b7fdcdf3930ab08e88345847346b7c97f3fc8257",
+      "vendoredSHA256": "248bc641a3fbd2a120152ab8b7fdcdf3930ab08e88345847346b7c97f3fc8257"
+    },
+    "Tests/SwiftTermTests/ImageTests.swift": {
+      "upstreamSHA256": "ba7d0e3a7b6a443e01612957e1221fbde27286599e8494d130098b399eeaadf1",
+      "vendoredSHA256": "ba7d0e3a7b6a443e01612957e1221fbde27286599e8494d130098b399eeaadf1"
+    },
+    "Tests/SwiftTermTests/KittyCursorTests.swift": {
+      "upstreamSHA256": "be7b5975c36fccc6c5cd4da6c93ac6a30837b02e603eca4a7f37d89cd24c0bb2",
+      "vendoredSHA256": "be7b5975c36fccc6c5cd4da6c93ac6a30837b02e603eca4a7f37d89cd24c0bb2"
+    },
+    "Tests/SwiftTermTests/KittyGraphicsLifecycleTests.swift": {
+      "upstreamSHA256": "365c9cda044d2f3e93dbf2fa492fa5db8de940a33124032a3dfb8dfb706b5a63",
+      "vendoredSHA256": "365c9cda044d2f3e93dbf2fa492fa5db8de940a33124032a3dfb8dfb706b5a63"
+    },
+    "Tests/SwiftTermTests/KittyKeyboardAppKitReproductionTests.swift": {
+      "upstreamSHA256": "d390f216548f34aa27245ef2d141636c9ec8e6f94638528d958785ec2b778abd",
+      "vendoredSHA256": "d390f216548f34aa27245ef2d141636c9ec8e6f94638528d958785ec2b778abd"
+    },
+    "Tests/SwiftTermTests/KittyKeyboardEncoderTests.swift": {
+      "upstreamSHA256": "8bf34fdf0510be10a6a70fbea56d5ebfc9487e38a032eac49a4ff251d3349741",
+      "vendoredSHA256": "8bf34fdf0510be10a6a70fbea56d5ebfc9487e38a032eac49a4ff251d3349741"
+    },
+    "Tests/SwiftTermTests/KittyKeyboardProtocolTests.swift": {
+      "upstreamSHA256": "60a3fded05cd02f5b7ab002e213d62ffd3f91b1d138f5d3ba5d0caf3fa8f5ca9",
+      "vendoredSHA256": "60a3fded05cd02f5b7ab002e213d62ffd3f91b1d138f5d3ba5d0caf3fa8f5ca9"
+    },
+    "Tests/SwiftTermTests/KittyOptionComposeTests.swift": {
+      "upstreamSHA256": "82c16a696433ca7ebe120c2bd0010ba441dfc9402e0db6caa92d4e4fe0d0110e",
+      "vendoredSHA256": "82c16a696433ca7ebe120c2bd0010ba441dfc9402e0db6caa92d4e4fe0d0110e"
+    },
+    "Tests/SwiftTermTests/KittyRelativePlacementTests.swift": {
+      "upstreamSHA256": "abbbcc7074cb4832e25f65f642bd5c42cd6a1b30a24975ee4a593aeb387c113b",
+      "vendoredSHA256": "abbbcc7074cb4832e25f65f642bd5c42cd6a1b30a24975ee4a593aeb387c113b"
+    },
+    "Tests/SwiftTermTests/KittyTransmissionTests.swift": {
+      "upstreamSHA256": "1c7decd55bc1c3204d07b896ccdc20c43f3c8f16e383d512deab1e73de3edd8e",
+      "vendoredSHA256": "1c7decd55bc1c3204d07b896ccdc20c43f3c8f16e383d512deab1e73de3edd8e"
+    },
+    "Tests/SwiftTermTests/KittyUnicodeTests.swift": {
+      "upstreamSHA256": "4c4e844331a6bb2a749c235202185d7a205892662cc99413c69480a618dc0f7f",
+      "vendoredSHA256": "4c4e844331a6bb2a749c235202185d7a205892662cc99413c69480a618dc0f7f"
+    },
+    "Tests/SwiftTermTests/LinkLookupTests.swift": {
+      "upstreamSHA256": "171a930da1f93b033c1b72a12b6bc720835434250a453875422ef7ee62d3b068",
+      "vendoredSHA256": "171a930da1f93b033c1b72a12b6bc720835434250a453875422ef7ee62d3b068"
+    },
+    "Tests/SwiftTermTests/MacDefaultLinkTests.swift": {
+      "upstreamSHA256": "71126ce17602fd697bfe4f50ce0560c7a5b1dda5b9bbd1744c599a8267c3b456",
+      "vendoredSHA256": "71126ce17602fd697bfe4f50ce0560c7a5b1dda5b9bbd1744c599a8267c3b456"
+    },
+    "Tests/SwiftTermTests/MeanTests.swift": {
+      "upstreamSHA256": "3187e5e04b361080babf9ca21b9cc10c1961e600034d2a4a2679ea6579681e03",
+      "vendoredSHA256": "3187e5e04b361080babf9ca21b9cc10c1961e600034d2a4a2679ea6579681e03"
+    },
+    "Tests/SwiftTermTests/Memory.swift": {
+      "upstreamSHA256": "369142b2f49d98a52f69265854c1231f474c67f25eb7e9bd34b88e5387579009",
+      "vendoredSHA256": "369142b2f49d98a52f69265854c1231f474c67f25eb7e9bd34b88e5387579009"
+    },
+    "Tests/SwiftTermTests/MetalRendererRecoveryTests.swift": {
+      "upstreamSHA256": "382c6ef061c9cbfc4c55a8da90eda289bd53617bd6d7716e505b3a7ae53c28db",
+      "vendoredSHA256": "382c6ef061c9cbfc4c55a8da90eda289bd53617bd6d7716e505b3a7ae53c28db"
+    },
+    "Tests/SwiftTermTests/MetalRendererStatusTests.swift": {
+      "upstreamSHA256": "042e2714990e5abe763c03224ad98f7fa8fcdc827c0c181e13e7fcab62374d24",
+      "vendoredSHA256": "042e2714990e5abe763c03224ad98f7fa8fcdc827c0c181e13e7fcab62374d24"
+    },
+    "Tests/SwiftTermTests/MetalRendererVisibilityTests.swift": {
+      "upstreamSHA256": "5a1c9dac137bd784191a6f8e4714032f0490d0a7e8a23494b3cb811e4d67b0ac",
+      "vendoredSHA256": "5a1c9dac137bd784191a6f8e4714032f0490d0a7e8a23494b3cb811e4d67b0ac"
+    },
+    "Tests/SwiftTermTests/MouseTrackingTests.swift": {
+      "upstreamSHA256": "e80e9a868afaf3fe02600b973cd2655b5982d3727afa81d95d83bb20e959d59a",
+      "vendoredSHA256": "e80e9a868afaf3fe02600b973cd2655b5982d3727afa81d95d83bb20e959d59a"
+    },
+    "Tests/SwiftTermTests/OscTests.swift": {
+      "upstreamSHA256": "c82d5daa67f979429d5e7bf918fb340311362629bfcd6706ebb57c9017963494",
+      "vendoredSHA256": "c82d5daa67f979429d5e7bf918fb340311362629bfcd6706ebb57c9017963494"
+    },
+    "Tests/SwiftTermTests/ParserTests.swift": {
+      "upstreamSHA256": "304298a56f5ccb797286d20c8d02925ac80218c0787c68514c6601bfe1299b83",
+      "vendoredSHA256": "304298a56f5ccb797286d20c8d02925ac80218c0787c68514c6601bfe1299b83"
+    },
+    "Tests/SwiftTermTests/PerformanceTest.swift": {
+      "upstreamSHA256": "cb7ec9fc3f92e3de49e3346d7461c9f77651b843a0d64326d0616fba1c88f97c",
+      "vendoredSHA256": "cb7ec9fc3f92e3de49e3346d7461c9f77651b843a0d64326d0616fba1c88f97c"
+    },
+    "Tests/SwiftTermTests/PowerlineRendererTests.swift": {
+      "upstreamSHA256": "c6eb809af223b2b5348ae6dce0c106d4755c0c210aebbc550c073b8b593adba7",
+      "vendoredSHA256": "c6eb809af223b2b5348ae6dce0c106d4755c0c210aebbc550c073b8b593adba7"
+    },
+    "Tests/SwiftTermTests/ProfileSupportTests.swift": {
+      "upstreamSHA256": "71b63937f322c90e33c10335f1c620c731d2275bae6b1dfc68f4894b707b93be",
+      "vendoredSHA256": "71b63937f322c90e33c10335f1c620c731d2275bae6b1dfc68f4894b707b93be"
+    },
+    "Tests/SwiftTermTests/ReflowPortedTests.swift": {
+      "upstreamSHA256": "c21dc483f5f82dac424534b04b318eb8ad8b007c1f565c43a6c81b06f8dae908",
+      "vendoredSHA256": "c21dc483f5f82dac424534b04b318eb8ad8b007c1f565c43a6c81b06f8dae908"
+    },
+    "Tests/SwiftTermTests/ReflowTests.swift": {
+      "upstreamSHA256": "17ffe4b900d335f723baa9fd607c4109d072a2ecb44a15d2761fa16502d4c056",
+      "vendoredSHA256": "17ffe4b900d335f723baa9fd607c4109d072a2ecb44a15d2761fa16502d4c056"
+    },
+    "Tests/SwiftTermTests/ResetScrollAreaTests.swift": {
+      "upstreamSHA256": "0cad1dfacc81f5f7d16013e0fe65472b47df4514bb55e3b42b25496f9cdc732e",
+      "vendoredSHA256": "0cad1dfacc81f5f7d16013e0fe65472b47df4514bb55e3b42b25496f9cdc732e"
+    },
+    "Tests/SwiftTermTests/RetainCycleTests.swift": {
+      "upstreamSHA256": "589fa0c70e32cb161a5e063e7d806acfeee77dbdc5acbff01b2a16b3c1340a37",
+      "vendoredSHA256": "589fa0c70e32cb161a5e063e7d806acfeee77dbdc5acbff01b2a16b3c1340a37"
+    },
+    "Tests/SwiftTermTests/ScreenTests.swift": {
+      "upstreamSHA256": "4a910c922187d99fe32921e3a425af8231a77f6b396c73a31d674ad512e6d93d",
+      "vendoredSHA256": "4a910c922187d99fe32921e3a425af8231a77f6b396c73a31d674ad512e6d93d"
+    },
+    "Tests/SwiftTermTests/ScrollbackRepaintTests.swift": {
+      "upstreamSHA256": "c8411d45dbe1678bfb9c5536ea5165f6dc894f856a0181a910df1b89964c3729",
+      "vendoredSHA256": "c8411d45dbe1678bfb9c5536ea5165f6dc894f856a0181a910df1b89964c3729"
+    },
+    "Tests/SwiftTermTests/SearchTests.swift": {
+      "upstreamSHA256": "8a573c34f24bcab1a66029ed333f36bd260b15658e2d932165a35e045202b303",
+      "vendoredSHA256": "8a573c34f24bcab1a66029ed333f36bd260b15658e2d932165a35e045202b303"
+    },
+    "Tests/SwiftTermTests/SelectionScrollTests.swift": {
+      "upstreamSHA256": "4a94a601e7cba0e132bae6ed98eb915d4ac0ab6d9b367292b775ff5bcce14840",
+      "vendoredSHA256": "4a94a601e7cba0e132bae6ed98eb915d4ac0ab6d9b367292b775ff5bcce14840"
+    },
+    "Tests/SwiftTermTests/SelectionTests.swift": {
+      "upstreamSHA256": "6530a3484ae5909815d4fa2fe07efa08144796670078b96ca4c12b6376938dad",
+      "vendoredSHA256": "6530a3484ae5909815d4fa2fe07efa08144796670078b96ca4c12b6376938dad"
+    },
+    "Tests/SwiftTermTests/SgrTests.swift": {
+      "upstreamSHA256": "0eba9b4aaae11ebffeacbc9f2e665800af18f0e3e8d878ed8c53de6787461288",
+      "vendoredSHA256": "0eba9b4aaae11ebffeacbc9f2e665800af18f0e3e8d878ed8c53de6787461288"
+    },
+    "Tests/SwiftTermTests/SwiftTermBuildInfoTests.swift": {
+      "upstreamSHA256": "1ec08eebdf61efd362fd86e819cc7f32bdfdd66be83d84cb72533c12458e910a",
+      "vendoredSHA256": "1ec08eebdf61efd362fd86e819cc7f32bdfdd66be83d84cb72533c12458e910a"
+    },
+    "Tests/SwiftTermTests/SwiftTermTests.swift": {
+      "upstreamSHA256": "d4c3a14f83a8371086772d697cee42541e533fbe6ef0a1bebee5608448f6d7e2",
+      "vendoredSHA256": "d4c3a14f83a8371086772d697cee42541e533fbe6ef0a1bebee5608448f6d7e2"
+    },
+    "Tests/SwiftTermTests/SynchronizedOutputTests.swift": {
+      "upstreamSHA256": "2536cc0d70db77a93e20d3b0b8da66a0d5769ad9a4949377a25c2008665aa665",
+      "vendoredSHA256": "2536cc0d70db77a93e20d3b0b8da66a0d5769ad9a4949377a25c2008665aa665"
+    },
+    "Tests/SwiftTermTests/TerminalCoreTests.swift": {
+      "upstreamSHA256": "f3f3ca0e241a73fada9488839f54ba31525f0daff3391c1af0465a7eb024ff78",
+      "vendoredSHA256": "f3f3ca0e241a73fada9488839f54ba31525f0daff3391c1af0465a7eb024ff78"
+    },
+    "Tests/SwiftTermTests/TerminalTestHarness.swift": {
+      "upstreamSHA256": "ddd4dd104a977e8446d6270f05336c79e9ac94ec52f76b90eb87244a787b5a54",
+      "vendoredSHA256": "ddd4dd104a977e8446d6270f05336c79e9ac94ec52f76b90eb87244a787b5a54"
+    },
+    "Tests/SwiftTermTests/TerminfoCompatibilityTests.swift": {
+      "upstreamSHA256": "c6be9f000b4ab124ebdf9eceeb72eac7176b66b6bebc68d60df9e3748d4fa834",
+      "vendoredSHA256": "c6be9f000b4ab124ebdf9eceeb72eac7176b66b6bebc68d60df9e3748d4fa834"
+    },
+    "Tests/SwiftTermTests/TerminfoTerminalTests.swift": {
+      "upstreamSHA256": "81fe63fa7a5b44b1e9ef97ececfd58be36b933177fb001d7c902e97cec8d1593",
+      "vendoredSHA256": "81fe63fa7a5b44b1e9ef97ececfd58be36b933177fb001d7c902e97cec8d1593"
+    },
+    "Tests/SwiftTermTests/UnicodeTests.swift": {
+      "upstreamSHA256": "b5db37fb0658f035c99d72b4bdcc733a5397fcee9101a68a5ebab1110c364f69",
+      "vendoredSHA256": "b5db37fb0658f035c99d72b4bdcc733a5397fcee9101a68a5ebab1110c364f69"
+    }
+  }
+}

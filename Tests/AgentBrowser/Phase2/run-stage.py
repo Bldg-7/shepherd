@@ -132,6 +132,20 @@ def main():
                 wake.wait(min(0.1, max(0, drain_deadline - time.monotonic())))
         live = observe()
         record['preCleanupSurvivors'] = sorted(live)
+        # Executable-only diagnostics for positively owned survivors. Never
+        # persist command argv (which can contain credentials), or change the
+        # natural-exit/signal criteria based on executable names.
+        record['preCleanupExecutables'] = []
+        for pid in sorted(live):
+            if not matches(snapshot().get(pid), owned[pid]):
+                continue
+            try:
+                executable = subprocess.check_output(
+                    ['/bin/ps', '-p', str(pid), '-o', 'comm='], text=True,
+                    errors='replace', timeout=3).strip()
+                record['preCleanupExecutables'].append({'pid': pid, 'executable': executable})
+            except (OSError, subprocess.SubprocessError):
+                record['preCleanupExecutables'].append({'pid': pid, 'diagnosticUnavailable': True})
         allowed_failure = set()
         failure_valid = False
         if args.failure_cleanup_record:

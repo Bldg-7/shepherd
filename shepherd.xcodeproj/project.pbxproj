@@ -346,7 +346,7 @@
 				C0CD00000000000000000050 /* XCRemoteSwiftPackageReference "swift-nio" */,
 				9B506EAC306E7049005B40C9 /* XCLocalSwiftPackageReference "Vendor/Citadel" */,
 				5A11000000000000000000A3 /* XCLocalSwiftPackageReference "ShepherdKit" */,
-				9B506EB5306F4D21005B40C9 /* XCRemoteSwiftPackageReference "SwiftTerm" */,
+				9B506EB5306F4D21005B40C9 /* XCLocalSwiftPackageReference "Vendor/SwiftTerm" */,
 				CB4A131C8950B74B444757D8 /* XCRemoteSwiftPackageReference "Sparkle" */,
 				A9E100000000000000000050 /* XCLocalSwiftPackageReference "AgentProxy" */,
 			);
@@ -792,17 +792,13 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = AgentProxy;
 		};
+		9B506EB5306F4D21005B40C9 /* XCLocalSwiftPackageReference "Vendor/SwiftTerm" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Vendor/SwiftTerm;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		9B506EB5306F4D21005B40C9 /* XCRemoteSwiftPackageReference "SwiftTerm" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/migueldeicaza/SwiftTerm";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.5.0;
-			};
-		};
 		C0CB00000000000000000050 /* XCRemoteSwiftPackageReference "swift-nio-ssl" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/apple/swift-nio-ssl.git";
@@ -860,7 +856,7 @@
 		};
 		9B506EB6306F4D21005B40C9 /* SwiftTerm */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 9B506EB5306F4D21005B40C9 /* XCRemoteSwiftPackageReference "SwiftTerm" */;
+			package = 9B506EB5306F4D21005B40C9 /* XCLocalSwiftPackageReference "Vendor/SwiftTerm" */;
 			productName = SwiftTerm;
 		};
 		C0CB00000000000000000040 /* NIOSSL */ = {

@@ -56,6 +56,10 @@ sources = sorted(str(p.relative_to(ROOT)) for p in (ROOT/'ShepherdKit/Sources/Sh
 test = 'Tests/HcBackend/HcNarrowRenderTests.swift' if a.narrow_render_tests else 'Tests/HcBackend/HcTerminalSessionTests.swift'
 peer = 'Tests/HcBackend/attach-peer.py'
 tracked = sources + [test, peer, 'Tests/CoreProtocol/core_test_artifact.py', str(Path(__file__).resolve().relative_to(ROOT))]
+local_renderer = 'relativePath = Vendor/SwiftTerm;' in (ROOT/'shepherd.xcodeproj/project.pbxproj').read_text()
+if a.narrow_render_tests and local_renderer:
+    tracked += [str(v.relative_to(ROOT)) for v in (ROOT/'Vendor/SwiftTerm').rglob('*') if v.is_file() and '.build' not in v.parts]
+    tracked += ['shepherd.xcodeproj/project.pbxproj']
 (out/'source-hashes.json').write_text(json.dumps({n: hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in tracked}, indent=2))
 (out/'provenance.json').write_text(json.dumps(provenance, indent=2))
 
@@ -85,6 +89,8 @@ if a.narrow_render_tests:
     flags += ['-sdk',sdk,'-I',str(renderer),'-I',str(products),*[x for m in maps for x in ['-Xcc','-fmodule-map-file='+str(m)]]]
     objects=[v for v in products.glob('*.o') if v.name != 'SwiftTerm.o'] + [renderer/'SwiftTerm.o']
     assert all((ROOT/s).stat().st_mtime <= (products/'ShepherdKit.o').stat().st_mtime for s in sources),'build current SDK first'
+    if local_renderer and not a.renderer_products:
+        assert all(v.stat().st_mtime <= (renderer/'SwiftTerm.o').stat().st_mtime for v in (ROOT/'Vendor/SwiftTerm/Sources').rglob('*.swift')),'build current vendored renderer first'
     render_link=[*map(str,objects),'-framework','AppKit','-framework','QuartzCore','-framework','CoreText','-framework','UserNotifications','-framework','Security','-lz','-lsqlite3']
     (out/'renderer-product-hashes.json').write_text(json.dumps({str(v):digest(v) for v in [*objects,*maps,*list((renderer/'SwiftTerm.swiftmodule').glob('*.swiftmodule'))]},indent=2))
     sources=[] # Import the real product SDK rather than recompiling a different SSH composition.
@@ -114,12 +120,15 @@ if a.narrow_render_tests:
     for name,expected in json.loads((out/'renderer-product-hashes.json').read_text()).items():
         assert digest(Path(name))==expected,'renderer product changed during diagnostic: '+name
 passed = result.get('passed') is True and result.get('stopAcknowledged') is True and result.get('connectChildReaped') is True and bool(pids)
+if a.narrow_render_tests and local_renderer and not a.renderer_products:
+    passed = passed and result.get('rendererVersion')=='1.20.0-shepherd.saved-wrap-default.1-modified'
 (out/'validation.json').write_text(json.dumps({'passed': passed, 'realCore': artifact['version'], 'artifactVariant': artifact['variant'],
     'officialRelease': artifact['officialRelease'], 'checks': result.get('checks'), 'failure': result.get('failure'),
     'ownCoreStopped': True, 'ownSocketRemoved': True, 'ownedProcessesExited': bool(pids),
     'launchdLifecycleQualified': False, 'isolatedHomeAndSession': True, 'externalNetworkDenied': True,
     'userCoreOrConfigTouched': False, 'browserAuthorityUsed': False,
     'narrowRenderDiagnostic':a.narrow_render_tests,'rendererCandidate':str(a.renderer_products) if a.renderer_products else None,
-    'appRendererPinChanged':False}, indent=2))
+    'appRendererBinding':'Vendor/SwiftTerm' if local_renderer else 'remote SwiftTerm',
+    'rendererVersion':result.get('rendererVersion')}, indent=2))
 assert passed
 print('PASS narrow-render diagnostic:' if a.narrow_render_tests else 'PASS hc terminal attach/session:', out)
