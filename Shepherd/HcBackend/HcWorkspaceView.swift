@@ -101,7 +101,7 @@ struct HcWorkspaceView: View {
                     }.sharedBackgroundVisibility(.hidden)
                     ToolbarSpacer(.flexible, placement: .navigation)
                 }
-                ToolbarItem(placement:.primaryAction) {
+                ToolbarItem(id:"hc.preview.toggle", placement:.primaryAction) {
                     Button {
                         guard let kept = activePreview else { return }
                         if kept.isShown { kept.hide() } else { kept.show() }

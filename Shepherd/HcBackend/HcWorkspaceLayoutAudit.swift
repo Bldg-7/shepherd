@@ -74,7 +74,7 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
         if let terminal = view as? FocusReportingTerminalView { return [terminal] }
         return view.subviews.flatMap(terminals)
     }
-    static func elements(_ view: NSView) -> [String:NSObject] {
+    static func elements(_ view: NSView, includeChrome: Bool = true) -> [String:NSObject] {
         var result: [String:NSObject] = [:], seen = Set<ObjectIdentifier>()
         func visit(_ node: AnyObject, depth: Int) {
             guard depth < 60, seen.count < 16000, seen.insert(ObjectIdentifier(node)).inserted else { return }
@@ -83,45 +83,54 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
             for next in (node.accessibilityChildren?() ?? nil) ?? [] { visit(next as AnyObject, depth: depth + 1) }
             if let view = node as? NSView { for next in view.subviews { visit(next, depth: depth + 1) } }
         }
-        // Toolbar buttons are siblings of content, not children of the detail.
-        visit(view.superview ?? view, depth: 0)
-        for item in view.window?.toolbar?.items ?? [] { if let own = item.view { visit(own, depth: 0) } }
-        if view.window?.styleMask.contains(.fullScreen) == true {
-            // AppKit may host this app's fullscreen toolbar in an auxiliary
-            // window. No other application's AX tree is ever queried.
-            for window in NSApp.windows where window !== view.window {
-                if let own = window.contentView { visit(own.superview ?? own, depth: 0) }
+        // Native toolbar paths can request only their own hosted subtree;
+        // unrelated sheets/hidden auxiliaries must not override a live AX node.
+        visit(includeChrome ? (view.superview ?? view) : view, depth: 0)
+        if includeChrome, let owner = view.window {
+            for item in owner.toolbar?.visibleItems ?? [] { if let own = item.view { visit(own, depth: 0) } }
+            if owner.styleMask.contains(.fullScreen) {
+                for window in HcNativeTitleTarget.windows(of:owner) where window !== owner && window.isVisible {
+                    if let own = window.contentView { visit(own.superview ?? own, depth: 0) }
+                }
             }
         }
         return result
     }
+    private static var lastPress: [String:Any] = [:]
     static func press(_ id: String, content: NSView) throws {
+        lastPress = ["identifier":id,"route":"not-dispatched","dispatched":false]
         guard NSApp.isActive, let window = content.window, window.isKeyWindow else { throw Failure.assertion("owned active window") }
         if let toolbar = window.toolbar, let item = toolbar.items.first(where: { $0.itemIdentifier.rawValue == id }) {
+            lastPress["route"] = "native-toolbar"; lastPress["itemEnabled"] = item.isEnabled
+            lastPress["itemWindow"] = item.view?.window?.windowNumber ?? -1
             guard item.isEnabled, toolbar.isVisible, toolbar.visibleItems?.contains(where: { $0 === item }) == true else {
                 throw Failure.assertion("actual visible enabled toolbar item: " + id)
             }
             if let button = item.view as? NSButton {
                 guard button.isEnabled, !button.isHiddenOrHasHiddenAncestor else { throw Failure.assertion("native toolbar button") }
+                lastPress["dispatched"] = true; lastPress["action"] = "native-button"
                 button.performClick(nil)
                 return
             }
             if let action = item.action {
+                lastPress["dispatched"] = true; lastPress["action"] = "native-item-action"
                 guard NSApp.sendAction(action, to:item.target, from:item) else { throw Failure.assertion("native toolbar action") }
                 return
             }
             // A custom SwiftUI toolbar item owns its hosted AX subtree.
             // Choose that route before any dispatch; never replay a false one.
             guard let own = item.view else { throw Failure.assertion("native toolbar has no view/action") }
-            let object = elements(own)[id]
-            guard let object, (object as AnyObject).isAccessibilityEnabled?() == true,
-                  (object as AnyObject).accessibilityPerformPress?() == true else { throw Failure.assertion("hosted native toolbar action") }
+            let object = elements(own,includeChrome:false)[id]
+            guard let object, (object as AnyObject).isAccessibilityEnabled?() == true else { throw Failure.assertion("hosted native toolbar readiness") }
+            lastPress["dispatched"] = true; lastPress["action"] = "scoped-hosted-AX"
+            guard (object as AnyObject).accessibilityPerformPress?() == true else { throw Failure.assertion("hosted native toolbar action") }
             return
         }
         guard NSApp.isActive, content.window?.isKeyWindow == true,
               let control = elements(content)[id], (control as AnyObject).isAccessibilityEnabled?() == true else {
             throw Failure.assertion("actual enabled control: " + id)
         }
+        lastPress["route"] = "content"; lastPress["controlClass"] = String(describing:type(of:control))
         if let cell = control as? NSCell {
             // Pick one native route before dispatch; no retry after AX false.
             guard let button = cell.controlView as? NSButton, button.cell === cell,
@@ -129,8 +138,10 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
                   owner.isVisible, button.isEnabled, !button.isHiddenOrHasHiddenAncestor else {
                 throw Failure.assertion("owned native toolbar control: " + id)
             }
+            lastPress["dispatched"] = true; lastPress["action"] = "native-cell-button"
             button.performClick(nil)
         } else {
+            lastPress["dispatched"] = true; lastPress["action"] = "content-AX"
             guard (control as AnyObject).accessibilityPerformPress?() == true else { throw Failure.assertion("actual control: " + id) }
         }
     }
@@ -867,6 +878,7 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
             return result
         } catch {
             let failedPointer = NSEvent.mouseLocation
+            try? JSONSerialization.data(withJSONObject:lastPress).write(to:root.appending(path:"native-last-press.json"),options:.atomic)
             let cleanup = await restore()
             try? JSONSerialization.data(withJSONObject:["passed":false,"checks":checks,"error":String(describing:error),"fullscreenRequested":fullscreen,"fullscreenNativeLayoutRequested":nativeFullscreenLayout,"fullscreenExitRestored":cleanup,
                 "edgeStimulus":edgeStimulus,"pointerAtFailure":[failedPointer.x,failedPointer.y],

@@ -231,6 +231,16 @@ class PreservationWiring(unittest.TestCase):
         self.assertNotIn('makeFirstResponder',edit)
         self.assertNotIn('rename()',edit)
 
+    def test_preview_uses_a_stable_native_toolbar_route_without_global_ax_scan(self):
+        board = source('Shepherd/HcBackend/HcWorkspaceView.swift')
+        audit = source('Shepherd/HcBackend/HcWorkspaceLayoutAudit.swift')
+        self.assertIn('ToolbarItem(id:"hc.preview.toggle", placement:.primaryAction)',board)
+        elements = audit[audit.index('static func elements('):audit.index('private static var lastPress:')]
+        self.assertNotIn('NSApp.windows',elements)
+        self.assertIn('HcNativeTitleTarget.windows(of:owner)',elements)
+        self.assertIn('elements(own,includeChrome:false)[id]',audit)
+        self.assertIn('lastPress["action"] = "native-item-action"',audit)
+
     def test_actual_rendered_selection_not_hidden_siblings_is_viewed(self):
         root = source('Shepherd/HcBackend/HcRootView.swift')
         self.assertIn('controlActiveState == .key, presentation.hasSelection', root)
