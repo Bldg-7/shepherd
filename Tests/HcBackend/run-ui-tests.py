@@ -35,7 +35,8 @@ products=a.products.resolve();app=products/'hrdrhrdrhrdr.app'
 exe=app/'Contents/MacOS/hrdrhrdrhrdr'
 assert exe.is_file(),'build macOS Debug products first'
 tracked=[*sorted((ROOT/'ShepherdKit/Sources/ShepherdKit').rglob('*.swift')),
-         *sorted((ROOT/'Shepherd').rglob('*.swift')),ROOT/'Tests/HcBackend/OwnedUILauncher.swift',ROOT/'Tests/HcBackend/ui_artifacts.py',Path(__file__).resolve()]
+         *sorted((ROOT/'Shepherd').rglob('*.swift')),
+         *sorted((ROOT/'Vendor/SwiftTerm/Sources').rglob('*.swift')),ROOT/'Tests/HcBackend/OwnedUILauncher.swift',ROOT/'Tests/HcBackend/ui_artifacts.py',Path(__file__).resolve()]
 def digest(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 hashes={str(p.relative_to(ROOT)):digest(p) for p in tracked}
 (out/'source-hashes.json').write_text(json.dumps(hashes,indent=2))
