@@ -24,9 +24,12 @@ p.add_argument("--output", type=Path, required=True)
 suites = p.add_mutually_exclusive_group()
 suites.add_argument("--workspace-tests", action="store_true", help="run two-client app-owned workspace CAS integration instead")
 suites.add_argument("--machine-owner-tests", action="store_true", help="run product connection replacement/retirement integration instead")
+suites.add_argument("--launch-env-probe", action="store_true", help="inspect synthetic terminal.run env persistence; not capture qualification")
 a = p.parse_args()
 assert platform.system() == "Darwin" and platform.machine() == "arm64", "pinned archive is macOS ARM64 only"
 artifact = artifacts.select(a.archive, a.build_receipt, official_017_archive=a.official_017_archive)
+if a.launch_env_probe:
+    assert artifact['version'] == '0.1.17' and artifact['officialRelease'], 'environment probe requires pinned official 0.1.17'
 
 def digest(path):
     value = hashlib.sha256()
@@ -63,7 +66,7 @@ with socket.socket() as listener:
                             env=core_env, capture_output=True, timeout=10)
     assert result.returncode == 0, "TCP denial canary failed"
 sources = sorted(str(path.relative_to(ROOT)) for path in (ROOT / "ShepherdKit/Sources/ShepherdKit/CoreKit").glob("*.swift"))
-test = "Tests/HcBackend/HcMachineOwnerIntegrationTests.swift" if a.machine_owner_tests else "Tests/CoreWorkspace/CoreWorkspaceIntegrationTests.swift" if a.workspace_tests else "Tests/CoreProtocol/CoreRealProcessTests.swift"
+test = "Tests/CoreProtocol/CoreLaunchEnvironmentProbe.swift" if a.launch_env_probe else "Tests/HcBackend/HcMachineOwnerIntegrationTests.swift" if a.machine_owner_tests else "Tests/CoreWorkspace/CoreWorkspaceIntegrationTests.swift" if a.workspace_tests else "Tests/CoreProtocol/CoreRealProcessTests.swift"
 if a.machine_owner_tests:
     sources += ['ShepherdKit/Sources/ShepherdKit/'+v+'.swift' for v in ['Resources','Machines/Machine','Machines/MachineStore','Machines/KeychainStore','Machines/MachineStore+Hc','Machines/HcMachineConnection','Pairing/PairingAddress','Pairing/PairingAddressResolver']]
 (out / "source-hashes.json").write_text(json.dumps({name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
@@ -115,8 +118,12 @@ assert result.get("passed") and result.get("stopAcknowledged") and result.get("c
 for name, expected in json.loads((out / "source-hashes.json").read_text()).items():
     assert digest(ROOT / name) == expected, "source changed during validation: " + name
 (out / "validation.json").write_text(json.dumps({"passed": True, "realCore": artifact["version"], "launchdLifecycleQualified": False, "artifactVariant": artifact["variant"],
-    "officialRelease": artifact["officialRelease"], "suite": "machineOwner" if a.machine_owner_tests else "workspaceCAS" if a.workspace_tests else "protocol",
+    "officialRelease": artifact["officialRelease"], "suite": "launchEnvironmentProbe" if a.launch_env_probe else "machineOwner" if a.machine_owner_tests else "workspaceCAS" if a.workspace_tests else "protocol",
+    "launchCaptureQualified": False, "environmentPersistenceSafe": result.get('environmentPersistenceSafe'),
     "checks": result.get("checks"), "ownCoreStopped": True,
     "ownSocketRemoved": True, "ownedProcessesExited": bool(pids), "isolatedHomeAndSession": True, "externalNetworkDenied": True,
     "userCoreOrConfigTouched": False, "ssh": "NOTRUN", "attachAndSwiftTerm": "NOTRUN"}, indent=2))
-print("PASS isolated real-core smoke; artifacts:", out)
+if a.launch_env_probe:
+    print("PROBE completed; environmentPersistenceSafe:", result.get('environmentPersistenceSafe'), "; launchCaptureQualified: false; artifacts:", out)
+else:
+    print("PASS isolated real-core smoke; artifacts:", out)
