@@ -207,6 +207,17 @@ class PreservationWiring(unittest.TestCase):
         submit = switcher[switcher.index('private func chooseHighlighted()'):]
         self.assertNotIn('destinations.first',submit)
 
+    def test_fullscreen_native_layout_never_counts_as_edge_hover(self):
+        runner = source('Tests/HcBackend/run-ui-tests.py')
+        audit = source('Shepherd/HcBackend/HcWorkspaceLayoutAudit.swift')
+        self.assertIn('if a.fullscreen_native_layout and a.fullscreen_audit:p.error(',runner)
+        self.assertIn("audit.get('fullscreenSpaceAndEdgeReveal') is False",runner)
+        self.assertIn('if fullscreen && !nativeFullscreenLayout {',audit)
+        self.assertIn('"fullscreenSpaceAndEdgeReveal":fullscreen && !nativeFullscreenLayout',audit)
+        self.assertIn('"fullscreenNativeLayout":fullscreen && nativeFullscreenLayout',audit)
+        self.assertIn('for cycle in 1...3',audit)
+        self.assertIn('"globalEventInjection":false',audit)
+
     def test_actual_rendered_selection_not_hidden_siblings_is_viewed(self):
         root = source('Shepherd/HcBackend/HcRootView.swift')
         self.assertIn('controlActiveState == .key, presentation.hasSelection', root)

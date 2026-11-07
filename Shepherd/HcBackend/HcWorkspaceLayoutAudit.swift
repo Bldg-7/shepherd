@@ -312,7 +312,11 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
         let originalPointer = NSEvent.mouseLocation
         var lastWarp: NSPoint?
         let warpOnly = ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_POINTER_WARP_ONLY"] == "1"
-        let edgeStimulus = fullscreen ? (warpOnly ? "warpOnly" : "warpAndSelfWindowEvent") : "nativeToggle"
+        let nativeFullscreenLayout = ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_FULLSCREEN_NATIVE_LAYOUT"] == "1"
+        guard !nativeFullscreenLayout || (fullscreen && !warpOnly && ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_FULLSCREEN_AUDIT"] != "1") else {
+            throw Failure.assertion("native fullscreen layout and edge stimulus must remain separate")
+        }
+        let edgeStimulus = fullscreen && !nativeFullscreenLayout ? (warpOnly ? "warpOnly" : "warpAndSelfWindowEvent") : "nativeToggle"
         func movePointer(_ point: NSPoint) throws {
             guard NSApp.isActive, window.isKeyWindow else { throw Failure.assertion("owned foreground lost before pointer move") }
             let primaryTop = NSScreen.screens.first?.frame.maxY ?? 0
@@ -363,7 +367,7 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
             let before = frame(terminal,in:content), beforeGrid = grid(terminal)
             let beforeAncestors = geometry(terminal,content:content)
             let resizeCount = HcMigrationRenderProbe.shared.resizeEvents.count
-            if fullscreen {
+            if fullscreen && !nativeFullscreenLayout {
                 // Establish a known in-window starting position first. A warp
                 // to an already occupied rim is not an edge-entry stimulus.
                 try movePointer(NSPoint(x:window.frame.midX,y:window.frame.midY))
@@ -397,6 +401,24 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
             try check(grid(terminal) == beforeGrid,"reveal must preserve actual hc grid")
             try check(terminals(content).first.map { ObjectIdentifier($0) == originalTerminal } == true,"reveal must preserve terminal identity")
             try check(sidebar.viewController.view.bounds.width >= WorkspaceSidebarMetrics.preferred,"native revealed width must be at least360")
+            if nativeFullscreenLayout {
+                // Separate API-driven native layout evidence. Do not call this
+                // edge-hover/retention or physical gesture qualification.
+                for cycle in 1...3 {
+                    controller.toggleSidebar(nil)
+                    try await wait("native fullscreen dismissal \(cycle)") { sidebar.isCollapsed }
+                    try await settleGeometry(terminal,content:content)
+                    try check(near(before,frame(terminal,in:content)) && grid(terminal) == beforeGrid && terminals(content).first === terminal,
+                              "native fullscreen dismissal preserves terminal geometry/grid/identity")
+                    controller.toggleSidebar(nil)
+                    try await wait("native fullscreen reveal \(cycle)") {
+                        !sidebar.isCollapsed && sidebar.viewController.view.bounds.width >= WorkspaceSidebarMetrics.preferred
+                    }
+                    try await settleGeometry(terminal,content:content)
+                    try check(!sidebar.isCollapsed && near(before,frame(terminal,in:content)) && grid(terminal) == beforeGrid && terminals(content).first === terminal,
+                              "native fullscreen repeat reveal preserves terminal geometry/grid/identity")
+                }
+            }
             try press("workspace-sidebar-toggle",content:content)
             try await wait("actual explicit pin reserves width") { !sidebar.isCollapsed && terminal.bounds.width < before.width }
             checks += 1
@@ -836,7 +858,8 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
                       "previous connect child reaped before retry completes")
             guard await restore() else { throw Failure.assertion("owned fullscreen/pointer cleanup") }
             let result: [String:Any] = ["passed":true,"checks":checks,"actualHcRoot":true,"actualCore":true,
-                "fullscreenSpaceAndEdgeReveal":fullscreen,"fullscreenExitRestored":restoreSucceeded,"nativeRevealOnly":!fullscreen,"physicalDividerDrag":"NOTRUN",
+                "fullscreenSpaceAndEdgeReveal":fullscreen && !nativeFullscreenLayout,"fullscreenNativeLayout":fullscreen && nativeFullscreenLayout,
+                "fullscreenExitRestored":restoreSucceeded,"nativeRevealOnly":!fullscreen || nativeFullscreenLayout,"physicalDividerDrag":"NOTRUN",
                 "globalEventInjection":false,"borrowedPermissions":false,"releaseCutover":false,"ownedPIDs":owned,"edgeStimulus":edgeStimulus,
                 "rowDragComponentIntegration":true,"physicalRowDragQualified":false]
             try JSONSerialization.data(withJSONObject:result).write(to:root.appending(path:"layout-audit.json"),options:.atomic)
@@ -844,7 +867,7 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
         } catch {
             let failedPointer = NSEvent.mouseLocation
             let cleanup = await restore()
-            try? JSONSerialization.data(withJSONObject:["passed":false,"checks":checks,"error":String(describing:error),"fullscreenRequested":fullscreen,"fullscreenExitRestored":cleanup,
+            try? JSONSerialization.data(withJSONObject:["passed":false,"checks":checks,"error":String(describing:error),"fullscreenRequested":fullscreen,"fullscreenNativeLayoutRequested":nativeFullscreenLayout,"fullscreenExitRestored":cleanup,
                 "edgeStimulus":edgeStimulus,"pointerAtFailure":[failedPointer.x,failedPointer.y],
                 "pointerAfterCleanup":[NSEvent.mouseLocation.x,NSEvent.mouseLocation.y]])
                 .write(to:root.appending(path:"layout-audit.json"),options:.atomic)

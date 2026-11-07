@@ -18,10 +18,12 @@ p.add_argument('--manual-inspection',action='store_true',help='Open an interacti
 p.add_argument('--manual-seconds',type=int,default=1200,help='Manual session lifetime, 60–1800 seconds; owned programs retire on exit')
 p.add_argument('--layout-audit',action='store_true',help='Audit actual hc composition/sidebar using public native actions')
 p.add_argument('--fullscreen-audit',action='store_true',help='Also exercise the owned fullscreen Space/edge reveal; moves and restores pointer')
+p.add_argument('--fullscreen-native-layout',action='store_true',help='Separate owned fullscreen/native sidebar layout gate; NO edge/pointer/physical-hover qualification')
 p.add_argument('--pointer-warp-only',action='store_true',help='Fullscreen diagnostic: omit self-window synthetic mouse movement; never a physical gesture claim')
 a=p.parse_args()
 if a.pointer_warp_only and not a.fullscreen_audit:p.error('pointer-warp-only requires fullscreen-audit')
-a.layout_audit=a.layout_audit or a.fullscreen_audit
+if a.fullscreen_native_layout and a.fullscreen_audit:p.error('native fullscreen layout and edge stimulus are separate gates')
+a.layout_audit=a.layout_audit or a.fullscreen_audit or a.fullscreen_native_layout
 if a.manual_inspection and a.layout_audit:p.error('manual inspection and layout audit are separate modes')
 if not 60 <= a.manual_seconds <= 1800:p.error('manual-seconds must be 60–1800')
 stage_seconds=a.manual_seconds+90 if a.manual_inspection else (270 if a.human_activation else (120 if a.layout_audit else 60))
@@ -57,6 +59,7 @@ if a.human_activation or a.manual_inspection:env['SHEPHERD_HC_UI_HUMAN_ACTIVATIO
 if a.manual_inspection:env['SHEPHERD_HC_UI_MANUAL_SECONDS']=str(a.manual_seconds)
 if a.layout_audit:env['SHEPHERD_HC_UI_LAYOUT_AUDIT']='1'
 if a.fullscreen_audit:env['SHEPHERD_HC_UI_FULLSCREEN_AUDIT']='1'
+if a.fullscreen_native_layout:env['SHEPHERD_HC_UI_FULLSCREEN_NATIVE_LAYOUT']='1'
 if a.pointer_warp_only:env['SHEPHERD_HC_UI_POINTER_WARP_ONLY']='1'
 # Network denial canary against only an owned loopback listener.
 with socket.socket() as listener:
@@ -173,8 +176,9 @@ if a.layout_audit:
     audit=json.loads(audit_path.read_text()) if audit_path.exists() else {}
     good=failed is None and audit.get('passed') is True and bool(result.get('ownedPIDs'))
     if a.fullscreen_audit:good=good and audit.get('fullscreenSpaceAndEdgeReveal') is True and audit.get('fullscreenExitRestored') is True
+    if a.fullscreen_native_layout:good=good and audit.get('fullscreenNativeLayout') is True and audit.get('fullscreenSpaceAndEdgeReveal') is False and audit.get('fullscreenExitRestored') is True
     (out/'validation.json').write_text(json.dumps({'passed':good,'checks':audit.get('checks'),'actualHcRoot':True,
-        'fullscreenSpaceAndEdgeReveal':audit.get('fullscreenSpaceAndEdgeReveal',False),'fullscreenExitRestored':audit.get('fullscreenExitRestored',False),'wholeUIParityQualified':False,
+        'fullscreenNativeLayout':audit.get('fullscreenNativeLayout',False),'fullscreenSpaceAndEdgeReveal':audit.get('fullscreenSpaceAndEdgeReveal',False),'fullscreenExitRestored':audit.get('fullscreenExitRestored',False),'wholeUIParityQualified':False,
         'physicalDividerDrag':'NOTRUN','physicalRowDragQualified':False,'rowDragComponentIntegration':audit.get('rowDragComponentIntegration',False),'ownedProcessesExited':not alive,'socketRemoved':not sock.exists(),'releaseCutover':False},indent=2))
     assert hashes=={str(p.relative_to(ROOT)):digest(p) for p in tracked},'source changed during audit'
     if failed:raise failed
