@@ -29,6 +29,9 @@ private nonisolated struct PublicProfile: Decodable { let fingerprint: String; l
         guard owner.phase == .approveHostKey(ready.fingerprint), secrets.reads == 0, owner.model == nil else { throw CoreConnectionFailure.notReady }
         await owner.approve(machine:profile.machine,store:store)
         guard owner.phase == .connected, owner.model?.coreID == profile.expectedCoreID, secrets.reads == 1 else { throw CoreConnectionFailure.notReady }
+        guard let model = owner.model else { throw CoreConnectionFailure.notReady }
+        let panes = model.document?.panes.filter { $0.terminal?.coreID == profile.expectedCoreID && $0.terminal?.terminalID == ready.terminal } ?? []
+        guard !panes.isEmpty, model.terminals.contains(where:{ $0.address == ready.terminal && $0.state == "live" }) else { throw CoreConnectionFailure.notReady }
         let connection = try await store.makeHcConnection(for:profile.machine)
         let terminal = try await HcTerminalBoard(connection:connection).get(ready.terminal)
         guard terminal.state == "live", CoreTerminalID.isCanonical(terminal.address) else { throw CoreConnectionFailure.notReady }

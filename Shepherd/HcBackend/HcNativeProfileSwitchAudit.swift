@@ -11,7 +11,11 @@ import ShepherdKit
               let window = NSApp.windows.first(where:{ $0.isKeyWindow && $0.contentView.map { HcWorkspaceLayoutAudit.split($0) != nil } == true }),
               let content = window.contentView else { throw HcWorkspaceModel.Failure.unavailable }
         var checks = 0
-        func check(_ b: Bool, _ message: String) throws { guard b else { throw HcWorkspaceLayoutAudit.Failure.assertion(message) }; checks += 1 }
+        func check(_ b: Bool, _ message: String) throws {
+            try JSONSerialization.data(withJSONObject:["checksBefore":checks,"stage":message,"passed":b,"profileUIComplete":false])
+                .write(to:root.appending(path:"native-profile-progress.json"),options:.atomic)
+            guard b else { throw HcWorkspaceLayoutAudit.Failure.assertion(message) }; checks += 1
+        }
         func settings(_ machine: Machine, label: String) async throws {
             try hcNativeFixtureCommand(",",code:43,label:label,window:window,root:root)
             try await HcWorkspaceLayoutAudit.wait("actual machine Settings sheet") {
@@ -31,6 +35,7 @@ import ShepherdKit
         func chooseLiveRow(_ model: HcWorkspaceModel) async throws {
             guard let core = model.coreID else { throw HcWorkspaceModel.Failure.unavailable }
             let end = ContinuousClock.now.advanced(by:.seconds(8))
+            var reopenedSidebar = false
             while true {
                 guard owner.model === model, model.state == .connected else { throw HcWorkspaceModel.Failure.stale }
                 let candidates = (model.document?.workspaces.flatMap(\.tabs) ?? []).flatMap { tab in
@@ -41,6 +46,25 @@ import ShepherdKit
                     }
                 }
                 let nodes = HcWorkspaceLayoutAudit.elements(content)
+                let facts: [String:Any] = ["core":core,"modelConnected":model.state == .connected,
+                    "documentPresent":model.document != nil,"workspaceCount":model.document?.workspaces.count ?? -1,
+                    "candidateRows":candidates.flatMap { ["hc-workspace.tab.\($0.0)","hc-workspace.pane.\($0.1)"] },
+                    "terminals":model.terminals.map { ["address":$0.address,"state":$0.state] },
+                    "visibleIdentifiers":nodes.keys.sorted(),"modelCurrent":owner.model === model,
+                    "sidebarCollapsed":HcWorkspaceLayoutAudit.split(content)?.splitViewItems.first?.isCollapsed ?? true,
+                    "activeMachine":store.activeMachineID?.uuidString ?? "nil","windowKey":window.isKeyWindow,
+                    "nativeSidebarReopened":reopenedSidebar]
+                try JSONSerialization.data(withJSONObject:facts).write(to:root.appending(path:"native-profile-row-readiness.json"),options:.atomic)
+                if let sidebar = HcWorkspaceLayoutAudit.split(content)?.splitViewItems.first,
+                   sidebar.isCollapsed, !reopenedSidebar {
+                    // A new profile may restore its native hidden sidebar.
+                    // Use one actual enabled Show Sidebar control, not forced
+                    // visibility or direct model selection, before finding rows.
+                    try HcWorkspaceLayoutAudit.press("workspace-sidebar-toggle",content:content)
+                    reopenedSidebar = true
+                    try await HcWorkspaceLayoutAudit.wait("native profile Show Sidebar completes") { !sidebar.isCollapsed }
+                    continue
+                }
                 if let id = candidates.flatMap({ ["hc-workspace.tab.\($0.0)","hc-workspace.pane.\($0.1)"] }).first(where:{ nodes[$0] != nil }) {
                     try HcWorkspaceLayoutAudit.clickRow(id,content:content); return
                 }
