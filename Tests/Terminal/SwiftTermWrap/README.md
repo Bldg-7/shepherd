@@ -58,6 +58,14 @@ is `1.20.0-shepherd.saved-wrap-default.1-modified`, with no diagnostic renderer
 override. Every stage exits naturally with zero runner signals. This is still
 not an overall native GUI/release pass.
 
+Subsequent native current-root evidence: `/private/tmp/hc-screen-app.j2n293qq`
+passes63 checks with natural exit/no runner signals and retired programs/socket/
+staged apps. The earlier6-column ready-marker gate now passes; the later explicit
+end-programs action, native launcher handoff, default Return close preservation,
+file/row component drop and Retry are reached and pass. Fullscreen, physical
+drag/divider/IME, remote/mobile and production service/release gates are NOT
+qualified; wholeUIParityQualified remains false.
+
 Earlier roots `hc-renderer-integrated.dKY6kl`, `hc-renderer-locked.157s03`, and
 `hc-renderer-ios.GLOpoA` remain failed bounded-stage attempts: compilation itself
 succeeded but owned helper retirement required SIGTERM. The executable-only

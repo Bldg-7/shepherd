@@ -362,10 +362,37 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
   application VT filtering/extra transport input or core fork. Final
   `hc-wrap-final.3iYpFx`: default attach9 pass, expected renderer negative
   explicitly confirmed, candidate2 viewport cases pass, owned scopes retired.
-  **This is a current app renderer blocker, not a new overall GUI pass.** The
-  app dependency/pin has NOT been changed; integration and native requalification
-  remain required. See `Tests/Terminal/SwiftTermWrap/{README.md,recipe.json}` and
-  patch for exact revision, derived diagnostic manifest and hashes.
+  At that checkpoint this was a current renderer blocker, not a GUI pass;
+  the app dependency had not yet changed. See the resolution checkpoint below
+  and `Tests/Terminal/SwiftTermWrap/{README.md,recipe.json}` for retained negatives.
+
+- **Integrated renderer resolution (`298e1bb`, provenance `807cdf7`):** approved
+  `Vendor/SwiftTerm` binding pins the same1.20.0 base with just the two saved-wrap
+  defaults changed. All151 copied upstream files are sealed; added static build
+  identity truthfully names the modified renderer instead of the parent app's
+  Git commit. Unrelated working project changes remain unstaged; retained remote
+  dependency versions are unchanged. `hc-renderer-direct.Ts3ya4`: selected
+  renderer/parser69 (8 new parameter cases), actual product6/80 core/rendering,
+  macOS Debug/Release, iOS Debug, original UI component stages and wiring20 pass.
+  Each stage exits naturally with zero signals. Earlier compile-success but
+  helper-retirement failures remain failed: executable-only attribution found
+  `ibtoold`. Final private build env uses this pinned Xcode's direct-exec
+  `IBToolNeverDeque=1`, without changing global settings or relaxing teardown.
+
+- **Current native root (`hc-screen-app.j2n293qq`):63 checks pass**, natural exit,
+  no runner signals, owned processes/socket/staged apps retired. The narrow raw
+  peer marker now renders, so the audit reaches file/row drop, actual launcher
+  Return/terminal input handoff, default Return view-only close preserving all
+  programs, the separate explicit end button (only consented Shell finishes,
+  recovery confirmed, other incarnations preserved), and one enabled Retry with
+  fresh model/transport and exact metadata/program preservation. Preview fresh
+  read/multi-pane placement, switcher search, context actions and native filter
+  input ownership also pass in this current composition. File/row drag here
+  exercises production callbacks/provider/destination, NOT physical Finder/List
+  drag. `wholeUIParityQualified=false`: repeated fullscreen, physical divider/
+  drag/IME, host/profile/remote/mobile/provider identity, and installed service/
+  update/handover gates remain open. Core baseline is still official0.1.17;
+  legacy default/cutover/removal and release have NOT occurred.
 
 ## Evidence retained
 

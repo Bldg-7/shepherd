@@ -1,4 +1,13 @@
 {
+  "checkpoint": "pre-integration diagnostic candidate; see integratedRenderer for subsequent product gates",
+  "integratedRenderer": {
+    "binding": "Vendor/SwiftTerm",
+    "commit": "298e1bb",
+    "buildRuntimeEvidence": "/private/tmp/hc-renderer-direct.Ts3ya4",
+    "nativeEvidence": "/private/tmp/hc-screen-app.j2n293qq",
+    "nativeChecks": 63,
+    "wholeUIParityQualified": false
+  },
   "rendererRepository": "https://github.com/migueldeicaza/SwiftTerm",
   "rendererVersion": "1.20.0",
   "rendererBaseCommit": "5d14406844143538cd8f8851d2d8a67c1fe443e5",
