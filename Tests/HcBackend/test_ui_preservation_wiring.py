@@ -241,6 +241,20 @@ class PreservationWiring(unittest.TestCase):
         self.assertIn('elements(own,includeChrome:false)[id]',audit)
         self.assertIn('lastPress["action"] = "native-item-action"',audit)
 
+    def test_pending_close_gate_is_debug_only_and_does_not_replace_actions(self):
+        gate = source('Shepherd/HcBackend/HcFixtureCloseGateTransport.swift')
+        audit = source('Shepherd/HcBackend/HcWorkspaceLayoutAudit.swift')
+        board = source('Shepherd/HcBackend/HcWorkspaceView.swift')
+        self.assertTrue(gate.startswith('#if DEBUG && os(macOS)'))
+        self.assertIn('try await base.write(bytes)',gate)
+        self.assertIn('try await base.read()',gate)
+        self.assertIn('return value["method"] as? String == "doc.set"',gate)
+        self.assertIn('guard first == nil',gate)
+        self.assertIn('native-pending-default-return',audit)
+        self.assertIn('heldClose.forwarded == 0',audit)
+        self.assertIn('releasedClose.forwarded == 1',audit)
+        self.assertIn('accessibilityIdentifier("hc.close.cancel")',board)
+
     def test_actual_rendered_selection_not_hidden_siblings_is_viewed(self):
         root = source('Shepherd/HcBackend/HcRootView.swift')
         self.assertIn('controlActiveState == .key, presentation.hasSelection', root)

@@ -602,6 +602,21 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
             let afterOtherView = try await HcTerminalBoard(connection:connection).get(external.address)
             try check(afterOtherView.pid == beforeOtherView.pid && afterOtherView.createdMs == beforeOtherView.createdMs && afterOtherView.state == "live",
                       "unselected close keeps its canonical program alive")
+            let canceledDocument = model.document, canceledVersion = model.workspace?.snapshot?.version
+            let canceledSelection = model.selectedTab?.id, canceledJournalCount = model.recoveryRecords.count
+            let cancelPrograms = try await HcTerminalBoard(connection:connection).list(all:true)
+            try hcNativeFixtureCommand("w",code:13,label:"native-close-cancel",window:window,root:root)
+            try await hcFixtureWait("hc.close.cancel",present:true,enabled:true,window:window)
+            try hcFixturePress("hc.close.cancel")
+            try await wait("native close Cancel restores unchanged detail") {
+                window.isKeyWindow && model.selectedTab?.id == canceledSelection && terminals(content).first === selectedBeforeOtherClose
+            }
+            let afterCancelPrograms = try await HcTerminalBoard(connection:connection).list(all:true)
+            try check(model.document == canceledDocument && model.workspace?.snapshot?.version == canceledVersion && model.recoveryRecords.count == canceledJournalCount,
+                      "native close Cancel creates no layout mutation or recovery record")
+            try check(afterCancelPrograms.count == cancelPrograms.count && afterCancelPrograms.allSatisfy { after in
+                cancelPrograms.contains { $0.address == after.address && $0.pid == after.pid && $0.createdMs == after.createdMs && $0.state == after.state }
+            },"native close Cancel preserves every program incarnation/state")
             try hcNativeFixtureCommand("w",code:13,label:"audit-stale-close",window:window,root:root)
             try await hcFixtureWait("hc.close.confirm",present:true,enabled:true,window:window)
             try await competingWorkspaceRename("Competing close edit",workspace:workspace,model:model,connection:connection)
@@ -627,6 +642,44 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
             try clickRow("hc-workspace.tab.\(tabID)",content:content)
             try await wait("remaining row explicitly restores terminal") { terminals(content).count == 1 }
             checks += 1
+            // Hold one exact layout write before dispatch. While its selected
+            // close suppresses fallback, choose a different real row. Releasing
+            // the original CAS must not clear that newer explicit selection.
+            try await model.showTerminal(reference.terminalID,workspaceID:workspace)
+            guard let pendingView = model.selectedTab, pendingView.id != tabID,
+                  let gate = transports.closeGates.first else { throw Failure.assertion("owned pending-close view/gate") }
+            try await wait("pending-close fixture native view selected") { terminals(content).count == 1 && elements(content)["hc-workspace.tab.\(pendingView.id)"] != nil }
+            let pendingPrograms = try await HcTerminalBoard(connection:connection).list(all:true)
+            let pendingDocument = model.document
+            try hcNativeFixtureCommand("w",code:13,label:"native-pending-close",window:window,root:root)
+            try await hcFixtureWait("hc.close.confirm",present:true,enabled:true,window:window)
+            try await gate.arm()
+            try hcFixtureDefaultReturn("hc.close.confirm",owner:window,root:root,label:"native-pending-default-return")
+            let gateDeadline = ContinuousClock.now.advanced(by:.seconds(3))
+            while !(await gate.snapshot()).entered {
+                guard ContinuousClock.now < gateDeadline else { throw Failure.assertion("pending close entered before-dispatch gate") }
+                try await Task.sleep(for:.milliseconds(10))
+            }
+            try await wait("pending selected close suppresses fallback before CAS dispatch") { window.isKeyWindow && terminals(content).isEmpty }
+            let heldClose = await gate.snapshot()
+            try check(heldClose.forwarded == 0 && !heldClose.released && model.document == pendingDocument,
+                      "pending view-only close hides input/detail before any layout write is sent")
+            try clickRow("hc-workspace.tab.\(tabID)",content:content)
+            try await wait("new explicit row wins while close layout is pending") { model.selectedTab?.id == tabID }
+            try await gate.release()
+            try await wait("pending close finishes without clearing newer selection") {
+                model.canEdit && model.document?.workspaces.flatMap(\.tabs).contains(where:{ $0.id == pendingView.id }) == false
+                    && model.selectedTab?.id == tabID && terminals(content).count == 1
+            }
+            let releasedClose = await gate.snapshot()
+            try check(releasedClose.forwarded == 1 && releasedClose.released,"pending close forwards exactly its original layout write once")
+            let afterPending = try await HcTerminalBoard(connection:connection).list(all:true)
+            try check(afterPending.count == pendingPrograms.count && afterPending.allSatisfy { after in
+                pendingPrograms.contains { $0.address == after.address && $0.pid == after.pid && $0.createdMs == after.createdMs && $0.state == after.state }
+            },"pending close/newer selection neither restarts nor terminates programs")
+            try JSONSerialization.data(withJSONObject:["beforeDispatchHeld":true,"forwardedOnce":releasedClose.forwarded == 1,
+                "newerSelectionPreserved":model.selectedTab?.id == tabID,"programIncarnationsPreserved":true,"uncertainReplay":false])
+                .write(to:root.appending(path:"native-pending-close.json"),options:.atomic)
             // Multiple panes use one detail-level preview, not a preview split
             // inside an individual pane. Seed the second owned program only;
             // panel expansion still goes through its real UI control.

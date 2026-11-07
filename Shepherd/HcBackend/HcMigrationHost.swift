@@ -191,7 +191,7 @@ private nonisolated struct HcMigrationStatus: Decodable, Sendable {
 }
 /// Exercise a real native default key, not a substitute button callback.
 /// Resolve/check the target before one event; never retry uncertain dispatch.
-@MainActor func hcFixtureDefaultReturn(_ id: String, owner: NSWindow, root: URL) throws {
+@MainActor func hcFixtureDefaultReturn(_ id: String, owner: NSWindow, root: URL, label: String = "native-default-return") throws {
     let control = hcFixtureElement(id)
     let button: NSButton?
     if let native = control as? NSButton { button = native }
@@ -205,7 +205,7 @@ private nonisolated struct HcMigrationStatus: Decodable, Sendable {
             windowNumber:window.windowNumber,context:nil,characters:"\r",charactersIgnoringModifiers:"\r",isARepeat:false,keyCode:36) else {
         throw HcWorkspaceModel.Failure.unavailable
     }
-    let receipt = root.appending(path:"native-default-return.json")
+    let receipt = root.appending(path:label + ".json")
     let before: [String:Any] = ["identifier":id,"window":window.windowNumber,"key":window.isKeyWindow,
         "enabled":button.isEnabled,"nativeDefaultReturn":true,"defaultCell":window.defaultButtonCell === button.cell,
         "modifiers":button.keyEquivalentModifierMask.rawValue,"dispatched":false]
@@ -275,12 +275,14 @@ private nonisolated struct HcMigrationStatus: Decodable, Sendable {
 @MainActor final class HcFixtureConnectFactory {
     let configuration: CoreProcessTransport.Configuration
     private(set) var transports: [CoreProcessTransport] = []
+    private(set) var closeGates: [HcFixtureCloseGateTransport] = []
     init(configuration: CoreProcessTransport.Configuration) { self.configuration = configuration }
-    func make() throws -> CoreProcessTransport {
+    func make() throws -> any CoreByteTransport {
         guard transports.count < 8 else { throw HcWorkspaceModel.Failure.unavailable }
         let transport = try CoreProcessTransport(configuration: configuration)
-        transports.append(transport)
-        return transport
+        let gate = HcFixtureCloseGateTransport(base:transport)
+        transports.append(transport); closeGates.append(gate)
+        return gate
     }
 }
 

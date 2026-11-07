@@ -403,7 +403,7 @@ private struct HcAgentBoard: View {
                     Button(closing.endTitle, role: .destructive) { close(closing,endPrograms:true) }.accessibilityIdentifier("hc.close.end-programs.confirm")
                 }
             }
-            Button("Cancel", role: .cancel) {}
+            Button("Cancel", role: .cancel) {}.accessibilityIdentifier("hc.close.cancel")
         } message: { Text("Close view keeps programs running. The separate end action stops current unshared programs on this core. Known shared views are retained; a stop also affects that terminal in other clients. An unconfirmed stop is never retried.") }
         .alert("Workspace operation", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
             Button("OK") { error = nil }.accessibilityIdentifier("hc.workspace.error.ok")
