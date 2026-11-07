@@ -25,7 +25,10 @@ stage('field-build',90,flags+field+['Tests/Terminal/TitleRenameFieldTests.swift'
 split=['Shepherd/Hosts/Views/WorkspaceDetailSplitView.swift','Shepherd/Hosts/Views/WorkspaceNavigationSplitView.swift']
 watcher=['Shepherd/Hosts/Views/TitleDoubleClick.swift']
 stage('toolbar-build',90,flags+field+split+watcher+['Tests/Terminal/TitleRenameToolbarTests.swift',str(board),'-framework','AppKit','-o',str(o/'toolbar-tests')]);stage('toolbar-tests',30,[str(o/'toolbar-tests')],mirrorsLog=True)
-sources=set(field+split+watcher+['Shepherd/ContentView.swift','Shepherd/Hosts/Views/AgentBoardView.swift','Shepherd/Terminal/AgentTerminalView.swift','Shepherd/Terminal/TabTerminalView.swift'])
+locator='Shepherd/HcBackend/HcNativeTitleTarget.swift'
+stage('title-target-build',90,flags+['-D','DEBUG','-warnings-as-errors',*watcher,locator,'Tests/HcBackend/HcNativeTitleTargetTests.swift','-framework','AppKit','-o',str(o/'title-target-tests')])
+stage('title-target-tests',20,[str(o/'title-target-tests')])
+sources=set(field+split+watcher+[locator,'Tests/HcBackend/HcNativeTitleTargetTests.swift','Shepherd/ContentView.swift','Shepherd/Hosts/Views/AgentBoardView.swift','Shepherd/Terminal/AgentTerminalView.swift','Shepherd/Terminal/TabTerminalView.swift'])
 (o/'source-hashes.json').write_text(json.dumps({n:hashlib.sha256((R/n).read_bytes()).hexdigest() for n in sorted(sources)},indent=2))
 # Where it is wired in.
 b=(R/'Shepherd/Hosts/Views/AgentBoardView.swift').read_text();c=(R/'Shepherd/ContentView.swift').read_text();f=(R/'Shepherd/Hosts/Views/TitleRenameField.swift').read_text()
@@ -79,5 +82,5 @@ update=f[f.index('    func updateNSView('):f.index('    static func dismantleNSV
 assert 'context.coordinator.parent = self' in update and 'field.' not in update,'nothing about the field changes on a refresh'
 assert 'guard !session.isEnded, !textView.hasMarkedText() else { return false }' in f
 assert 'session.text = textView.string' in f and 'DispatchQueue.main.async { onEnd(session, .left) }' in f
-(o/'validation.json').write_text(json.dumps({'passed':True,'stages':checks,'productionRulesFieldAndSplitViews':True,'ownedNeverShownWindows':True,'imeCompositionSimulatedThroughNSTextInputClient':True,'nativeToolbarItemAndFieldGeometry':True,'installedAppHerdrOrNetwork':False,'realGUIKeyboardOrFullScreen':'NOTRUN','physicalIMEOrWindowResizeGesture':'NOTRUN','titleDoubleClickSystemZoomInShownWindow':'NOTRUN'},indent=2))
+(o/'validation.json').write_text(json.dumps({'passed':True,'stages':checks,'productionRulesFieldAndSplitViews':True,'ownedNeverShownWindows':True,'imeCompositionSimulatedThroughNSTextInputClient':True,'nativeToolbarItemAndFieldGeometry':True,'installedAppHerdrOrNetwork':False,'realGUIKeyboardOrFullScreen':'NOTRUN','physicalIMEOrWindowResizeGesture':'NOTRUN','titleDoubleClickSystemZoomInShownWindow':'NOTRUN','auxiliaryTitleLocatorCompositionSeam':True},indent=2))
 print('PASS',len(checks),'stages and source checks')

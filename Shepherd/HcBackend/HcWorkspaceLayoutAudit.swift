@@ -171,36 +171,37 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
             model.document?.workspaces.first(where: { $0.id == workspace })?.name == name
         }
     }
-    static func editNativeTitle(_ text: String, cancel: Bool, window: NSWindow,
+    static func editNativeTitle(_ text: String, cancel: Bool, window: NSWindow, root: URL,
                                 beforeEnding: (@MainActor () async throws -> Void)? = nil) async throws {
-        guard NSApp.isActive, window.isKeyWindow, let content = window.contentView else { throw Failure.assertion("owned key title window") }
-        var root = content
-        while let parent = root.superview { root = parent }
-        func titlePoint(_ view: NSView) -> NSPoint? {
-            if let label = view as? NSTextField, !label.isEditable, !label.isHiddenOrHasHiddenAncestor,
-               label.stringValue == window.title, label.bounds.width > 0 {
-                let point = label.convert(NSPoint(x:label.bounds.midX,y:label.bounds.midY),to:nil)
-                if TitleDoubleClickView.isTitleText(at:point,in:window,of:window) { return point }
-            }
-            return view.subviews.lazy.compactMap(titlePoint).first
+        guard NSApp.isActive, window.isKeyWindow else { throw Failure.assertion("owned key title window") }
+        let target = HcNativeTitleTarget.find(in:window)
+        try JSONSerialization.data(withJSONObject:["owner":window.windowNumber,"ownerKey":window.isKeyWindow,
+            "candidates":HcNativeTitleTarget.windows(of:window).map { ["window":$0.windowNumber,"visible":$0.isVisible,"key":$0.isKeyWindow] },
+            "targetWindow":target?.window.windowNumber ?? -1,"physicalGestureQualified":false])
+            .write(to:root.appending(path:"native-title-target.json"),options:.atomic)
+        guard let target, target.window.isVisible,
+              HcNativeTitleTarget.windows(of:window).contains(where:{ $0 === target.window }) else {
+            throw Failure.assertion("actual title text hit target")
         }
-        guard let point = titlePoint(root) else { throw Failure.assertion("actual title text hit target") }
         // The app's own event queue runs the real local event monitor. Never
         // call the rename model closure or post events to another application.
         for type in [NSEvent.EventType.leftMouseDown,.leftMouseUp] {
-            guard let event = NSEvent.mouseEvent(with:type,location:point,modifierFlags:[],timestamp:ProcessInfo.processInfo.systemUptime,
-                windowNumber:window.windowNumber,context:nil,eventNumber:0,clickCount:2,pressure:type == .leftMouseDown ? 1 : 0) else { throw Failure.assertion("owned title event") }
+            guard let event = NSEvent.mouseEvent(with:type,location:target.point,modifierFlags:[],timestamp:ProcessInfo.processInfo.systemUptime,
+                windowNumber:target.window.windowNumber,context:nil,eventNumber:0,clickCount:2,pressure:type == .leftMouseDown ? 1 : 0) else { throw Failure.assertion("owned title event") }
             NSApp.postEvent(event,atStart:false)
         }
         try await wait("real title field owns keyboard") {
-            guard let field = renameField(in:window), let editor = field.currentEditor() else { return false }
-            return window.firstResponder === editor && field.window === window
+            guard let field = renameField(in:window), let editor = field.currentEditor(), let key = NSApp.keyWindow,
+                  HcNativeTitleTarget.windows(of:window).contains(where:{ $0 === key }) else { return false }
+            return key.firstResponder === editor
         }
-        guard let editor = renameField(in:window)?.currentEditor() as? NSTextView else { throw Failure.assertion("title editor") }
+        guard let editor = renameField(in:window)?.currentEditor() as? NSTextView,
+              let editorWindow = NSApp.keyWindow, editorWindow.firstResponder === editor,
+              HcNativeTitleTarget.windows(of:window).contains(where:{ $0 === editorWindow }) else { throw Failure.assertion("title editor") }
         editor.selectAll(nil); editor.insertText(text,replacementRange:NSRange(location:NSNotFound,length:0))
         try await beforeEnding?()
         guard editor.string == text else { throw Failure.assertion("title text survives intervening snapshot") }
-        if cancel { try key("\u{1b}",code:53,in:window) } else { try returnKey(in:window) }
+        if cancel { try key("\u{1b}",code:53,in:editorWindow) } else { try returnKey(in:editorWindow) }
         try await wait("title field dismissed") { renameField(in:window) == nil }
     }
     static func launcherField(_ view: NSView) -> NSTextField? {
@@ -451,16 +452,16 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
             guard let originalTitle = model.selectedTab?.name else { throw Failure.assertion("selected title") }
             let titleFrame = window.frame
             let originalLayout = model.selectedTab?.layout
-            try await editNativeTitle("Audited 한글 title",cancel:false,window:window)
+            try await editNativeTitle("Audited 한글 title",cancel:false,window:window,root:root)
             try await wait("native title edit persisted by hc CAS") { model.selectedTab?.name == "Audited 한글 title" }
             try check(model.selectedTab?.layout == originalLayout && near(window.frame,titleFrame),"title double-click does not zoom or replace pane layout")
             let cancelledDocument = model.document
-            try await editNativeTitle("Do not save this title",cancel:true,window:window)
+            try await editNativeTitle("Do not save this title",cancel:true,window:window,root:root)
             try check(model.document == cancelledDocument,"native title Escape leaves workspace unchanged")
-            try await editNativeTitle(originalTitle,cancel:false,window:window)
+            try await editNativeTitle(originalTitle,cancel:false,window:window,root:root)
             try await wait("original title restored through native field") { model.selectedTab?.name == originalTitle }
             checks += 1
-            try await editNativeTitle("Stale title must not save",cancel:false,window:window) {
+            try await editNativeTitle("Stale title must not save",cancel:false,window:window,root:root) {
                 // A separate subscribed store supplies an actual competing CAS;
                 // it is not the UI's rename action and cannot launch/kill/input.
                 try await competingWorkspaceRename("Competing layout edit",workspace:workspace,model:model,connection:connection)

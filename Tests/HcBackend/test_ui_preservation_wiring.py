@@ -218,6 +218,19 @@ class PreservationWiring(unittest.TestCase):
         self.assertIn('for cycle in 1...3',audit)
         self.assertIn('"globalEventInjection":false',audit)
 
+    def test_title_audit_uses_only_the_exact_owners_toolbar_windows(self):
+        locator = source('Shepherd/HcBackend/HcNativeTitleTarget.swift')
+        audit = source('Shepherd/HcBackend/HcWorkspaceLayoutAudit.swift')
+        self.assertIn('owner.toolbar?.items.compactMap(\\.view)',locator)
+        self.assertNotIn('NSApp.windows',locator)
+        self.assertIn('TitleDoubleClickView.isTitleText(at:point,in:clicked,of:owner)',locator)
+        edit = audit[audit.index('static func editNativeTitle('):audit.index('static func launcherField(')]
+        self.assertIn('target.window.isVisible',edit)
+        self.assertIn('windowNumber:target.window.windowNumber',edit)
+        self.assertIn('key.firstResponder === editor',edit)
+        self.assertNotIn('makeFirstResponder',edit)
+        self.assertNotIn('rename()',edit)
+
     def test_actual_rendered_selection_not_hidden_siblings_is_viewed(self):
         root = source('Shepherd/HcBackend/HcRootView.swift')
         self.assertIn('controlActiveState == .key, presentation.hasSelection', root)
