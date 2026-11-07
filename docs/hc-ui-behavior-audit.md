@@ -28,7 +28,7 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
 | Failed launch | Existing launcher handling plus durable hc recovery | Public stable failure formatting, no internal NSError name. Unsupported inspection intent rejected before workspace/placeholder creation. Uncertain prior run never auto-deleted/adopted/replayed. Missing real CLI/race error UX remains separately reviewed. |
 | Title editing | Original title double-click/IME field/native toolbar | Same real field/toolbar implementation with typed hc target, epoch/version guard. Component tests cover simulated composition, stale callbacks and geometry. Current actual-root ordinary-window audit exercises native title-label double-click/local event monitor, real editor/Unicode submit, Escape without metadata change, title restore and no window zoom/layout replacement. Actual competing-CAS refusal also passes: the old title session cannot overwrite a newer layout snapshot. Current fullscreen/native-layout run `.z297kt8j` exercises owned auxiliary-toolbar title double-click, Unicode edit/Escape and competing-CAS refusal. Physical IME remains open. |
 | Switcher | Original deferred onDismiss navigation | Found selection/focus applied before sheet dismissal. Defer with exact epoch/pane/terminal reference check; reject stale retarget. Shared original switcher presentation used. Current ordinary-window audit exercises Cancel and Return/dismissal/keyboard return; stale-scope dismissal remains a separate gate. |
-| Closing | Original command/context confirmations | Explicit view close keeps programs; current selection required, cover disables close. Current ordinary-window63-check root observes real default Return close preserving all program incarnations, selection clearing, competing-CAS refusal, and unselected native-context close without navigation. Cancel/pending selection and physical post-dispatch pointer-focus races remain separate gates. |
+| Closing | Original command/context confirmations | Explicit view close keeps programs; current selection required, cover disables close. Current ordinary-window63-check root observes real default Return close preserving all program incarnations, selection clearing, competing-CAS refusal, and unselected native-context close without navigation. Current fullscreen/native74-check run `._35qrzu0` also proves Cancel has no document/version/journal/program effects, and an exact before-dispatch close delay cannot overwrite a newer real row selection. Physical post-dispatch pointer-focus races remain separate gates. |
 | Explicit program ending | Original Close confirmation can end programs | Source now keeps view-only close as default and declares a separate explicit close/end-unshared choice. Schema2 partial close + durable stop, old-schema read, fresh direct facts, shared/foreign protection and no uncertain replay pass SDK274/mode and actual-core76. Current ordinary-window63-check root executes the separate native end action, confirms only its consented Shell finished and recovery confirmed, and preserves other programs; native default Return stays view-only. Cancel/pending-stop UI and fullscreen ending remain separate gates; no full UI qualification. |
 | Quit with sheet | Original presentationPreventsAppTermination(false) | Added original behavior to transient settings/switcher/origin/tracking/install sheets. Needs actual CmdQ/owned service survival gate. |
 | Viewed/attention | Original key-window + actual selected pane/tab | Found hidden tab siblings marked viewed in pane mode and app-active used without key-window check. New policy uses actual rendered mode/zoom/selection + key window. Pure rules covered; OS notification behavior remains unqualified. |
@@ -409,6 +409,24 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
   for the new locator. Platform/renderer/original-UI gates pass at
   `hc-preview-native-gates.zZCCVO`; wiring23. The previous edge-event failures
   remain unresolved. No additional edge-event retry was looped or relabeled.
+
+- **Current native74 (`605eb4a`, `._35qrzu0`):** keeps every previous69
+  assertion, adds actual Cancel with unchanged document/version/journal/program
+  facts, and a separate view-only close whose exact doc.set bytes are held before
+  dispatch. The old selection's input/detail disappears while the document is
+  still unchanged; another real row is selected; releasing the original write
+  once preserves that newer selection and every program incarnation/state.
+  Independent default Return receipts are retained; no cancel/kill/run replay.
+  Fullscreen/native layout, exit, owned retirement all pass; edge/physical/whole
+  UI/release flags remain false. `hc-close-composed-gates.vggp5Z` platform,
+  renderer69, actual6/80, original UI and wiring24 pass. Gate component13 passes
+  with the real product SDK at `hc-close-product-sdk.6Wli99`, strict Swift6 and
+  network denial. Earlier source-composed gate positives did not catch the
+  imported protocol's MainActor isolation: `hc-close-native-gates.EFmphU` retains
+  the actual Debug compilation failure, later stages NOTRUN. Fixed with a
+  nonisolated Sendable facade/internal actor, not weaker SDK isolation; the
+  component now imports the actual product SDK. No source action closure
+  substitutes for real dialog/default-key/row actions.
 
 ## Evidence retained
 
