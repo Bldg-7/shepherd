@@ -6,6 +6,7 @@ import NIOSSL
 import Crypto
 @_spi(Testing) import AgentProxyForwarder
 import AgentProxyProtocol
+import SQLite3
 
 // The forwarder in this process, through its test initializer: every upstream
 // is a fake TLS server on 127.0.0.1 with a certificate from the test's own
@@ -168,6 +169,7 @@ final class Suite {
     var servers: [AgentProxyServer] = []
     var fakes: [FakeUpstream] = []
     var needles: [String] = []
+    var hcNeedles: [String] = []
     var current = ""
 
     init(output: String, proxy: String, fixture: String) throws {
@@ -200,6 +202,8 @@ final class Suite {
             ("tls-and-connect-failures", tlsFailures),
             ("pool-reuse-and-idle", pool),
             ("tee-frames", teeFrames),
+            ("hc-control-forwarding-and-authority", hcControl),
+            ("hc-control-http-real-recorder", hcControlRecorder),
             ("recorder-authority-timeout-fails-closed", authorityTimeout),
             ("recorder-invalid-ack-fails-closed", authorityInvalidAck),
             ("recorder-authority-capacity", authorityCapacity),
@@ -232,6 +236,7 @@ final class Suite {
         let summary: [String: Any] = ["cases": results, "passed": results.count - failed, "failed": failed]
         try? JSONSerialization.data(withJSONObject: summary, options: [.prettyPrinted, .sortedKeys])
             .write(to: URL(fileURLWithPath: out + "/results.json"))
+        needles += hcNeedles
         let needleFile = out + "/needles.json"
         FileManager.default.createFile(atPath: needleFile, contents: try? JSONSerialization.data(withJSONObject: needles),
                                        attributes: [.posixPermissions: 0o600])
@@ -832,6 +837,84 @@ final class Suite {
         try check(try send(proxy.port, post("/v1/messages/close-me")).status == 200, "an answer that closes")
         try check(try send(proxy.port, post("/v1/messages")).status == 200, "after it")
         try check(upstream.accepted == 3, "a connection the upstream closes is not reused")
+    }
+
+    func hcControlRecorder() throws {
+        let events = ["{\"type\":\"message_start\",\"message\":{\"id\":\"m\",\"role\":\"assistant\",\"content\":[]}}","{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"owned recorder reply\"}}","{\"type\":\"content_block_stop\",\"index\":0}","{\"type\":\"message_stop\"}"].map { "data: " + $0 + "\n\n" }.joined()
+        let upstream = try fake(anthropicIdentity) { _, connection in connection.send(sseHead);connection.sendChunk(events);connection.send("0\r\n\r\n") }
+        let proxy = try self.proxy("hc-real-recorder",anthropic:upstream.address,recorder:.real)
+        let control = try proxy.control(), readPath = out + "/c/hc-real-recorder/rec.sock"
+        try check(waitUntil(4) { FileManager.default.fileExists(atPath:readPath) },"owned real recorder socket ready")
+        // Ordinary read-socket queries are one request per connection, unlike
+        // the multi-request control socket. Never replay a control mutation.
+        func read(_ method:String, _ params:[String:Any] = [:]) throws -> [String:Any] { try ControlClient(path:readPath).result(method,params) }
+        let intent = try AgentProxyHcCaptureIntent(originCoreID:"owned-http-core",launchID:UUID(),paneID:UUID())
+        let state = try AgentProxyHcRouteState(kind:.claude,intent:intent,cliVersion:"2.1.309")
+        func params<T:Encodable>(_ value:T) throws -> [String:Any] { try JSONSerialization.jsonObject(with:JSONEncoder().encode(value)) as! [String:Any] }
+        let created = try control.result("hc.routes.create",params(state)), id = created["routeID"] as! String
+        let token = String((created["baseURL"] as! String).split(separator:"/").last!);hcNeedles.append(token)
+        let headers = claudeHeaders(proxy.port) + [("x-claude-code-request-class","main"),("x-claude-code-session-id","owned-http-native"),("x-claude-code-agent-id","root")]
+        let body = bytes("{\"messages\":[{\"role\":\"user\",\"content\":\"owned HTTP prompt\"}]}")
+        try check(try send(proxy.port,request("POST","/p/\(token)/v1/messages",headers,body:body)).complete,"private upstream response completes independently of capture admission")
+        func summaries() throws -> [[String:Any]] { try read("conversations.list")["conversations"] as? [[String:Any]] ?? [] }
+        try check(waitUntil(4) { (try? summaries().first?["status"] as? String) == "complete" },"actual control→HTTP→recorder MAIN captured")
+        let early = try summaries()[0]
+        try check(early["herdrSession"] == nil && early["terminalID"] == nil && (early["origin"] as? [String:Any])?["value"] as? String == intent.originCoreID,"early HTTP capture remains exact-origin and pending")
+        let binding = try AgentProxyHcCaptureBinding(intent:intent,receiptOriginCoreID:intent.originCoreID,terminalID:"t1")
+        _ = try control.result("hc.routes.bind",params(AgentProxyHcRouteBind(routeID:UUID(uuidString:id)!,received:binding)))
+        try check(try send(proxy.port,request("POST","/p/\(token)/v1/messages",headers,body:body)).complete,"known-bound request still forwards")
+        try check(waitUntil(4) { (try? summaries().first?["terminalID"] as? String) == "t1" },"real recorder observes the exact bound hc metadata")
+        let current = try summaries()
+        try check(current.count == 1 && current[0]["id"] as? String == early["id"] as? String,"binding does not create another native conversation")
+        let page = try read("conversation.read",["conversationID":current[0]["id"]!])
+        try check(String(decoding:JSONSerialization.data(withJSONObject:page),as:UTF8.self).contains("owned recorder reply"),"actual provider framing reaches bounded conversation output")
+        try check(waitUntil(4) { (try? read("persistence.status")["mode"] as? String) == "healthy" },"private persistent recorder remains healthy")
+        func committedBoundRecord() -> Bool {
+            var db:OpaquePointer?
+            guard sqlite3_open_v2(proxy.state+"/Conversations/conversations.sqlite3",&db,SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX,nil) == SQLITE_OK, let db else { if let db { sqlite3_close(db) };return false }
+            defer { sqlite3_close(db) };sqlite3_busy_timeout(db,1000)
+            var statement:OpaquePointer?
+            guard sqlite3_prepare_v2(db,"SELECT count(*) FROM conversations WHERE origin_kind=X'6863' AND status=X'636f6d706c657465' AND terminal_id=X'7431' AND hc_context IS NOT NULL",-1,&statement,nil) == SQLITE_OK, let statement else { return false }
+            defer { sqlite3_finalize(statement) }
+            return sqlite3_step(statement) == SQLITE_ROW && sqlite3_column_int(statement,0) == 1
+        }
+        try check(waitUntil(5) { committedBoundRecord() },"separate read-only SQLite connection observes committed bound hc capture")
+        try check(try control.result("hc.routes.remove",["routeID":id])["removed"] as? Bool == true,"real recorder acknowledges exact hc revocation")
+        try check(try summaries().isEmpty,"revocation retires live capture state without native fallback")
+    }
+
+    func hcControl() throws {
+        let tap = out + "/c/hc.tap"
+        let body = bytes("{\"messages\":[{\"role\":\"user\",\"content\":\"owned hc request\"}]}")
+        let upstream = try fake(anthropicIdentity) { _, connection in connection.send("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK") }
+        let proxy = try self.proxy("hc-control",anthropic:upstream.address,recorder:.tap(tap))
+        let control = try proxy.control()
+        let intent = try AgentProxyHcCaptureIntent(originCoreID:"owned-core",launchID:UUID(),paneID:UUID())
+        let state = try AgentProxyHcRouteState(kind:.claude,intent:intent,cliVersion:"2.1.309")
+        func params<T:Encodable>(_ value:T) throws -> [String:Any] { try JSONSerialization.jsonObject(with:JSONEncoder().encode(value)) as! [String:Any] }
+        let created = try control.result("hc.routes.create",params(state))
+        let url = created["baseURL"] as! String, routeID = created["routeID"] as! String, token = String(url.split(separator:"/").last!)
+        hcNeedles += [token,url]
+        try check((try control.result("hc.routes.list")["routes"] as? [[String:Any]])?.count == 1,"durable hc reservation listed without a capability")
+        try check((try control.call("hc.routes.create",params(state))["error"] as? [String:Any])?["code"] as? String == "invalid_params","same launch cannot replay route creation")
+        let target = "/p/\(token)/v1/messages"
+        try check(try send(proxy.port,request("POST",target,claudeHeaders(proxy.port),body:body)).status == 200,"pending hc route forwards without terminal metadata")
+        let binding = try AgentProxyHcCaptureBinding(intent:intent,receiptOriginCoreID:intent.originCoreID,terminalID:"t1")
+        let bind = AgentProxyHcRouteBind(routeID:UUID(uuidString:routeID)!,received:binding)
+        try check(try control.result("hc.routes.bind",params(bind))["bound"] as? Bool == true,"exact receipt binding durably acknowledged")
+        try check((try control.call("hc.routes.bind",params(bind))["error"] as? [String:Any])?["code"] as? String == "invalid_params","identical bind is not silently replayed")
+        try check(try send(proxy.port,request("POST",target,claudeHeaders(proxy.port),body:body)).body == bytes("OK"),"bound route preserves provider response bytes")
+        let frames = try waitForFrames(tap,ends:2)
+        let opens = try frames.filter { $0.kind == .open }.map { try JSONDecoder().decode(AgentProxyTeeFrame.Open.self,from:Data($0.payload)) }
+        try check(opens.count == 2 && opens.allSatisfy { $0.routeIdentity == nil } && opens[0].hcRouteIdentity?.binding == nil && opens[1].hcRouteIdentity?.binding == binding,"actual forwarder emits explicit pending/bound hc Open, never legacy placeholders")
+        let snapshots = try frames.filter { $0.kind == .routeSnapshot }.map { try JSONDecoder().decode(AgentProxyTeeFrame.RouteSnapshot.self,from:Data($0.payload)) }
+        try check(snapshots.contains { $0.routes.contains { $0.hcIdentity?.binding == binding } },"supervisor publishes the exact hc binding before its Open")
+        try check(try control.result("routes.remove",["routeID":routeID])["removed"] as? Bool == false,"legacy removal cannot adopt hc route IDs")
+        let listed = try JSONSerialization.data(withJSONObject:control.result("hc.routes.list"))
+        let persisted = try Data(contentsOf:URL(fileURLWithPath:proxy.state+"/hc-routes.json"))
+        for needle in [token,url] { try check(!contains(Array(listed),bytes(needle)) && !contains(Array(persisted),bytes(needle)),"hc list/persistence retain no route capability") }
+        try check(try control.result("hc.routes.remove",["routeID":routeID])["removed"] as? Bool == true,"hc removal waits for recorder revocation acknowledgement")
+        try check((try control.result("hc.routes.list")["routes"] as? [[String:Any]])?.isEmpty == true,"removed launch absent without namespace fallback")
     }
 
     func teeFrames() throws {

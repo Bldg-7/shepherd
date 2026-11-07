@@ -128,26 +128,76 @@ Current staged evidence (not provider/launch/control parity):
   includes the source; no Swift language/concurrency setting was lowered. Later
   stages of that failed app run were NOTRUN.
 
+## Peer-verified hc control and whole forwarding/recorder path
+
+The separate `hc.routes.create`, `hc.routes.bind`, `hc.routes.list` and
+`hc.routes.remove` methods now reach the journal. New methods verify the bound
+control socket and actual same-UID peer; requests are bounded/duplicate-key
+checked through the existing public decoder. NIO callbacks access handler/context
+through NIOLoopBound on their owning loop, not a widened unchecked conformance.
+Creation takes a pending AgentProxyHcRouteState and returns its capability only
+after durable acknowledgement. Bind takes an exact route UUID + received binding;
+identical replay is refused. List contains non-secret pending/bound state and
+subscription rejection, never token/hash/URL. Removal synchronizes recorder
+revocation when a child exists. A failed acknowledgement can be post-commit;
+inspect the exact origin/launch, do not replay a mutation.
+
+CaptureRouteRegistry feeds both tagged metadata cases into the existing fixed
+upstream forwarding rules and ordered supervisor publication. No hc ID enters
+legacy identity fields. Legacy writers remain during staged cutover and the
+combined authority count stays bounded. Subscription rejection is monotone and
+durable; older staged journal entries lacking that flag decode as not rejected.
+Capture admission/persistence does not queue or gate the raw provider stream.
+Unknown-route forwarding retains the prior fixed-upstream/no-copy behavior, not
+an invented identity or a new upstream capability.
+
+Evidence:
+- `hc-control-product.YTHB0R`: build failed on private Core helper access. The
+  internal API was not made public; subsequent stages were NOTRUN.
+- `hc-control-product-fixed.yqCgzI`: product modules compiled; test build failed
+  on Data vs byte-array secret-scan input. Runtime stages were NOTRUN.
+- `hc-control-product-scan-fixed.cNrLWn`:27 actual forwarder +13 process cases,
+  read-socket/SSH line stages,427-file secret scan all passed naturally.
+- `hc-control-recorder-sql.PyDrFq`: build passed, forwarding27 pass/1 fail.
+  The new harness reused a one-query read connection and got EOF. The protocol
+  was not changed to hide the failure; later stages were NOTRUN.
+- `hc-control-recorder-reads-fixed.lorPn9`:28 actual forwarding +13 process
+  cases,154 recorder socket checks, SSH line stages and434-file secret scan pass.
+  New coverage runs peer-verified control→private TLS upstream→actual recorder→
+  bounded conversation output and an independent read-only SQLite connection
+  observes a committed bound hc row. Pending records have no legacy session or
+  terminal; binding retains the native conversation ID, and removal waits for
+  the real child then retires live capture state. This uses synthetic trusted
+  intents/receipts/CLI headers, NOT a real CLI/core launch or native-session proof.
+- `hc-control-journal.SWQkxg`:39 checks/mode with durable subscription rejection
+  and old staged-entry compatibility. `hc-control-platforms.FzVA2S`: current
+  macOS Debug/Release, iOS Debug, renderer69, official-core6/80, original UI and
+  wiring25 pass naturally/zero signals. `hc-control-core.5Qe6DW/run` repeats5862
+  checks/mode and iOS typecheck with the current protocol sources. No new
+  physical/GUI gate is inferred. Cleanup retires47 exact owned targets/~3.971GiB
+  after process/build checks; source, failed runs, private archives and current
+  control Products/Debug for the next launch gate remain retained.
+
 ## Required integration sequence — no shortcut by relabeling
 
-1. Expose hc-specific control reservation/binding methods and thread the journal
-   through the forwarding lookup and supervisor publisher. The receiver above is
-   implemented, but live route creation is still legacy-only. No namespace/ID
-   translation, automatic token replay or capture-dependent forwarding queue.
-2. Integrate the durable launch ticket/route reservation/exact known run receipt
+1. Integrate the durable launch ticket/route reservation/exact known run receipt
    without replay/adoption after uncertain dispatch. Pending historical metadata
    must not acquire a fabricated past terminal. Same native ID on two cores must
    remain separate; a new route is not itself a native-session proof.
-3. Only an explicitly opted-in, verified existing proxy may receive configuration;
+2. Only an explicitly opted-in, verified existing proxy may receive configuration;
    no auto-install/restart of operator services or copied provider credentials.
    Browser/AgentRuntime injection remains deferred; unknown CLI/native metadata
    fails closed.
-4. Qualify app/SDK/forwarder/recorder plus actual core and private fake upstreams,
+3. Qualify app/SDK/forwarder/recorder plus actual core and private fake upstreams,
    then provider/session and UI gates as separately authorized. Token secrecy and
    record-before-mutation failure receipts remain mandatory. Unit success is not
    permission to mark the migration complete.
 
-The journal is currently NOT exposed by live control/forwarding methods. Existing
-AgentProxyControl protocolVersion1 and legacy writers are unchanged. No user
-route, service, capture database, account setting or installed tool is mutated by
-this staged work.
+The launcher is NOT yet connected to these hc control methods. In particular,
+the old service's legacy route sweep/off/restart policy must not govern hc launch
+reservations: a route-list snapshot is not a service-retirement lease. Service
+and handover qualification remains blocked on the approved disposable namespace.
+AgentProxyControl protocolVersion1 retains its legacy methods unchanged; new
+methods have an explicit hc namespace and an old peer refuses them. No user
+route, service, capture database, account setting or installed tool was mutated
+by this staged work.

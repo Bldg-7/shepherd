@@ -24,6 +24,10 @@ public nonisolated enum AgentProxyControl {
         case routesCreate = "routes.create"
         case routesRemove = "routes.remove"
         case routesList = "routes.list"
+        case hcRoutesCreate = "hc.routes.create"
+        case hcRoutesBind = "hc.routes.bind"
+        case hcRoutesList = "hc.routes.list"
+        case hcRoutesRemove = "hc.routes.remove"
         /// Same-UID local control only; clear has no mobile/read-socket method.
         case clearHistory = "conversation.clearSaved"
     }

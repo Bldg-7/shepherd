@@ -3,14 +3,24 @@ import Crypto
 import Darwin
 import AgentProxyProtocol
 
-/// Serialized, durable hc route provenance only. Not yet exposed by the live
-/// control/forwarding API: recorder/store hc-scope support must land before a
-/// launcher may receive a usable proxy URL. No legacy identity is fabricated.
+/// Serialized, durable hc route provenance only. The owning loop publishes
+/// acknowledged metadata through the tagged registry; peer-verified hc control
+/// never fabricates legacy identity or proves a provider-native session.
 final class HcCaptureRouteJournal {
     struct Entry: Codable, Equatable {
         let routeID: UUID
         let tokenSHA256: String
         var state: AgentProxyHcRouteState
+        var oauthRejected: Bool
+        init(routeID: UUID, tokenSHA256: String, state: AgentProxyHcRouteState, oauthRejected: Bool = false) {
+            self.routeID = routeID; self.tokenSHA256 = tokenSHA256; self.state = state; self.oauthRejected = oauthRejected
+        }
+        private enum Keys: String, CodingKey { case routeID,tokenSHA256,state,oauthRejected }
+        init(from decoder: any Decoder) throws {
+            let c = try decoder.container(keyedBy:Keys.self)
+            self.init(routeID:try c.decode(UUID.self,forKey:.routeID),tokenSHA256:try c.decode(String.self,forKey:.tokenSHA256),
+                      state:try c.decode(AgentProxyHcRouteState.self,forKey:.state),oauthRejected:try c.decodeIfPresent(Bool.self,forKey:.oauthRejected) ?? false)
+        }
     }
     enum Failure: Error { case unavailable, invalidStore, limit, duplicateLaunch, unknownRoute }
     private struct Stored: Codable { let schemaVersion: Int; let entries: [Entry] }
@@ -82,6 +92,13 @@ final class HcCaptureRouteJournal {
         guard let index = entries.firstIndex(where:{ $0.routeID == routeID }) else { throw Failure.unknownRoute }
         var proposed = entries
         try proposed[index].state.bind(received)
+        try commit(proposed)
+    }
+    func markRejected(routeID: UUID) throws {
+        guard healthy, !committing else { throw Failure.unavailable }
+        guard let index = entries.firstIndex(where:{ $0.routeID == routeID }) else { throw Failure.unknownRoute }
+        guard !entries[index].oauthRejected else { return }
+        var proposed = entries; proposed[index].oauthRejected = true
         try commit(proposed)
     }
     func remove(routeID: UUID) throws {

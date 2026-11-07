@@ -27,7 +27,7 @@ struct ForwardDecision {
     /// The path alone, for the recorder.
     let path: String
     let token: String
-    let route: RouteTable.Entry?
+    let route: CaptureForwardRoute?
 }
 
 /// A request the forwarder answers itself, without connecting anywhere.
@@ -49,7 +49,7 @@ struct Rejection: Error {
 enum ForwardingRules {
     static let tokenLength = 32
 
-    static func admit(_ head: HTTPRequestHead, port: Int, lookup: (String) -> RouteTable.Entry?) -> Result<ForwardDecision, Rejection> {
+    static func admit(_ head: HTTPRequestHead, port: Int, lookup: (String) -> CaptureForwardRoute?) -> Result<ForwardDecision, Rejection> {
         guard head.version == .http1_1 else {
             return .failure(Rejection(status: .httpVersionNotSupported, reason: .version, provider: nil, message: "HTTP/1.1 only."))
         }

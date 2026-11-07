@@ -31,6 +31,17 @@ import AgentProxyProtocol
         rejected { try journal.bind(routeID:created.entry.routeID,received:bound) }
         let restored = try HcCaptureRouteJournal(restoring:saved,persist:{ _ in })
         check(try restored.lookup(token:created.token)?.state.binding == bound,"restart restores explicit bound metadata")
+        var oldEncoding = try JSONSerialization.jsonObject(with:saved!) as! [String:Any]
+        var oldEntries = oldEncoding["entries"] as! [[String:Any]];oldEntries[0].removeValue(forKey:"oauthRejected");oldEncoding["entries"] = oldEntries
+        let oldRestored = try HcCaptureRouteJournal(restoring:JSONSerialization.data(withJSONObject:oldEncoding),persist:{ _ in })
+        check(try oldRestored.snapshot().first?.oauthRejected == false,"older staged journal lacks rejection flag without changing its binding")
+        try journal.markRejected(routeID:created.entry.routeID)
+        let rejectWrites = writes
+        try journal.markRejected(routeID:created.entry.routeID)
+        check(writes == rejectWrites,"repeated subscription rejection never rewrites or rebinds a route")
+        let rejectedReload = try HcCaptureRouteJournal(restoring:saved,persist:{ _ in })
+        check(try rejectedReload.snapshot().first?.oauthRejected == true,"subscription rejection persists across explicit reconstruction")
+        check(try rejectedReload.lookup(token:created.token)?.state.binding == bound,"subscription rejection does not mutate terminal provenance")
         let countBeforeRemove = writes
         try journal.remove(routeID:created.entry.routeID)
         let emptyAfterRemove = try journal.snapshot().isEmpty

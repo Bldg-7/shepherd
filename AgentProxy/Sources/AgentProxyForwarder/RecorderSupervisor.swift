@@ -20,7 +20,7 @@ final class RecorderSupervisor: @unchecked Sendable {
     private let command: [String]
     private let loop: EventLoop
     private let tee: Tee
-    private let routes: RouteTable
+    private let routes: CaptureRouteRegistry
     private let producerLease: ConversationProducerLease
     private let log: @Sendable (String) -> Void
     private var authorityGeneration: UInt64 = 0
@@ -38,7 +38,7 @@ final class RecorderSupervisor: @unchecked Sendable {
     private let exits = NSCondition()
     private var waiting = 0
 
-    init(command: [String], loop: EventLoop, tee: Tee, routes: RouteTable, producerLease: ConversationProducerLease, log: @escaping @Sendable (String) -> Void) {
+    init(command: [String], loop: EventLoop, tee: Tee, routes: CaptureRouteRegistry, producerLease: ConversationProducerLease, log: @escaping @Sendable (String) -> Void) {
         self.command = command; self.loop = loop; self.tee = tee; self.routes = routes; self.producerLease = producerLease; self.log = log
     }
 

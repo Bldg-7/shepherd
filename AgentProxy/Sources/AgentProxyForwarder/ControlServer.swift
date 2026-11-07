@@ -3,6 +3,7 @@ import Darwin
 import NIOCore
 import NIOPosix
 import AgentProxyProtocol
+import AgentProxyCore
 
 /// `ap.sock`: 0600, newline-delimited JSON as `AgentProxyControl` describes.
 enum ControlServer {
@@ -156,6 +157,7 @@ private final class ControlHandler: ChannelInboundHandler {
         let line = queuedLines.removeFirst()
         if let object = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any],
            let method = object["method"] as? String {
+            if ["hc.routes.create","hc.routes.bind","hc.routes.list","hc.routes.remove"].contains(method) { hcRoute(line,context:context); return }
             if method == AgentProxyControl.Method.routesRemove.rawValue { removeRoute(object, context: context); return }
             if method == AgentProxyControl.Method.clearHistory.rawValue { clearHistory(object, context: context); return }
         }
@@ -245,6 +247,73 @@ private final class ControlHandler: ChannelInboundHandler {
         }
     }
 
+    private struct HcRequestHead: Decodable { let id: String; let method: String }
+    private func hcRoute(_ line: Data, context: ChannelHandlerContext) {
+        guard let head = try? ConversationReadAPI.decodeWire(HcRequestHead.self,from:line),
+              !head.id.isEmpty,head.id.utf8.count <= 256,
+              !head.id.unicodeScalars.contains(where:{ CharacterSet.controlCharacters.contains($0) }),
+              let method = AgentProxyControl.Method(rawValue:head.method) else {
+            write(encode(id:nil,error:AgentProxyControlError(code:.invalidParams,message:"Invalid hc request.")),context:context);return
+        }
+        let id = head.id
+        guard geteuid() != 0, identity.valid(), let provider = context.channel as? any SocketOptionProvider else {
+            write(encode(id:id,error:AgentProxyControlError(code:.unavailable,message:"Local control identity could not be verified.")),context:context);return
+        }
+        let owner = NIOLoopBound((self,context),eventLoop:context.eventLoop)
+        let peer: EventLoopFuture<xucred> = provider.unsafeGetSocketOption(level:NIOBSDSocket.OptionLevel(rawValue:SOL_LOCAL),name:NIOBSDSocket.Option(rawValue:LOCAL_PEERCRED))
+        peer.whenComplete { result in
+            let (handler,ctx) = owner.value
+            guard ctx.channel.isActive else { return }
+            guard case .success(let credentials) = result, credentials.cr_version == UInt32(XUCRED_VERSION),credentials.cr_uid == geteuid(),handler.identity.valid() else {
+                handler.write(handler.encode(id:id,error:AgentProxyControlError(code:.unavailable,message:"Local control peer could not be verified.")),context:ctx);return
+            }
+            handler.hcRouteAuthorized(line,method:method,id:id,context:ctx)
+        }
+    }
+    private func hcRouteAuthorized(_ line: Data, method: AgentProxyControl.Method, id: String, context: ChannelHandlerContext) {
+            let object = (try? JSONSerialization.jsonObject(with:line)) as? [String:Any]
+            let params = object?["params"] ?? [String:Any]()
+            do {
+                switch method {
+                case .hcRoutesCreate:
+                    let state = try decode(AgentProxyHcRouteState.self,params)
+                    let made = try core.captureRoutes.createHc(state)
+                    write(encode(id:id,result:AgentProxyRouteCreated(routeID:made.entry.routeID.uuidString.lowercased(),baseURL:"http://127.0.0.1:\(core.port)/p/\(made.token)")),context:context)
+                case .hcRoutesBind:
+                    let request = try decode(AgentProxyHcRouteBind.self,params)
+                    try core.captureRoutes.bindHc(routeID:request.routeID,received:request.received)
+                    write(encode(id:id,result:AgentProxyHcRouteBound(bound:true)),context:context)
+                case .hcRoutesList:
+                    let routes = try core.captureRoutes.listHc().map { entry in
+                        AgentProxyHcRouteInfo(routeID:entry.routeID,state:entry.state,oauthRejected:entry.oauthRejected,inFlight:core.routes.inFlight[entry.routeID.uuidString.lowercased()] ?? 0)
+                    }
+                    write(encode(id:id,result:AgentProxyHcRouteList(routes:routes)),context:context)
+                case .hcRoutesRemove:
+                    let request = try decode(AgentProxyRouteRemove.self,params)
+                    guard let routeID = UUID(uuidString:request.routeID) else { throw HcCaptureRouteJournal.Failure.unknownRoute }
+                    try core.captureRoutes.removeHc(routeID:routeID)
+                    if let recorder = core.recorder {
+                        let owner = NIOLoopBound((self,context),eventLoop:context.eventLoop)
+                        recorder.waitForAuthority().whenComplete { outcome in
+                            let (handler,ctx) = owner.value
+                            guard ctx.channel.isActive else { return }
+                            switch outcome {
+                            case .success:handler.write(handler.encode(id:id,result:AgentProxyRouteRemoved(removed:true)),context:ctx)
+                            case .failure:handler.write(handler.encode(id:id,error:AgentProxyControlError(code:.unavailable,message:"Durable removal was not synchronized. Do not replay; inspect hc routes.")),context:ctx)
+                            }
+                        }
+                    } else { write(encode(id:id,result:AgentProxyRouteRemoved(removed:true)),context:context) }
+                default:throw AgentProxyControlError(code:.unknownMethod,message:"Unknown hc method.")
+                }
+            } catch HcCaptureRouteJournal.Failure.unavailable {
+                write(encode(id:id,error:AgentProxyControlError(code:.unavailable,message:"hc operation was not confirmed. Do not retry; inspect routes by exact origin/launch.")),context:context)
+            } catch HcCaptureRouteJournal.Failure.limit {
+                write(encode(id:id,error:AgentProxyControlError(code:.unavailable,message:"hc route capacity reached.")),context:context)
+            } catch {
+                write(encode(id:id,error:AgentProxyControlError(code:.invalidParams,message:"hc params, pending intent or exact binding were refused. No replay or adoption.")),context:context)
+            }
+    }
+
     private func answer(_ line: Data) -> (Data, (() -> Void)?) {
         guard let object = try? JSONSerialization.jsonObject(with: line), let request = object as? [String: Any] else {
             return (encode(id: nil, error: AgentProxyControlError(code: .parseError, message: "Not a JSON object.")), nil)
@@ -266,13 +335,15 @@ private final class ControlHandler: ChannelInboundHandler {
                 return (encode(id: id, result: result), { [core] in core.exitIfIdle() })
             case .routesCreate:
                 let request = try decode(AgentProxyRouteCreate.self, params)
-                let (entry, token) = try core.routes.create(request)
+                let (entry, token) = try core.captureRoutes.createLegacy(request)
                 core.log("routes: created one (\(core.routes.count) in all)")
                 return (encode(id: id, result: AgentProxyRouteCreated(routeID: entry.routeID, baseURL: "http://127.0.0.1:\(core.port)/p/\(token)")), nil)
             case .routesRemove:
                 return (encode(id: id, error: AgentProxyControlError(code: .unavailable, message: "Route removal requires synchronization.")), nil)
             case .routesList:
                 return (encode(id: id, result: AgentProxyRouteList(routes: core.routes.list())), nil)
+            case .hcRoutesCreate,.hcRoutesBind,.hcRoutesList,.hcRoutesRemove:
+                return (encode(id:id,error:AgentProxyControlError(code:.unavailable,message:"Verified local hc control is required.")),nil)
             case .clearHistory:
                 return (encode(id: id, error: AgentProxyControlError(code: .unavailable, message: "Local confirmation and peer verification are required.")), nil)
             }

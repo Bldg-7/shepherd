@@ -101,7 +101,7 @@ public final class AgentProxyServer: @unchecked Sendable {
         try ControlServer.clear(configuration.controlSocketPath)
         let pool = try loop.submit { [self] in try UpstreamPool(loop: loop, trustRoots: trustRoots, addressing: addressing, timing: timing) }.wait()
         let core = try loop.submit { [self] in
-            ProxyCore(loop: loop, routes: RouteTable(directory: directory, log: log), pool: pool, build: configuration.build,
+            ProxyCore(loop: loop, routes: RouteTable(directory: directory, log: log), directory:directory, pool: pool, build: configuration.build,
                       log: log, onExitRequest: configuration.onExitRequest)
         }.wait()
         self.core = core
@@ -125,11 +125,11 @@ public final class AgentProxyServer: @unchecked Sendable {
 
         if let command = configuration.recorderCommand, !command.isEmpty {
             guard let producerLease else { throw AgentProxyStartError.stateDirectory("producer admission unavailable") }
-            let recorder = RecorderSupervisor(command: command, loop: loop, tee: core.tee, routes: core.routes, producerLease: producerLease, log: log)
+            let recorder = RecorderSupervisor(command: command, loop: loop, tee: core.tee, routes: core.captureRoutes, producerLease: producerLease, log: log)
             self.recorder = recorder
             try loop.submit {
                 core.recorder = recorder
-                core.routes.onAuthorityChanged = { [weak recorder] in recorder?.authorityChanged() }
+                core.captureRoutes.onAuthorityChanged = { [weak recorder] in recorder?.authorityChanged() }
                 recorder.start()
             }.wait()
         }
@@ -179,7 +179,7 @@ public final class AgentProxyServer: @unchecked Sendable {
         guard !stopped else { return }
         stopped = true
         recorder?.stop()
-        if let core { try? loop.submit { core.pool.closeAll(); core.recorder = nil; core.routes.onAuthorityChanged = nil }.wait() }
+        if let core { try? loop.submit { core.pool.closeAll(); core.recorder = nil; core.captureRoutes.onAuthorityChanged = nil; core.routes.onAuthorityChanged = nil }.wait() }
         listener?.close(promise: nil)
         if let control {
             control.close(promise: nil)
@@ -196,6 +196,7 @@ final class ProxyCore: @unchecked Sendable {
 
     let loop: EventLoop
     let routes: RouteTable
+    let captureRoutes: CaptureRouteRegistry
     let pool: UpstreamPool
     let tee = Tee()
     let build: String
@@ -212,10 +213,11 @@ final class ProxyCore: @unchecked Sendable {
     private var rejectedCount = 0
     private var upstreamFailures = 0
 
-    init(loop: EventLoop, routes: RouteTable, pool: UpstreamPool, build: String,
+    init(loop: EventLoop, routes: RouteTable, directory: StateDirectory, pool: UpstreamPool, build: String,
          log: @escaping @Sendable (String) -> Void, onExitRequest: @escaping @Sendable (Int32) -> Void) {
         self.loop = loop; self.routes = routes; self.pool = pool; self.build = build
         self.log = log; self.onExitRequest = onExitRequest
+        captureRoutes = CaptureRouteRegistry(legacy:routes,directory:directory,log:log)
     }
 
     func nextExchangeID() -> UInt64 {
@@ -268,7 +270,7 @@ final class ProxyCore: @unchecked Sendable {
             AgentProxyStatus.Recorder(state: $0.state, pid: $0.currentPID, restarts: $0.restarts)
         } ?? AgentProxyStatus.Recorder(state: .stopped, pid: nil, restarts: 0)
         return AgentProxyStatus(protocolVersion: AgentProxyControl.protocolVersion, build: build, port: port,
-                                state: draining ? .draining : .running, routeCount: routes.count, inFlight: inFlight,
+                                state: draining ? .draining : .running, routeCount: captureRoutes.count, inFlight: inFlight,
                                 recorder: recorderStatus,
                                 counters: .init(exchanges: exchanges, rejected: rejectedCount,
                                                 upstreamFailures: upstreamFailures, recorderDropped: tee.dropped))

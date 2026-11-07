@@ -42,7 +42,7 @@ final class DownstreamHandler: ChannelInboundHandler {
             guard exchange == nil else { context.close(promise: nil); return }
             idleTimer?.cancel()
             let port = context.channel.localAddress?.port ?? -1
-            switch ForwardingRules.admit(head, port: port, lookup: { core.routes.lookup(token: $0) }) {
+            switch ForwardingRules.admit(head, port: port, lookup: { core.captureRoutes.lookup(token: $0) }) {
             case .failure(let rejection):
                 reject(rejection, context: context)
             case .success(let decision):
@@ -76,7 +76,7 @@ final class DownstreamHandler: ChannelInboundHandler {
     private func reject(_ rejection: Rejection, context: ChannelHandlerContext) {
         discarding = true
         core.rejected(status: rejection.status, reason: rejection.reason.rawValue)
-        if rejection.reason == .oauth, let routeID = rejection.routeID { core.routes.markRejected(routeID: routeID, log: core.log) }
+        if rejection.reason == .oauth, let routeID = rejection.routeID { core.captureRoutes.markRejected(routeID: routeID, log: core.log) }
         Self.respond(status: rejection.status, provider: rejection.provider, message: rejection.message, on: context.channel)
     }
 
@@ -150,9 +150,7 @@ final class Exchange {
             copied = core.tee.open(id, AgentProxyTeeFrame.Open(routeID: route.routeID, upstream: decision.upstream.rawValue,
                                                                 method: head.method.rawValue, path: decision.path,
                                                                 headers: ForwardingRules.teeRequestHeaders(head.headers),
-                                                                routeIdentity: AgentProxyRouteCreate(kind: route.kind, session: route.session,
-                                                                                                     paneID: route.paneID, terminalID: route.terminalID,
-                                                                                                     cliVersion: route.cliVersion)))
+                                                                routeIdentity:route.legacyIdentity,hcRouteIdentity:route.hcIdentity))
         }
     }
 
