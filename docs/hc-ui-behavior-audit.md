@@ -428,6 +428,23 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
   component now imports the actual product SDK. No source action closure
   substitutes for real dialog/default-key/row actions.
 
+- **Direct SSH/product owner current-source checkpoint:**
+  `hc-ssh-current.dd56aQ`39, `hc-ssh-discovery.oYJDse`40 and
+  `hc-ssh-owner.7kPVHd`45 functional checks complete with owned retirement;
+  each overall validation remains passed=false for the unchanged official0.1.17
+  initial/reconnect OSC8 loss (live link works). The strengthened server now
+  executes the exact production discovery script, rather than substituting the
+  explicit-binary exec. A private selected executable proves inherited terminal/
+  socket/config authority was cleared and requested session kept exact.
+  Product HcMachineConnection local -> approval -> SSH -> local -> close verifies
+  actual old-model retirement, no credential read during discovery/local phases,
+  fresh approved pinned connection and unchanged owned program incarnation.
+  These are transport/profile tests to the SAME private origin, not multi-origin
+  cache isolation or actual profile-switch GUI. See SSH-PROFILE-README.md.
+  Read-only2026-11-07T02:32:38Z upstream check still finds PR117/118 OPEN/unmerged;
+  gateway alias/permanent-ID ambiguity remains fail-closed. No released fix or
+  baseline change is inferred from the failed latest-release lookup.
+
 ## Evidence retained
 
 - `/private/tmp/hc-ui-behavior-audit.KpGlYF`: presentation rules19 per Debug/optimized;

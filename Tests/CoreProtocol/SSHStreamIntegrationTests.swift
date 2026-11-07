@@ -50,25 +50,24 @@ private nonisolated final class ServerErrorHandler: ChannelInboundHandler, @unch
     typealias InboundIn = ByteBuffer
     func errorCaught(context: ChannelHandlerContext, error: any Error) { context.close(promise: nil) }
 }
-/// The test SSH server accepts exactly one known exec command; it never runs a
-/// arbitrary client shell text. It runs only the precomputed, quoted command
-/// in a private /bin/sh, matching an SSH server's exec parsing semantics.
+/// Only precomputed exact exec commands may choose their corresponding owned
+/// configuration. In particular, production discovery executes its actual shell
+/// script; it is not silently replaced with the direct executable command.
 private nonisolated final class OwnedExec: ChannelInboundHandler, @unchecked Sendable {
     typealias InboundIn = SSHChannelData
-    let expected: Set<String>
-    let config: CoreProcessTransport.Configuration
+    let commands: [String:CoreProcessTransport.Configuration]
     let state: ServerState
     private var input: AsyncThrowingStream<Data, Error>.Continuation?
     private var worker: Task<Void, Never>?
-    init(expected: Set<String>, config: CoreProcessTransport.Configuration, state: ServerState) {
-        self.expected = expected; self.config = config; self.state = state
+    init(commands: [String:CoreProcessTransport.Configuration], state: ServerState) {
+        self.commands = commands; self.state = state
     }
     func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
         if event is SSHChannelRequestEvent.PseudoTerminalRequest {
             state.pty(); context.channel.triggerUserOutboundEvent(ChannelFailureEvent(), promise: nil); return
         }
         guard let exec = event as? SSHChannelRequestEvent.ExecRequest else { context.fireUserInboundEventTriggered(event); return }
-        guard expected.contains(exec.command), worker == nil else { context.channel.triggerUserOutboundEvent(ChannelFailureEvent(), promise: nil); return }
+        guard let config = commands[exec.command], worker == nil else { context.channel.triggerUserOutboundEvent(ChannelFailureEvent(), promise: nil); return }
         state.exec()
         if state.isHeld() { return } // Exercise cancellation while exec ACK is pending.
         let pipe: CoreProcessTransport
@@ -189,13 +188,43 @@ private struct SSHStreamIntegrationTests {
         let factoryCommand = try HcConnectionPolicy.remoteCommand(session: "owned")
         let execConfig = CoreProcessTransport.Configuration(executable: URL(fileURLWithPath: "/bin/sh"),
             arguments: ["-c", expected], environment: ["PATH":"/usr/bin:/bin"], directory: URL(fileURLWithPath:home))
+        let factoryReceipt = URL(fileURLWithPath:home).appending(path:"factory-discovery.json")
+        let privateBin = URL(fileURLWithPath:home).appending(path:".local/bin")
+        try FileManager.default.createDirectory(at:privateBin,withIntermediateDirectories:true)
+        func quoted(_ value: String) -> String { "'" + value.replacingOccurrences(of:"'",with:"'\\''") + "'" }
+        // The owned shim only isolates service/socket state AFTER the actual
+        // production script clears poisoned parent context and selects it.
+        let shim = """
+        #!/bin/sh
+        set -eu
+        test "${HC_SESSION-}" = owned
+        test -z "${HC_TERMINAL_ID+x}"
+        test -z "${HC_TERMINAL_SOCKET+x}"
+        test -z "${HC_SCOPE+x}"
+        test -z "${HC_SOCKET+x}"
+        test -z "${HERDR_CONFIG_PATH+x}"
+        printf '%s' '{"productionDiscoveryExecuted":true,"scopeCleared":true,"sessionExact":true,"privateExecutableSelected":true}' > \(quoted(factoryReceipt.path))
+        export HC_SOCKET=\(quoted(home + "/c.sock"))
+        exec \(quoted(bin)) "$@"
+        """
+        let shimURL = privateBin.appending(path:"hc")
+        try shim.write(to:shimURL,atomically:true,encoding:.utf8)
+        try FileManager.default.setAttributes([.posixPermissions:0o700],ofItemAtPath:shimURL.path)
+        var discoveryEnvironment = environment
+        discoveryEnvironment["HC_SESSION"] = "poison-parent-session"
+        for key in ["HC_TERMINAL_ID","HC_TERMINAL_SOCKET","HC_SCOPE","HC_SOCKET","HERDR_CONFIG_PATH"] {
+            discoveryEnvironment[key] = home + "/poison-not-used"
+        }
+        let discoveryConfig = CoreProcessTransport.Configuration(executable:URL(fileURLWithPath:"/bin/sh"),
+            arguments:["-c",factoryCommand],environment:discoveryEnvironment,directory:URL(fileURLWithPath:home))
+        let commands = [expected:execConfig,factoryCommand:discoveryConfig]
         let server = try await ServerBootstrap(group: group).serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
             .childChannelInitializer { parent in
                 guard state.add(parent) else { return parent.close() }
                 let ssh = NIOSSHHandler(role: .server(SSHServerConfiguration(hostKeys: [NIOSSHPrivateKey(ed25519Key: key)], userAuthDelegate: ServerAuth(password: testPassword))), allocator: parent.allocator,
                     inboundChildChannelInitializer: { child, type in
                         guard case .session = type else { return child.eventLoop.makeFailedFuture(CoreSSHFailure.execRejected) }
-                        return child.pipeline.addHandler(OwnedExec(expected: [expected, factoryCommand], config: execConfig, state: state))
+                        return child.pipeline.addHandler(OwnedExec(commands:commands,state:state))
                     })
                 do {
                     try parent.pipeline.syncOperations.addHandlers([ssh, ServerErrorHandler()])
@@ -223,31 +252,64 @@ private struct SSHStreamIntegrationTests {
         let defaults = UserDefaults(suiteName: domain)!
         defer { defaults.removePersistentDomain(forName: domain) }
         let secrets = FactorySecrets()
-        let machines = MachineStore(defaults: defaults, keychain: secrets)
+        let localMachine = Machine(displayName:"Owned local",hostname:"localhost",username:"fixture",sessionName:"owned",isLocal:true)
+        let machines = MachineStore(defaults: defaults, localMachine:localMachine, keychain: secrets)
         var machine = Machine(displayName: "Owned SSH", hostname: "127.0.0.1", port: port, username: "fixture", authMethod: .password, sessionName: "owned")
         try machines.addMachine(machine, password: testPassword)
         do { _ = try await machines.makeHcConnection(for: machine); throw IntegrationFailure.failed("unpinned factory authenticated") }
         catch CoreSSHFailure.hostKeyApprovalRequired(let observed) { try check(observed == pin, "factory reports exact pin for explicit approval") }
-        try check(secrets.reads == 0 && state.counts().0 == 0, "host discovery neither reads credentials nor executes")
+        try check(secrets.reads == 0 && state.counts().0 == 0 && !FileManager.default.fileExists(atPath:factoryReceipt.path), "host discovery neither reads credentials nor executes")
         machines.pinHostKeyFingerprint(pin, for: machine)
         let factory = try await machines.makeHcConnection(for: machine)
         try check(await factory.hello?.core.id == hello.core.id && secrets.reads == 1, "production SSH factory reaches owned origin with stored credential")
+        let discoveryFacts = try JSONDecoder().decode([String:Bool].self,from:Data(contentsOf:factoryReceipt))
+        try check(discoveryFacts == ["productionDiscoveryExecuted":true,"scopeCleared":true,"sessionExact":true,"privateExecutableSelected":true],
+                  "actual production discovery selects private executable and clears inherited socket/session authority")
         try await factory.close()
         let alive: IntegrationStatus = try await control.call("server.status").result()
         try check(alive.pid == status.pid, "factory disconnect preserves core")
+        let marker = try await HcTerminalBoard(connection:control).run(argv:["/bin/sleep","90"],cwd:home)
+        let ownerStatus: IntegrationStatus = try await control.call("server.status").result()
+        try params(["corePID":status.pid,"ownedPIDs":[status.pid] + ownerStatus.holders.map(\.pid) + [marker.pid].compactMap { $0 }])
+            .write(to:report,options:.atomic)
+        let owner = HcMachineConnection(directory:URL(fileURLWithPath:home).appending(path:"owned-product-owner"))
+        await owner.open(machine:localMachine,store:machines,localTransport:try CoreProcessTransport(configuration:localConfig))
+        guard let localModel = owner.model else { throw IntegrationFailure.failed("local product owner missing") }
+        try check(owner.phase == .connected && owner.identity == localMachine.connectionIdentity && secrets.reads == 1,
+                  "actual product local owner connects without another credential read")
+        let ownerSSH = Machine(displayName:"Owned approved profile",hostname:"127.0.0.1",port:port,username:"fixture",authMethod:.password,sessionName:"owned")
+        try machines.addMachine(ownerSSH,password:testPassword)
+        await owner.open(machine:ownerSSH,store:machines)
+        try check(owner.phase == .approveHostKey(pin) && owner.model == nil && localModel.state == .closed && secrets.reads == 1,
+                  "product owner discovery retires local model and awaits exact pin approval without credentials")
+        await owner.approve(machine:ownerSSH,store:machines)
+        guard let sshModel = owner.model else { throw IntegrationFailure.failed("SSH product owner missing") }
+        try check(owner.phase == .connected && owner.identity == ownerSSH.connectionIdentity && sshModel !== localModel
+                  && localModel.state == .closed && sshModel.coreID == hello.core.id && secrets.reads == 2,
+                  "local-to-SSH product switch retires old model before publishing exact new profile")
+        await owner.open(machine:localMachine,store:machines,localTransport:try CoreProcessTransport(configuration:localConfig))
+        try check(owner.phase == .connected && owner.identity == localMachine.connectionIdentity && owner.model !== sshModel
+                  && sshModel.state == .closed && secrets.reads == 2,
+                  "SSH-to-local product switch retires remote model without reading credentials again")
+        await owner.close()
+        let markerAfter = try await HcTerminalBoard(connection:control).get(marker.address)
+        try check(owner.phase == .idle && owner.model == nil && markerAfter.pid == marker.pid && markerAfter.createdMs == marker.createdMs && markerAfter.state == "live",
+                  "product profile switches and close preserve exact owned program incarnation")
+        _ = try await HcTerminalBoard(connection:control).kill(marker.address)
         // A paired address may not leave its advertised range, even if the
         // resulting endpoint would otherwise present a trusted host key.
         machine = Machine(displayName: "Rejected paired address", hostname: "127.0.0.1", port: port, username: "fixture", authMethod: .password, addressKind: .privateIPv4)
         try machines.addMachine(machine, password: testPassword)
         machines.pinHostKeyFingerprint(pin, for: machine)
         do { _ = try await machines.makeHcConnection(for: machine); throw IntegrationFailure.failed("paired loopback accepted") }
-        catch PairingAddressError.invalid { try check(secrets.reads == 1, "paired-address policy rejects before credential read") }
+        catch PairingAddressError.invalid { try check(secrets.reads == 2, "paired-address policy rejects before credential read") }
+        let execsBeforeCancel = state.counts().0
         state.hold(true)
         let awaitingExec = try CoreRPCConnection(transport: endpoint(pin: pin))
         let connecting = Task { try await awaitingExec.connect() }
         let execDeadline = ContinuousClock.now.advanced(by: .seconds(3))
-        while state.counts().0 < 2, ContinuousClock.now < execDeadline { try await Task.sleep(for: .milliseconds(5)) }
-        try check(state.counts().0 == 2, "exec request reached owned server")
+        while state.counts().0 < execsBeforeCancel + 1, ContinuousClock.now < execDeadline { try await Task.sleep(for: .milliseconds(5)) }
+        try check(state.counts().0 == execsBeforeCancel + 1, "exec request reached owned server")
         connecting.cancel()
         do { _ = try await connecting.value; throw IntegrationFailure.failed("SSH connect cancellation ignored") }
         catch is CancellationError { checks += 1 }
@@ -402,9 +464,10 @@ private struct SSHStreamIntegrationTests {
         for task in owned.1 { await task.value }
         try await group.shutdownGracefully()
         let counts = state.counts()
-        try check(counts.0 == 4 && counts.1 == 0 && counts.2 == 0, "exec/no-PTY/owned-child cleanup: \(counts)")
+        try check(counts.0 == 5 && counts.1 == 0 && counts.2 == 0, "exec/no-PTY/owned-child cleanup: \(counts)")
         try params(["passed":allLinksPreserved,"corePID":status.pid,"ownedPIDs":ownedPIDs,"checks":checks,"stopAcknowledged":true,"ssh":true,"swiftTerm":true,
-                    "osc8FirstPaint":firstPaintLinkPreserved,"osc8Live":true,"osc8Reconnect":reconnectLinkPreserved]).write(to:report,options:.atomic)
+                    "osc8FirstPaint":firstPaintLinkPreserved,"osc8Live":true,"osc8Reconnect":reconnectLinkPreserved,
+                    "factoryDiscoveryExecuted":true,"productOwnerProfileSwitch":true,"productOwnerHostKeyApproval":true,"functionalChecksCompleted":true]).write(to:report,options:.atomic)
         if !allLinksPreserved {
             FileHandle.standardError.write(Data("BLOCKER SHPHRD-157: core snapshot lost OSC8 at initial attach or reconnect; other checks and cleanup completed\n".utf8))
             return false // Red qualification gate, never an expected-failure pass.

@@ -98,6 +98,8 @@ passed=failure is None and result.get('passed') is True and result.get('stopAckn
 (out/'validation.json').write_text(json.dumps({'passed':passed,'ssh':'owned-loopback','nativeSwiftTerm':True,'realCore':artifact['version'],'launchdLifecycleQualified':False,'artifactVariant':artifact['variant'],'officialRelease':artifact['officialRelease'],
  'userCoreOrCredentialsTouched':False,'checks':result.get('checks'),'coreStopped':True,'socketRemoved':True,'ownedProcessesExited':bool(result.get('ownedPIDs')),
  'osc8FirstPaint':result.get('osc8FirstPaint'),'osc8Live':result.get('osc8Live'),'osc8Reconnect':result.get('osc8Reconnect'),
+ 'factoryDiscoveryExecuted':result.get('factoryDiscoveryExecuted',False),'functionalChecksCompleted':result.get('functionalChecksCompleted',False),
+ 'productOwnerProfileSwitch':result.get('productOwnerProfileSwitch',False),'productOwnerHostKeyApproval':result.get('productOwnerHostKeyApproval',False),
  'blocker':'SHPHRD-157' if result.get('osc8FirstPaint') is False or result.get('osc8Reconnect') is False else None},indent=2))
 if failure:raise failure
 assert passed
