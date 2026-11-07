@@ -146,7 +146,7 @@ devices_page = read('Shepherd/Hosts/Views/PairedDevicesSettingsView.swift')
 assert 'PairDeviceView(coordinator: coordinator, agentProxy: agentProxy, agentProxyUnavailableReason: agentProxyUnavailableReason,\n' \
        '                               unavailableReason: addUnavailableReason) {' in devices_page
 # Show Conversations on iPhone and iPad: on both pages, from This Mac only (SHPHRD-105).
-assert 'agentProxy: .shared,\n                                          agentProxyUnavailableReason: LocalOnlyAddition.agentProxy.unavailableReason(on: machineStore.activeMachine),' \
+assert 'agentProxy: ShepherdBrowserFeature.isAvailable ? .shared : nil,\n                                          agentProxyUnavailableReason: LocalOnlyAddition.agentProxy.unavailableReason(on: machineStore.activeMachine),' \
     in settings, 'the setting while the window shows This Mac only'
 assert 'AgentProxySettingSection(service: agentProxy, unavailableReason: agentProxyUnavailableReason, identifier: "settings.devices")' in devices_page
 assert 'AgentProxySettingSection(service: agentProxy, unavailableReason: agentProxyUnavailableReason, identifier: "settings.pair")' in \

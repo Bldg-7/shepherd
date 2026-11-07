@@ -8,12 +8,25 @@ import AppKit
 // window front or makes one key; the field takes the keyboard by
 // makeFirstResponder, as it does in the app.
 
-@MainActor final class LauncherProbe {
+@MainActor @Observable final class LauncherProbe {
+    var programs: [LaunchProgram]?
     var requests: [LaunchRequest] = []
     var closes = 0
     /// Holds a Return on the tab name in `create` until it is let go.
     var holdsReturn = false
     var pending: CheckedContinuation<Void, Never>?
+}
+
+@MainActor private struct LauncherFixture: View {
+    let targets: [LaunchTarget]
+    let preset: LaunchPreset?
+    let probe: LauncherProbe
+    var body: some View {
+        NewTabLauncher(targets: targets, preset: preset, programs: probe.programs, create: { request, _ in
+            probe.requests.append(request)
+            if probe.holdsReturn { await withCheckedContinuation { probe.pending = $0 } }
+        }, onClose: { probe.closes += 1 })
+    }
 }
 
 @main @MainActor enum LauncherTabKeyTests {
@@ -40,16 +53,12 @@ import AppKit
         var keepsKeyboard: Bool { window.firstResponder === editor && field.currentEditor() === editor }
     }
 
-    static func open(_ targets: [LaunchTarget], preset: LaunchPreset?, allowsBrowserAgents: Bool,
-                     standalonePrograms: Bool = false, allowedPrograms: [LaunchProgram] = LaunchProgram.allCases) -> Launcher {
+    static func open(_ targets: [LaunchTarget], preset: LaunchPreset?, programs: [LaunchProgram]? = LaunchProgram.allCases) -> Launcher {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 420), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         let probe = LauncherProbe()
-        let launcher = NewTabLauncher(targets: targets, preset: preset, allowsBrowserAgents: allowsBrowserAgents,
-            standalonePrograms: standalonePrograms, allowedStandalonePrograms: allowedPrograms, create: { @MainActor request, _ in
-            probe.requests.append(request)
-            if probe.holdsReturn { await withCheckedContinuation { probe.pending = $0 } }
-        }, onClose: { probe.closes += 1 })
+        probe.programs = programs
+        let launcher = LauncherFixture(targets: targets, preset: preset, probe: probe)
         window.contentView = NSHostingView(rootView: launcher)
         drain()
         guard let field = first(NSTextField.self, in: window.contentView!, where: { $0.delegate is LauncherField.Coordinator }),
@@ -87,8 +96,12 @@ import AppKit
         NSApp.setActivationPolicy(.prohibited)
 
         // The rule: round the picker's programs, both ways.
-        let all = LaunchProgram.launchableCases
-        check(all == [.shell, .claude, .codex, .pi], "the Launch picker's programs, in order: \(all)")
+        let all = LaunchProgram.allCases
+        check(all == [.shell, .claude, .codex, .pi], "the Launch picker's programs, independent of browser/plugin capability: \(all)")
+        check(LaunchProgram.shell.terminalArguments.isEmpty, "Shell uses the core's default shell")
+        check(LaunchProgram.claude.terminalArguments == ["claude"], "Claude has no app plugin, settings or instruction flags")
+        check(LaunchProgram.pi.terminalArguments == ["pi"], "Pi has no app extension, skill, instructions, session ID or directory")
+        check(LaunchProgram.codex.terminalArguments == ["codex", "--no-daemon"], "Codex has only the documented process-isolation exception, no MCP, provider or instruction override")
         check(all.map { $0.cycled() } == [.claude, .codex, .pi, .shell], "Tab: the next one, from Pi round to Shell")
         check(all.map { $0.cycled(backward: true) } == [.pi, .shell, .claude, .codex], "⇧Tab: the previous one, from Shell round to Pi")
         let some: [LaunchProgram] = [.shell, .codex]
@@ -105,8 +118,8 @@ import AppKit
         let remote = LaunchTarget(herdrMachine: machine, label: "Other", workspaces: [workspace("w1", "Nested A")], unavailableReason: nil)
         let onHost = LaunchPreset(targetID: host.id, workspace: host.workspaces[0].workspace)
 
-        // The tab's name on the host's herdr, with browser agents allowed.
-        let a = open([host], preset: onHost, allowsBrowserAgents: true)
+        // Ordinary program choices, without browser capability or runtime setup.
+        let a = open([host], preset: onHost)
         guard let picker = a.picker else { preconditionFailure("the Tab Name step shows the Launch picker") }
         let labels = (0..<picker.segmentCount).map { picker.label(forSegment: $0) ?? "" }
         check(labels == ["Shell", "Claude Code", "Codex", "Pi"] && picker.selectedSegment == 0 && picker.isEnabled, "Shell picked, the picker enabled: \(labels) \(picker.selectedSegment)")
@@ -156,7 +169,7 @@ import AppKit
 
         // A herdr machine: the picker is shown disabled, and only a shell can
         // be opened. Tab changes nothing and keeps the keyboard.
-        let b = open([host, remote], preset: LaunchPreset(targetID: remote.id, workspace: remote.workspaces[0].workspace), allowsBrowserAgents: true)
+        let b = open([host, remote], preset: LaunchPreset(targetID: remote.id, workspace: remote.workspaces[0].workspace))
         check(b.picker?.isEnabled == false && b.picker?.selectedSegment == 0, "the picker is disabled on a herdr machine")
         b.editor.insertText("cd", replacementRange: nowhere)
         drain()
@@ -167,22 +180,21 @@ import AppKit
         check(b.probe.requests.map(\.program) == [.shell], "a herdr machine's tab is a shell")
         b.window.close()
 
-        // Browser agents not allowed: no picker. Tab changes nothing and
-        // keeps the keyboard.
-        let c = open([host], preset: onHost, allowsBrowserAgents: false)
-        check(c.picker == nil, "no picker without browser agents")
+        // No offered program picker: Tab changes nothing and keeps the keyboard.
+        let c = open([host], preset: onHost, programs: nil)
+        check(c.picker == nil, "nil programs hides the picker")
         c.editor.insertText("ef", replacementRange: nowhere)
         drain()
         tab(c)
         backtab(c)
         check(c.keepsKeyboard && c.field.stringValue == "ef", "Tab and ⇧Tab without the picker: nothing changes, the keyboard stays")
         returnKey(c)
-        check(c.probe.requests.map(\.program) == [.shell], "without browser agents the tab is a shell")
+        check(c.probe.requests.map(\.program) == [.shell], "without offered programs the tab is a shell")
         c.window.close()
 
         // The other steps leave Tab and ⇧Tab to AppKit, as before; the Tab
         // Name step reached through them takes them.
-        let d = open([host, remote], preset: nil, allowsBrowserAgents: true)
+        let d = open([host, remote], preset: nil)
         check(d.picker == nil && takesTabs(d) == (false, false), "the Machine step leaves Tab and ⇧Tab to AppKit")
         returnKey(d)
         check(d.picker == nil && takesTabs(d) == (false, false), "the Workspace step leaves Tab and ⇧Tab to AppKit")
@@ -202,13 +214,35 @@ import AppKit
 
         // The manual hc UI cannot borrow installed CLIs/config. Its actual
         // picker and Tab paths expose only Shell, not merely a warning label.
-        let inspection = open([host], preset: onHost, allowsBrowserAgents: false, standalonePrograms: true, allowedPrograms: [.shell])
+        let inspection = open([host], preset: onHost, programs: [.shell])
         check(inspection.picker?.segmentCount == 1 && inspection.picker?.label(forSegment: 0) == "Shell", "inspection shows only its supported Shell")
         tab(inspection); backtab(inspection)
         check(inspection.picker?.selectedSegment == 0 && inspection.keepsKeyboard, "inspection Tab cannot select a hidden agent CLI")
         returnKey(inspection)
         check(inspection.probe.requests.map(\.program) == [.shell], "inspection Return can request Shell only")
         inspection.window.close()
+
+        // A changing caller policy cannot submit a program withdrawn while the
+        // launcher is open. Duplicates are canonicalized, with Shell baseline.
+        let restricted = open([host], preset: onHost, programs: [.pi, .pi])
+        check(restricted.picker?.segmentCount == 2 && restricted.picker?.label(forSegment: 0) == "Shell" && restricted.picker?.label(forSegment: 1) == "Pi", "caller choices are canonical and independent of managed-browser support")
+        tab(restricted)
+        check(restricted.picker?.selectedSegment == 1, "restricted Tab offers Pi, not hidden Claude or Codex")
+        restricted.probe.programs = []
+        drain()
+        check(restricted.picker?.segmentCount == 1 && restricted.picker?.selectedSegment == 0 && restricted.keepsKeyboard, "withdrawn Pi resets to Shell without losing the editor")
+        returnKey(restricted)
+        check(restricted.probe.requests.map(\.program) == [.shell], "withdrawn program cannot reach the create callback")
+        restricted.window.close()
+
+        let withdrawn = open([host], preset: onHost)
+        tab(withdrawn)
+        withdrawn.probe.programs = nil
+        drain()
+        check(withdrawn.picker == nil && withdrawn.keepsKeyboard, "withdrawing all choices hides the picker and preserves input ownership")
+        returnKey(withdrawn)
+        check(withdrawn.probe.requests.map(\.program) == [.shell], "hidden stale selection cannot launch an agent")
+        withdrawn.window.close()
 
         print("PASS \(checks) launcher Tab checks: the rule round the picker both ways, Tab and ⇧Tab key-downs on the Tab Name step keeping the keyboard, the text, the insertion point and a composition, Return taking the program picked, a pending Return, a herdr machine, no picker, the other steps left to AppKit; the whole launcher in never-shown owned windows, no input method or app")
     }

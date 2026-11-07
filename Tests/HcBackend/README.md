@@ -10,6 +10,15 @@ are deferred follow-up, not hc cutover gates. Preserve existing data/code/eviden
 ordinary CLI execution, mobile terminal/screen behavior and other safety/UI gates
 remain in scope.
 
+[Plain CLI execution policy](../../docs/hc-plain-cli-launch.md) additionally excludes
+automatic app extension/plugin/MCP, prompt/skill, browser-blocking and managed Pi
+session injection. The common launcher takes explicit program offers; normal
+startup does not start the deferred capture proxy. Codex's existing `--no-daemon`
+is an explicit process-isolation exception pending shared-daemon qualification.
+Basic native OSC status is independent of the old Pi app bridge; actual plain-Pi
+end-to-end and physical/OS gates remain separate. Current scoped evidence and
+retirement details: [PLAIN-CLI-README.md](PLAIN-CLI-README.md).
+
 ```sh
 python3 Tests/HcBackend/run-tests.py \
   --official-017-archive /absolute/herdr-core-macos-aarch64.tar.gz \

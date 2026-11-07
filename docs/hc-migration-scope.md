@@ -18,6 +18,19 @@ hc 0.1.17의 `hc connect`로 교체**하는 것이다. 영구적인 이중 backe
 - core event 기반 attention/알림, hc 탐색·호환성·설치 UX와 필요한 lifecycle 검증.
 - 위 범위의 실제 제품 회귀 검증 후 기본 backend 전환 및 legacy backend 제거.
 
+## 일반 CLI 실행 원칙 — 자동 주입 최소화
+
+[hc-plain-cli-launch.md](hc-plain-cli-launch.md)를 따른다. 앱 전용 extension/plugin/MCP,
+skill·system/developer 지침, 경쟁 브라우저 차단, 자식 명령 재작성, Pi 전용 session
+ID/저장 위치/내부 세션 이름 동기화를 일반 실행의 전제로 삼지 않는다. 환경변수·설정
+파일·wrapper로 같은 주입을 우회하지 않으며 사용자 자체 CLI 설정은 건드리지 않는다.
+Pi 기본 OSC 상태 보고와 hc 이벤트 관찰은 유지하고, 보고 부재를 준비 완료로 추정하지 않는다.
+
+Codex의 기존 `--no-daemon`만 공유 daemon 소유권/lifecycle 검증 전까지 명시적
+프로세스 격리 예외로 보존한다. 명시적인 사용자 Resume 요청은 숨은 주입과 구분하되
+이번 변경으로 새로 구현·검증됐다고 주장하지 않는다. 일반 앱 시작에서 capture proxy를
+자동 시작하지 않으며 기존 서비스·설정·archive·실행 중인 프로그램은 임의 종료·삭제하지 않는다.
+
 ## 이번에 제외 — 별도 후속 작업
 
 | 기능 | 제외되는 작업 |

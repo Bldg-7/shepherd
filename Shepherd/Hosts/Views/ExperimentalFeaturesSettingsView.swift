@@ -18,7 +18,7 @@ struct ExperimentalFeaturesSettingsView: View {
     private var feature: ShepherdBrowserFeature { .shared }
     private var service: AgentLaunchService { .shared }
     private var showsOnboarding: Bool {
-        feature.isEnabled && feature.passwordManagers.presentationOwner == passwordManagerWindowID
+        ShepherdBrowserFeature.isAvailable && feature.isEnabled && feature.passwordManagers.presentationOwner == passwordManagerWindowID
     }
     private var preparationFailure: String? {
         if case .failed(let message) = service.skillPreparation.state { return message }
@@ -52,45 +52,28 @@ struct ExperimentalFeaturesSettingsView: View {
         }
         .accessibilityIdentifier("settings.experimental-features.page")
         .onAppear {
+            guard ShepherdBrowserFeature.isAvailable else { return }
             feature.passwordManagers.beginVisit(owner: passwordManagerWindowID, browserEnabled: feature.isEnabled)
         }
-        .onDisappear { feature.passwordManagers.endVisit(owner: passwordManagerWindowID) }
+        .onDisappear {
+            guard ShepherdBrowserFeature.isAvailable else { return }
+            feature.passwordManagers.endVisit(owner: passwordManagerWindowID)
+        }
     }
 
     private var featuresForm: some View {
         Form {
-            // The Shepherd Browser card: everything that belongs to the browser,
-            // with Diagnostics last. The toggle names the feature, so no header.
-            Section {
-                Toggle(isOn: Binding(
-                    get: { feature.isEnabled },
-                    set: { enabled in Task { await feature.setEnabled(enabled, presentationOwner: passwordManagerWindowID) } }
-                )) {
-                    HStack {
-                        Text("In-app Browser")
-                        InfoButton(accessibilityLabel: "About In-app Browser",
-                                   explanation: "An in-app pane browser. Links clicked in a terminal open in In-app Browser; ⌘-click opens them in the default browser. Codex resume confirmation may wait until the first user turn; live agents are never restarted automatically.")
-                    }
+            // Deferred integrations do not instantiate runtime diagnostics or
+            // credential onboarding merely because Settings was opened.
+            if ShepherdBrowserFeature.isAvailable {
+                browserSettings
+            } else {
+                Section {
+                    Text("In-app Browser and app-injected agent integrations are unavailable in this release. Existing programs, settings and data are preserved.")
+                        .font(.footnote).foregroundStyle(.secondary)
                 }
-                .disabled(!ShepherdBrowserFeature.isAvailable || feature.isTransitioning)
-                .help("Turning this off preserves saved tabs, profiles, cookies, and runtime settings. An already initialized idle browser engine may remain resident until quit.")
-                if !ShepherdBrowserFeature.isAvailable {
-                    Text("In-app Browser and agent injection are deferred in this hc release. Existing programs and browser data are preserved; old integrations are not resumed.").font(.footnote).foregroundStyle(.secondary)
-                }
-                if feature.isEnabled {
-                    PasswordManagerSettingsRows(preferences: feature.passwordManagers,
-                        windowID: passwordManagerWindowID, connectIntent: { manager in
-                            feature.passwordManagers.connections.begin(owner: passwordManagerWindowID, manager: manager)
-                        })
-                    if let activeMachine = machineStore.activeMachine {
-                        AgentSkillRows(machine: activeMachine).id(activeMachine.id)
-                    }
-                    advancedSettings
-                }
-                if showsDiagnostics { diagnosticsRows }
             }
-            // The Terminal File Drop card. Independent of the browser, and with
-            // nothing to set up or tear down: terminals read it at each drop.
+            // The Terminal File Drop card is independent of agent injection.
             Section {
                 Toggle(isOn: $terminalFileDropEnabled) {
                     HStack {
@@ -102,6 +85,35 @@ struct ExperimentalFeaturesSettingsView: View {
                 .help("Uploaded images are removed after 24 hours, the next time you drop files on that machine.")
                 .accessibilityIdentifier("settings.experimental-features.terminal-file-drop")
             }
+        }
+    }
+
+    /// Retained only for isolated legacy fixtures, not ordinary CLI execution.
+    private var browserSettings: some View {
+        Section {
+            Toggle(isOn: Binding(
+                get: { feature.isEnabled },
+                set: { enabled in Task { await feature.setEnabled(enabled, presentationOwner: passwordManagerWindowID) } }
+            )) {
+                HStack {
+                    Text("In-app Browser")
+                    InfoButton(accessibilityLabel: "About In-app Browser",
+                               explanation: "An in-app pane browser. Links clicked in a terminal open in In-app Browser; ⌘-click opens them in the default browser. Codex resume confirmation may wait until the first user turn; live agents are never restarted automatically.")
+                }
+            }
+            .disabled(feature.isTransitioning)
+            .help("Turning this off preserves saved tabs, profiles, cookies, and runtime settings. An already initialized idle browser engine may remain resident until quit.")
+            if feature.isEnabled {
+                PasswordManagerSettingsRows(preferences: feature.passwordManagers,
+                    windowID: passwordManagerWindowID, connectIntent: { manager in
+                        feature.passwordManagers.connections.begin(owner: passwordManagerWindowID, manager: manager)
+                    })
+                if let activeMachine = machineStore.activeMachine {
+                    AgentSkillRows(machine: activeMachine).id(activeMachine.id)
+                }
+                advancedSettings
+            }
+            if showsDiagnostics { diagnosticsRows }
         }
     }
 

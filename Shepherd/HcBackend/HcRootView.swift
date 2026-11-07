@@ -168,9 +168,8 @@ struct HcRootView: View {
         .overlay {
             if launchSheet, let model = scopedModel {
                 NewTabLauncher(targets: launchTargets(model), preset: launcherPreset(model),
-                    standalonePrograms: true,
-                    allowedStandalonePrograms: inspectionOnly ? [.shell] : LaunchProgram.allCases,
-                    standaloneProgramNotice: inspectionOnly ? "Private UI inspection: Shell only, temporary HOME, network disabled. Installed agent CLIs and accounts are not connected." : nil,
+                    programs: inspectionOnly ? [.shell] : LaunchProgram.allCases,
+                    programNotice: inspectionOnly ? "Private UI inspection: Shell only, temporary HOME, network disabled. Installed agent CLIs and accounts are not connected." : "Uses the installed CLI without app-injected extensions, tools, instructions or credentials.",
                     describeFailure: { error in
                         if let inspection = error as? HcInspectionLaunchFailure { return inspection.localizedDescription }
                         return hcConnectionFailureDescription(error) + " If a view was created, review its saved outcome before another launch."
@@ -222,14 +221,8 @@ struct HcRootView: View {
             workspaceID = try await model.createWorkspace(name: name ?? "Workspace")
         }
         guard scopedModel === model else { throw HcWorkspaceModel.Failure.stale }
-        let argv: [String]
-        switch request.program {
-        case .shell: argv = []
-        case .claude: argv = ["claude"]
-        case .codex: argv = ["codex", "--no-daemon"]
-        case .pi: argv = ["pi"]
-        }
-        try await model.launchTab(workspaceID: workspaceID, name: request.tabName ?? String(localized: request.program.title), argv: argv)
+        try await model.launchTab(workspaceID: workspaceID, name: request.tabName ?? String(localized: request.program.title),
+                                  argv: request.program.terminalArguments)
         guard scopedModel === model else { return }
         handOff()
     }

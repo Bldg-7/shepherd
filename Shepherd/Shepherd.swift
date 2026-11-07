@@ -95,10 +95,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #endif
         guard ShepherdBrowserFeature.isAvailable else {
             HcNotificationCoordinator.shared.prepare()
-            // Capture proxy is a separate opt-in product feature, not browser
-            // authority. Keep its existing configured lifecycle; never launch
-            // AgentRuntime or infer old route liveness from a new core.
-            AgentProxyService.shared.start()
+            // Ordinary terminal startup does not install, start or reconcile
+            // deferred capture/runtime services. Preserve their saved settings,
+            // archives and already-running programs; do not stop them here.
             return
         }
         if ShepherdBrowserFeature.shared.isEnabled { BrowserEngine.prepare() }

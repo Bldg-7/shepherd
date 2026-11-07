@@ -37,18 +37,48 @@ class PreservationWiring(unittest.TestCase):
     def test_real_launcher_without_browser_authority(self):
         root = source('Shepherd/HcBackend/HcRootView.swift')
         self.assertIn('NewTabLauncher(targets:', root)
-        self.assertIn('standalonePrograms: true', root)
+        self.assertIn('programs: inspectionOnly ? [.shell] : LaunchProgram.allCases', root)
         self.assertNotIn('HcLaunchSheet(', root)
-        self.assertNotIn('allowsBrowserAgents: true', root)
+        self.assertNotIn('allowsBrowserAgents:', root)
+        self.assertIn('argv: request.program.terminalArguments', root)
+        for name in ['AgentLaunchService', 'PiHostBridge', 'AgentRuntime', 'AgentProxyService']:
+            self.assertNotIn(name, root)
         self.assertIn('request.herdrMachine == nil', root)
         self.assertIn('UUID(uuidString: selected.workspaceID)', root)
         self.assertIn('scopedModel === model', root)
+
+    def test_plain_launcher_does_not_inspect_or_prepare_injection(self):
+        launcher = '\n'.join(line for line in source('Shepherd/Hosts/Views/NewTabLauncher.swift').splitlines()
+                             if not line.lstrip().startswith('//'))
+        for name in ['supportsManagedBrowserLaunch', 'allowsBrowserAgents', 'standalonePrograms', 'AgentRuntime', 'AgentLaunchService']:
+            self.assertNotIn(name, launcher)
+        self.assertIn('programChoices.contains(program)', launcher)
+        self.assertIn('.onChange(of: programs)', launcher)
+
+    def test_deferred_startup_does_not_start_capture_or_agent_runtime(self):
+        app = source('Shepherd/Shepherd.swift')
+        branch = app.split('guard ShepherdBrowserFeature.isAvailable else {', 1)[1].split('return', 1)[0]
+        self.assertIn('HcNotificationCoordinator.shared.prepare()', branch)
+        for name in ['AgentProxyService', 'AgentLaunchService', 'CDPProxy', 'BrowserEngine']:
+            self.assertNotIn(name, branch)
+        settings = source('Shepherd/Hosts/Views/ExperimentalFeaturesSettingsView.swift')
+        form = settings[settings.index('private var featuresForm:'):settings.index('private var browserSettings:')]
+        self.assertIn('if ShepherdBrowserFeature.isAvailable {\n                browserSettings', form)
+        self.assertNotIn('showsDiagnostics', form)
+        self.assertIn('settings.experimental-features.terminal-file-drop', form)
+        machines = source('Shepherd/Hosts/Views/MachinesSettingsView.swift')
+        self.assertIn('agentProxy: ShepherdBrowserFeature.isAvailable ? .shared : nil', machines)
+        self.assertIn('makeCoordinator: { PairingCoordinator(environment: .system()) }', machines)
+        content = source('Shepherd/ContentView.swift')
+        machine_update = content[content.index('.onChange(of: machineStore.allMachines, initial: true)'):]
+        self.assertLess(machine_update.index('filePreviews.forgetConnections'), machine_update.index('guard ShepherdBrowserFeature.isAvailable else { return }'))
+        self.assertLess(machine_update.index('guard ShepherdBrowserFeature.isAvailable else { return }'), machine_update.index('AgentLaunchService.shared.update'))
 
     def test_inspection_rejects_unsupported_launch_before_metadata(self):
         root = source('Shepherd/HcBackend/HcRootView.swift')
         launch = root[root.index('private func launch('):]
         self.assertLess(launch.index('guard !inspectionOnly || request.program == .shell'), launch.index('model.createWorkspace'))
-        self.assertIn('allowedStandalonePrograms: inspectionOnly ? [.shell]', root)
+        self.assertIn('programs: inspectionOnly ? [.shell]', root)
         self.assertIn('describeFailure:', root)
         self.assertIn('return hcConnectionFailureDescription(error)', root)
 

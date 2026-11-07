@@ -348,7 +348,9 @@ struct ContentView: View {
                 NewTabLauncher(
                     targets: launchTargets,
                     preset: launcherPreset(launcherStart, on: machine),
-                    allowsBrowserAgents: allowsBrowserAgents(on: machine),
+                    // Only isolated legacy browser fixtures still offer managed launches.
+                    // The shared launcher itself has no browser/runtime policy.
+                    programs: allowsBrowserAgents(on: machine) ? LaunchProgram.allCases.filter { $0 == .shell || $0.agentKind?.supportsManagedBrowserLaunch == true } : nil,
                     addHerdrMachine: addHerdrMachineOffer(on: machine),
                     onAddHerdrMachine: { showHerdrMachineSetup(.add, on: machine) },
                     create: { request, handOff in try await openTab(request, on: machine, handOff: handOff) },
@@ -417,6 +419,7 @@ struct ContentView: View {
         // takes its panes' browsers with it, and its file previews.
         .onChange(of: machineStore.allMachines, initial: true) { _, machines in
             filePreviews.forgetConnections(notIn: Set(machines.map(\.connectionIdentity)))
+            guard ShepherdBrowserFeature.isAvailable else { return }
             AgentLaunchService.shared.update(machines: machines)
             #if DEBUG
             let paths = OwnedOperatorFixture.configuration.map { [$0.machine.id: $0.socket] } ?? [:]
