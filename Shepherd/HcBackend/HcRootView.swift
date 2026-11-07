@@ -244,6 +244,7 @@ struct HcRootView: View {
                     Text(machine.username + "@" + machine.hostname + ":" + String(machine.port)).font(.headline)
                     Text(fingerprint).font(.system(.body, design: .monospaced)).textSelection(.enabled)
                     Button("Approve this host key and connect") { Task { await connection.approve(machine: machine, store: machineStore) } }
+                        .accessibilityIdentifier("hc.ssh.approve")
                 }
                 Button("Installation / compatibility help") { installation = true }
             }

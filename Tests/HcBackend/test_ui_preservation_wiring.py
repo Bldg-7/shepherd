@@ -256,6 +256,20 @@ class PreservationWiring(unittest.TestCase):
         self.assertIn('releasedClose.forwarded == 1',audit)
         self.assertIn('accessibilityIdentifier("hc.close.cancel")',board)
 
+    def test_profile_ui_uses_native_controls_and_cannot_hide_a_partial_failure(self):
+        native = source('Shepherd/HcBackend/HcNativeProfileSwitchAudit.swift')
+        host = source('Shepherd/HcBackend/HcMigrationHost.swift')
+        runner = source('Tests/HcBackend/run-ui-tests.py')
+        self.assertIn('settings.machine.activate.',native)
+        self.assertIn('press("hc.ssh.approve",content:content)',native)
+        self.assertNotIn('owner.open(',native)
+        self.assertNotIn('owner.approve(',native)
+        self.assertNotRegex(native,r'store\.activeMachineID\s*=(?!=)')
+        self.assertIn('result["passed"] = false; result["directSSHProfileUI"] = false',host)
+        self.assertIn("audit.get('directSSHProfileUI') is True",runner)
+        self.assertIn("remote_report.get('credentialFileRemoved') is True",runner)
+        self.assertIn("'profile-audit requires exactly its validated sidecar receipt'",runner)
+
     def test_actual_rendered_selection_not_hidden_siblings_is_viewed(self):
         root = source('Shepherd/HcBackend/HcRootView.swift')
         self.assertIn('controlActiveState == .key, presentation.hasSelection', root)

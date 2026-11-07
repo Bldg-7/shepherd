@@ -9,7 +9,7 @@ import SwiftUI
 
     init() {
         #if DEBUG && os(macOS)
-        let machineStore = HcMigrationConfiguration.current?.machineStore() ?? OwnedOperatorFixture.machineStore()
+        let machineStore = HcMigrationConfiguration.current?.machineStore(keychain:HcFixtureSecrets()) ?? OwnedOperatorFixture.machineStore()
         #else
         let machineStore = MachineStore()
         #endif

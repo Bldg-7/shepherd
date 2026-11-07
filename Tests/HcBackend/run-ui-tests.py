@@ -14,6 +14,8 @@ p=argparse.ArgumentParser()
 p.add_argument('--official-017-archive',type=Path,required=True)
 p.add_argument('--products',type=Path,required=True)
 p.add_argument('--human-activation',action='store_true',help='Allow time for a person to click only the owned helper window; all GUI assertions still required')
+p.add_argument('--profile-audit',action='store_true',help='After layout, use real Settings/approval controls to switch to an owned distinct SSH core and back')
+p.add_argument('--profile-sidecar-receipt',type=Path,help='passed private sidecar lifecycle validation.json; required for profile-audit')
 p.add_argument('--manual-inspection',action='store_true',help='Open an interactive private workspace, without running/claiming automated GUI checks')
 p.add_argument('--manual-seconds',type=int,default=1200,help='Manual session lifetime, 60–1800 seconds; owned programs retire on exit')
 p.add_argument('--layout-audit',action='store_true',help='Audit actual hc composition/sidebar using public native actions')
@@ -21,9 +23,11 @@ p.add_argument('--fullscreen-audit',action='store_true',help='Also exercise the 
 p.add_argument('--fullscreen-native-layout',action='store_true',help='Separate owned fullscreen/native sidebar layout gate; NO edge/pointer/physical-hover qualification')
 p.add_argument('--pointer-warp-only',action='store_true',help='Fullscreen diagnostic: omit self-window synthetic mouse movement; never a physical gesture claim')
 a=p.parse_args()
+if a.profile_audit != bool(a.profile_sidecar_receipt):p.error('profile-audit requires exactly its validated sidecar receipt')
+if a.profile_audit and a.manual_inspection:p.error('profile-audit and manual inspection are separate')
 if a.pointer_warp_only and not a.fullscreen_audit:p.error('pointer-warp-only requires fullscreen-audit')
 if a.fullscreen_native_layout and a.fullscreen_audit:p.error('native fullscreen layout and edge stimulus are separate gates')
-a.layout_audit=a.layout_audit or a.fullscreen_audit or a.fullscreen_native_layout
+a.layout_audit=a.layout_audit or a.fullscreen_audit or a.fullscreen_native_layout or a.profile_audit
 if a.manual_inspection and a.layout_audit:p.error('manual inspection and layout audit are separate modes')
 if not 60 <= a.manual_seconds <= 1800:p.error('manual-seconds must be 60–1800')
 stage_seconds=a.manual_seconds+90 if a.manual_inspection else (270 if a.human_activation else (120 if a.layout_audit else 60))
@@ -40,6 +44,8 @@ tracked=[*sorted((ROOT/'ShepherdKit/Sources/ShepherdKit').rglob('*.swift')),
          *sorted((ROOT/'Shepherd').rglob('*.swift')),
          *sorted((ROOT/'Vendor/SwiftTerm/Sources').rglob('*.swift')),ROOT/'Tests/HcBackend/OwnedUILauncher.swift',ROOT/'Tests/HcBackend/ui_artifacts.py',Path(__file__).resolve()]
 def digest(path):return hashlib.sha256(path.read_bytes()).hexdigest()
+if a.profile_audit:
+    tracked += [ROOT/'Tests/CoreProtocol/OwnedProfileSSHServer.swift',ROOT/'Tests/CoreProtocol/OwnedProfileSSHClientTests.swift']
 hashes={str(p.relative_to(ROOT)):digest(p) for p in tracked}
 (out/'source-hashes.json').write_text(json.dumps(hashes,indent=2))
 product=app/'Contents/MacOS/hrdrhrdrhrdr.debug.dylib'
@@ -50,12 +56,21 @@ assert all(p.stat().st_mtime<=product.stat().st_mtime for p in tracked if p.suff
 (out/'ui-peer.py').write_text("import sys,time,tty,pathlib\nroot=pathlib.Path(__file__).parent\nprint('CJK 한글 😀 real SwiftTerm UI',flush=True)\nprint('HC-UI-RENDER-DONE',flush=True)\ninput()\nlink=(root/'owned-preview.md').as_uri()\nprint('\\x1b]8;;'+link+'\\x1b\\\\Open owned preview\\x1b]8;;\\x1b\\\\',flush=True)\ntty.setraw(sys.stdin.fileno())\nprint('HC-DROP-READY',flush=True)\nexpected=(root/'drop-expected.txt').read_bytes()\ndata=sys.stdin.buffer.read(len(expected))\n(root/'drop-received.bin').write_bytes(data)\nprint('HC-DROP-RECEIVED',flush=True)\nrow=root/'row-drop-expected.txt'\nif row.exists():\n expected_row=row.read_bytes()\n (root/'row-drop-received.bin').write_bytes(sys.stdin.buffer.read(len(expected_row)))\n print('HC-ROW-DROP-RECEIVED',flush=True)\ntime.sleep(60)\n")
 if a.human_activation:
     peer=out/'ui-peer.py';peer.write_text(peer.read_text().replace('time.sleep(60)','time.sleep(300)'))
+remote_root=out/'remote-sidecar';remote_controller=None;remote_report={};remote_port=None
+if a.profile_audit:
+    remote_root.mkdir(mode=0o700)
+    with socket.socket() as reservation:
+        reservation.bind(('127.0.0.1',0));remote_port=reservation.getsockname()[1]
 profile=out/'private-unix.sb'
-profile.write_text('(version 1)\n(allow default)\n(deny network*)\n(allow network* (subpath '+json.dumps(str(out/'core'))+'))\n')
+network_rules=''
+if remote_port:
+    network_rules='(allow network* (subpath '+json.dumps(str(remote_root))+'))\n(allow network-outbound (remote ip "127.0.0.1:'+str(remote_port)+'"))\n(allow network-inbound (local ip "127.0.0.1:'+str(remote_port)+'"))\n'
+profile.write_text('(version 1)\n(allow default)\n(deny network*)\n(allow network* (subpath '+json.dumps(str(out/'core'))+'))\n'+network_rules)
 sandbox=['/usr/bin/sandbox-exec','-f',str(profile)]
 env={'PATH':'/usr/bin:/bin:/usr/sbin:/sbin','HOME':str(out/'home'),'CFFIXED_USER_HOME':str(out/'home'),'TMPDIR':str(out/'tmp'),
      'LANG':'en_US.UTF-8','DO_NOT_TRACK':'1','SHEPHERD_HC_UI_ROOT':str(out),'SHEPHERD_HC_UI_BINARY':str(binary)}
 if a.human_activation or a.manual_inspection:env['SHEPHERD_HC_UI_HUMAN_ACTIVATION']='1'
+if a.profile_audit:env['SHEPHERD_HC_UI_PROFILE_AUDIT']='1'
 if a.manual_inspection:env['SHEPHERD_HC_UI_MANUAL_SECONDS']=str(a.manual_seconds)
 if a.layout_audit:env['SHEPHERD_HC_UI_LAYOUT_AUDIT']='1'
 if a.fullscreen_audit:env['SHEPHERD_HC_UI_FULLSCREEN_AUDIT']='1'
@@ -91,6 +106,21 @@ for name in ['app.stdout.log','app.stderr.log']:(out/name).touch(mode=0o600)
 (out/'fixture-bundle.json').write_text(json.dumps({'bundleID':bundle_id,'bundle':str(fixture_app),'helper':str(helper),'originalExecutableSHA256':digest(exe),'fixtureExecutableSHA256':digest(actual_exe),'launcherSourceSHA256':digest(ROOT/'Tests/HcBackend/OwnedUILauncher.swift'),'sandboxBeforeAppExec':True},indent=2))
 log=out/'app.log';report=out/'ui-report.json';failed=None
 try:
+    if a.profile_audit:
+        receipt=a.profile_sidecar_receipt.resolve();sidecar=receipt.parent/'profile-server'
+        assert json.loads(receipt.read_text()).get('passed') is True,'sidecar lifecycle must pass first'
+        for name,expected in json.loads((receipt.parent/'source-hashes.json').read_text()).items():
+            assert digest(ROOT/name)==expected,'sidecar source changed since lifecycle gate'
+        for name,expected in json.loads((receipt.parent/'product-hashes.json').read_text()).items():
+            assert digest(Path(name))==expected,'sidecar SDK composition changed since lifecycle gate'
+        executable_hashes=json.loads((receipt.parent/'executable-hashes.json').read_text())
+        assert digest(sidecar)==executable_hashes[str(sidecar)],'sidecar executable changed'
+        sidecar_log=out/'remote-sidecar.log'
+        remote_controller=subprocess.Popen([sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout','400','--natural-exit-grace','10','--log',str(sidecar_log),'--',*sandbox,str(sidecar),str(binary),str(remote_root),str(remote_port),'360'],env=env,cwd=ROOT)
+        ready_end=time.monotonic()+15
+        while not (remote_root/'remote-ready.json').exists():
+            assert remote_controller.poll() is None and time.monotonic()<ready_end,'private SSH sidecar readiness failed'
+            time.sleep(.025)
     command=[sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(stage_seconds),'--natural-exit-grace','10','--log',str(log),'--','/usr/bin/open','-n','-W','--env','SHEPHERD_OWNED_UI_LAUNCH_ROOT='+str(out),'--env','HOME='+str(out/'home'),'--env','CFFIXED_USER_HOME='+str(out/'home'),'--env','TMPDIR='+str(out/'tmp'),str(helper)]
     child=subprocess.Popen(command,env=env,cwd=out)
     announced=False;focus_announced=False;focus_requested=None;deadline=time.monotonic()+stage_seconds+40
@@ -126,6 +156,24 @@ finally:
         if libproc.proc_pidpath(int(pid),buf,len(buf))>0 and os.fsdecode(buf.value)==str(expected_exe):
             os.kill(int(pid),signal.SIGTERM)
             failed=failed or RuntimeError('owned app/helper required forced cleanup; not a healthy pass')
+    if remote_controller is not None:
+        (remote_root/'stop.request').write_text('stop owned SSH sidecar')
+        try:remote_controller.wait(timeout=20)
+        except subprocess.TimeoutExpired:
+            remote_controller.terminate();remote_controller.wait(timeout=10)
+            failed=failed or RuntimeError('owned SSH sidecar required forced retirement')
+        remote_report=json.loads((remote_root/'remote-report.json').read_text()) if (remote_root/'remote-report.json').exists() else {}
+        remote_stage=json.loads((out/'remote-sidecar.stage.json').read_text())
+        if not (remote_controller.returncode==0 and remote_report.get('passed') is True and remote_stage.get('naturalExitConfirmed') and remote_stage.get('cleanupVerified') and not remote_stage.get('signalsSent')):
+            failed=failed or RuntimeError('owned SSH sidecar did not retire naturally')
+        credential=remote_root/'remote-profile-secret.json'
+        if credential.exists():credential.unlink()
+        remote_home=remote_root/'remote core'
+        if (remote_home/'c.sock').exists():
+            remote_env={'PATH':'/usr/bin:/bin','HOME':str(remote_home),'XDG_STATE_HOME':str(remote_home/'state'),'XDG_CONFIG_HOME':str(remote_home/'config'),
+                'XDG_RUNTIME_DIR':str(remote_home/'runtime'),'HC_SESSION':'owned','HC_SOCKET':str(remote_home/'c.sock'),'SSH_CONNECTION':'owned-fixture-no-launchd'}
+            subprocess.run(sandbox+[str(binary),'server','stop'],env=remote_env,capture_output=True,timeout=10)
+            failed=failed or RuntimeError('SSH fixture required emergency private-core stop')
     registration=[]
     for bundle in [fixture_app,helper]:
         try:
@@ -135,6 +183,8 @@ finally:
         except BaseException as error:failed=failed or error
     (out/'launchservices-cleanup.json').write_text(json.dumps(registration))
     result=json.loads(report.read_text()) if report.exists() else {}
+    if remote_report:
+        result['ownedPIDs']=sorted(set(result.get('ownedPIDs',[])+remote_report.get('ownedPIDs',[])))
     sock=out/'core/c.sock'
     if sock.exists():
         core_env={'PATH':'/usr/bin:/bin','HOME':str(out/'core'),'XDG_STATE_HOME':str(out/'core/state'),'XDG_CONFIG_HOME':str(out/'core/config'),
@@ -175,10 +225,12 @@ if a.layout_audit:
     audit_path=out/'layout-audit.json'
     audit=json.loads(audit_path.read_text()) if audit_path.exists() else {}
     good=failed is None and audit.get('passed') is True and bool(result.get('ownedPIDs'))
+    if a.profile_audit:good=good and audit.get('directSSHProfileUI') is True and result.get('passed') is True and remote_report.get('credentialFileRemoved') is True and not (remote_root/'remote core/c.sock').exists()
     if a.fullscreen_audit:good=good and audit.get('fullscreenSpaceAndEdgeReveal') is True and audit.get('fullscreenExitRestored') is True
     if a.fullscreen_native_layout:good=good and audit.get('fullscreenNativeLayout') is True and audit.get('fullscreenSpaceAndEdgeReveal') is False and audit.get('fullscreenExitRestored') is True
     (out/'validation.json').write_text(json.dumps({'passed':good,'checks':audit.get('checks'),'actualHcRoot':True,
         'fullscreenNativeLayout':audit.get('fullscreenNativeLayout',False),'fullscreenSpaceAndEdgeReveal':audit.get('fullscreenSpaceAndEdgeReveal',False),'fullscreenExitRestored':audit.get('fullscreenExitRestored',False),'wholeUIParityQualified':False,
+        'directSSHProfileUI':audit.get('directSSHProfileUI',False),'remoteCredentialFileRemoved':remote_report.get('credentialFileRemoved',False),'remoteSocketRemoved':not (remote_root/'remote core/c.sock').exists() if a.profile_audit else None,
         'physicalDividerDrag':'NOTRUN','physicalRowDragQualified':False,'rowDragComponentIntegration':audit.get('rowDragComponentIntegration',False),'ownedProcessesExited':not alive,'socketRemoved':not sock.exists(),'releaseCutover':False},indent=2))
     assert hashes=={str(p.relative_to(ROOT)):digest(p) for p in tracked},'source changed during audit'
     if failed:raise failed

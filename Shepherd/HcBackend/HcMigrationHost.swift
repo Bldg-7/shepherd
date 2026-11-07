@@ -19,9 +19,9 @@ struct HcMigrationConfiguration {
               env["HOME"] == root + "/home" else { preconditionFailure("Explicit private hc UI fixture root/binary/HOME required") }
         return Self(root: URL(fileURLWithPath: root), binary: URL(fileURLWithPath: binary))
     }
-    func machineStore() -> MachineStore {
+    func machineStore(keychain: any MachineSecretStore) -> MachineStore {
         let defaults = UserDefaults(suiteName: "com.bldg-7.shepherd.hc-ui." + UUID().uuidString)!
-        return MachineStore(defaults: defaults, localMachine: MachineStore.localMachine)
+        return MachineStore(defaults: defaults, localMachine: MachineStore.localMachine, keychain:keychain)
     }
 }
 
@@ -328,7 +328,12 @@ struct HcMigrationHost: View {
             let owner = HcMachineConnection(directory: storage)
             let transports = HcFixtureConnectFactory(configuration: .init(executable: configuration.binary,
                 environment: HcCoreBootstrap.environment(for: scope), directory: scope.root))
-            fixtureTransports = transports; fixtureStore = configuration.machineStore(); self.owner = owner
+            let secrets = HcFixtureSecrets(), store = configuration.machineStore(keychain:secrets)
+            let remoteProfile: HcFixtureRemoteProfile?
+            if ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_PROFILE_AUDIT"] == "1" {
+                remoteProfile = try HcFixtureRemoteProfile.load(root:root,store:store)
+            } else { remoteProfile = nil }
+            fixtureTransports = transports; fixtureStore = store; self.owner = owner
             // Let the real product root's .task call the production machine
             // factory and open its model, rather than constructing a model here.
             let openingDeadline = ContinuousClock.now.advanced(by: .seconds(10))
@@ -340,11 +345,25 @@ struct HcMigrationHost: View {
             let m = owner.model!; workspace = m; checks += 1
             if ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_LAYOUT_AUDIT"] == "1" {
                 guard let store = fixtureStore else { throw HcWorkspaceModel.Failure.unavailable }
-                let result = try await HcWorkspaceLayoutAudit.run(model: m, connection: c, root: root,
+                var result = try await HcWorkspaceLayoutAudit.run(model: m, connection: c, root: root,
                     owner: owner, transports: transports, store: store, fullscreen:
                         ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_FULLSCREEN_AUDIT"] == "1" ||
                         ProcessInfo.processInfo.environment["SHEPHERD_HC_UI_FULLSCREEN_NATIVE_LAYOUT"] == "1")
                 owned = result["ownedPIDs"] as? [UInt32] ?? owned
+                if let remoteProfile {
+                    do {
+                        let profileChecks = try await HcNativeProfileSwitchAudit.run(owner:owner,store:store,secrets:secrets,
+                            profile:remoteProfile,control:c,root:root)
+                        result["checks"] = (result["checks"] as? Int ?? 0) + profileChecks
+                        result["directSSHProfileUI"] = true
+                    } catch {
+                        result["passed"] = false; result["directSSHProfileUI"] = false
+                        result["profileFailureType"] = String(describing:type(of:error))
+                        try? JSONSerialization.data(withJSONObject:result).write(to:root.appending(path:"layout-audit.json"),options:.atomic)
+                        throw error
+                    }
+                    try JSONSerialization.data(withJSONObject:result).write(to:root.appending(path:"layout-audit.json"),options:.atomic)
+                }
                 _ = try await c.call("server.stop")
                 await owner.close(); try await c.close()
                 try JSONSerialization.data(withJSONObject:result).write(to:report,options:.atomic)

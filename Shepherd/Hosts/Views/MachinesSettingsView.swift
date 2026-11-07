@@ -251,6 +251,7 @@ struct MachinesSettingsView: View {
                         .foregroundStyle(.tint)
                 } else {
                     Button("Make Active") { machineStore.activeMachineID = machine.id }
+                        .accessibilityIdentifier("settings.machine.activate.\(machine.id.uuidString)")
                 }
             }
             .frame(minWidth: 100, alignment: .trailing)
