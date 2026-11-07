@@ -50,9 +50,28 @@ public nonisolated enum AgentProxyTeeFrame {
     public struct RouteSnapshot: Codable, Sendable, Equatable {
         public struct Route: Codable, Sendable, Equatable {
             public let routeID: String
-            public let identity: AgentProxyRouteCreate
+            public let identity: AgentProxyRouteCreate?
+            public let hcIdentity: AgentProxyHcRouteState?
+            public var captureIdentity: AgentProxyCaptureRouteIdentity? {
+                switch (identity,hcIdentity) {
+                case (.some(let legacy),nil): .legacy(legacy)
+                case (nil,.some(let hc)): .hc(hc)
+                default: nil
+                }
+            }
             public init(routeID: String, identity: AgentProxyRouteCreate) {
-                self.routeID = routeID; self.identity = identity
+                self.routeID = routeID; self.identity = identity; hcIdentity = nil
+            }
+            public init(routeID: String, hcIdentity: AgentProxyHcRouteState) {
+                self.routeID = routeID; identity = nil; self.hcIdentity = hcIdentity
+            }
+            private enum Keys: String, CodingKey { case routeID, identity, hcIdentity }
+            public init(from decoder: any Swift.Decoder) throws {
+                let c = try decoder.container(keyedBy:Keys.self)
+                routeID = try c.decode(String.self,forKey:.routeID)
+                identity = try c.decodeIfPresent(AgentProxyRouteCreate.self,forKey:.identity)
+                hcIdentity = try c.decodeIfPresent(AgentProxyHcRouteState.self,forKey:.hcIdentity)
+                guard captureIdentity != nil else { throw DecodingError.dataCorruptedError(forKey:.identity,in:c,debugDescription:"Exactly one capture namespace is required") }
             }
         }
         public let generation: UInt64
@@ -92,11 +111,19 @@ public nonisolated enum AgentProxyTeeFrame {
         /// hash, base URL or credential is included. Optional when decoding
         /// older frames; a recorder must not invent identity if it is absent.
         public let routeIdentity: AgentProxyRouteCreate?
+        public let hcRouteIdentity: AgentProxyHcRouteState?
+        public var captureIdentity: AgentProxyCaptureRouteIdentity? {
+            switch (routeIdentity,hcRouteIdentity) {
+            case (.some(let legacy),nil): .legacy(legacy)
+            case (nil,.some(let hc)): .hc(hc)
+            default: nil // missing OR conflicting scopes never choose a fallback
+            }
+        }
 
         public init(routeID: String, upstream: String, method: String, path: String, headers: [[String]],
-                    routeIdentity: AgentProxyRouteCreate? = nil) {
+                    routeIdentity: AgentProxyRouteCreate? = nil, hcRouteIdentity: AgentProxyHcRouteState? = nil) {
             self.routeID = routeID; self.upstream = upstream; self.method = method
-            self.path = path; self.headers = headers; self.routeIdentity = routeIdentity
+            self.path = path; self.headers = headers; self.routeIdentity = routeIdentity; self.hcRouteIdentity = hcRouteIdentity
         }
     }
 

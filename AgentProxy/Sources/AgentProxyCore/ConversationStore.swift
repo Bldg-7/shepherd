@@ -1,4 +1,5 @@
 import Foundation
+import AgentProxyProtocol
 
 /// Native agent session identity, scoped to a local herdr session. Route,
 /// pane and terminal IDs are deliberately not the conversation key: a resumed
@@ -6,27 +7,31 @@ import Foundation
 /// never launch URLs, route tokens, credentials or session-file paths.
 public nonisolated struct ConversationKey: Hashable, Sendable {
     public let agent: String
-    public let herdrSession: String
+    public let origin: ConversationOrigin
     public let nativeSession: String
+    public var herdrSession: String? { origin.backend == .herdr ? origin.value : nil }
+    public var hcCoreID: String? { origin.backend == .hc ? origin.value : nil }
 
     public init?(agent: String, herdrSession: String, nativeSession: String) {
-        guard ["claude", "codex", "pi"].contains(agent),
-              RequestProjection.identifier(herdrSession) != nil,
-              RequestProjection.identifier(nativeSession) != nil else { return nil }
-        self.agent = agent; self.herdrSession = herdrSession; self.nativeSession = nativeSession
+        guard let origin = ConversationOrigin(herdrSession:herdrSession) else { return nil }
+        self.init(agent:agent,origin:origin,nativeSession:nativeSession)
+    }
+    public init?(agent: String, origin: ConversationOrigin, nativeSession: String) {
+        guard ["claude", "codex", "pi"].contains(agent), RequestProjection.identifier(nativeSession) != nil else { return nil }
+        self.agent = agent; self.origin = origin; self.nativeSession = nativeSession
     }
 
     // These are opaque identifiers, not natural-language text. Swift String
     // equality otherwise merges canonically equivalent Unicode spellings.
     public static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.agent.utf8.elementsEqual(rhs.agent.utf8)
-            && lhs.herdrSession.utf8.elementsEqual(rhs.herdrSession.utf8)
+            && lhs.origin == rhs.origin
             && lhs.nativeSession.utf8.elementsEqual(rhs.nativeSession.utf8)
     }
 
     public func hash(into hasher: inout Hasher) {
         hasher.combine(Data(agent.utf8))
-        hasher.combine(Data(herdrSession.utf8))
+        hasher.combine(origin)
         hasher.combine(Data(nativeSession.utf8))
     }
 }
@@ -34,11 +39,16 @@ public nonisolated struct ConversationKey: Hashable, Sendable {
 public nonisolated struct ConversationContext: Equatable, Sendable {
     public let routeID: String
     public let paneID: String
-    public let terminalID: String
+    public let terminalID: String?
+    public let hc: AgentProxyHcRouteState?
 
     public init?(routeID: String, paneID: String, terminalID: String) {
         guard [routeID, paneID, terminalID].allSatisfy({ RequestProjection.identifier($0) != nil }) else { return nil }
-        self.routeID = routeID; self.paneID = paneID; self.terminalID = terminalID
+        self.routeID = routeID; self.paneID = paneID; self.terminalID = terminalID; hc = nil
+    }
+    public init?(routeID: String, hc: AgentProxyHcRouteState) {
+        guard RequestProjection.identifier(routeID) != nil else { return nil }
+        self.routeID = routeID; self.hc = hc; paneID = hc.intent.paneID.uuidString; terminalID = hc.binding?.terminalID
     }
 }
 
@@ -208,6 +218,9 @@ public nonisolated struct ConversationStore: Sendable {
                                 items: [ConversationItem], status: CapturedResponse.Status,
                                 historyTruncated: Bool = false, subagents: ConversationSubagents? = nil) throws -> Update {
         guard items.count <= 16_384 else { throw Failure.tooManyIncomingItems }
+        if let core = key.hcCoreID {
+            guard let hc = context.hc, hc.intent.originCoreID == core, hc.kind.rawValue == key.agent else { throw Failure.invalidItems }
+        } else { guard context.hc == nil else { throw Failure.invalidItems } }
         var seen = Set<String>()
         for item in items {
             if case .subagent(let child, let depth) = item.origin {
@@ -218,8 +231,8 @@ public nonisolated struct ConversationStore: Sendable {
             guard RequestProjection.identifier(item.id) != nil, seen.insert(item.id).inserted,
                   Self.valid(item.message) else { throw Failure.invalidItems }
         }
-        let base = 1_024 + key.agent.utf8.count + key.herdrSession.utf8.count + key.nativeSession.utf8.count
-            + context.routeID.utf8.count + context.paneID.utf8.count + context.terminalID.utf8.count
+        let base = 1_024 + (context.hc == nil ? 0 : 512) + key.agent.utf8.count + key.origin.value.utf8.count + key.nativeSession.utf8.count
+            + context.routeID.utf8.count + context.paneID.utf8.count + (context.terminalID?.utf8.count ?? 0)
         guard base <= limits.conversationBytes else { throw Failure.metadataExceedsLimit }
         var start = max(0, items.count - limits.itemsPerConversation)
         var cost = base + items[start...].reduce(0) { $0 + $1.cost }
@@ -281,11 +294,15 @@ public nonisolated struct ConversationStore: Sendable {
         return Self.persistentRecord(entry)
     }
 
+    private static func persistentKey(_ key: ConversationKey) -> PersistentSnapshot.Key {
+        if let legacy = key.herdrSession { return .init(agent:key.agent,herdrSession:legacy,nativeSession:key.nativeSession) }
+        return .init(agent:key.agent,origin:key.origin,nativeSession:key.nativeSession)
+    }
     private static func persistentRecord(_ entry: Entry) -> PersistentSnapshot.Record {
             PersistentSnapshot.Record(
                 id: entry.id,
-                key: .init(agent: entry.key.agent, herdrSession: entry.key.herdrSession, nativeSession: entry.key.nativeSession),
-                context: .init(routeID: entry.context.routeID, paneID: entry.context.paneID, terminalID: entry.context.terminalID),
+                key: persistentKey(entry.key),
+                context: .init(routeID: entry.context.routeID, paneID: entry.context.paneID, terminalID: entry.context.terminalID, hc:entry.context.hc),
                 updatedOrder: entry.revision,
                 items: entry.items.map(Self.persistentItem),
                 truncated: entry.truncated,
@@ -389,10 +406,8 @@ public nonisolated struct ConversationStore: Sendable {
     private static func persistenceEntry(_ record: PersistentSnapshot.Record) -> PersistenceEntry? {
         guard RequestProjection.identifier(record.id) != nil, record.updatedOrder > 0,
               record.items.count <= 4_096,
-              let key = ConversationKey(agent: record.key.agent, herdrSession: record.key.herdrSession,
-                                        nativeSession: record.key.nativeSession),
-              let context = ConversationContext(routeID: record.context.routeID, paneID: record.context.paneID,
-                                                terminalID: record.context.terminalID),
+              let key = record.key.validated,
+              let context = record.context.validated,
               let status = responseStatus(record.status) else { return nil }
         let subagents = ConversationSubagents(observed: record.subagents.observed,
                                                withFinalResult: record.subagents.withFinalResult,

@@ -33,6 +33,7 @@
 		A9E100000000000000000012 /* com.bldg-7.shepherd.agent-proxy.plist in Embed Agent Proxy LaunchAgent */ = {isa = PBXBuildFile; fileRef = A9E100000000000000000020 /* com.bldg-7.shepherd.agent-proxy.plist */; platformFilters = (macos, ); };
 		A9E100000000000000000013 /* com.bldg-7.shepherd.agent-proxy.debug.plist in Embed Agent Proxy LaunchAgent */ = {isa = PBXBuildFile; fileRef = A9E100000000000000000021 /* com.bldg-7.shepherd.agent-proxy.debug.plist */; platformFilters = (macos, ); };
 		A9E100000000000000000063 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9E100000000000000000064 /* main.swift */; };
+		B90117AA0000000000000001 /* ForwarderLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = B90117AA0000000000000002 /* ForwarderLifecycle.swift */; };
 		A9E100000000000000000066 /* AgentProxyForwarder in Frameworks */ = {isa = PBXBuildFile; productRef = A9E100000000000000000042 /* AgentProxyForwarder */; };
 		A9E100000000000000000067 /* AgentProxyProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = A9E100000000000000000043 /* AgentProxyProtocol */; };
 /* End PBXBuildFile section */
@@ -98,6 +99,7 @@
 		A9E100000000000000000021 /* com.bldg-7.shepherd.agent-proxy.debug.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "com.bldg-7.shepherd.agent-proxy.debug.plist"; sourceTree = "<group>"; };
 		A9E100000000000000000061 /* hrdrhrdrhrdr-agent-proxy */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "hrdrhrdrhrdr-agent-proxy"; sourceTree = BUILT_PRODUCTS_DIR; };
 		A9E100000000000000000064 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		B90117AA0000000000000002 /* ForwarderLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForwarderLifecycle.swift; sourceTree = "<group>"; };
 		D01600000000000000000001 /* Shepherd.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; name = Shepherd.icon; path = "design/app-icon/Shepherd.icon"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
@@ -224,6 +226,7 @@
 			isa = PBXGroup;
 			children = (
 				A9E100000000000000000064 /* main.swift */,
+				B90117AA0000000000000002 /* ForwarderLifecycle.swift */,
 			);
 			name = "Agent Proxy";
 			path = AgentProxy/Sources/AgentProxyTool;
@@ -384,6 +387,7 @@
 			isa = PBXSourcesBuildPhase;
 			files = (
 				A9E100000000000000000063 /* main.swift in Sources */,
+				B90117AA0000000000000001 /* ForwarderLifecycle.swift in Sources */,
 			);
 		};
 		000000000000000120000000 /* Sources */ = {

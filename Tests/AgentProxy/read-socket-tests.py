@@ -907,6 +907,64 @@ try:
     finally: events.close(); blocked.close()
 finally: check(slow.stop() == 0, 'slow subscriber cleanup exits naturally')
 
+# Synthetic trusted supervisor envelopes, not a core launch/receipt proof.
+intent_a = {'schemaVersion':1,'kind':'hc','originCoreID':'session','launchID':'11111111-1111-1111-1111-111111111111','paneID':'22222222-2222-2222-2222-222222222222'}
+intent_b = dict(intent_a, originCoreID='socket-core-B', launchID='33333333-3333-3333-3333-333333333333')
+state_a = {'kind':'claude','intent':intent_a,'cliVersion':'2.1.309'}
+state_b = dict(state_a,intent=intent_b)
+bound_a = dict(state_a,binding={'intent':intent_a,'terminalID':'t1'})
+legacy_identity = {'kind':'claude','session':'session','paneID':'pane','terminalID':'terminal','cliVersion':'2.1.309'}
+def hc_authority(rec, generation, current):
+    rec.frame(7,{'generation':generation,'routes':[{'routeID':'route','identity':legacy_identity},{'routeID':'hc-A','hcIdentity':current},{'routeID':'hc-B','hcIdentity':state_b}]},exchange=0)
+    rec.ack(generation)
+def hc_begin(rec, route, state, exchange):
+    rec.frame(1,{'routeID':route,'hcRouteIdentity':state,'upstream':'anthropic','method':'POST','path':'/v1/messages','headers':[['content-type','application/json'],['x-claude-code-request-class','main'],['x-claude-code-session-id','native'],['x-claude-code-agent-id','root']]},exchange=exchange)
+    rec.frame(2,{'messages':[{'role':'user','content':'owned hc request'}]},exchange=exchange);rec.frame(3,exchange=exchange)
+    until=time.monotonic()+5
+    while not rec.query('conversations.list',hcCoreID=state['intent']['originCoreID'])['result']['conversations']:
+        assert time.monotonic()<until,'hc admission deadline'
+    rec.frame(4,{'status':200,'headers':[['content-type','text/event-stream']]},exchange=exchange)
+    rec.event({'type':'message_start','message':{'id':'m','role':'assistant','content':[]}},exchange=exchange)
+def hc_end(rec, exchange, text):
+    rec.event({'type':'content_block_start','index':0,'content_block':{'type':'text','text':text}},exchange=exchange)
+    rec.event({'type':'content_block_stop','index':0},exchange=exchange);rec.event({'type':'message_stop'},exchange=exchange)
+    rec.frame(6,{'outcome':'complete'},exchange=exchange)
+hc_root=a.work/'hc-scopes'
+hc_rec=Recorder(hc_root,state_directory=hc_root)
+try:
+    hc_rec.query('conversations.list');hc_authority(hc_rec,1,state_a)
+    hc_rec.begin(wait_admission=True);hc_rec.end()
+    hc_begin(hc_rec,'hc-A',state_a,2)
+    hc_authority(hc_rec,2,bound_a)  # early MAIN remains honestly pending
+    hc_end(hc_rec,2,'response after known binding')
+    hc_begin(hc_rec,'hc-B',state_b,3);hc_end(hc_rec,3,'separate core B response')
+    wait_stored(hc_root,lambda rows:len(rows)==3 and all(r['status']=='complete' for r in rows),'all three namespaces committed')
+    all_hc=hc_rec.query('conversations.list')['result']['conversations']
+    check(len(all_hc)==3 and len({v['id'] for v in all_hc})==3,'actual recorder separates legacy/core A/core B with the same native ID')
+    a_header=hc_rec.query('conversations.list',hcCoreID='session')['result']['conversations'][0]
+    check(a_header['origin']=={'backend':'hc','value':'session'} and 'herdrSession' not in a_header and 'terminalID' not in a_header,'early capture stays pending after a forward-only authority bind')
+    check(len(hc_rec.query('conversations.list',herdrSession='session')['result']['conversations'])==1,'legacy namespace query excludes an equal hc core string')
+    check(not hc_rec.query('conversations.list',terminalID='t1')['result']['conversations'],'unscoped legacy terminal query does not select hc')
+    check('response after known binding' in str(stored(hc_root)),'pending in-flight response persists across exact binding advancement')
+    hc_begin(hc_rec,'hc-A',bound_a,4);hc_end(hc_rec,4,'bound request response')
+    hc_authority(hc_rec,3,bound_a)  # ordered tee barrier, no replay
+    current=hc_rec.query('conversations.list',hcCoreID='session')['result']['conversations']
+    check(len(current)==1 and current[0].get('terminalID')=='t1','new bound MAIN updates provenance without creating another native conversation')
+    before=hc_rec.query('conversations.list')['result']['seq']
+    hc_rec.frame(1,{'routeID':'hc-A','hcRouteIdentity':state_b,'upstream':'anthropic','method':'POST','path':'/v1/messages','headers':[]},exchange=5)
+    hc_rec.frame(2,{'messages':[{'role':'user','content':'must not enter another origin'}]},exchange=5);hc_rec.frame(3,exchange=5)
+    hc_authority(hc_rec,4,bound_a)
+    check(hc_rec.query('conversations.list')['result']['seq']==before,'wrong-origin Open cannot mutate a record through a known route ID')
+finally: check(hc_rec.stop()==0,'hc recorder process/socket retire naturally')
+for label, invalid in [('downgrade',{'hcIdentity':state_a}),('rebind',{'hcIdentity':dict(state_a,binding={'intent':intent_a,'terminalID':'t2'})}),('scope-change',{'hcIdentity':state_b}),('legacy-adoption',{'identity':legacy_identity}),('mixed',{'identity':legacy_identity,'hcIdentity':bound_a})]:
+    negative=Recorder(a.work/('hc-authority-'+label))
+    try:
+        negative.query('conversations.list')
+        negative.frame(7,{'generation':1,'routes':[{'routeID':'hc-A','hcIdentity':bound_a}]},exchange=0);negative.ack(1)
+        negative.frame(7,{'generation':2,'routes':[dict(invalid,routeID='hc-A')]},exchange=0)
+        check(negative.wait()==3,'hc authority '+label+' fails closed without ACK/adoption')
+    finally: negative.stop()
+
 for mode in ['file', 'symlink', 'active', 'public-directory', 'stale', 'replaced', 'bad-tee']:
     folder = a.work/mode; folder.mkdir(mode=0o700); path = folder/'ac.sock'; other = None
     if mode == 'file': path.write_text('leave me')

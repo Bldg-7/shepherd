@@ -208,9 +208,8 @@ public nonisolated struct ConversationReconciler: Sendable {
     /// absent owner, moved route, child context or unknown ID fails closed.
     /// A retry supersedes the previous compaction ticket without growing state.
     public mutating func beginCompaction(classification: ClassifiedRequest) -> CompactionTicket? {
-        guard classification.kind == .compaction, let route = classification.route,
-              let native = classification.nativeSessionID,
-              let key = ConversationKey(agent: route.kind.rawValue, herdrSession: route.session, nativeSession: native),
+        guard classification.kind == .compaction,
+              let key = classification.scopedConversationKey,
               let old = store.read(key: key), var state = states[old.summary.id], state.requestID == nil,
               state.owner?.ownsCompaction(classification) == true else { return nil }
         let id = UUID().uuidString

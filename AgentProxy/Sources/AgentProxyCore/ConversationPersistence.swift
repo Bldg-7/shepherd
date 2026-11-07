@@ -1,4 +1,5 @@
 import Foundation
+import AgentProxyProtocol
 
 /// Versioned, filesystem-independent values for already-admitted conversation
 /// entries. These values deliberately contain no route authorization decision,
@@ -11,7 +12,7 @@ public extension ConversationStore {
     }
 
     struct PersistentSnapshot: Codable, Equatable, Sendable {
-        public static let schemaVersion = 1
+        public static let schemaVersion = 2
         /// This is a schema envelope cap, not an on-disk retention policy.
         /// Filesystem persistence separately accounts for encoded generations.
         public static let maximumEncodedBytes = 256 << 20
@@ -33,13 +34,16 @@ public extension ConversationStore {
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
-            guard schemaVersion == Self.schemaVersion else { throw PersistenceFailure.unsupportedVersion }
+            guard [1,Self.schemaVersion].contains(schemaVersion) else { throw PersistenceFailure.unsupportedVersion }
             var values = try container.nestedUnkeyedContainer(forKey: .records)
             var decoded: [Record] = []
             decoded.reserveCapacity(256)
             while !values.isAtEnd {
                 guard decoded.count < 256 else { throw PersistenceFailure.oversized }
                 decoded.append(try values.decode(Record.self))
+            }
+            if schemaVersion == 1 {
+                guard decoded.allSatisfy({ $0.key.origin == nil && $0.context.hc == nil }) else { throw PersistenceFailure.malformed }
             }
             records = decoded
         }
@@ -86,19 +90,42 @@ public extension ConversationStore {
 
         public struct Key: Codable, Equatable, Sendable {
             public let agent: String
-            public let herdrSession: String
+            public let herdrSession: String?
+            public let origin: ConversationOrigin?
             public let nativeSession: String
-            public init(agent: String, herdrSession: String, nativeSession: String) {
-                self.agent = agent; self.herdrSession = herdrSession; self.nativeSession = nativeSession
+            public init(agent: String, herdrSession: String?, nativeSession: String) {
+                self.agent = agent; self.herdrSession = herdrSession; origin = nil; self.nativeSession = nativeSession
+            }
+            public init(agent: String, origin: ConversationOrigin, nativeSession: String) {
+                self.agent = agent; herdrSession = nil; self.origin = origin; self.nativeSession = nativeSession
+            }
+            /// Validated value only; not current route or native authority.
+            public var validated: ConversationKey? {
+                if let origin {
+                    guard herdrSession == nil else { return nil }
+                    return ConversationKey(agent:agent,origin:origin,nativeSession:nativeSession)
+                }
+                guard let herdrSession else { return nil }
+                return ConversationKey(agent:agent,herdrSession:herdrSession,nativeSession:nativeSession)
             }
         }
 
         public struct Context: Codable, Equatable, Sendable {
             public let routeID: String
             public let paneID: String
-            public let terminalID: String
-            public init(routeID: String, paneID: String, terminalID: String) {
-                self.routeID = routeID; self.paneID = paneID; self.terminalID = terminalID
+            public let terminalID: String?
+            public let hc: AgentProxyHcRouteState?
+            public init(routeID: String, paneID: String, terminalID: String?, hc: AgentProxyHcRouteState? = nil) {
+                self.routeID = routeID; self.paneID = paneID; self.terminalID = terminalID; self.hc = hc
+            }
+            /// Validated value only; caller must recheck current authority.
+            public var validated: ConversationContext? {
+                if let hc {
+                    guard paneID == hc.intent.paneID.uuidString, terminalID == hc.binding?.terminalID else { return nil }
+                    return ConversationContext(routeID:routeID,hc:hc)
+                }
+                guard let terminalID else { return nil }
+                return ConversationContext(routeID:routeID,paneID:paneID,terminalID:terminalID)
             }
         }
 
@@ -199,7 +226,10 @@ public extension ConversationStore {
         }
 
         func validateEnvelope() throws {
-            guard schemaVersion == Self.schemaVersion else { throw PersistenceFailure.unsupportedVersion }
+            guard [1,Self.schemaVersion].contains(schemaVersion) else { throw PersistenceFailure.unsupportedVersion }
+            if schemaVersion == 1 {
+                guard records.allSatisfy({ $0.key.origin == nil && $0.context.hc == nil }) else { throw PersistenceFailure.malformed }
+            }
             guard records.count <= 256,
                   records.allSatisfy({ $0.items.count <= 4_096 && $0.items.allSatisfy { $0.message.blocks.count <= 64 } }) else {
                 throw PersistenceFailure.oversized

@@ -1,5 +1,6 @@
 import Foundation
 import AgentProxyCore
+import AgentProxyProtocol
 
 public typealias ConversationPage = ConversationReadAPI.Result
 public typealias ConversationHeader = ConversationReadAPI.Summary
@@ -34,10 +35,54 @@ public nonisolated struct ConversationSelection: Sendable, Equatable {
         return params
     }
     public func matches(_ header: ConversationHeader) -> Bool {
-        guard wireEqual(herdrSession, header.herdrSession), agent.map({ wireEqual($0, header.agent) }) ?? true else { return false }
+        guard header.origin == nil, header.hc == nil, wireEqual(herdrSession, header.herdrSession), agent.map({ wireEqual($0, header.agent) }) ?? true else { return false }
         if let nativeSession, agent != nil { return wireEqual(nativeSession, header.nativeSession) }
         return wireEqual(terminalID, header.terminalID)
     }
+}
+
+/// Read-only hc selection after the coordinator has an exact known binding.
+/// Native ID, when explicit, never falls back to another terminal's archive.
+/// This value is capture correlation only, never native input/resume authority.
+public nonisolated struct HcConversationSelection: Sendable, Equatable {
+    public let binding: AgentProxyHcCaptureBinding
+    public let agent: String
+    public let nativeSession: String?
+    public init?(binding: AgentProxyHcCaptureBinding, agent: String, nativeSession: String? = nil) {
+        guard AgentProxyRouteKind(rawValue:agent) != nil, nativeSession.map(ConversationWire.validID) ?? true else { return nil }
+        self.binding = binding; self.agent = agent; self.nativeSession = nativeSession
+    }
+    public static func == (left: Self, right: Self) -> Bool {
+        left.binding == right.binding && left.agent == right.agent && left.nativeSession.map { Data($0.utf8) } == right.nativeSession.map { Data($0.utf8) }
+    }
+    var params: [String:String] {
+        var p = ["hcCoreID":binding.intent.originCoreID,"agent":agent]
+        if let nativeSession { p["nativeSession"] = nativeSession }
+        else { p["hcLaunchID"] = binding.intent.launchID.uuidString }
+        return p
+    }
+    public func matches(_ header: ConversationHeader) -> Bool {
+        guard header.herdrSession == nil, header.origin?.backend == .hc,
+              header.origin?.value == binding.intent.originCoreID, header.agent == agent, let hc = header.hc,
+              hc.intent.originCoreID == binding.intent.originCoreID, hc.kind.rawValue == agent,
+              header.paneID == hc.intent.paneID.uuidString, header.terminalID == hc.binding?.terminalID else { return false }
+        if let nativeSession { return wireEqual(nativeSession,header.nativeSession) }
+        return hc.intent == binding.intent && (hc.binding == nil || hc.binding == binding)
+    }
+}
+
+/// Exact record selected from an explicit archive list. Epoch/opaque record ID
+/// remain distinct from native session identity or any terminal routing grant.
+public nonisolated struct ConversationArchiveSelection: Sendable, Equatable {
+    public let id: String
+    public let epoch: String
+    public let key: ConversationKey
+    public init?(header: ConversationHeader, epoch: String) {
+        guard ConversationWire.validID(header.id), ConversationWire.validID(epoch), let key = ConversationWire.key(header) else { return nil }
+        id = header.id; self.epoch = epoch; self.key = key
+    }
+    public static func == (left: Self, right: Self) -> Bool { wireEqual(left.id,right.id) && wireEqual(left.epoch,right.epoch) && left.key == right.key }
+    public func matches(_ header: ConversationHeader) -> Bool { wireEqual(id,header.id) && ConversationWire.key(header) == key }
 }
 
 public actor ConversationClient {
@@ -57,6 +102,12 @@ public actor ConversationClient {
         guard let headers = result.conversations, headers.allSatisfy(selection.matches) else { throw ConversationClientError.scopeMismatch }
         guard let latest = headers.max(by: { $0.revision < $1.revision }) else { return nil }
         return (latest, result.epoch)
+    }
+    public func select(_ selection: HcConversationSelection) async throws -> (header: ConversationHeader, epoch: String)? {
+        let result = try await query("conversations.list",selection.params)
+        guard let headers = result.conversations, headers.allSatisfy(selection.matches) else { throw ConversationClientError.scopeMismatch }
+        guard let latest = headers.max(by:{ $0.revision < $1.revision }) else { return nil }
+        return (latest,result.epoch)
     }
     public func read(id: String, epoch: String, before: String? = nil) async throws -> ConversationPage {
         var params = ["conversationID": id, "epoch": epoch]
@@ -131,6 +182,7 @@ public nonisolated struct ConversationUpdates: AsyncSequence, Sendable {
 }
 
 nonisolated func wireEqual(_ a: String, _ b: String) -> Bool { a.utf8.elementsEqual(b.utf8) }
+nonisolated func wireEqual(_ a: String, _ b: String?) -> Bool { guard let b else { return false }; return wireEqual(a,b) }
 
 nonisolated enum ConversationWire {
     static func reply(_ data: Data, id: String) throws -> ConversationPage {
@@ -141,6 +193,16 @@ nonisolated enum ConversationWire {
     static func validID(_ value: String) -> Bool {
         !value.isEmpty && value.utf8.count <= 256 && !value.unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) }
     }
+    static func key(_ header: ConversationHeader) -> ConversationKey? {
+        if let hc = header.hc {
+            guard let origin = header.origin, origin.backend == .hc, header.herdrSession == nil,
+                  origin.value == hc.intent.originCoreID, header.agent == hc.kind.rawValue,
+                  header.paneID == hc.intent.paneID.uuidString, header.terminalID == hc.binding?.terminalID else { return nil }
+            return ConversationKey(agent:header.agent,origin:origin,nativeSession:header.nativeSession)
+        }
+        guard header.origin == nil, let legacy = header.herdrSession, let terminal = header.terminalID,validID(terminal) else { return nil }
+        return ConversationKey(agent:header.agent,herdrSession:legacy,nativeSession:header.nativeSession)
+    }
     static func validate(_ result: ConversationPage) throws {
         guard result.protocolVersion == ConversationReadAPI.protocolVersion else { throw ConversationClientError.unsupportedVersion }
         guard validID(result.epoch), result.reason.map({ $0.utf8.count <= 64 }) ?? true,
@@ -148,11 +210,12 @@ nonisolated enum ConversationWire {
         let headers = (result.conversations ?? []) + (result.summary.map { [$0] } ?? [])
         guard headers.count <= 256 else { throw ConversationClientError.invalidReply }
         for header in headers {
-            guard [header.id, header.agent, header.herdrSession, header.nativeSession, header.paneID, header.terminalID].allSatisfy(validID),
+            guard [header.id,header.agent,header.nativeSession,header.paneID].allSatisfy(validID),
                   ["claude", "codex", "pi"].contains(header.agent), (0...4096).contains(header.itemCount),
                   header.revision <= result.seq, header.historyRevision <= header.revision,
                   (0...128).contains(header.subagents.observed), (0...header.subagents.observed).contains(header.subagents.withFinalResult),
                   ["streaming", "complete", "incomplete"].contains(header.status) else { throw ConversationClientError.invalidReply }
+            guard key(header) != nil else { throw ConversationClientError.invalidReply }
         }
         let items = result.items ?? []
         guard items.count <= 64, Set(items.map { Data($0.id.utf8) }).count == items.count else { throw ConversationClientError.invalidReply }

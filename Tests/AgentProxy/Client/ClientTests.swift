@@ -1,5 +1,6 @@
 import Foundation
 import AgentProxyCore
+import AgentProxyProtocol
 
 // Only the already-authenticated transport seam. The real SSH implementation
 // is compiled separately with ShepherdKit; these tests perform no SSH/auth.
@@ -21,6 +22,14 @@ actor FakeConversationTransport: HerdrTransport {
     var empty = false
     func configure(wrongID: Bool = false, empty: Bool = false) { self.wrongID = wrongID; self.empty = empty }
     func populate(_ items: [ConversationItem]) throws { _ = try store.upsert(key: key, context: context, items: items, status: .streaming) }
+    func populateHc(_ core: String) throws -> AgentProxyHcCaptureBinding {
+        let intent = try AgentProxyHcCaptureIntent(originCoreID:core,launchID:UUID(),paneID:UUID())
+        let state = try AgentProxyHcRouteState(kind:.claude,intent:intent,cliVersion:"2.1.309")
+        let binding = try AgentProxyHcCaptureBinding(intent:intent,receiptOriginCoreID:core,terminalID:"t1")
+        _ = try store.upsert(key:ConversationKey(agent:"claude",origin:ConversationOrigin(hcCoreID:core)!,nativeSession:"native")!,
+            context:ConversationContext(routeID:UUID().uuidString,hc:state)!,items:[fixtureItem("hc-"+core,"private fixture")],status:.complete)
+        return binding
+    }
     func push(_ items: [ConversationItem]) throws {
         try populate(items)
         if let cursor, let update = ConversationReadAPI.update(after: cursor, store: store) {
@@ -70,6 +79,25 @@ actor FakeConversationTransport: HerdrTransport {
         let native = try await client.select(.init(terminalID: "old-terminal", herdrSession: "default", agent: "claude", nativeSession: "native"))
         check(native != nil, "exact native ID survives a resumed terminal move")
         check(try await client.select(.init(terminalID: "terminal", herdrSession: "other", agent: "claude", nativeSession: nil)) == nil, "herdr namespaces cannot cross")
+        let scopedTransport = FakeConversationTransport()
+        try await scopedTransport.populate([fixtureItem("legacy","legacy fixture")])
+        let bindA = try await scopedTransport.populateHc("default"), bindB = try await scopedTransport.populateHc("other-core")
+        let scopedClient = ConversationClient(transport:scopedTransport)
+        let all = try await scopedClient.list()
+        check(all.conversations.count == 3,"wire client accepts explicit hc pending metadata alongside unchanged legacy summaries")
+        let hcA = HcConversationSelection(binding:bindA,agent:"claude")!, hcB = HcConversationSelection(binding:bindB,agent:"claude")!
+        let selectedA = try await scopedClient.select(hcA)!, selectedB = try await scopedClient.select(hcB)!
+        check(selectedA.header.id != selectedB.header.id && selectedA.header.terminalID == nil,"hc selector correlates an early pending request only with its exact known launch binding")
+        check(!hcA.matches(selectedB.header) && !scope.matches(selectedA.header),"legacy and other-origin selectors cannot adopt hc summaries")
+        check(try await scopedClient.select(HcConversationSelection(binding:bindA,agent:"claude",nativeSession:"missing")!) == nil,"known hc native ID has no terminal/launch fallback")
+        check(try await scopedClient.select(HcConversationSelection(binding:bindA,agent:"claude",nativeSession:"native")!) != nil,"explicit native selection retains its hc core namespace")
+        let archive = ConversationArchiveSelection(header:selectedA.header,epoch:selectedA.epoch)!
+        check(archive.matches(selectedA.header) && !archive.matches(selectedB.header),"explicit archive follows record ID plus namespace, not terminal lookup")
+        check(HcConversationSelection(binding:bindA,agent:"claude",nativeSession:"é") != HcConversationSelection(binding:bindA,agent:"claude",nativeSession:"e\u{301}"),"hc native selection equality is byte exact")
+        var malformed = try JSONSerialization.jsonObject(with:JSONEncoder().encode(selectedA.header)) as! [String:Any]
+        malformed["herdrSession"] = "default"
+        let mixedHeader = try JSONDecoder().decode(ConversationHeader.self,from:JSONSerialization.data(withJSONObject:malformed))
+        check(ConversationArchiveSelection(header:mixedHeader,epoch:selectedA.epoch) == nil && !scope.matches(mixedHeader),"mixed archive namespace is rejected without fallback")
         let updates = try await client.subscribe(id: selected.header.id, epoch: selected.epoch)
         defer { updates.close() }
         var iterator = updates.makeAsyncIterator()

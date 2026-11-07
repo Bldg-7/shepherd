@@ -169,7 +169,7 @@ private final class ReadState: @unchecked Sendable {
     var clients: [ObjectIdentifier: ReadClient] = [:]
     private var ticker: RepeatedTask?
     private var authorityGeneration: UInt64 = 0
-    private var authority: [Data: AgentProxyRouteCreate] = [:]
+    private var authority: [Data: AgentProxyCaptureRouteIdentity] = [:]
     // Two tokens cover the retained table and one replacement. They remain
     // reserved even while no replacement is active, so ordinary work cannot
     // consume authority headroom. This is accounting, not an RSS guarantee.
@@ -215,13 +215,22 @@ private final class ReadState: @unchecked Sendable {
     }
 
     private func authorized(_ owner: ConversationOwner) -> Bool {
-        guard let route = authority[Data(owner.context.routeID.utf8)] else { return false }
-        return Data(route.kind.rawValue.utf8) == Data(owner.key.agent.utf8)
-            && Data(route.session.utf8) == Data(owner.key.herdrSession.utf8)
-            && Data(route.paneID.utf8) == Data(owner.context.paneID.utf8)
-            && Data(route.terminalID.utf8) == Data(owner.context.terminalID.utf8)
+        guard let route = authority[Data(owner.context.routeID.utf8)], route.kind.rawValue == owner.key.agent else { return false }
+        switch route {
+        case .legacy(let legacy):
+            guard let session = owner.key.herdrSession, owner.context.hc == nil, let terminal = owner.context.terminalID else { return false }
+            return Data(legacy.session.utf8) == Data(session.utf8) && Data(legacy.paneID.utf8) == Data(owner.context.paneID.utf8)
+                && Data(legacy.terminalID.utf8) == Data(terminal.utf8)
+        case .hc(let current):
+            guard owner.key.hcCoreID == current.intent.originCoreID, let captured = owner.context.hc else { return false }
+            return continues(.hc(captured),as:.hc(current))
+        }
     }
 
+    private func diskKey(_ key: ConversationKey) -> ConversationStore.PersistentSnapshot.Key {
+        if let legacy = key.herdrSession { return .init(agent:key.agent,herdrSession:legacy,nativeSession:key.nativeSession) }
+        return .init(agent:key.agent,origin:key.origin,nativeSession:key.nativeSession)
+    }
     private func beginRestore(_ owner: ConversationOwner, current: @escaping () -> Bool, live: @escaping () -> Bool,
                               resume: @escaping () -> Void, cancel: @escaping () -> Void) -> Bool {
         guard let persistence, authorized(owner), authorityGeneration != 0 else { return false }
@@ -229,7 +238,7 @@ private final class ReadState: @unchecked Sendable {
         if persistentIDs[key] != nil || capture.reconciler.store.read(key: key) != nil { return false }
         blockedPersistence.insert(key)
         let captureEpoch = capture.reconciler.store.epoch
-        let diskKey = ConversationStore.PersistentSnapshot.Key(agent: key.agent, herdrSession: key.herdrSession, nativeSession: key.nativeSession)
+        let diskKey = self.diskKey(key)
         let admitted = persistence.loadFirst(diskKey) { [weak self] result in
             guard let self else { return }
             let awaiting = current()
@@ -250,7 +259,7 @@ private final class ReadState: @unchecked Sendable {
                     }
                     let r = loaded
                     let adjusted = ConversationStore.PersistentSnapshot.Record(id: r.id, key: r.key,
-                        context: .init(routeID: owner.context.routeID, paneID: owner.context.paneID, terminalID: owner.context.terminalID),
+                        context: .init(routeID: owner.context.routeID, paneID: owner.context.paneID, terminalID: owner.context.terminalID, hc:owner.context.hc),
                         updatedOrder: r.updatedOrder, items: r.items, truncated: r.truncated, status: r.status, subagents: r.subagents)
                     guard self.capture.restoreOne(adjusted) != nil else {
                         // Preserve the historical body and the newly admitted
@@ -335,7 +344,7 @@ private final class ReadState: @unchecked Sendable {
         retryCursor = summary.id
         guard let owner = capture.reconciler.currentOwner(conversationID: summary.id), authorized(owner) else { return }
         let key = summary.key, liveID = summary.id, captureEpoch = capture.reconciler.store.epoch
-        let diskKey = ConversationStore.PersistentSnapshot.Key(agent: key.agent, herdrSession: key.herdrSession, nativeSession: key.nativeSession)
+        let diskKey = self.diskKey(key)
         retryRunning = true
         let admitted = persistence.loadFirst(diskKey) { [weak self] result in
             guard let self else { return }
@@ -369,11 +378,8 @@ private final class ReadState: @unchecked Sendable {
         historicalConflicts = historicalConflicts.filter { liveKeys.contains($0) }
         for summary in summaries where persistentIDs[summary.key] == nil { blockedPersistence.insert(summary.key) }
         for summary in summaries where scheduledRevisions[summary.id]?.revision != summary.revision {
-            guard !blockedPersistence.contains(summary.key), let persistentID = persistentIDs[summary.key], let route = authority[Data(summary.context.routeID.utf8)],
-                  Data(route.session.utf8) == Data(summary.key.herdrSession.utf8),
-                  route.kind.rawValue == summary.key.agent,
-                  Data(route.paneID.utf8) == Data(summary.context.paneID.utf8),
-                  Data(route.terminalID.utf8) == Data(summary.context.terminalID.utf8),
+            guard !blockedPersistence.contains(summary.key), let persistentID = persistentIDs[summary.key],
+                  let owner = capture.reconciler.currentOwner(conversationID:summary.id), owner.key == summary.key, authorized(owner),
                   let record = capture.reconciler.store.persistenceRecord(id: summary.id) else { continue }
             let mapped = ConversationStore.PersistentSnapshot.Record(id: persistentID, key: record.key, context: record.context,
                 updatedOrder: record.updatedOrder, items: record.items, truncated: record.truncated, status: record.status, subagents: record.subagents)
@@ -387,10 +393,23 @@ private final class ReadState: @unchecked Sendable {
         }
     }
 
-    private func same(_ a: AgentProxyRouteCreate, _ b: AgentProxyRouteCreate) -> Bool {
-        a.kind == b.kind && zip([a.session, a.paneID, a.terminalID, a.cliVersion],
-                                [b.session, b.paneID, b.terminalID, b.cliVersion])
-            .allSatisfy { Data($0.0.utf8) == Data($0.1.utf8) }
+    private func same(_ a: AgentProxyCaptureRouteIdentity, _ b: AgentProxyCaptureRouteIdentity) -> Bool {
+        switch (a,b) {
+        case (.legacy(let left),.legacy(let right)):
+            return left.kind == right.kind && zip([left.session,left.paneID,left.terminalID,left.cliVersion],[right.session,right.paneID,right.terminalID,right.cliVersion])
+                .allSatisfy { Data($0.0.utf8) == Data($0.1.utf8) }
+        case (.hc(let left),.hc(let right)):
+            return left.kind == right.kind && left.intent == right.intent && left.binding == right.binding && Data(left.cliVersion.utf8) == Data(right.cliVersion.utf8)
+        default: return false
+        }
+    }
+    private func continues(_ old: AgentProxyCaptureRouteIdentity, as current: AgentProxyCaptureRouteIdentity) -> Bool {
+        if same(old,current) { return true }
+        guard case .hc(let before) = old, case .hc(let after) = current else { return false }
+        // The sole permitted metadata advancement is the exact pending launch
+        // acquiring its known receipt. Never rebase a bound target or scope.
+        return before.kind == after.kind && before.intent == after.intent && before.binding == nil && after.binding != nil
+            && Data(before.cliVersion.utf8) == Data(after.cliVersion.utf8)
     }
 
     /// Authority arrives only on the inherited supervisor stream. The input
@@ -408,11 +427,14 @@ private final class ReadState: @unchecked Sendable {
     }
 
     static func validAuthorityRoute(_ route: AgentProxyTeeFrame.RouteSnapshot.Route) -> Bool {
-        let fields = [route.routeID, route.identity.session, route.identity.paneID,
-                      route.identity.terminalID, route.identity.cliVersion]
+        guard let identity = route.captureIdentity else { return false }
+        let fields: [String]
+        switch identity {
+        case .legacy(let legacy): fields = [route.routeID,legacy.session,legacy.paneID,legacy.terminalID,legacy.cliVersion]
+        case .hc(let hc): fields = [route.routeID,hc.cliVersion]
+        }
         return !route.routeID.isEmpty && fields.allSatisfy {
-            $0.utf8.count <= AgentProxyControl.maximumFieldBytes &&
-            !$0.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })
+            $0.utf8.count <= AgentProxyControl.maximumFieldBytes && !$0.unicodeScalars.contains(where:{ CharacterSet.controlCharacters.contains($0) })
         }
     }
 
@@ -421,16 +443,22 @@ private final class ReadState: @unchecked Sendable {
     /// validation and construction succeed.
     func acceptAuthority(_ snapshot: AgentProxyTeeFrame.RouteSnapshot, reservation: UUID) -> UInt64? {
         guard snapshot.generation > authorityGeneration, snapshot.routes.count <= 1024 else { return nil }
-        var next: [Data: AgentProxyRouteCreate] = [:]
+        var next: [Data: AgentProxyCaptureRouteIdentity] = [:]
         for route in snapshot.routes {
             guard Self.validAuthorityRoute(route) else { return nil }
             let key = Data(route.routeID.utf8)
-            guard next[key] == nil else { return nil }
-            next[key] = route.identity
+            guard next[key] == nil, let identity = route.captureIdentity else { return nil }
+            if let old = authority[key] {
+                switch (old,identity) {
+                case (.legacy,.legacy): break
+                default: guard continues(old,as:identity) else { return nil }
+                }
+            }
+            next[key] = identity
         }
         let revoked = authority.contains { key, old in
             guard let current = next[key] else { return true }
-            return !same(old, current)
+            return !continues(old,as:current)
         }
         if revoked {
             // Coarse but fail-closed: no in-flight ticket or read subscriber
@@ -482,7 +510,7 @@ private final class ReadState: @unchecked Sendable {
     func acceptOpen(_ frame: AgentProxyTeeFrame.Frame) -> Bool {
         guard authorityGeneration != 0,
               let open = try? JSONDecoder().decode(AgentProxyTeeFrame.Open.self, from: Data(frame.payload)),
-              let identity = open.routeIdentity,
+              let identity = open.captureIdentity,
               let current = authority[Data(open.routeID.utf8)] else { return false }
         return same(identity, current)
     }

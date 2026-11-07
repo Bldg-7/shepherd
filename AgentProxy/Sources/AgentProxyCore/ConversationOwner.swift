@@ -65,8 +65,7 @@ public nonisolated struct ConversationOwner: Sendable {
     }
 
     func matches(_ other: ConversationOwner) -> Bool {
-        key == other.key && Self.same(context.routeID, other.context.routeID)
-            && Self.same(context.paneID, other.context.paneID) && Self.same(context.terminalID, other.context.terminalID)
+        key == other.key && sameContext(other.context)
             && agentID.map({ Data($0.utf8) }) == other.agentID.map({ Data($0.utf8) })
             && knownOmittedRootIDs == other.knownOmittedRootIDs
     }
@@ -89,9 +88,20 @@ public nonisolated struct ConversationOwner: Sendable {
 
     private func sameLocation(_ request: ClassifiedRequest) -> Bool {
         guard let route = request.route, let candidate = request.context else { return false }
-        return Self.same(route.kind.rawValue, key.agent) && Self.same(route.session, key.herdrSession)
-            && Self.same(candidate.routeID, context.routeID) && Self.same(candidate.paneID, context.paneID)
-            && Self.same(candidate.terminalID, context.terminalID)
+        guard Self.same(route.kind.rawValue,key.agent), sameContext(candidate) else { return false }
+        switch route {
+        case .legacy(let legacy): return context.hc == nil && Self.same(legacy.session,key.herdrSession)
+        case .hc(let hc): return Self.same(hc.intent.originCoreID,key.hcCoreID) && context.hc != nil
+        }
+    }
+    private func sameContext(_ candidate: ConversationContext) -> Bool {
+        guard Self.same(candidate.routeID,context.routeID), Self.same(candidate.paneID,context.paneID) else { return false }
+        if let hc = context.hc {
+            guard candidate.hc == hc else { return false }
+            if context.terminalID == nil { return candidate.terminalID == nil }
+            return Self.same(candidate.terminalID,context.terminalID)
+        }
+        return candidate.hc == nil && Self.same(candidate.terminalID,context.terminalID)
     }
 
     private static func same(_ left: String?, _ right: String?) -> Bool {

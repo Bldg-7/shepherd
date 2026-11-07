@@ -9,9 +9,13 @@ public nonisolated struct AgentProxyHcCaptureIntent: Codable, Equatable, Hashabl
     public let paneID: UUID
     public enum Failure: Error, Equatable, Sendable { case invalidOrigin, unsupportedScope, legacyIdentity, invalidTerminal, originMismatch }
     public init(originCoreID: String, launchID: UUID, paneID: UUID) throws {
-        guard !originCoreID.isEmpty, originCoreID.utf8.count <= 256,
-              originCoreID.utf8.allSatisfy({ (65...90).contains($0) || (97...122).contains($0) || (48...57).contains($0) || [45,46,95].contains($0) }) else { throw Failure.invalidOrigin }
+        guard Self.isValidOriginCoreID(originCoreID) else { throw Failure.invalidOrigin }
         self.originCoreID = originCoreID; self.launchID = launchID; self.paneID = paneID
+    }
+    public static func isValidOriginCoreID(_ value: String) -> Bool {
+        !value.isEmpty && value.utf8.count <= 256 && value.utf8.allSatisfy {
+            (65...90).contains($0) || (97...122).contains($0) || (48...57).contains($0) || [45,46,95].contains($0)
+        }
     }
     private enum Keys: String, CodingKey { case schemaVersion, kind, originCoreID, launchID, paneID, session, herdrSession, terminalID }
     public init(from decoder: any Decoder) throws {

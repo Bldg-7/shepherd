@@ -12,10 +12,12 @@ public nonisolated enum ConversationReadAPI {
     public struct Summary: Codable, Equatable, Sendable {
         public let id: String
         public let agent: String
-        public let herdrSession: String
+        public let herdrSession: String?
+        public let origin: ConversationOrigin?
+        public let hc: AgentProxyHcRouteState?
         public let nativeSession: String
         public let paneID: String
-        public let terminalID: String
+        public let terminalID: String?
         public let revision: UInt64
         public let historyRevision: UInt64
         public let itemCount: Int
@@ -24,6 +26,7 @@ public nonisolated enum ConversationReadAPI {
         public let subagents: ConversationSubagents
         init(_ source: ConversationSummary) {
             id = source.id; agent = source.key.agent; herdrSession = source.key.herdrSession
+            origin = source.key.hcCoreID == nil ? nil : source.key.origin; hc = source.context.hc
             nativeSession = source.key.nativeSession; paneID = source.context.paneID; terminalID = source.context.terminalID
             subagents = source.subagents
             revision = source.revision; historyRevision = source.historyRevision; itemCount = source.itemCount; truncated = source.truncated; status = Self.status(source.status)
@@ -109,6 +112,8 @@ public nonisolated enum ConversationReadAPI {
         let limit: Int?
         let terminalID: String?
         let herdrSession: String?
+        let hcCoreID: String?
+        let hcLaunchID: UUID?
         let nativeSession: String?
         let agent: String?
     }
@@ -127,13 +132,25 @@ public nonisolated enum ConversationReadAPI {
             for field in [p?.epoch, p?.conversationID, p?.beforeItemID, p?.terminalID, p?.herdrSession, p?.nativeSession, p?.agent] {
                 if let field, RequestProjection.identifier(field) == nil { throw AgentProxyControlError(code: .invalidParams, message: "Invalid identifier.") }
             }
+            if let core = p?.hcCoreID {
+                guard AgentProxyHcCaptureIntent.isValidOriginCoreID(core), p?.herdrSession == nil else {
+                    throw AgentProxyControlError(code:.invalidParams,message:"Exactly one capture namespace is required.")
+                }
+            }
+            if p?.hcLaunchID != nil && p?.hcCoreID == nil { throw AgentProxyControlError(code:.invalidParams,message:"An hc launch requires its core namespace.") }
             if let epoch = p?.epoch, !same(epoch, store.epoch) { return encode(id, reset(store, "epoch_changed")) }
             var result = Result(store: store)
             switch request.method {
             case "conversations.list":
                 result.conversations = store.list().filter { summary in
-                    (p?.terminalID.map { same($0, summary.context.terminalID) } ?? true)
+                    // A legacy terminal-only caller must never accidentally
+                    // select an hc t1 on an unrelated origin. Unfiltered archive
+                    // browsing remains explicit and read-only.
+                    (!((p?.terminalID != nil || p?.nativeSession != nil) && p?.hcCoreID == nil) || summary.key.herdrSession != nil)
+                    && (p?.terminalID.map { same($0, summary.context.terminalID) } ?? true)
                     && (p?.herdrSession.map { same($0, summary.key.herdrSession) } ?? true)
+                    && (p?.hcCoreID.map { same($0,summary.key.hcCoreID) } ?? true)
+                    && (p?.hcLaunchID.map { $0 == summary.context.hc?.intent.launchID } ?? true)
                     && (p?.nativeSession.map { same($0, summary.key.nativeSession) } ?? true)
                     && (p?.agent.map { same($0, summary.key.agent) } ?? true)
                 }.map(Summary.init)
@@ -237,5 +254,5 @@ public nonisolated enum ConversationReadAPI {
         var data = (try? encoder.encode(reply)) ?? Data("{}".utf8)
         data.append(10); return data
     }
-    private static func same(_ a: String, _ b: String) -> Bool { a.utf8.elementsEqual(b.utf8) }
+    private static func same(_ a: String, _ b: String?) -> Bool { guard let b else { return false }; return a.utf8.elementsEqual(b.utf8) }
 }

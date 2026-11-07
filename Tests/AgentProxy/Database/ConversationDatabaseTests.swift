@@ -1,7 +1,9 @@
 import Foundation
 import Darwin
 import SQLite3
+import CryptoKit
 import AgentProxyCore
+import AgentProxyProtocol
 
 /// Synthetic records only, in a fresh private folder given on the command line.
 @main
@@ -56,7 +58,8 @@ struct ConversationDatabaseTests {
             guard mkdir(input, 0o700) == 0 || errno == EEXIST else { throw Failure(description: "work") }
             var resolved = [CChar](repeating: 0, count: Int(PATH_MAX))
             guard realpath(input, &resolved) != nil else { throw Failure(description: "realpath") }
-            let base = String(cString: resolved)
+            let base = String(decoding:resolved.prefix { $0 != 0 }.map { UInt8(bitPattern:$0) },as:UTF8.self)
+            try hcNamespacesAndMigration(base)
             try roundTripAndIncremental(base)
             try retentionAndExpiry(base)
             try filesystemSafety(base)
@@ -66,6 +69,80 @@ struct ConversationDatabaseTests {
         }
         guard failures == 0 else { exit(1) }
         print("PASS: conversation database, \(checks) checks")
+    }
+
+    static func hcNamespacesAndMigration(_ base: String) throws {
+        let root = try makeRoot(base,"origin-v1-migration")
+        let folder = root + "/Conversations"; guard mkdir(folder,0o700) == 0 else { throw Failure(description:"v1 folder") }
+        let path = folder + "/conversations.sqlite3"
+        var raw: OpaquePointer?; guard sqlite3_open(path,&raw) == SQLITE_OK, let raw else { throw Failure(description:"v1 open") }
+        func sql(_ text: String) throws { guard sqlite3_exec(raw,text,nil,nil,nil) == SQLITE_OK else { throw Failure(description:"v1 fixture schema") } }
+        let legacy = record("legacy-c",native:"shared-native",session:"core-A",items:[item("legacy-item","exact legacy bytes é 한글")])
+        let encoder = PropertyListEncoder(); encoder.outputFormat = .binary
+        let body = try encoder.encode(legacy.items[0]), children = try encoder.encode(legacy.subagents)
+        do {
+            try sql("CREATE TABLE conversations(id BLOB PRIMARY KEY NOT NULL,agent BLOB NOT NULL,herdr_session BLOB NOT NULL,native_session BLOB NOT NULL,route_id BLOB NOT NULL,pane_id BLOB NOT NULL,terminal_id BLOB NOT NULL,updated_order INTEGER NOT NULL,truncated INTEGER NOT NULL,status BLOB NOT NULL,subagents BLOB NOT NULL,updated_ms INTEGER NOT NULL,bytes INTEGER NOT NULL)")
+            try sql("CREATE INDEX conversations_key ON conversations(agent,herdr_session,native_session,updated_ms)")
+            try sql("CREATE INDEX conversations_updated ON conversations(updated_ms)")
+            try sql("CREATE TABLE items(conversation BLOB NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,item_id BLOB NOT NULL,ordinal INTEGER NOT NULL,digest BLOB NOT NULL,body BLOB NOT NULL,PRIMARY KEY(conversation,item_id)) WITHOUT ROWID")
+            try sql("CREATE UNIQUE INDEX items_order ON items(conversation,ordinal)")
+            let hex: (Data)->String = { $0.map { String(format:"%02x",$0) }.joined() }
+            let blob: (String)->String = { "X'" + hex(Data($0.utf8)) + "'" }
+            try sql("INSERT INTO conversations VALUES(\(blob(legacy.id)),\(blob("claude")),\(blob("core-A")),\(blob("shared-native")),\(blob("route")),\(blob("pane")),\(blob("terminal")),1,0,\(blob("complete")),X'\(hex(children))',1800000000000,\(body.count+children.count+512))")
+            try sql("INSERT INTO items VALUES(\(blob(legacy.id)),\(blob("legacy-item")),0,X'\(hex(Data(SHA256.hash(data:body))))',X'\(hex(body))')")
+            try sql("PRAGMA user_version = 1")
+        } catch { sqlite3_close(raw); throw error }
+        sqlite3_close(raw); guard chmod(path,0o600) == 0 else { throw Failure(description:"v1 mode") }
+        let badRoot = try makeRoot(base,"origin-v1-rollback")
+        guard mkdir(badRoot+"/Conversations",0o700) == 0 else { throw Failure(description:"rollback folder") }
+        let badPath = badRoot+"/Conversations/conversations.sqlite3"
+        try FileManager.default.copyItem(atPath:path,toPath:badPath)
+        var broken: OpaquePointer?
+        guard sqlite3_open(badPath,&broken) == SQLITE_OK, let broken else { throw Failure(description:"rollback open") }
+        guard sqlite3_exec(broken,"INSERT INTO items VALUES(X'6d697373696e67',X'6f727068616e',0,X'00',X'00')",nil,nil,nil) == SQLITE_OK else { sqlite3_close(broken);throw Failure(description:"orphan fixture") }
+        sqlite3_close(broken)
+        rejects(.unsafe,"v1 orphan FK aborts the whole migration") { _ = try ConversationDatabase(stateDirectory:badRoot) }
+        var inspected: OpaquePointer?
+        guard sqlite3_open(badPath,&inspected) == SQLITE_OK, let inspected else { throw Failure(description:"rollback inspection") }
+        func scalar(_ command: String) throws -> Int64 {
+            var s: OpaquePointer?;guard sqlite3_prepare_v2(inspected,command,-1,&s,nil) == SQLITE_OK, let s else { throw Failure(description:"rollback query") }
+            defer { sqlite3_finalize(s) };guard sqlite3_step(s) == SQLITE_ROW else { throw Failure(description:"rollback row") };return sqlite3_column_int64(s,0)
+        }
+        check(try scalar("PRAGMA user_version") == 1 && scalar("SELECT count(*) FROM sqlite_schema WHERE name='conversations_v2'") == 0 && scalar("SELECT count(*) FROM items") == 2,"failed migration leaves v1 schema/version/items intact without staged tables")
+        guard sqlite3_exec(inspected,"DELETE FROM items WHERE conversation=X'6d697373696e67'",nil,nil,nil) == SQLITE_OK else { sqlite3_close(inspected);throw Failure(description:"fixture repair") }
+        sqlite3_close(inspected)
+        let clock = Date(timeIntervalSince1970:1_800_000_000)
+        do {
+            let repaired = try ConversationDatabase(stateDirectory:badRoot,now:{ clock })
+            check(try repaired.load(legacy.key) == legacy,"explicitly repaired fixture reopens with original exact legacy archive after rollback")
+        }
+        var database: ConversationDatabase? = try ConversationDatabase(stateDirectory:root,now:{ clock })
+        var db: ConversationDatabase { database! }
+        check(try db.load(legacy.key) == legacy,"v1 migration preserves exact key, ID, body and item foreign keys")
+        func hc(_ core: String, _ id: String, bound: Bool) throws -> Record {
+            let intent = try AgentProxyHcCaptureIntent(originCoreID:core,launchID:UUID(),paneID:UUID())
+            var route = try AgentProxyHcRouteState(kind:.claude,intent:intent,cliVersion:"fixture")
+            if bound { try route.bind(AgentProxyHcCaptureBinding(intent:intent,receiptOriginCoreID:core,terminalID:"t1")) }
+            return .init(id:id,key:.init(agent:"claude",origin:ConversationOrigin(hcCoreID:core)!,nativeSession:"shared-native"),
+                context:.init(routeID:"hc-route-"+id,paneID:intent.paneID.uuidString,terminalID:route.binding?.terminalID,hc:route),
+                updatedOrder:1,items:[item("hc-item",core)],truncated:false,status:"complete",subagents:legacy.subagents)
+        }
+        let a = try hc("core-A","hc-a",bound:false), b = try hc("core-B","hc-b",bound:true)
+        try db.save(a,updatedAt:clock);try db.save(b,updatedAt:clock)
+        check(try db.load(a.key) == a,"hc pending origin persists without a fabricated terminal/legacy session")
+        check(try db.load(b.key) == b,"hc bound origin persists explicit known terminal context")
+        check(try db.load(legacy.key) == legacy && db.conversationCount == 3,"same native ID in legacy/coreA/coreB remains three SQL identities")
+        let foreign = Record(id:a.id,key:b.key,context:b.context,updatedOrder:2,items:b.items,truncated:false,status:"complete",subagents:b.subagents)
+        rejects(.invalidRecord,"persistent ID cannot move to another hc origin") { try db.save(foreign,updatedAt:clock) }
+        check(try db.load(a.key) == a,"rejected cross-origin save leaves pending record untouched")
+        let badContext = Record(id:"wrong-terminal",key:b.key,context:.init(routeID:b.context.routeID,paneID:b.context.paneID,terminalID:"t9",hc:b.context.hc),updatedOrder:2,items:b.items,truncated:false,status:"complete",subagents:b.subagents)
+        rejects(.invalidRecord,"hc context cannot contradict its known binding terminal") { try db.save(badContext,updatedAt:clock) }
+        let badAgent = Record(id:"wrong-agent",key:.init(agent:"pi",origin:ConversationOrigin(hcCoreID:"core-B")!,nativeSession:"shared-native"),context:b.context,updatedOrder:2,items:b.items,truncated:false,status:"complete",subagents:b.subagents)
+        rejects(.invalidRecord,"hc context kind cannot move to another agent") { try db.save(badAgent,updatedAt:clock) }
+        check(db.conversationCount == 3,"failed hc admission never inserts a partial SQL record")
+        database = nil // exercise normal deinit/close, not a test-only close API
+        let reopened = try ConversationDatabase(stateDirectory:root,now:{ clock })
+        check(try reopened.load(legacy.key) == legacy && reopened.load(a.key) == a && reopened.load(b.key) == b,"migrated legacy and pending/bound hc records survive close/reopen without namespace adoption")
     }
 
     static func roundTripAndIncremental(_ base: String) throws {
@@ -197,7 +274,7 @@ struct ConversationDatabaseTests {
         _ = try ConversationDatabase(stateDirectory: newer)
         let path = newer + "/Conversations/conversations.sqlite3"
         var handle: OpaquePointer?
-        guard sqlite3_open(path, &handle) == SQLITE_OK, sqlite3_exec(handle, "PRAGMA user_version = 2", nil, nil, nil) == SQLITE_OK else {
+        guard sqlite3_open(path, &handle) == SQLITE_OK, sqlite3_exec(handle, "PRAGMA user_version = 3", nil, nil, nil) == SQLITE_OK else {
             throw Failure(description: "user_version")
         }
         sqlite3_close(handle)

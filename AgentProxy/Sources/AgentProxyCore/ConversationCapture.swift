@@ -245,9 +245,12 @@ public final class ConversationCapture {
             _ = try RequestProjection.decodeObject(data)
             let raw = try JSONDecoder().decode(AgentProxyTeeFrame.Open.self, from: data)
             let headers = try Self.headers(raw.headers, response: false)
-            guard let identity = raw.routeIdentity,
-                  [raw.routeID, identity.session, identity.paneID, identity.terminalID, identity.cliVersion]
-                    .allSatisfy({ RequestProjection.identifier($0) != nil }), raw.method == "POST",
+            guard let identity = raw.captureIdentity,
+                  [raw.routeID,identity.cliVersion].allSatisfy({ RequestProjection.identifier($0) != nil }) else { throw Failure.unsupported }
+            if case .legacy(let legacy) = identity {
+                guard [legacy.session,legacy.paneID,legacy.terminalID].allSatisfy({ RequestProjection.identifier($0) != nil }) else { throw Failure.unsupported }
+            }
+            guard raw.method == "POST",
                   (raw.upstream == "anthropic" && raw.path == "/v1/messages") ||
                   (raw.upstream == "chatgpt" && raw.path == "/backend-api/codex/responses") ||
                   (raw.upstream == "openai" && identity.kind == .pi && raw.path == "/v1/responses") else { throw Failure.unsupported }
@@ -255,7 +258,7 @@ public final class ConversationCapture {
             // Reapply the exact allowlist even if a malformed sender included a
             // credential header; never retain arbitrary raw Open header maps.
             let sanitized = AgentProxyTeeFrame.Open(routeID: raw.routeID, upstream: raw.upstream, method: raw.method,
-                path: raw.path, headers: headers.map { [$0.key, $0.value] }, routeIdentity: raw.routeIdentity)
+                path: raw.path, headers: headers.map { [$0.key, $0.value] }, routeIdentity: raw.routeIdentity, hcRouteIdentity:raw.hcRouteIdentity)
             guard exchanges.count < limits.exchanges, makeRoom(limits.workingBytes) else { throw Failure.admission }
             let decoder = try codec(headers["content-encoding"])
             exchanges[frame.exchange] = Exchange(open: sanitized, limit: limits.requestBytes, codec: decoder)

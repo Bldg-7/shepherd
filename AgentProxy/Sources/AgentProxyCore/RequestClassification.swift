@@ -9,7 +9,7 @@ public nonisolated struct ClassifiedRequest: Sendable {
     }
     public let kind: Kind
     public let reason: Reason?
-    public let route: AgentProxyRouteCreate?
+    public let route: AgentProxyCaptureRouteIdentity?
     public let context: ConversationContext?
     public let provider: RequestProjection.Provider?
     public let nativeSessionID: String?
@@ -21,8 +21,17 @@ public nonisolated struct ClassifiedRequest: Sendable {
     /// No caller can obtain a main key from a compaction/subagent/unknown result
     /// by merely checking whether a native ID was present.
     public var mainConversationKey: ConversationKey? {
-        guard kind == .main, let route, let nativeSessionID else { return nil }
-        return ConversationKey(agent: route.kind.rawValue, herdrSession: route.session, nativeSession: nativeSessionID)
+        guard kind == .main else { return nil }
+        return scopedConversationKey
+    }
+    var scopedConversationKey: ConversationKey? {
+        guard let route, let nativeSessionID else { return nil }
+        switch route {
+        case .legacy(let legacy): return ConversationKey(agent:legacy.kind.rawValue,herdrSession:legacy.session,nativeSession:nativeSessionID)
+        case .hc(let hc):
+            guard let origin = ConversationOrigin(hcCoreID:hc.intent.originCoreID) else { return nil }
+            return ConversationKey(agent:hc.kind.rawValue,origin:origin,nativeSession:nativeSessionID)
+        }
     }
 }
 
@@ -39,7 +48,7 @@ public nonisolated enum RequestClassification {
     public static func classify(_ open: AgentProxyTeeFrame.Open, body: Data) -> ClassifiedRequest {
         guard body.count <= ConversationCaptureLimits.decompressedRequest else { return unknown(.invalidMetadata) }
         var object: [String: Any]?
-        if open.routeIdentity?.kind == .codex, open.method == "POST", open.upstream == "chatgpt",
+        if open.captureIdentity?.kind == .codex, open.method == "POST", open.upstream == "chatgpt",
            ["/backend-api/codex/responses", "/backend-api/codex/responses/compact"].contains(open.path) {
             do { object = try RequestProjection.decodeObject(body) }
             catch { return unknown(.invalidMetadata) }
@@ -48,11 +57,15 @@ public nonisolated enum RequestClassification {
     }
 
     static func classifyObject(_ open: AgentProxyTeeFrame.Open, object: [String: Any]?) -> ClassifiedRequest {
-        guard let route = open.routeIdentity else { return unknown(.missingRouteIdentity) }
-        guard RequestProjection.identifier(route.session) != nil, RequestProjection.identifier(route.cliVersion) != nil,
-              let context = ConversationContext(routeID: open.routeID, paneID: route.paneID, terminalID: route.terminalID) else {
-            return unknown(.invalidRouteIdentity)
+        guard let route = open.captureIdentity else { return unknown(.missingRouteIdentity) }
+        let location: ConversationContext?
+        switch route {
+        case .legacy(let legacy):
+            guard RequestProjection.identifier(legacy.session) != nil else { return unknown(.invalidRouteIdentity) }
+            location = ConversationContext(routeID:open.routeID,paneID:legacy.paneID,terminalID:legacy.terminalID)
+        case .hc(let hc): location = ConversationContext(routeID:open.routeID,hc:hc)
         }
+        guard RequestProjection.identifier(route.cliVersion) != nil, let context = location else { return unknown(.invalidRouteIdentity) }
         let provider: RequestProjection.Provider
         if open.upstream == "anthropic" { provider = .anthropic }
         else if open.upstream == "chatgpt" || (open.upstream == "openai" && route.kind == .pi) { provider = .responses }
@@ -110,7 +123,7 @@ public nonisolated enum RequestClassification {
         catch { return unknown(.invalidMetadata) }
     }
 
-    private static func codex(open: AgentProxyTeeFrame.Open, route: AgentProxyRouteCreate, context: ConversationContext,
+    private static func codex(open: AgentProxyTeeFrame.Open, route: AgentProxyCaptureRouteIdentity, context: ConversationContext,
                               provider: RequestProjection.Provider, headers: [String: String], object: [String: Any]?) throws -> ClassifiedRequest {
         guard let object else { throw Invalid.field }
         let flat: [String: Any]
@@ -187,7 +200,7 @@ public nonisolated enum RequestClassification {
     }
 
     private static func result(_ kind: ClassifiedRequest.Kind, reason: ClassifiedRequest.Reason? = nil,
-                               route: AgentProxyRouteCreate, context: ConversationContext, provider: RequestProjection.Provider,
+                               route: AgentProxyCaptureRouteIdentity, context: ConversationContext, provider: RequestProjection.Provider,
                                native: String? = nil, parent: String? = nil, agent: String? = nil,
                                parentAgent: String? = nil, prompt: String? = nil) -> ClassifiedRequest {
         ClassifiedRequest(kind: kind, reason: reason, route: route, context: context, provider: provider,

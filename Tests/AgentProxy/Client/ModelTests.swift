@@ -11,6 +11,9 @@ actor ModelTransport: HerdrTransport {
     var unavailable = false
     func failConnection() { unavailable = true }
     var closeCount = 0
+    var listRequests = 0
+    func listCount() -> Int { listRequests }
+    func clear() { store = ConversationStore() }
     func prepare(native: String, text: String) throws {
         let message = try RequestProjection.project(JSONSerialization.data(withJSONObject: ["messages": [["role": "user", "content": text]]]), provider: .anthropic).messages[0]
         _ = try store.upsert(key: ConversationKey(agent: "claude", herdrSession: "default", nativeSession: native)!,
@@ -34,6 +37,7 @@ actor ModelTransport: HerdrTransport {
     func openLineStream(endpoint: HerdrLineEndpoint, request: Data) async throws -> HerdrLineStream {
         if unavailable { throw HerdrLineStreamError.closed }
         let object = try JSONSerialization.jsonObject(with: request) as! [String: Any]
+        if object["method"] as? String == "conversations.list" { listRequests += 1 }
         let id = object["id"] as! String
         let bytes = ConversationReadAPI.answer(request, store: store)
         let (stream, continuation) = AsyncThrowingStream<Data, any Error>.makeStream(bufferingPolicy: .bufferingOldest(2))
@@ -94,6 +98,21 @@ actor ModelTransport: HerdrTransport {
         check(!model.hasConversation && model.notice == "No captured conversation yet. Showing the screen instead.", "missing conversation is explicitly explained without showing an empty conversation")
         model.stop()
         check(model.notice == nil, "navigation cleanup clears stale notice")
+        let listed = try await ConversationClient(transport:transport).list()
+        let archivedHeader = listed.conversations.first(where:{ $0.nativeSession == "one" })!
+        let archive = ConversationArchiveSelection(header:archivedHeader,epoch:listed.epoch)!
+        let listCount = await transport.listCount()
+        model.connect(transport:transport,archive:archive)
+        await until { model.hasConversation }
+        let archiveLists = await transport.listCount()
+        check(model.window.summary?.id == archive.id && archiveLists == listCount,"explicit archive subscribes to exact listed record without terminal/native reselection")
+        model.stop()
+        await transport.clear()
+        try await transport.prepare(native:"one",text:"different epoch same native ID")
+        model.connect(transport:transport,archive:archive)
+        await until { model.notice != nil }
+        check(!model.hasConversation && model.notice == "The capture archive changed. Reopen capture history.","archive epoch reset never adopts a replacement with the same native ID")
+        model.stop()
         let failed = ModelTransport(); await failed.failConnection()
         model.connect(transport: failed, selection: selection("one"))
         await until { model.notice != nil }

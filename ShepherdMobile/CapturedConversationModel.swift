@@ -15,20 +15,31 @@ final class CapturedConversationModel {
     var showsConversation: Bool { hasConversation && !prefersScreen }
 
     @ObservationIgnored private var client: ConversationClient?
-    @ObservationIgnored private var selection: ConversationSelection?
+    private enum Source: Equatable {
+        case live(ConversationSelection), archive(ConversationArchiveSelection)
+        func matches(_ header: ConversationHeader) -> Bool {
+            switch self { case .live(let value):value.matches(header);case .archive(let value):value.matches(header) }
+        }
+    }
+    @ObservationIgnored private var selection: Source?
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var generation = UUID()
     @ObservationIgnored private var paused = false
 
     func connect(transport: any ConversationLineTransport, selection: ConversationSelection) {
         if client == nil { client = ConversationClient(transport: transport) }
-        guard self.selection != selection || task == nil else { return }
-        self.selection = selection
+        guard self.selection != .live(selection) || task == nil else { return }
+        self.selection = .live(selection)
         restart()
     }
+    func connect(transport: any ConversationLineTransport, archive: ConversationArchiveSelection) {
+        if client == nil { client = ConversationClient(transport:transport) }
+        guard selection != .archive(archive) || task == nil else { return }
+        selection = .archive(archive); restart()
+    }
     func update(selection: ConversationSelection) {
-        guard self.selection != selection else { return }
-        self.selection = selection; restart()
+        guard self.selection != .live(selection) else { return }
+        self.selection = .live(selection); restart()
     }
     func stop() {
         generation = UUID(); task?.cancel(); task = nil
@@ -48,16 +59,22 @@ final class CapturedConversationModel {
             await self.follow(client: client, selection: selection, generation: generation)
         }
     }
-    private func follow(client: ConversationClient, selection: ConversationSelection, generation: UUID) async {
+    private func follow(client: ConversationClient, selection: Source, generation: UUID) async {
         var delay = 2
         while !Task.isCancelled && generation == self.generation {
             do {
-                guard let selected = try await client.select(selection) else {
-                    window = ConversationWindow()
-                    notice = String(localized: "No captured conversation yet. Showing the screen instead.")
-                    try await Task.sleep(for: .seconds(3)); continue
+                let id: String, epoch: String
+                switch selection {
+                case .live(let live):
+                    guard let selected = try await client.select(live) else {
+                        window = ConversationWindow()
+                        notice = String(localized: "No captured conversation yet. Showing the screen instead.")
+                        try await Task.sleep(for: .seconds(3)); continue
+                    }
+                    id = selected.header.id; epoch = selected.epoch
+                case .archive(let archive): id = archive.id; epoch = archive.epoch
                 }
-                let updates = try await client.subscribe(id: selected.header.id, epoch: selected.epoch)
+                let updates = try await client.subscribe(id:id,epoch:epoch)
                 defer { updates.close() }
                 var initial = true
                 for try await page in updates {
@@ -71,8 +88,14 @@ final class CapturedConversationModel {
             } catch is CancellationError { return }
             catch {
                 guard !Task.isCancelled, generation == self.generation else { return }
-                notice = String(localized: "Conversation unavailable. Showing the screen instead.")
                 window = ConversationWindow()
+                if case .archive = selection {
+                    if let failure = error as? ConversationClientError, case .reset = failure {
+                        notice = String(localized:"The capture archive changed. Reopen capture history.")
+                        return // never reselect an archive through a native/terminal fallback
+                    }
+                    notice = String(localized:"Capture history unavailable. No service is started automatically.")
+                } else { notice = String(localized: "Conversation unavailable. Showing the screen instead.") }
                 do { try await Task.sleep(for: .seconds(delay)) } catch { return }
                 delay = min(30, delay * 2)
             }

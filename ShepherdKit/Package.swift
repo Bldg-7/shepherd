@@ -34,6 +34,7 @@ let package = Package(
             name: "ShepherdKit",
             dependencies: [
                 .product(name: "AgentProxyCore", package: "AgentProxy"),
+                .product(name: "AgentProxyProtocol", package: "AgentProxy"),
                 .product(name: "Citadel", package: "Citadel"),
                 .product(name: "NIOSSH", package: "swift-nio-ssh"),
                 .product(name: "NIOCore", package: "swift-nio"),

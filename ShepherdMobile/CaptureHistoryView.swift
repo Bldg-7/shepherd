@@ -9,6 +9,7 @@ struct CaptureHistoryView: View {
     let store: MachineStore
     @State private var source: CaptureHistorySource
     @State private var headers: [ConversationHeader] = []
+    @State private var epoch: String?
     @State private var message: String?
     @State private var loading = false
     @State private var generation = UUID()
@@ -30,12 +31,18 @@ struct CaptureHistoryView: View {
             if source.isCurrent {
                 ForEach(headers, id: \.id) { header in
                     NavigationLink {
-                        CapturedHistoryDetail(machine: machine, store: store, header: header)
+                        if let epoch, let archive = ConversationArchiveSelection(header:header,epoch:epoch) {
+                            CapturedHistoryDetail(machine:machine,store:store,header:header,archive:archive)
+                        }
                     } label: {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(verbatim: header.agent)
                             Text(verbatim: header.nativeSession).font(.caption).lineLimit(1).truncationMode(.middle)
-                            Text(verbatim: header.herdrSession).font(.caption).foregroundStyle(.secondary)
+                            if let origin = header.origin {
+                                Text(verbatim:"hc · " + origin.value).font(.caption).foregroundStyle(.secondary)
+                            } else if let legacy = header.herdrSession {
+                                Text(verbatim:legacy).font(.caption).foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
@@ -49,7 +56,7 @@ struct CaptureHistoryView: View {
             else { generation = UUID(); loading = false; await source.close() }
         }
         .onChange(of: source.isCurrent) { _, current in
-            if !current { generation = UUID(); headers = []; loading = false; Task { await source.close() } }
+            if !current { generation = UUID(); headers = []; epoch = nil; loading = false; Task { await source.close() } }
         }
         .onDisappear { generation = UUID(); loading = false; Task { await source.close() } }
     }
@@ -60,9 +67,10 @@ struct CaptureHistoryView: View {
         do {
             let result = try await ConversationClient(transport: transport).list()
             guard token == generation, source.isCurrent, !Task.isCancelled else { await source.close(transport); return }
+            epoch = result.epoch
             headers = result.conversations.sorted { $0.revision > $1.revision }
         } catch {
-            if token == generation { headers = []; message = String(localized: "Capture history unavailable. No service is started automatically.") }
+            if token == generation { headers = []; epoch = nil; message = String(localized: "Capture history unavailable. No service is started automatically.") }
         }
         await source.close(transport)
     }
@@ -70,11 +78,12 @@ struct CaptureHistoryView: View {
 
 private struct CapturedHistoryDetail: View {
     let header: ConversationHeader
+    let archive: ConversationArchiveSelection
     @State private var source: CaptureHistorySource
     @State private var captured = CapturedConversationModel()
     @Environment(\.scenePhase) private var scenePhase
-    init(machine: Machine, store: MachineStore, header: ConversationHeader) {
-        self.header = header
+    init(machine: Machine, store: MachineStore, header: ConversationHeader, archive: ConversationArchiveSelection) {
+        self.header = header; self.archive = archive
         _source = State(initialValue: CaptureHistorySource(machine: machine, store: store))
     }
     var body: some View {
@@ -100,8 +109,7 @@ private struct CapturedHistoryDetail: View {
             captured.stop(); captured.pause()
             if scenePhase == .active, source.isCurrent, let transport = await source.prepare() {
                 guard !Task.isCancelled, source.isCurrent else { await source.close(transport); return }
-                captured.connect(transport: transport, selection: .init(terminalID: header.terminalID,
-                    herdrSession: header.herdrSession, agent: header.agent, nativeSession: header.nativeSession))
+                captured.connect(transport:transport,archive:archive)
                 captured.resume()
             } else { await source.close() }
         }

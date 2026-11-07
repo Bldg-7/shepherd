@@ -72,7 +72,7 @@ struct ConversationPersistenceTests {
               "incremental restore never replaces an existing live key")
         let wire = try snapshot.encoded()
         let decodedSnapshot = try decoded(wire)
-        check(decodedSnapshot.schemaVersion == 1 && decodedSnapshot.records.count == 2, "v1 schema exports and decodes bounded resident records")
+        check(decodedSnapshot.schemaVersion == 2 && decodedSnapshot.records.count == 2, "v2 schema exports and decodes bounded resident records")
         check(wire.count <= ConversationStore.PersistentSnapshot.maximumEncodedBytes, "encoded schema respects envelope maximum")
         let oversizedEncodeItems = Array(repeating: persistentItem("encoded-item"), count: 4_097)
         do {
@@ -148,12 +148,12 @@ struct ConversationPersistenceTests {
         } catch let error as ConversationStore.PersistenceFailure {
             check(error == .malformed, "malformed schema rejects without a decode fallback")
         }
-        let future = try encoded(snapshot) { $0["schemaVersion"] = 2 }
+        let future = try encoded(snapshot) { $0["schemaVersion"] = 3 }
         do {
             _ = try decoded(future)
             check(false, "future schema must reject")
         } catch let error as ConversationStore.PersistenceFailure {
-            check(error == .unsupportedVersion, "future schema is not accepted as v1")
+            check(error == .unsupportedVersion, "unknown future schema is not accepted as a supported archive")
         }
         do {
             _ = try ConversationStore.PersistentSnapshot.decode(wire, maximumBytes: wire.count - 1)

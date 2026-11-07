@@ -3,6 +3,7 @@ import Darwin
 import CryptoKit
 import SQLite3
 import AgentProxyCore
+import AgentProxyProtocol
 
 /// Normalized conversations in one private SQLite database. A conversation is
 /// one metadata row plus one row per item, so a save writes only the items
@@ -32,7 +33,7 @@ final class ConversationDatabase {
 
     static let directoryName = "Conversations"
     static let fileName = "conversations.sqlite3"
-    static let schemaVersion: Int32 = 1
+    static let schemaVersion: Int32 = 2
     static let maximumRecords = 256
     static let maximumDiskBytes = 256 << 20
     static let retentionMilliseconds: Int64 = 30 * 24 * 60 * 60 * 1_000
@@ -110,6 +111,10 @@ final class ConversationDatabase {
         try execute("PRAGMA cell_size_check = ON")
         try execute("PRAGMA cache_size = -2048")
         sqlite3_busy_timeout(db, 1_000)
+        // The migration itself must have full commit durability too, not only
+        // subsequent saves after configure returns.
+        try execute("PRAGMA synchronous = FULL")
+        guard try scalar("PRAGMA synchronous") == 2 else { throw Failure.unavailable }
         let version = try scalar("PRAGMA user_version")
         if version == 0 {
             guard try scalar("SELECT count(*) FROM sqlite_schema") == 0 else { throw Failure.unsafe }
@@ -117,16 +122,8 @@ final class ConversationDatabase {
             try execute("PRAGMA auto_vacuum = INCREMENTAL")
             try execute("PRAGMA journal_mode = WAL")
             try transaction {
-                try execute("""
-                    CREATE TABLE conversations(
-                      id BLOB PRIMARY KEY NOT NULL,
-                      agent BLOB NOT NULL, herdr_session BLOB NOT NULL, native_session BLOB NOT NULL,
-                      route_id BLOB NOT NULL, pane_id BLOB NOT NULL, terminal_id BLOB NOT NULL,
-                      updated_order INTEGER NOT NULL, truncated INTEGER NOT NULL, status BLOB NOT NULL,
-                      subagents BLOB NOT NULL, updated_ms INTEGER NOT NULL, bytes INTEGER NOT NULL)
-                    """)
-                try execute("CREATE INDEX conversations_key ON conversations(agent, herdr_session, native_session, updated_ms)")
-                try execute("CREATE INDEX conversations_updated ON conversations(updated_ms)")
+                try createConversations(named:"conversations")
+                try createConversationIndexes()
                 try execute("""
                     CREATE TABLE items(
                       conversation BLOB NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
@@ -136,12 +133,50 @@ final class ConversationDatabase {
                 try execute("CREATE UNIQUE INDEX items_order ON items(conversation, ordinal)")
                 try execute("PRAGMA user_version = \(Self.schemaVersion)")
             }
+        } else if version == 1 {
+            // Preserve v1 IDs/items and their byte-exact legacy namespace. Do
+            // not put hc IDs in the old NOT NULL herdr_session column.
+            try execute("PRAGMA foreign_keys = OFF")
+            do {
+                try transaction {
+                    try createConversations(named:"conversations_v2")
+                    try execute("""
+                        INSERT INTO conversations_v2(id,agent,origin_kind,origin_value,native_session,route_id,pane_id,terminal_id,hc_context,updated_order,truncated,status,subagents,updated_ms,bytes)
+                        SELECT id,agent,X'6865726472',herdr_session,native_session,route_id,pane_id,terminal_id,NULL,updated_order,truncated,status,subagents,updated_ms,bytes FROM conversations
+                        """)
+                    try execute("DROP TABLE conversations")
+                    try execute("ALTER TABLE conversations_v2 RENAME TO conversations")
+                    try createConversationIndexes()
+                    try query("PRAGMA foreign_key_check",[]) { _ in throw Failure.unsafe }
+                    try execute("PRAGMA user_version = \(Self.schemaVersion)")
+                }
+            } catch { _ = try? execute("PRAGMA foreign_keys = ON"); throw error }
+            try execute("PRAGMA foreign_keys = ON")
+            guard try scalar("PRAGMA foreign_keys") == 1 else { throw Failure.unsafe }
         } else if version != Int64(Self.schemaVersion) {
             throw Failure.unsafe
         }
         guard try text("PRAGMA journal_mode = WAL") == "wal" else { throw Failure.unavailable }
         try execute("PRAGMA synchronous = FULL")
         guard try text("PRAGMA quick_check(1)") == "ok" else { throw Failure.unsafe }
+    }
+
+    private func createConversations(named name: String) throws {
+        guard ["conversations","conversations_v2"].contains(name) else { throw Failure.unsafe }
+        try execute("""
+            CREATE TABLE \(name)(
+              id BLOB PRIMARY KEY NOT NULL,
+              agent BLOB NOT NULL, origin_kind BLOB NOT NULL, origin_value BLOB NOT NULL, native_session BLOB NOT NULL,
+              route_id BLOB NOT NULL, pane_id BLOB NOT NULL, terminal_id BLOB, hc_context BLOB,
+              updated_order INTEGER NOT NULL, truncated INTEGER NOT NULL, status BLOB NOT NULL,
+              subagents BLOB NOT NULL, updated_ms INTEGER NOT NULL, bytes INTEGER NOT NULL,
+              CHECK ((origin_kind = X'6865726472' AND hc_context IS NULL AND terminal_id IS NOT NULL)
+                  OR (origin_kind = X'6863' AND hc_context IS NOT NULL)))
+            """)
+    }
+    private func createConversationIndexes() throws {
+        try execute("CREATE INDEX conversations_key ON conversations(agent,origin_kind,origin_value,native_session,updated_ms)")
+        try execute("CREATE INDEX conversations_updated ON conversations(updated_ms)")
     }
 
     // MARK: Operations
@@ -170,7 +205,10 @@ final class ConversationDatabase {
             incoming.append((itemID, Self.digest(body)))
         }
         let subagents = try Self.encode(record.subagents)
-        let rowBytes = bodyBytes + subagents.count + Self.rowOverheadBytes * (record.items.count + 1)
+        guard let key = record.key.validated else { throw Failure.invalidRecord }
+        let hcContext = try record.context.hc.map(Self.encode)
+        guard (hcContext?.count ?? 0) <= 4096 else { throw Failure.capacity }
+        let rowBytes = bodyBytes + subagents.count + (hcContext?.count ?? 0) + Self.rowOverheadBytes * (record.items.count + 1)
         guard rowBytes <= diskLimit else { throw Failure.capacity }
         let current = try milliseconds(now())
         var updated = try milliseconds(updatedAt)
@@ -182,13 +220,13 @@ final class ConversationDatabase {
             var existing: [Data: (ordinal: Int64, digest: Data)] = [:]
             var existingOrder: [Data] = []
             var previousKey: [Data]?
-            try query("SELECT agent, herdr_session, native_session, updated_ms FROM conversations WHERE id = ?", [.blob(id)]) { row in
-                previousKey = [row.blob(0), row.blob(1), row.blob(2)]
-                updated = max(updated, row.int(3))
+            try query("SELECT agent,origin_kind,origin_value,native_session,updated_ms FROM conversations WHERE id = ?", [.blob(id)]) { row in
+                previousKey = [row.blob(0),row.blob(1),row.blob(2),row.blob(3)]
+                updated = max(updated, row.int(4))
             }
             if let previousKey {
                 // A persistent ID never moves to another conversation key.
-                guard previousKey == [Data(record.key.agent.utf8), Data(record.key.herdrSession.utf8), Data(record.key.nativeSession.utf8)] else {
+                guard previousKey == [Data(key.agent.utf8),Data(key.origin.backend.rawValue.utf8),Data(key.origin.value.utf8),Data(key.nativeSession.utf8)] else {
                     throw Failure.invalidRecord
                 }
                 try query("SELECT item_id, ordinal, digest FROM items WHERE conversation = ? ORDER BY ordinal", [.blob(id)]) { row in
@@ -198,16 +236,16 @@ final class ConversationDatabase {
                 }
             }
             try execute("""
-                INSERT INTO conversations(id, agent, herdr_session, native_session, route_id, pane_id, terminal_id,
-                  updated_order, truncated, status, subagents, updated_ms, bytes)
-                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO conversations(id,agent,origin_kind,origin_value,native_session,route_id,pane_id,terminal_id,hc_context,
+                  updated_order,truncated,status,subagents,updated_ms,bytes)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(id) DO UPDATE SET route_id = excluded.route_id, pane_id = excluded.pane_id,
-                  terminal_id = excluded.terminal_id, updated_order = excluded.updated_order, truncated = excluded.truncated,
+                  terminal_id = excluded.terminal_id, hc_context = excluded.hc_context, updated_order = excluded.updated_order, truncated = excluded.truncated,
                   status = excluded.status, subagents = excluded.subagents, updated_ms = excluded.updated_ms, bytes = excluded.bytes
-                """, [.blob(id), .text(record.key.agent), .text(record.key.herdrSession), .text(record.key.nativeSession),
-                      .text(record.context.routeID), .text(record.context.paneID), .text(record.context.terminalID),
-                      .int(Int64(clamping: record.updatedOrder)), .int(record.truncated ? 1 : 0), .text(record.status),
-                      .blob(subagents), .int(updated), .int(Int64(rowBytes))])
+                """, [.blob(id),.text(key.agent),.text(key.origin.backend.rawValue),.text(key.origin.value),.text(key.nativeSession),
+                      .text(record.context.routeID),.text(record.context.paneID),record.context.terminalID.map(Value.text) ?? .null,
+                      hcContext.map(Value.blob) ?? .null,.int(Int64(clamping:record.updatedOrder)),.int(record.truncated ? 1 : 0),.text(record.status),
+                      .blob(subagents),.int(updated),.int(Int64(rowBytes))])
 
             let incomingIDs = Set(incoming.map(\.id))
             // Incremental only if retained items keep their relative order and
@@ -265,14 +303,21 @@ final class ConversationDatabase {
     func load(_ key: ConversationStore.PersistentSnapshot.Key) throws -> ConversationStore.PersistentSnapshot.Record? {
         try verifyBinding()
         let cutoff = try milliseconds(now()) - Self.retentionMilliseconds
+        guard let validated = key.validated else { throw Failure.invalidRecord }
         var header: (id: Data, context: ConversationStore.PersistentSnapshot.Context, order: Int64, truncated: Bool, status: String, subagents: Data)?
         try query("""
-            SELECT id, route_id, pane_id, terminal_id, updated_order, truncated, status, subagents FROM conversations
-            WHERE agent = ? AND herdr_session = ? AND native_session = ? AND updated_ms >= ?
+            SELECT id,route_id,pane_id,terminal_id,hc_context,updated_order,truncated,status,subagents FROM conversations
+            WHERE agent = ? AND origin_kind = ? AND origin_value = ? AND native_session = ? AND updated_ms >= ?
             ORDER BY updated_ms DESC, id LIMIT 1
-            """, [.text(key.agent), .text(key.herdrSession), .text(key.nativeSession), .int(cutoff)]) { row in
-            header = (row.blob(0), .init(routeID: row.string(1), paneID: row.string(2), terminalID: row.string(3)),
-                      row.int(4), row.int(5) != 0, row.string(6), row.blob(7))
+            """, [.text(validated.agent),.text(validated.origin.backend.rawValue),.text(validated.origin.value),.text(validated.nativeSession),.int(cutoff)]) { row in
+            let hc: AgentProxyHcRouteState?
+            if row.isNull(4) { hc = nil }
+            else {
+                let data = row.blob(4); guard data.count <= 4096 else { throw Failure.unsafe }
+                do { hc = try PropertyListDecoder().decode(AgentProxyHcRouteState.self,from:data) } catch { throw Failure.unsafe }
+            }
+            header = (row.blob(0),.init(routeID:row.string(1),paneID:row.string(2),terminalID:row.isNull(3) ? nil : row.string(3),hc:hc),
+                      row.int(5),row.int(6) != 0,row.string(7),row.blob(8))
         }
         guard let header else { return nil }
         var items: [ConversationStore.PersistentSnapshot.Item] = []
@@ -416,6 +461,7 @@ final class ConversationDatabase {
     // MARK: SQLite
 
     enum Value {
+        case null
         case int(Int64)
         case text(String)
         case blob(Data)
@@ -424,6 +470,7 @@ final class ConversationDatabase {
     struct Row {
         fileprivate let statement: OpaquePointer
         func int(_ column: Int32) -> Int64 { sqlite3_column_int64(statement, column) }
+        func isNull(_ column: Int32) -> Bool { sqlite3_column_type(statement,column) == SQLITE_NULL }
         func blob(_ column: Int32) -> Data {
             let count = Int(sqlite3_column_bytes(statement, column))
             guard count > 0, let pointer = sqlite3_column_blob(statement, column) else { return Data() }
@@ -450,6 +497,7 @@ final class ConversationDatabase {
         for (offset, value) in values.enumerated() {
             let index = Int32(offset + 1)
             switch value {
+            case .null: code = sqlite3_bind_null(statement,index)
             case .int(let number): code = sqlite3_bind_int64(statement, index, number)
             case .text(let string): code = Self.bind(Data(string.utf8), statement, index)
             case .blob(let data): code = Self.bind(data, statement, index)
