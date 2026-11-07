@@ -68,7 +68,8 @@ class PreservationWiring(unittest.TestCase):
     def test_retry_uses_new_connect_not_recycled_stream(self):
         root = source('Shepherd/HcBackend/HcRootView.swift')
         host = source('Shepherd/HcBackend/HcMigrationHost.swift')
-        self.assertIn('let transport = try localTransportFactory?()', root)
+        self.assertIn('if machine.isLocal { transport = try localTransportFactory?() }', root)
+        self.assertIn('else { transport = nil }',root)
         self.assertIn('onReconnect: { Task { await openConnection() } }', root)
         self.assertNotIn('private let localTransport: (any CoreByteTransport)?', root)
         self.assertIn('let transport = try CoreProcessTransport(configuration: configuration)', host)

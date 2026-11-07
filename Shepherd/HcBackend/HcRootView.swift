@@ -90,7 +90,9 @@ struct HcRootView: View {
             // Each explicit retry gets a new connect transport, not a closed
             // stream from an earlier RPC epoch. Production uses the factory in
             // MachineStore; the optional override is for private local fixtures.
-            let transport = try localTransportFactory?()
+            let transport: (any CoreByteTransport)?
+            if machine.isLocal { transport = try localTransportFactory?() }
+            else { transport = nil }
             guard !Task.isCancelled, machineStore.isCurrentConnection(machine) else { try await transport?.close(); return }
             await connection.open(machine: machine, store: machineStore, localTransport: transport)
         } catch { operationError = hcConnectionFailureDescription(error) }
