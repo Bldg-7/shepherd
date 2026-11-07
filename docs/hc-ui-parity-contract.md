@@ -1,12 +1,21 @@
 # hc migration: preserve the existing product UI
 
+## Current scope
+
+[hc-migration-scope.md](hc-migration-scope.md) is authoritative: the operator has
+excluded both in-app browser/injected runtime and capture-based structured
+conversation collection/mobile display from this migration. Existing archives
+and staged code/evidence are preserved. Capture launcher/token/bootstrap/provider
+session integration and capture UI parity are deferred, not cutover gates.
+Terminal/screen/mobile terminal flows and ordinary CLI execution remain in scope.
+
 ## Correction after manual inspection
 
 The operator rejected the hc inspection screen because its layout is completely
 different from Shepherd's existing interface. This is a product regression, not
 a request for an additional redesign. The migration must replace the backend
 while preserving the existing interface and workflows, except for the explicitly
-deferred browser/injected-runtime features.
+deferred browser/injected-runtime and capture-conversation features.
 
 The 18-check native result at `/private/tmp/hc-screen-app.xnb0j6qo` remains evidence
 of its exact command/input/modal/cleanup behavior. It does **not** establish visual,
@@ -33,13 +42,15 @@ Do not use that result to approve product cutover or legacy UI deletion.
   infer native authority merely to reuse presentation models.
 - Do not retain two permanent backend products. Existing UI is the presentation
   reference; legacy backend code retires only after hc-backed UI parity is proven.
-- Do not restore browser/runtime injection under the name of layout parity.
+- Do not restore browser/runtime or capture injection under the name of layout parity.
+- Deferred capture must not require a legacy terminal backend fallback at cutover;
+  preserve stored archives without claiming new hc/provider association.
 - Keep existing dirty/unrelated source and user data intact. No installed app/core
   replacement, running-user-core restart, or deployment is authorized by this UI fix.
 
 ## Acceptance evidence before another product approval claim
 
-1. Inventory each existing non-browser control and workflow against the hc-backed
+1. Inventory each existing in-scope control and workflow against the hc-backed
    implementation. Missing behavior is a gap, not an approved simplification.
 2. Use matched deterministic content/window geometry for original presentation
    and migrated presentation. Compare native layout frames, screenshots and actual

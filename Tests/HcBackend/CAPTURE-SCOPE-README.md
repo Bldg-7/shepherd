@@ -1,5 +1,13 @@
 # hc capture launch provenance — staged, NOT live capture parity
 
+**Deferred by operator scope decision.** Capture-based message collection and
+mobile structured conversation display are excluded from this migration, like
+in-app browser/runtime injection. Keep the implementation and historical evidence,
+but do not continue launcher/token/bootstrap/provider-session work or require
+capture parity for hc cutover. The follow-up sequence below applies only if this
+feature is explicitly brought back into scope. Existing archives/user services
+remain untouched. See [current scope](../../docs/hc-migration-scope.md).
+
 The existing live route/control API requires legacy herdr session/pane/terminal fields.
 Putting a core ID or an hc terminal into those fields would fabricate legacy
 identity and merge namespaces. The new Foundation-only hc values deliberately
@@ -178,7 +186,7 @@ Evidence:
   after process/build checks; source, failed runs, private archives and current
   control Products/Debug for the next launch gate remain retained.
 
-## Required integration sequence — no shortcut by relabeling
+## Deferred follow-up sequence — not current migration acceptance
 
 1. Integrate the durable launch ticket/route reservation/exact known run receipt
    without replay/adoption after uncertain dispatch. Pending historical metadata

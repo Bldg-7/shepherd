@@ -103,8 +103,11 @@ file access approval.
 ## Independent unfinished release gates
 
 The current strict foreground/key-window/native-command GUI gate remains red;
-this decision does not waive it. Default macOS root/capture-history/gateway/
-installation integration and legacy retirement also remain unfinished. Release
+this decision does not waive it. Default macOS root/gateway/installation
+integration and legacy retirement also remain unfinished. In-app browser and
+capture-based conversation collection/mobile display are explicitly deferred
+under [hc-migration-scope.md](hc-migration-scope.md), not release gates for this
+migration. Their unqualified results remain unqualified, not passed. Release
 build success alone must not publish the old/default backend as an hc migration.
 Existing signing, notarization, exact-source and candidate verification rules
 still apply. No running user's core is replaced or restarted by this decision.

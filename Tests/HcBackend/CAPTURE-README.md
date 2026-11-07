@@ -1,5 +1,11 @@
 # Independent capture history during the hc migration
 
+Capture collection/mobile structured-message integration is now explicitly
+excluded from the current hc migration, alongside in-app browser/runtime work.
+This document preserves existing archive behavior and evidence; its incomplete
+capture parity is deferred follow-up, not a cutover gate. Existing data/settings
+are not removed. See [current scope](../../docs/hc-migration-scope.md).
+
 This restores **explicit read-only archive browsing** from the production mobile
 hc board, without connecting to legacy herdr or guessing a native session from
 an hc terminal ID, status, title, PID or screen. The account's existing capture

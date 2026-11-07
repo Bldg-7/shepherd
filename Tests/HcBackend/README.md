@@ -2,8 +2,13 @@
 
 The app backend moves from legacy herdr (`HerdrClient` + `herdr terminal attach`
 over an SSH PTY) to hc (`CoreRPCConnection` + `terminal.attach` framed streams).
-The experimental browser/`3rdr-browser` injection layer is out of scope for this
-first slice; it is deferred until after the core launch path ships.
+The experimental browser/`3rdr-browser` injection layer and capture-based API
+message collection/mobile structured conversation display are out of scope.
+[Current migration scope](../../docs/hc-migration-scope.md) governs acceptance:
+capture launcher/token/bootstrap/provider association and capture-history parity
+are deferred follow-up, not hc cutover gates. Preserve existing data/code/evidence;
+ordinary CLI execution, mobile terminal/screen behavior and other safety/UI gates
+remain in scope.
 
 ```sh
 python3 Tests/HcBackend/run-tests.py \
@@ -340,7 +345,11 @@ copies removed, registrations exited 0, while the GUI verdict remains false.
 This prevents repeated ~447MiB bundle copies accumulating; it does not waive the
 foreground gate or retain immutable copies of every historical test executable.
 
-## Independent capture history
+## Independent capture history — retained, deferred from migration acceptance
+
+The following records existing implementation/evidence, not a current completion
+gate. No new capture integration or provider/native association is required for
+this migration under the operator's updated scope.
 
 The production mobile hc board now offers explicit read-only archive browsing,
 without a legacy terminal connection or automatic core/native ID association.
@@ -390,11 +399,13 @@ Default macOS root cutover, installer/update behavior, gateway-origin document
 routing and final legacy removal remain incomplete; do not mark SHPHRD-153/154
 Done from these component/integration gates alone. Mobile root is hc now.
 
-Capture proxy is independent of browser retirement. Its configured lifecycle and
-existing route/data are preserved. Old injected-route terminal IDs are **not**
+Capture proxy is independent of browser implementation, but both features are
+now explicitly deferred from this migration. Its configured lifecycle and
+existing route/data are preserved; this is not permission to stop a user service. Old injected-route terminal IDs are **not**
 compared against a new core to infer death/revoke credentials; no new capture
 route/native-session mapping is inferred from labels or PID. New hc launch capture
-and capture-history screen parity still require explicit independent integration.
+and capture-history screen parity belong to separate deferred integration, not
+current backend migration acceptance. Do not add a token handoff/bootstrap now.
 
 Current macOS Debug/Release and iOS builds:
 `/private/tmp/hc-checkpoint.1DQZrL/{macos,release,ios}.log`. The screen owner now

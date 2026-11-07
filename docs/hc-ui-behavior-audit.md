@@ -1,5 +1,14 @@
 # hc UI preservation audit — operator must not be the regression finder
 
+## Current scope
+
+The operator has deferred capture-based message collection/mobile conversation
+display as well as in-app browser/runtime injection. See
+[hc-migration-scope.md](hc-migration-scope.md). Capture launcher/token/provider
+association and capture-history UI parity are not current cutover gates; their
+old incomplete/failure evidence remains historical, not reclassified as passed.
+All other open rows below remain open, including mobile terminal/screen behavior.
+
 ## Gate
 
 The original `ContentView`, `AgentBoardView`, terminal/preview/launcher components
@@ -37,6 +46,7 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
 | Multi-origin groups | Original host/remote grouping, folding, ordering | Still incomplete in hc product. ID-shadow bug in0.1.17 means no unsafe remote mutation or alias fallback. Do not hide this parity gap behind the read-only directory or claim full migration. |
 | Drag/drop | Original row-ID drag + terminal file drag | Scoped row-reference providers and the original terminal text-drop/highlight pipeline are now wired using real workspace node UUIDs, not fake legacy identities. Policy25/mode and actual-core native-destination component integration pass; physical List/Finder gestures remain unqualified. |
 | Empty/loading/error | Original board overlays/search/retry | Actual initially empty board, multi-term/no-results filter and client-failure banner/program survival pass in the current root. Native Retry dispatch also passes32-check current-root audit; loading and stale-target transitions remain open. No diagnostic/editor sidebar substitutes for these. |
+| Capture/browser | Explicitly deferred; `hc-migration-scope.md` | Not current migration acceptance gates. Preserve existing data/code/evidence; no new launcher injection/bootstrap or legacy terminal fallback to keep them alive. |
 | Application entry/service | Existing root plus hc lifecycle requirements | Default root/legacy removal/install/update/service survival/cutover still open. UI work does not authorize deployment or user-core replacement. |
 
 ## Current integrated results and remaining boundary

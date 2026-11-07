@@ -1,5 +1,12 @@
 # hc capture launch — secret transport gate (NOT integrated)
 
+**Deferred, not a current migration blocker.** The operator excluded capture
+collection/mobile conversation display alongside in-app browser/runtime work.
+Do not implement the proposed IPC/bootstrap or connect the launcher as part of
+this migration. Retain the safety-negative evidence and its no-token-persistence
+rule for a separately authorized follow-up. See
+[current scope](../../docs/hc-migration-scope.md).
+
 The peer-verified control/forwarder/recorder composition is implemented; the
 launcher does not yet call it. A durable route reservation must precede any
 program dispatch and bind only the exact known receipt. Never retry uncertain
@@ -40,7 +47,7 @@ even for a normal non-kept launch. Do not waive persistence merely because the
 core's state is private. No product environment API or launcher injection was
 added by this probe.
 
-## Required next gate
+## Prospective follow-up gate — deferred
 
 A prospective handoff must keep the route capability memory-only and out of
 core metadata, disk files, transcript output and logs. Consider a bounded,

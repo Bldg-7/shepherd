@@ -1,8 +1,19 @@
 # hc connect 전환 검토
 
+## 현재 scope — 사용자 결정 우선
+
+[hc-migration-scope.md](hc-migration-scope.md)가 현재 완료 조건의 기준이다.
+인앱 브라우저/주입 runtime과 함께 **capture 기반 API 메시지 수집·모바일 구조화 대화
+표시도 이번 마이그레이션에서 제외**한다. hc capture launcher/route/token 전달,
+provider-native session 연결, IPC/bootstrap 보조기, capture 전용 서비스 및 archive
+화면 parity는 별도 후속 작업이다. 기존 archive·구현·검증·보안 기록은 보존하지만
+이 항목들을 hc cutover 선행 조건으로 삼지 않는다. 아래 capture/browser 통합 탐색과
+과거 미완료 기록은 역사적 자료이며 이번 범위 결정으로 대체된다. terminal/screen,
+일반 CLI 실행, core 이벤트 알림 및 그 밖의 범위 내 회귀 gate는 그대로 유지한다.
+
 ## 제품 UI 보존 차단 요인 — 수동 확인 피드백
 
-사용자가 직접 확인한 hc 화면은 기존 레이아웃과 완전히 달라 거부됐다. backend 교체를 하면서 별도 sidebar/toolbar/launcher 구성을 제품 UI처럼 제시한 것은 회귀다. **기존 UI/사용 흐름을 유지하고 그 아래 backend만 hc로 교체하는 것이 기준**이며, 브라우저·주입 runtime의 명시적 연기만 예외다. 18개 native 동작 검사는 해당 새 화면의 기능 증거이지 UI 동등성/제품 승인 증거가 아니다. 기본 root 전환과 legacy UI 제거는 이 차단 요인을 해소하기 전 진행하지 않는다. 기준과 원본 소스 대응은 [hc-ui-parity-contract.md](hc-ui-parity-contract.md)에 기록했다.
+사용자가 직접 확인한 hc 화면은 기존 레이아웃과 완전히 달라 거부됐다. backend 교체를 하면서 별도 sidebar/toolbar/launcher 구성을 제품 UI처럼 제시한 것은 회귀다. **기존 UI/사용 흐름을 유지하고 그 아래 backend만 hc로 교체하는 것이 기준**이며, 브라우저·주입 runtime 및 capture 대화 기능의 명시적 연기는 예외다. 18개 native 동작 검사는 해당 새 화면의 기능 증거이지 UI 동등성/제품 승인 증거가 아니다. 기본 root 전환과 legacy UI 제거는 이 차단 요인을 해소하기 전 진행하지 않는다. 기준과 원본 소스 대응은 [hc-ui-parity-contract.md](hc-ui-parity-contract.md)에 기록했다.
 
 ### UI 복원 구현 현황 (승인과 구분)
 
@@ -98,7 +109,7 @@
 | 모바일 최근 출력 | captured conversation/observer 우선 | `terminal.read(lines>0)`의 TUI 조작 의미 주의 |
 | file preview/drop | 기존 SFTP/exec 유지 가능 | `file.read/terminal.put`는 후속 검토. 바이너리·크기 의미 검증 없이 교체 금지 |
 | CEF/credential broker | 기존 네이티브 서비스 유지 | owner identity, launch/revoke 연결 재설계 |
-| API proxy/captured conversation | 기존 별도 서비스 유지 | route 및 session 매칭을 새 identity로 변경 |
+| API proxy/captured conversation | 이번 scope 제외; 기존 데이터·구현 보존 | 신규 hc route/session 연동은 별도 후속 작업, 현재 cutover gate 아님 |
 | 모바일 QR/Secure Enclave pairing | 기존 SSH pairing 유지 | herdr.sock/pane.list probe만 새 연결 검사로 교체 |
 
 ## 3. 앱으로 가져와야 하는 workspace 모델
@@ -536,7 +547,7 @@ run/doc과 close/kill의 비원자적 결과는 dispatch 전에 영속하는 jou
 
 Pairing device 117+7(`/private/tmp/hc-pair-device.AgXdpa/run`), Mac 279+11+115(`/private/tmp/hc-pair-mac.51sBOl/run`) 통과. `/private/tmp/hc-final-ui.Vc41qW/{macos,ios}.log` build 통과. iOS UI automation/사용자 host/cloud login/launchd quit survival을 대신 검증했다고 주장하지 않는다.
 
-**아직 전체 전환 완료가 아니다.** macOS 기본 root cutover, 승인 설치/업데이트, gateway-origin docs/alias 변경 처리, 신규 hc launch capture/기존 capture-history 화면, legacy 제거가 남는다. 기존 capture proxy 설정/route/data는 브라우저와 별개로 보존하고 새 core에 없다는 이유로 legacy terminal credential을 revoke하지 않는다. 어떤 것도 PID/label로 native session binding을 대체하지 않는다.
+**아직 전체 전환 완료가 아니다.** macOS 기본 root cutover, 승인 설치/업데이트, gateway-origin docs/alias 변경 처리, 범위 내 UI·모바일 terminal 회귀와 legacy 제거가 남는다. 신규 hc launch capture/기존 capture-history 화면 parity는 사용자 결정으로 이번 scope에서 제외했으며 별도 후속 작업이다. 기존 capture proxy 설정/route/data는 브라우저와 별개로 보존하고 새 core에 없다는 이유로 legacy terminal credential을 revoke하지 않는다. 어떤 것도 PID/label로 native session binding을 대체하지 않는다.
 
 공식 0.1.17 formatter negative gate는 계속 nonzero이다. **2026-11-04 사용자 결정: 크래시/사용 불가가 아닌 확인된 repaint 결함은 공개된 제한으로 수용하고 공식 0.1.17을 출시 기준으로 삼는다. 별도 app-managed formatter fork는 배포하지 않는다.** 기존 core 선택 대기 상태는 해소됐다. [출시 기준과 남은 게이트](hc-official-release-baseline.md)를 따른다. 보관된 patched positive는 여전히 0.1.16 기반 qualification control일 뿐 출시 artifact가 아니다. 렌더링 실패를 통과로 바꾸거나 다른 GUI/소유권/정리 실패를 면제하지 않는다. 출시 작업 승인이 사용자 실행 중 core의 임의 교체/재시작 승인은 아니다.
 
