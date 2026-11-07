@@ -28,6 +28,46 @@ checks prove transport/profile ownership, not independent-origin cache isolation
 real remote-machine service operation, GUI approval, native-provider association
 or gateway routing authority.
 
+## Subsequent distinct-origin native UI
+
+`hc-screen-app.2_78xs23` passes78 checks: all prior74 fullscreen/native checks
+plus actual Settings Make Active -> exact host-key approval button -> distinct
+private SSH origin B -> native remote row/rendered marker -> Settings/local
+return. Both local program incarnations and B's canonical live program survive
+UI connection retirement. Previous preview data is absent on B. Two private
+credential reads are observed: approved UI connection and an explicit read-only
+post-retirement verification connection. No user Keychain/account is read.
+
+App and sidecar exit naturally with no runner signals. Both cores/programs/
+sockets and staged apps retire; generated credential file is consumed/deleted.
+`directSSHProfileUI=true`, `distinctCoreIDs=true`, wholeUIParityQualified=false,
+releaseCutover=false. This is not gateway/multihop routing, physical hover/IME,
+production SSH account lifecycle, service installation or provider identity.
+
+Earlier failures stay failed: `hc-screen-app.ll0ckext` rejected numeric-address
+SB grammar before any app/core/sidecar startup; exact-port localhost policy's
+9 actual socket canaries pass at `hc-ui-network.pxkfl6s9`. `l7ud19wa` completed74
+then failed live-row discovery after native approval; both origins retired.
+Headless document/pane/live-record readiness was strengthened; the driver now
+uses one real Show Sidebar action if the native sidebar is collapsed, plus
+scoped row readiness diagnostics. The later pass is a new evidence point, not
+retroactive proof of the exact cause in the earlier run.
+
+`hc-profile-readiness.fdbxVr/integrated` passes current macOS Debug/Release,
+iOS Debug, renderer69, actual6/80, original UI and wiring25; its sidecar gate
+validates the actual helper source/product/executable hashes and natural
+bootstrap/client/cleanup. `hc-profile-ui-gates.62T9hT` retains an earlier Debug
+composition failure (the second fixture store call needed its explicit private
+secret store); later stages were NOTRUN. No diagnostic was relaxed.
+
+The sidecar permits only the exact production discovery command, executes the
+unmodified0.1.17 binary in a second private HOME/XDG/socket with the explicit
+no-launchd fixture marker, and uses a per-run in-memory key/password. A generated
+0600 credential handoff file lives under the0700 owned root, is never logged or
+put in argv, and is removed before UI readiness. The GUI's TCP scope is exactly
+one owned localhost port; outside TCP/UNIX canaries remain denied. Helper
+retirement failure cannot be hidden by an earlier successful layout result.
+
 ## Actual discovery, not an exec substitution
 
 Previously both accepted exec strings were routed to the direct explicit-binary

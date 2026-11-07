@@ -32,7 +32,7 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
 | Explicit program ending | Original Close confirmation can end programs | Source now keeps view-only close as default and declares a separate explicit close/end-unshared choice. Schema2 partial close + durable stop, old-schema read, fresh direct facts, shared/foreign protection and no uncertain replay pass SDK274/mode and actual-core76. Current ordinary-window63-check root executes the separate native end action, confirms only its consented Shell finished and recovery confirmed, and preserves other programs; native default Return stays view-only. Cancel/pending-stop UI and fullscreen ending remain separate gates; no full UI qualification. |
 | Quit with sheet | Original presentationPreventsAppTermination(false) | Added original behavior to transient settings/switcher/origin/tracking/install sheets. Needs actual CmdQ/owned service survival gate. |
 | Viewed/attention | Original key-window + actual selected pane/tab | Found hidden tab siblings marked viewed in pane mode and app-active used without key-window check. New policy uses actual rendered mode/zoom/selection + key window. Pure rules covered; OS notification behavior remains unqualified. |
-| Scope changes | Existing exact machine identity / connection provenance | Clear overlays and deferred navigation; typed epoch/reference keys for previews, focus, switcher. No alias/PID/label is native authorization. Native Retry is exercised; exact current owner-model identity now joins profile/epoch guards at board actions, attach/input/drop/upload and title submission. Full host switching and physical cross-window interactions remain gates. |
+| Scope changes | Existing exact machine identity / connection provenance | Clear overlays and deferred navigation; typed epoch/reference keys for previews, focus, switcher. No alias/PID/label is native authorization. Native Retry is exercised; exact current owner-model identity now joins profile/epoch guards at board actions, attach/input/drop/upload and title submission. Current78-check distinct-origin UI gate uses real Settings/approval controls, verifies no credential access before approval, old-model retirement, distinct remote output without the old preview, local return and both programs' survival. Physical cross-window interactions remain open; direct profiles are not gateway authority. |
 | Existing native terminal discovery | Original board/switcher lists registered programs | Restored board/switcher initially hid externally created canonical hc terminals without saved views. Existing CmdP now offers explicit typed canonical choices, fresh read + exact-version view-only CAS after dismissal. A known-missing document gets workspace/view in one CAS; closing that view keeps the program. Native empty-board flow passes55, with an empty-state shortcut hint; no diagnostic sidebar, fake IDs, native-session inference or uncertain-run adoption. |
 | Multi-origin groups | Original host/remote grouping, folding, ordering | Still incomplete in hc product. ID-shadow bug in0.1.17 means no unsafe remote mutation or alias fallback. Do not hide this parity gap behind the read-only directory or claim full migration. |
 | Drag/drop | Original row-ID drag + terminal file drag | Scoped row-reference providers and the original terminal text-drop/highlight pipeline are now wired using real workspace node UUIDs, not fake legacy identities. Policy25/mode and actual-core native-destination component integration pass; physical List/Finder gestures remain unqualified. |
@@ -444,6 +444,21 @@ and actual product/physical GUI approval. No row marked open is implicitly waive
   Read-only2026-11-07T02:32:38Z upstream check still finds PR117/118 OPEN/unmerged;
   gateway alias/permanent-ID ambiguity remains fail-closed. No released fix or
   baseline change is inferred from the failed latest-release lookup.
+
+- **Native distinct-origin78 (`072d304`, `2c846d9`, `c5e0001`, `25d09a2`):**
+  `.2_78xs23` passes all previous74 plus real Settings Make Active and exact
+  host-key approval to a distinct owned loopback-SSH core, its actual native
+  row/rendered marker without the old preview, local return and both origins'
+  program survival. This uses production SDK factory/owner; the local fixture
+  override is no longer incorrectly offered on remote profiles. App/sidecar
+  exit naturally with no signals; both sockets/programs, temporary credential
+  and staged apps retire. `directSSHProfileUI=true`, wholeUIParityQualified=false.
+  `.ll0ckext` preflight policy syntax failure and `.l7ud19wa`74-then-row failure
+  remain failed. Stronger headless pane/live metadata and a native Show Sidebar
+  readiness path precede the later pass; no forced visibility/model selection.
+  `SSH-PROFILE-README.md` documents fixtures, limitations and exact evidence.
+  No physical, gateway mutation, real SSH-account/service/provider qualification
+  or release/default-backend cutover is inferred.
 
 ## Evidence retained
 
