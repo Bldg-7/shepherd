@@ -4197,13 +4197,21 @@ build/SourcePackages/checkouts/swift-certificates/Sources/X509/X509BaseTypes/Tim
 ========================================================================
 Shepherd/Agents/AgentRuntime/node_modules/@playwright/mcp bundled licenses
 ========================================================================
-The bundled Node packages for Playwright MCP retain their license files in this directory. See package-lock.json for the resolved package identities and each package directory for its license file.
+The retained legacy Debug fixture runtime keeps its Node package licenses in this directory. See package-lock.json for the resolved identities. The hc Release app excludes AgentRuntime and does not bundle these Node packages; the attribution retained here is not a claim that the fixture payload ships in Release.
 
 
 ========================================================================
 Chromium credits (CEF 154.0.33+ga03e714+chromium-154.0.8037.94)
 ========================================================================
 Chromium and CEF third-party credits are distributed as ChromiumCredits.html in the application Contents/Resources directory. The source CREDITS.html is supplied by the pinned CEF distribution.
+
+
+========================================================================
+hc Release composition and modified SwiftTerm
+========================================================================
+The hc Release app excludes the Chromium browser framework/helpers and the capture proxy executable/LaunchAgents. Existing archive codecs and the CEF bridge/static wrapper remain linked at this retirement stage; their notices and Chromium credits are retained. This is not a claim that all legacy code dependencies have been removed.
+
+SwiftTerm is vendored from upstream 1.20.0 at commit 5d14406844143538cd8f8851d2d8a67c1fe443e5 as 1.20.0-shepherd.saved-wrap-default.1-modified. Shepherd changes the initial and DECSTR-reset saved wraparound defaults to true while preserving explicitly saved wrap-off. The upstream MIT license above is unchanged. Source provenance: Vendor/SwiftTerm/PROVENANCE.md and source-hashes.json.
 
 
 ========================================================================

@@ -4,6 +4,9 @@ Default macOS Debug/Release source entry now uses hc through the shared
 `ShepherdHcContent → HcRootView` composition; missing/failed hc never selects
 legacy. See [source cutover boundary](../../docs/hc-default-backend-cutover.md).
 This is not installed-app deployment or completed service/release qualification.
+The [Release payload retirement](RELEASE-PAYLOAD-README.md) additionally excludes
+browser/runtime/proxy helper payloads while retaining Debug fixtures and required
+archive/SSH/crypto/bridge attribution; full legacy code/dependency pruning is separate.
 
 The app backend moves from legacy herdr (`HerdrClient` + `herdr terminal attach`
 over an SSH PTY) to hc (`CoreRPCConnection` + `terminal.attach` framed streams).

@@ -156,48 +156,57 @@ show that signing and notarization will pass.
 
 ## What the script does
 
-The script signs the CEF libraries, framework and helpers that `scripts/cef.sh` prepared,
-inside-out, with the exact Developer ID certificate before Xcode validates embedded
-applications; the app uses the same certificate. The helpers keep the entitlements in
-`CEFHelper/`, and none are added. No `--deep` signing or plugin-validation bypass is used.
+The hc Release app excludes the CEF browser framework/helpers, AgentRuntime,
+capture proxy executable and capture LaunchAgents. Debug retains these only for
+isolated historical fixtures. The still-compiled browser bridge needs CEF headers
+and the Release static wrapper (`SHEPHERD_CEF_ROOT`, default `Vendor/CEF/out`),
+so CEF build-input retirement is not complete. Chromium credits and the bridge's
+attribution remain. There is no browser Node-package install or CEF helper signing
+step in the hc release workflow. Vendored SwiftTerm provenance is verified without
+writing a global plugin-trust file; plugin validation stays enabled.
+
+This is a packaging policy, not authorization to update a user's installation.
+An older installed capture LaunchAgent can point into the old app bundle. Do not
+deploy this helper-free app over an active capture installation without a separately
+approved handover that preserves its programs/data; do not infer retirement from a
+route list or automatically stop/unregister it. Local packaging tests do not qualify
+that service transition, signing or notarization.
 
 It archives, exports/signs, notarizes, staples the app and DMG, runs Gatekeeper checks, and
 signs the Sparkle feed. It stops if the update in the appcast came out unsigned, which is
 what happens when the Sparkle key it was given is not the one the app trusts.
 
-Right after the export, the script runs
-`Tests/AgentBrowser/run-cef-helper-name-tests.py --app` on the exported app and stops if
-that check fails. The check wants exactly five helper apps for the browser engine (CEF) in
-`Contents/Frameworks`: `3rdr Helper`, `3rdr Helper (Alerts)`, `3rdr Helper (GPU)`,
-`3rdr Helper (Plugin)` and `3rdr Helper (Renderer)`. Each helper must contain its
-executable, its Info.plist must name that executable, and its signature must be valid.
-The helpers must also be where the app's code tells CEF to look for them. A missing or
-misnamed helper still builds and signs, but the app quits as soon as the browser starts,
-as 0.5.0 did. A reused `build/DerivedData` can still hold helpers under the earlier name
-`Shepherd Helper`, which also fails the check; delete `build/DerivedData` and run the
-script again.
+Right after export, `Tests/HcBackend/hc_release_bundle.py --app` rejects excluded
+browser/helper/Node/proxy/LaunchAgent payloads, including nested/stale files and
+escaping symlinks. It also checks the actual executable's Mach-O architectures and
+load commands: Sparkle must remain linked, but the excluded browser runtime must not
+be required. Reused DerivedData can retain retired files; a fresh archive must pass
+without post-build stripping. Never delete an in-use build/cache or user app to make
+a check pass. The old CEF-helper-name and proxy-bundle gates remain available for
+explicit legacy Debug fixtures; they are not the hc Release payload policy.
 
-The script then runs `Tests/Notices/run-notices-tests.py --app --products` before it
-accepts the exported app for signing/notarization. Before archiving it temporarily stamps
-the macOS notice header with the requested release version and restores the reviewed source
-file on exit. The gate is offline and checks the frozen notice/source hashes, Package.resolved
-and local AgentProxy product graph, runtime `package-lock.json`/bundled license locations,
-pinned and staged CEF credits, bundled notice/credits bytes, and linked-product evidence.
-It receives both the `.xcarchive` and release DerivedData. The gate requires the archive's
-intended app/helper executables and embedded frameworks to match the exported app's
-architectures, then reads the exact Xcode-generated Release link-file-list for each target.
-For every main and agent-proxy helper slice, it also requires matching `LC_UUID` identities
-between the archive executable, exported executable, and that target's fixed Release dSYM
-under `ArchiveIntermediates/Shepherd/BuildProductsPath`; the dSYM is accepted only alongside
-the exact target link inputs. This rejects a matching-looking archive/DerivedData pair from
-different builds. UUID comparison is a normal build-coherence check, not cryptographic
-attestation against a malicious builder. Every static product must be a non-empty Mach-O object
-at its expected DerivedData product path and a direct input of the intended app or agent-proxy
-helper target (including both `AgentProxyProtocol` and `AgentProxyForwarder` in the helper).
-Sparkle must be both embedded and directly loaded by the app; CEF is only required to be a valid
-embedded framework because the app dynamically loads it by design. Missing, duplicate,
-wrong-target, wrong-root, empty, or merely similarly named evidence is a failure, not an
-empty-glob success.
+The script then runs `Tests/Notices/run-notices-tests.py --profile hc --app --products`.
+Before archiving it temporarily stamps the requested notice version and restores the
+reviewed source on exit. The offline hc profile preserves frozen license/source hashes
+and the reviewed remote-pin set, with only the explicit SwiftTerm/CLI-parser vendoring
+delta. It verifies vendored renderer hashes, the unchanged MIT license and modified
+version attribution. Node/runtime package checks belong to the explicit retained
+`legacy-fixture` profile, not an absent hc payload. This does not waive any license
+for linked SSH, crypto, archive-codec or retained browser-bridge code.
+
+The hc gate receives the `.xcarchive` and its exact Release DerivedData, compares
+archive/export Info.plist and architecture identities, and reads the app target's
+exact link-file-list for every slice. Each required static product must be a real
+non-empty Mach-O object at its expected product path and an actual app link input;
+this includes `AgentProxyCore` and `AgentProxyProtocol` for archive reading, not an
+unshipped `AgentProxyForwarder` helper. The retained bridge object is checked too.
+The exported main executable, archived main and exact app-target dSYM under
+`ArchiveIntermediates/Shepherd/BuildProductsPath` must have matching `LC_UUID`s.
+Sparkle must be embedded and directly loaded. Required notice/retained-credit bytes
+and bundle version must match source. Wrong targets/roots, empty objects and merely
+similar names fail closed. UUIDs prove ordinary build coherence, not cryptographic
+attestation against a malicious builder. The frozen legacy helper profile is not
+relabeled as hc release evidence.
 
 Existing output is not deleted. On a Mac, keep what a failed attempt left in
 `build/release/<version>`, and set `SHEPHERD_RELEASE_WORK` to a fresh directory for the
@@ -205,9 +214,9 @@ retry. A workflow run starts from nothing each time.
 
 ## Verify the candidate
 
-Verify version/build, architectures, Developer ID team, hardened runtime, every nested
-CEF/helper signature, notarization/staple, third-party notices, bundled runtime integrity,
-and absence of development credentials/profiles/evidence. The automated notice gate is not
+Verify version/build, architectures, Developer ID team, hardened runtime, retained
+framework signatures, notarization/staple, third-party notices, absence of excluded
+integration payloads, and absence of development credentials/profiles/evidence. The automated notice gate is not
 a replacement for a human resource review: in the candidate app, inspect
 `Contents/Resources/ThirdPartyNotices.txt` for the matching header version and the unique
 two BoringSSL sections, Niels Provos, WIDE Project, Rich Felker, and uSHET; manually open

@@ -15,8 +15,8 @@ app's files without running anything in it:
 - With --team (the release script's exported app): signed by that team with
   the hardened runtime, as notarization requires.
 
-Used by Tests/AgentProxy/run-app-tests.py on a Debug build and by
-scripts/release-macos.sh on the exported release.
+Retained for explicit legacy-fixture builds and Tests/AgentProxy/run-app-tests.py.
+The hc Release script uses hc_release_bundle.py and requires this payload absent.
 """
 import argparse, plistlib, re, subprocess, sys
 from pathlib import Path

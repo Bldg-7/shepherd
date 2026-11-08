@@ -120,29 +120,17 @@ jobs:
           echo "$component"
           [[ "$component" == *"Status: installed"* ]]
 
-      - name: Get CEF
+      # The bridge/static wrapper still compiles at this retirement stage.
+      # The Release bundle excludes the browser engine and all helper apps;
+      # Chromium credits remain attribution for retained bridge code.
+      - name: Prepare retained CEF bridge and attribution
         run: scripts/cef.sh
 
-      - name: Get the browser runtime's Node packages
-        run: npm ci --prefix Shepherd/Agents/AgentRuntime --ignore-scripts --no-audit --no-fund
-
-      # What Xcode records when "Trust & Enable" is clicked for this plugin:
-      # the revision SwiftTerm 1.20.0 is pinned to in Package.resolved. Plugin
-      # validation stays on, so any other plugin, or this one at another
-      # revision, still stops the build; a SwiftTerm update needs its new
-      # revision approved here.
-      - name: Approve the pinned SwiftTerm build plugin
-        run: |
-          mkdir -p ~/Library/org.swift.swiftpm/security
-          cat > ~/Library/org.swift.swiftpm/security/plugins.json <<'JSON'
-          [
-            {
-              "fingerprint" : "5d14406844143538cd8f8851d2d8a67c1fe443e5",
-              "packageIdentity" : "swiftterm",
-              "targetName" : "SwiftTermBuildInfoPlugin"
-            }
-          ]
-          JSON
+      # SwiftTerm is a reviewed local vendored package, not the old remote pin.
+      # Keep plugin validation enabled; do not write a global trust override.
+      # No browser Node runtime is installed or bundled for hc Release.
+      - name: Verify the vendored terminal renderer
+        run: python3 -B Tests/Terminal/SwiftTermWrap/verify-vendor.py
 
       - name: Get the Swift packages
         run: |

@@ -91,6 +91,14 @@ Failures/logs/hashes/private state/native geometry and current platform products
 are preserved. No unrelated process, source, installed program/service or user
 credential was removed or stopped.
 
+## Follow-up Release payload retirement
+
+[RELEASE-PAYLOAD-README.md](../Tests/HcBackend/RELEASE-PAYLOAD-README.md) records the
+follow-up exclusion of CEF runtime/helpers, AgentRuntime and proxy/LaunchAgent
+payloads from Release. Debug fixtures and archive codecs remain. This reduces
+shipping payload, not all compiled legacy code/build dependencies, and does not
+change installed services or qualify deployment/handover.
+
 ## Still not release completion
 
 Existing physical edge-hover/IME/drag, real mobile device/OS notification delivery,

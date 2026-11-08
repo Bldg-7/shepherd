@@ -52,7 +52,9 @@ WORK="${SHEPHERD_RELEASE_WORK:-$ROOT/build/release/$VERSION}"
 # published, so a release stopped halfway leaves nothing behind in it.
 UPDATES="$ROOT/build/updates"
 STAGE="$WORK/updates"
-DERIVED="$ROOT/build/DerivedData"
+# Each release attempt has a fresh product tree; never repair stale payloads
+# by deleting a user/in-use DerivedData or stripping an exported bundle.
+DERIVED="$WORK/DerivedData"
 SPARKLE_BIN="$ROOT/build/SourcePackages/artifacts/sparkle/Sparkle/bin"
 ARCHIVE="$WORK/hrdrhrdrhrdr.xcarchive"
 APP="$WORK/export/hrdrhrdrhrdr.app"
@@ -93,8 +95,8 @@ fail() { printf 'error: %s\n' "$*" >&2; exit 1; }
 # Signed builds use the operator's existing approved Xcode/Keychain context,
 # or the keychain the release workflow makes for its one run from the
 # repository's secrets; DerivedData and package/build outputs remain inside
-# this release tree. Do not put credentials anywhere else, approve a plugin
-# other than the pinned one or bypass validation.
+# this release tree. Do not put credentials anywhere else, write global plugin
+# trust overrides or bypass validation; the vendored renderer is hash-verified.
 # Runs notarytool signed in: with the operator's profile, or with what the
 # environment gave. An API key is on disk only while notarytool reads it. An
 # app-specific password can only go on notarytool's command line, where
@@ -176,8 +178,11 @@ elif [[ -z "$SKIP_NOTARIZE" ]]; then
 fi
 
 [[ ! -e "$WORK" ]] || fail "Output already exists; preserve it and use SHEPHERD_RELEASE_WORK for a fresh attempt"
-[[ -f "$ROOT/Shepherd/Agents/AgentRuntime/node_modules/@playwright/mcp/package.json" ]] || fail "Prepare the locked browser runtime before archiving"
-[[ -d "$ROOT/Vendor/CEF/out/Chromium Embedded Framework.framework" ]] || fail "Run scripts/cef.sh before archiving"
+# hc Release excludes browser/runtime/proxy payloads. Only the still-compiled
+# CEF bridge's headers/static wrapper remain build inputs at this stage.
+CEF_BUILD_ROOT="${SHEPHERD_CEF_ROOT:-$ROOT/Vendor/CEF/out}"
+[[ -d "$CEF_BUILD_ROOT/include" && -f "$CEF_BUILD_ROOT/lib/Release/libcef_dll_wrapper.a" ]] \
+    || fail "The retained CEF bridge headers/static wrapper are not prepared"
 # The notice resource is source-synchronized by Xcode. Stamp the candidate's
 # header before archiving, then always restore the reviewed source file when
 # this script exits. The exported bundle is checked against this stamped copy.
@@ -190,7 +195,7 @@ restore_notice_source() {
     rm -f "$NOTICE_BACKUP"
 }
 trap restore_notice_source EXIT
-python3 "$ROOT/Tests/Notices/run-notices-tests.py" --stamp-version "$VERSION" \
+python3 "$ROOT/Tests/Notices/run-notices-tests.py" --profile hc --stamp-version "$VERSION" \
     || fail "couldn't stamp the third-party notice header"
 if [[ -f "$UPDATES/appcast.xml" ]]; then
     python3 - "$UPDATES/appcast.xml" "$BUILD_NUMBER" <<'PY'
@@ -201,9 +206,7 @@ values += [int(e.get(version)) for e in tree.iter('enclosure') if e.get(version)
 assert values and int(sys.argv[2]) > max(values), 'Build number must exceed the prior appcast'
 PY
 fi
-step "Signing pinned CEF framework and helper inputs"
-python3 "$ROOT/scripts/sign-cef.py" --identity "$SIGN_IDENTITY"
-step "Archiving hrdrhrdrhrdr $VERSION ($BUILD_NUMBER)"
+step "Archiving hc hrdrhrdrhrdr $VERSION ($BUILD_NUMBER) without deferred integration payloads"
 xcodebuild archive -quiet \
     -project "$ROOT/shepherd.xcodeproj" -scheme Shepherd -configuration Release \
     -destination 'generic/platform=macOS' \
@@ -211,7 +214,7 @@ xcodebuild archive -quiet \
     -clonedSourcePackagesDirPath "$ROOT/build/SourcePackages" \
     -packageCachePath "$ROOT/build/PackageCache" \
     -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates -jobs 4 \
-    SHEPHERD_APP_SIGN_IDENTITY="$SIGN_IDENTITY" MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
+    SHEPHERD_APP_SIGN_IDENTITY="$SIGN_IDENTITY" SHEPHERD_CEF_ROOT="$CEF_BUILD_ROOT" MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
 
 step "Exporting with Developer ID"
 cat > "$WORK/ExportOptions.plist" <<EOF
@@ -232,23 +235,17 @@ cat > "$WORK/ExportOptions.plist" <<EOF
 EOF
 xcodebuild -exportArchive -quiet \
     -archivePath "$ARCHIVE" -exportPath "$WORK/export" -exportOptionsPlist "$WORK/ExportOptions.plist"
-# CEF starts its helpers by the name the app hands it, from Contents/Frameworks.
-# A helper missing or misnamed there still builds and signs, and the whole app
-# goes down when the browser starts (0.5.0). A helper under an earlier name,
-# left there by a reused DerivedData, is refused too.
-python3 "$ROOT/Tests/AgentBrowser/run-cef-helper-name-tests.py" --app "$APP" \
-    || fail "the exported app's browser helpers don't match the name it starts them by"
+# Reject deferred payloads, including stale files from reused DerivedData.
+# This gate reads the bundle; it never starts a browser/proxy or user service.
+python3 "$ROOT/Tests/HcBackend/hc_release_bundle.py" --app "$APP" \
+    || fail "the exported hc app contains deferred integration payloads or an invalid executable"
 # An xcarchive contains the exported app but not static-package object files.
 # Supply its DerivedData too, so the notice gate rejects unavailable linked
 # product evidence rather than accepting an empty archive glob.
-python3 "$ROOT/Tests/Notices/run-notices-tests.py" --app "$APP" --products "$ARCHIVE" "$DERIVED" \
-    || fail "the exported app's third-party notices, Chromium credits, runtime licenses, or linked-product evidence are incomplete"
-# The agent proxy (SHPHRD-105) runs from Contents/MacOS as a LaunchAgent the
-# app registers: its executable there, linking no framework of the app's and
-# signed by the team with the hardened runtime, as notarization requires, and
-# the release LaunchAgent alone in Contents/Library/LaunchAgents.
-python3 "$ROOT/Tests/AgentProxy/check-bundle.py" --app "$APP" --configuration Release --team "$TEAM_ID" \
-    || fail "the exported app's agent proxy or its LaunchAgent isn't as it should be"
+python3 "$ROOT/Tests/Notices/run-notices-tests.py" --profile hc --app "$APP" --products "$ARCHIVE" "$DERIVED" \
+    || fail "the hc app's notices, retained credits, exact app-link inputs or archive/export identities are incomplete"
+# Archive codecs remain linked and attributed, but no capture LaunchAgent or
+# proxy executable is shipped. No installed capture service is changed here.
 codesign --verify --deep --strict "$APP"
 [[ "$(codesign --display --verbose=2 "$APP" 2>&1)" == *"TeamIdentifier=$TEAM_ID"* ]] \
     || fail "the exported app isn't signed by team $TEAM_ID"

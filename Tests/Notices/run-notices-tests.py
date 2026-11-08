@@ -19,12 +19,16 @@ import plistlib
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 from typing import Iterable
 
 ROOT = Path(__file__).resolve().parents[2]
 INVENTORY_PATH = ROOT / "Tests/Notices/inventory.json"
 SEP = "========================================================================"
+# The frozen attribution inventory remains intact. The hc profile accounts for
+# the separately reviewed SwiftTerm vendoring and removal of its CLI-only pin.
+HC_REMOVED_REMOTE_PINS = frozenset({'swiftterm', 'swift-argument-parser'})
 REMOTE_REVISIONS = {
     "bigint": "e07e00fa1fd435143a2dcf8b7eec9a7710b2fdfe",
     "sparkle": "eef1a539a373c1f1a320624b1130fc5de7b2e100",
@@ -191,15 +195,29 @@ def check_notice_sources(inventory: dict, mac: str, ios: str) -> None:
         notice_section(mac, title)
 
 
-def check_dependency_graph(inventory: dict) -> None:
+def check_dependency_graph(inventory: dict, *, hc_product: bool = False) -> None:
     resolved = read_json(ROOT / inventory["changeFingerprints"]["packageResolved"])
     pins = {pin["identity"].lower(): pin["state"]["revision"] for pin in resolved.get("pins", [])}
-    if pins != REMOTE_REVISIONS:
-        missing = sorted(set(REMOTE_REVISIONS) - set(pins))
-        extra = sorted(set(pins) - set(REMOTE_REVISIONS))
-        changed = sorted(name for name in set(pins) & set(REMOTE_REVISIONS) if pins[name] != REMOTE_REVISIONS[name])
+    expected = {name: revision for name, revision in REMOTE_REVISIONS.items()
+                if not hc_product or name not in HC_REMOVED_REMOTE_PINS}
+    if pins != expected:
+        missing = sorted(set(expected) - set(pins))
+        extra = sorted(set(pins) - set(expected))
+        changed = sorted(name for name in set(pins) & set(expected) if pins[name] != expected[name])
         fail(f"Package.resolved drift (missing={missing}, extra={extra}, changed={changed})")
     project = (ROOT / inventory["changeFingerprints"]["productGraph"]).read_text(encoding="utf-8")
+    if hc_product:
+        if 'relativePath = Vendor/SwiftTerm;' not in project:
+            fail('hc product must use the reviewed vendored SwiftTerm')
+        verify = subprocess.run([sys.executable, '-B', str(ROOT / 'Tests/Terminal/SwiftTermWrap/verify-vendor.py')],
+                                cwd=ROOT, capture_output=True, text=True, timeout=30, check=False)
+        if verify.returncode:
+            fail('vendored renderer provenance failed: ' + verify.stderr[-1000:])
+        mac = (ROOT / inventory['noticeFiles']['macOS']).read_text(encoding='utf-8')
+        if notice_section(mac, 'build/SourcePackages/checkouts/SwiftTerm/LICENSE') != normalized_lines(ROOT / 'Vendor/SwiftTerm/LICENSE'):
+            fail('retained upstream SwiftTerm license does not match the vendored runtime')
+        if '1.20.0-shepherd.saved-wrap-default.1-modified' not in mac:
+            fail('modified vendored renderer attribution is missing')
     required_products = ("NIOSSL", "X509", "NIOCore", "NIOPosix", "NIOHTTP1", "NIOWebSocket", "Citadel", "SwiftTerm", "Sparkle")
     for product in required_products:
         if f"productName = {product};" not in project:
@@ -281,19 +299,20 @@ def check_cef(inventory: dict, require_stage: bool = True) -> None:
         require_hash(staged, credits["sha256"], "staged Chromium credits")
 
 
-def check_source() -> dict:
+def check_source(*, hc_product: bool = False) -> dict:
     inventory = load_inventory()
     mac = (ROOT / inventory["noticeFiles"]["macOS"]).read_text(encoding="utf-8")
     ios = (ROOT / inventory["noticeFiles"]["iOS"]).read_text(encoding="utf-8")
     check_notice_structure(inventory, mac, ios)
     check_notice_sources(inventory, mac, ios)
-    check_dependency_graph(inventory)
-    check_runtime_packages(inventory)
+    check_dependency_graph(inventory, hc_product=hc_product)
+    if not hc_product:
+        check_runtime_packages(inventory)
     check_cef(inventory)
     return inventory
 
 
-def check_app(inventory: dict, app: Path) -> None:
+def check_app(inventory: dict, app: Path, *, hc_product: bool = False) -> None:
     if not app.is_dir() or app.suffix != ".app":
         fail(f"--app requires an existing .app bundle: {app}")
     info_path = app / "Contents/Info.plist"
@@ -310,6 +329,14 @@ def check_app(inventory: dict, app: Path) -> None:
         fail("app notice header version does not match CFBundleShortVersionString")
     credits = app / inventory["cefCredits"]["resourcePath"]
     require_hash(credits, inventory["cefCredits"]["sha256"], "app Chromium credits")
+    if hc_product:
+        sys.path.insert(0, str(ROOT / 'Tests/HcBackend'))
+        from hc_release_bundle import check_hc_payload, BundlePolicyFailure
+        try:
+            check_hc_payload(app)
+        except BundlePolicyFailure as error:
+            fail(str(error))
+        return
     runtime = app / "Contents/Resources/AgentRuntime"
     if not runtime.is_dir():
         fail("app has no bundled AgentRuntime resource")
@@ -483,6 +510,7 @@ def bind_build_identities(
     archived_executables: dict[str, Path],
     archive_root: Path,
     target_inputs: dict[tuple[str, str], set[Path]],
+    *, targets: tuple[str, ...] = ("app", "helper"),
 ) -> None:
     """Bind app/archive identities to the exact targets whose links were checked.
 
@@ -490,7 +518,7 @@ def bind_build_identities(
     archive/export/DerivedData trio, but is not cryptographic attestation
     against a malicious builder.
     """
-    for target in ("app", "helper"):
+    for target in targets:
         expected_arches = architectures(archived_executables[target])
         require_same_uuids(
             f"archive and supplied {target}",
@@ -523,7 +551,10 @@ def matching_archive_and_derived(inputs: Iterable[Path]) -> tuple[Path, Path, Pa
     return archives[0], derived_roots[0], archives[0] / "Products/Applications/hrdrhrdrhrdr.app"
 
 
-def check_products(inventory: dict, app: Path, inputs: list[Path]) -> None:
+def check_products(inventory: dict, app: Path, inputs: list[Path], *, hc_product: bool = False) -> None:
+    if hc_product:
+        check_hc_products(inventory, app, inputs)
+        return
     archive, derived, archived_app = matching_archive_and_derived(inputs)
     check_app(inventory, archived_app)
     main, helper, sparkle, cef = app_paths(app)
@@ -576,6 +607,58 @@ def check_products(inventory: dict, app: Path, inputs: list[Path]) -> None:
     )
 
 
+def check_hc_products(inventory: dict, app: Path, inputs: list[Path]) -> None:
+    """Exact app-target archive/export/link/dSYM coherence, without a helper.
+
+    The old frozen helper/Node inventory is not relabeled as shipped hc payload.
+    Archive codecs/protocol and the still-linked CEF bridge remain attributed.
+    """
+    archive, derived, archived_app = matching_archive_and_derived(inputs)
+    check_app(inventory, app, hc_product=True)
+    check_app(inventory, archived_app, hc_product=True)
+    main = app / 'Contents/MacOS/hrdrhrdrhrdr'
+    archived_main = archived_app / 'Contents/MacOS/hrdrhrdrhrdr'
+    if (app / 'Contents/Info.plist').read_bytes() != (archived_app / 'Contents/Info.plist').read_bytes():
+        fail('hc archive and exported Info.plist bytes do not match')
+    app_arches = architectures(main)
+    if architectures(archived_main) != app_arches:
+        fail('hc archive and exported app architectures do not match')
+    for candidate in (app, archived_app):
+        sparkle = candidate / 'Contents/Frameworks/Sparkle.framework'
+        if not app_arches <= architectures(framework_binary(sparkle)):
+            fail('hc updater framework lacks a target architecture')
+        require_sparkle_load(candidate / 'Contents/MacOS/hrdrhrdrhrdr')
+        sys.path.insert(0, str(ROOT / 'Tests/HcBackend'))
+        from hc_release_bundle import inspect_binary, BundlePolicyFailure
+        try:
+            inspect_binary(candidate)
+        except BundlePolicyFailure as error:
+            fail(str(error))
+    intermediate_root = archive_intermediates(derived)
+    products_root = intermediate_root / 'BuildProductsPath/Release'
+    target_inputs = {('app', arch): link_inputs(link_file_list(intermediate_root, 'app', arch), derived, arch)
+                     for arch in sorted(app_arches)}
+    evidence = {name: requirements for name, requirements in STATIC_PRODUCT_EVIDENCE.items() if name != 'AgentProxy'}
+    evidence['AgentProxy archive codecs'] = (('app', 'AgentProxyCore.o'), ('app', 'AgentProxyProtocol.o'))
+    for identity, requirements in evidence.items():
+        for target, filename in requirements:
+            expected = (products_root / filename).resolve()
+            for arch in app_arches:
+                if expected not in target_inputs[(target, arch)]:
+                    fail(f'hc linked product evidence unavailable for {identity}: {filename}')
+    # The implementation bridge/static wrapper has not been retired yet. Its
+    # exact app object and unchanged source/credits notices must remain covered.
+    for arch in app_arches:
+        if any(path.name == 'AgentProxyForwarder.o' for path in target_inputs[('app', arch)]):
+            fail('hc app unexpectedly links the deferred capture forwarder')
+        bridge = intermediate_root / ('IntermediateBuildFilesPath/shepherd.build/Release/'
+                                      f'Shepherd.build/Objects-normal/{arch}/BrowserEngine.o')
+        if bridge.resolve() not in target_inputs[('app', arch)]:
+            fail('hc retained CEF bridge link evidence is missing; review the attribution profile')
+    bind_build_identities({'app': main}, {'app': archived_main}, intermediate_root,
+                          target_inputs, targets=('app',))
+
+
 def stamp_version(version: str) -> None:
     if not re.fullmatch(r"[0-9]+(?:\.[0-9]+){1,2}", version):
         fail(f"invalid notice version: {version}")
@@ -592,8 +675,8 @@ def copy_runtime_for_fixture(destination: Path) -> None:
     shutil.copytree(source, destination, ignore=shutil.ignore_patterns(".DS_Store"))
 
 
-def self_test() -> None:
-    inventory = check_source()
+def self_test(*, hc_product: bool = False) -> None:
+    inventory = check_source(hc_product=hc_product)
     mac = (ROOT / inventory["noticeFiles"]["macOS"]).read_text(encoding="utf-8")
     ios = (ROOT / inventory["noticeFiles"]["iOS"]).read_text(encoding="utf-8")
 
@@ -662,8 +745,13 @@ def self_test() -> None:
         (app / "Contents/Info.plist").write_bytes(plistlib.dumps({"CFBundleShortVersionString": "0.6.0"}))
         shutil.copy2(ROOT / inventory["noticeFiles"]["macOS"], resources / "ThirdPartyNotices.txt")
         shutil.copy2(ROOT / inventory["cefCredits"]["sourcePath"], resources / "ChromiumCredits.html")
-        copy_runtime_for_fixture(resources / "AgentRuntime")
-        check_app(inventory, app)
+        if not hc_product:
+            copy_runtime_for_fixture(resources / "AgentRuntime")
+        check_app(inventory, app, hc_product=hc_product)
+        if hc_product:
+            (resources / 'AgentRuntime').mkdir()
+            rejected('hc excluded runtime', lambda: check_app(inventory, app, hc_product=True))
+            (resources / 'AgentRuntime').rmdir()
 
         # Product fixtures deliberately use empty objects and misleading names.
         # The gate has no synthetic success path: only real archive/DerivedData
@@ -683,10 +771,10 @@ def self_test() -> None:
         rejected("incomplete product evidence", lambda: check_products(inventory, app, [products, fixture]))
 
         (resources / "ThirdPartyNotices.txt").write_text("stale\n", encoding="utf-8")
-        rejected("app notice/version content mismatch", lambda: check_app(inventory, app))
+        rejected("app notice/version content mismatch", lambda: check_app(inventory, app, hc_product=hc_product))
         shutil.copy2(ROOT / inventory["noticeFiles"]["macOS"], resources / "ThirdPartyNotices.txt")
         (resources / "ChromiumCredits.html").write_text("stale\n", encoding="utf-8")
-        rejected("app CEF credits hash", lambda: check_app(inventory, app))
+        rejected("app CEF credits hash", lambda: check_app(inventory, app, hc_product=hc_product))
     print("self-test: all negative guards rejected")
 
 
@@ -696,20 +784,23 @@ def main() -> int:
     parser.add_argument("--products", type=Path, nargs="+", metavar="PATH", help="archive and DerivedData/product-evidence paths")
     parser.add_argument("--self-test", action="store_true", help="exercise synthetic failing guards")
     parser.add_argument("--stamp-version", metavar="VERSION", help="write the release version into the macOS notice header")
+    parser.add_argument('--profile', choices=['hc', 'legacy-fixture'], default='hc',
+                        help='hc Release payload or explicit retained legacy-fixture attribution graph')
     args = parser.parse_args()
     try:
         if args.stamp_version:
             stamp_version(args.stamp_version)
+        hc_product = args.profile == 'hc'
         if args.self_test:
-            self_test()
+            self_test(hc_product=hc_product)
             return 0
-        inventory = check_source()
+        inventory = check_source(hc_product=hc_product)
         if args.app:
-            check_app(inventory, args.app)
+            check_app(inventory, args.app, hc_product=hc_product)
         if args.products:
             if not args.app:
                 fail("--products requires --app so evidence is tied to the exported app")
-            check_products(inventory, args.app, args.products)
+            check_products(inventory, args.app, args.products, hc_product=hc_product)
     except NoticeFailure as error:
         print(f"error: {error}", file=os.sys.stderr)
         return 1

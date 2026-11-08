@@ -643,13 +643,20 @@
 				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
 				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
 				ENABLE_RESOURCE_ACCESS_USB = NO;
-				EXCLUDED_SOURCE_FILE_NAMES = "com.bldg-7.shepherd.agent-proxy.debug.plist";
+				EXCLUDED_SOURCE_FILE_NAMES = (
+					"$(inherited)",
+					AgentRuntime,
+					"Chromium*Embedded*Framework.framework",
+					"3rdr*Helper*.app",
+					"hrdrhrdrhrdr-agent-proxy",
+					"com.bldg-7.shepherd.agent-proxy*.plist",
+				);
 				"GCC_PREPROCESSOR_DEFINITIONS[sdk=macosx*]" = (
 					"$(inherited)",
 					"NDEBUG=1",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
-				"HEADER_SEARCH_PATHS[sdk=macosx*]" = "$(SRCROOT)/Vendor/CEF/out";
+				"HEADER_SEARCH_PATHS[sdk=macosx*]" = "$(SHEPHERD_CEF_ROOT)";
 				"INFOPLIST_FILE[sdk=macosx*]" = "Config/Info-macOS.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = hrdrhrdrhrdr;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
@@ -658,13 +665,14 @@
 				MARKETING_VERSION = 0.3.1;
 				"OTHER_LDFLAGS[sdk=macosx*][arch=arm64]" = (
 					"$(inherited)",
-					"$(SRCROOT)/Vendor/CEF/out/lib/$(CONFIGURATION)/libcef_dll_wrapper.a",
+					"$(SHEPHERD_CEF_ROOT)/lib/$(CONFIGURATION)/libcef_dll_wrapper.a",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "com.bldg-7.shepherd";
 				PRODUCT_NAME = hrdrhrdrhrdr;
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = macosx;
 				SHEPHERD_APP_SIGN_IDENTITY = "Developer ID Application";
+				SHEPHERD_CEF_ROOT = "$(SRCROOT)/Vendor/CEF/out";
 				SPARKLE_FEED_URL = "https://github.com/Bldg-7/shepherd/releases/latest/download/appcast.xml";
 				SPARKLE_PUBLIC_ED_KEY = "skarCPyq1WUb5+GXaPSGInNaV2UsVa7VVnG8vheDZ8U=";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
