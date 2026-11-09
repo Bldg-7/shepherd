@@ -120,12 +120,8 @@ jobs:
           echo "$component"
           [[ "$component" == *"Status: installed"* ]]
 
-      # hc Release does not compile/link CEF or ship its credits/runtime.
-      # scripts/cef.sh is retained for isolated Debug browser fixtures only.
-
       # SwiftTerm is a reviewed local vendored package, not the old remote pin.
       # Keep plugin validation enabled; do not write a global trust override.
-      # No browser Node runtime is installed or bundled for hc Release.
       - name: Verify the vendored terminal renderer
         run: python3 -B Tests/Terminal/SwiftTermWrap/verify-vendor.py
 

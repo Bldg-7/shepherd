@@ -157,33 +157,17 @@ show that signing and notarization will pass.
 
 ## What the script does
 
-Ordinary hc Debug and Release exclude the CEF browser framework/helpers,
-AgentRuntime, capture proxy executable and capture LaunchAgents. Both compile
-only the explicitly unavailable Objective-C browser interface, on arm64 as well
-as Intel; CEF implementation, headers, wrapper, loader and ChromiumCredits.html
-are not normal product inputs/payloads. Real CEF remains only in the explicitly
-selected Apple-silicon Debug fixture application.
-There is no CEF preparation/download, Node install or CEF signing step in the hc
-release workflow. Vendored SwiftTerm provenance is verified without
-writing a global plugin-trust file; plugin validation stays enabled.
+The project has two targets, `Shepherd` (macOS) and `Shepherd Mobile` (iOS). The
+in-app browser (CEF), the agent runtime (Node), the capture proxy helper and its
+LaunchAgents were removed from the source tree; the tag
+`archive/legacy-fixtures-2026-11-09` keeps the last commit that had them. There is
+no CEF preparation, Node install or CEF signing step. Vendored SwiftTerm provenance
+is verified without writing a global plugin-trust file; plugin validation stays
+enabled.
 
-The ordinary `Shepherd` scheme selects only the hc application for every action,
-including a CLI `-configuration Release build`. No normal configuration selects
-the legacy SDK, capture helper, CEF, Node or historical UI/runtime implementation.
-`ShepherdLegacyFixtures` is a disjoint-source SDK product consumed only by the
-separate `Shepherd Legacy Fixtures` application/scheme. That fixture app has its
-own bundle identity, requires an explicitly isolated launch, sets
-`SKIP_INSTALL=YES`, and is not an archive/profile build root. Historical source
-and user archives/settings/services are preserved, not deleted for this split.
-
-The product gate checks the exact normal SDK per-slice compiler source lists,
-link inputs and symbols, and rejects stale compiled fixture/browser products as
-well as payloads. Shared models, archive codecs and pinned SSH/crypto are retained
-intentionally; their historical folder names are not executable legacy backends.
-
-This is a packaging policy, not authorization to update a user's installation.
-An older installed capture LaunchAgent can point into the old app bundle. Do not
-deploy this helper-free app over an active capture installation without a separately
+Updating a user's installation is a separate decision. An older installed capture
+LaunchAgent can point into the old app bundle. Do not deploy this helper-free app
+over an active capture installation without a separately
 approved handover that preserves its programs/data; do not infer retirement from a
 route list or automatically stop/unregister it. Local packaging tests do not qualify
 that service transition, signing or notarization.
@@ -197,22 +181,17 @@ browser/helper/Node/proxy/LaunchAgent payloads, including nested/stale files and
 escaping symlinks. It also checks the actual executable's Mach-O architectures and
 load commands and CEF/legacy executable SDK symbols: Sparkle must remain linked,
 but CEF code, its runtime and old client/transport/monitor/attach code must be absent.
-Normal Debug inspection separately checks Xcode's launcher **and** its actual
-`.debug.dylib` implementation image; that is not a Release export qualification. Reused DerivedData can retain retired files; a fresh archive must pass
-without post-build stripping. Never delete an in-use build/cache or user app to make
-a check pass. The old CEF-helper-name and proxy-bundle gates remain available for
-explicit legacy Debug fixtures; they are not the hc Release payload policy.
+Reused DerivedData can retain retired files; a fresh archive must pass without
+post-build stripping. Never delete an in-use build/cache or user app to make a check
+pass.
 
 The script then runs `Tests/Notices/run-notices-tests.py --profile hc --app --products`.
 Before archiving it temporarily stamps the requested notice version and restores the
 reviewed source on exit. The offline hc profile preserves frozen license/source hashes
 and the reviewed remote-pin set, with only the explicit SwiftTerm/CLI-parser vendoring
 delta. It verifies vendored renderer hashes, the unchanged MIT license and modified
-version attribution. Node/runtime package checks belong to the explicit retained
-`legacy-fixture` profile, not an absent hc payload. This does not waive any license
-for linked SSH, crypto or archive-codec code. The frozen historical CEF inventory
-and explicit `legacy-fixture` checks remain; the hc profile does not require an
-unshipped CEF distribution. Historical attribution does not assert that it ships.
+version attribution. This does not waive any license for linked SSH, crypto or
+archive-codec code.
 
 The hc gate receives the `.xcarchive` and its exact Release DerivedData, compares
 archive/export Info.plist and architecture identities, and reads the app target's
@@ -228,8 +207,7 @@ Sparkle must be embedded and directly loaded. Required notice bytes and bundle
 version must match source; stale Chromium credits are rejected like other retired
 payloads. Wrong targets/roots, empty objects and merely
 similar names fail closed. UUIDs prove ordinary build coherence, not cryptographic
-attestation against a malicious builder. The frozen legacy helper profile is not
-relabeled as hc release evidence.
+attestation against a malicious builder.
 
 Existing output is not deleted. On a Mac, keep what a failed attempt left in
 `build/release/<version>`, and set `SHEPHERD_RELEASE_WORK` to a fresh directory for the
@@ -242,10 +220,8 @@ framework signatures, notarization/staple, third-party notices, absence of exclu
 integration payloads, and absence of development credentials/profiles/evidence. The automated notice gate is not
 a replacement for a human resource review: in the candidate app, inspect
 `Contents/Resources/ThirdPartyNotices.txt` for the matching header version and the unique
-two BoringSSL sections, Niels Provos, WIDE Project, Rich Felker, and uSHET. Confirm
-ChromiumCredits.html, CEF and Node are absent from hc Release. Viewing Chromium
-credits applies only to an explicitly retained browser Debug fixture, not this
-candidate; do not automate a browser for it. Use private profiles
+two BoringSSL sections, Niels Provos, WIDE Project and uSHET. Confirm
+ChromiumCredits.html, CEF and Node are absent. Use private profiles
 of your own for any runtime smoke tests. Do not restart or operate a copy of the app that
 someone is using.
 

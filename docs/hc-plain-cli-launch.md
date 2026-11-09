@@ -60,15 +60,12 @@ startup injection, but are not newly implemented or qualified by this change.
 - App-managed CLI/Node/plugin capability checks as a prerequisite for ordinary
   execution. The CLI owns its dependencies and reports its startup errors.
 
-The normal app-start branch no longer calls `AgentProxyService.start()`. This
-neither stops an existing service nor removes its routes/settings/archive. Legacy
-browser/runtime startup remains reachable only through the existing explicitly
-isolated DEBUG fixture gate. Deferred Settings do not evaluate runtime diagnostic
-or credential-onboarding paths just to open the page; Terminal File Drop remains
-an independent control. The ordinary machine-change callback also skips legacy
-runtime/browser updates, and the paired-device/add-device pages receive no capture
-service control in the product path. Their pairing flow remains enabled; isolated
-legacy fixtures can still exercise the retained capture implementation.
+The app no longer starts the capture proxy; the app-side capture service and the
+browser/runtime code have since been removed from the source tree. This neither
+stops an existing installed service nor removes its routes/settings/archive.
+Settings keeps Terminal File Drop as an independent control, and the
+paired-device/add-device pages have no capture control. Their pairing flow
+remains enabled.
 
 This is not installed-service retirement or handover qualification. Do not stop
 user programs/services, delete existing data, or use legacy terminal fallback to

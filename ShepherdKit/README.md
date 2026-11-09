@@ -10,15 +10,12 @@ both depend on it (docs/mobile-design.md, section 8).
   process/SSH transports, workspace CAS/recovery, terminal and attention models.
   This is the ordinary macOS Debug/Release and mobile backend, not a candidate
   waiting to replace a legacy runtime. See `Tests/CoreProtocol/README.md`.
-- `HerdrKit/`: retained presentation/persistence models, event formats, pinned
-  SSH credentials/key handling, bounded line primitives, local command execution
-  and shell quoting. A directory name does **not** select a backend. The explicit
-  `legacyFixtureSources` list in `Package.swift` excludes executable old client,
-  wire, monitor and attach sources from the normal `ShepherdKit` target.
+- `HerdrKit/`: presentation/persistence models, pinned SSH credentials/key
+  handling, bounded line primitives, local command execution and shell quoting.
+  The directory keeps its historical name; it holds no herdr client or
+  transport.
 - `Machines/`: saved machine metadata/credentials, `MachineStore`,
   `HcMachineConnection`, `HcAttentionMonitor` and the hc mobile screen model.
-  `MachineMonitor` / `MachineMonitors` / `makeHerdrTransport` are not normal SDK
-  APIs; their implementation belongs only to the fixture product.
 - `Pairing/`: what the macOS and iOS apps both need to pair a Mac with the iOS
   app by QR code: the address kinds and the ranges each is held to
   (`PairingAddress`), looking a name up once and keeping only an address in
@@ -28,33 +25,16 @@ both depend on it (docs/mobile-design.md, section 8).
   `~/.ssh/authorized_keys` (`AuthorizedKeyLine`). The code for the device's
   key, kept in its Secure Enclave, is in
   `HerdrKit/Transport/SecureEnclaveSSHKey.swift`.
-- `Notifications/`: `NotificationPolicy` decides whether an agent event is
-  shown, and `NotificationText` decides what the notification says. Showing
-  the notification stays in the app.
+- `Notifications/`: the person's notification preferences
+  (`NotificationPreferences`), what a notification says
+  (`NotificationText.Content`) and where a click on one leads
+  (`HcNotificationRoute`). Showing the notification stays in the app.
 - `Agents/AgentKind.swift`: the agents herdr recognises (Claude Code, Codex,
   Pi).
 
-The normal macOS app retains Terminal File Drop, file Preview, the hc
-notification coordinator/presenter and the original shared native UI. It does
-not compile the historical agent/browser/credential-proxy UI/runtime or ship
-Node, CEF or the capture helper. The normal mobile app retains hc screen/input,
-pairing, cache and existing archive history, not the old live board/conversation.
-
-## Explicit historical fixtures
-
-`ShepherdLegacyFixtures` is a separate, opt-in SDK product depending on
-`ShepherdKit`; dependency direction never points back from the normal SDK.
-It compiles the preserved old client, socket/SSH transports, monitor, setup and
-attach sources. Sharing one source directory is deliberate: the targets have
-**disjoint source lists**, not a runtime backend switch or fallback.
-
-The `Shepherd Legacy Fixtures` Xcode scheme selects a distinct nonshipping app
-(bundle ID `com.bldg-7.shepherd.legacy-fixtures`, `SKIP_INSTALL=YES`) and the helper.
-It cannot archive/profile and refuses an unisolated launch. Only that app imports
-the fixture SDK and compiles `SHEPHERD_LEGACY_FIXTURES`. Ordinary `Shepherd`
-Debug/Release run, test, build and archive actions select only the hc product.
-The fixture implementation and existing data are preserved; no service is stopped
-or user archive/configuration deleted to establish this build boundary.
+The macOS app has Terminal File Drop, file Preview and the hc notification
+coordinator/presenter. The mobile app has the hc screen/input, pairing, cache
+and the existing archive history.
 
 ## How the apps use the package
 

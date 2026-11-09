@@ -43,15 +43,13 @@ hrdrhrdrhrdr는 로컬 및 SSH 연결 머신, 저장된 herdr 머신, 터미널 
 
 ## 소스에서 빌드
 
-**Xcode 27**과 command-line tools를 사용합니다. 저장소는 Swift 의존성을 `Package.resolved`에, Chromium/CEF를 `scripts/cef.sh`에, 브라우저 Node 패키지를 `package-lock.json`에 고정합니다.
+**Xcode 27**과 command-line tools를 사용합니다. 저장소는 Swift 의존성을 `Package.resolved`에 고정합니다.
 
 ```sh
-scripts/cef.sh
-npm ci --prefix Shepherd/Agents/AgentRuntime --ignore-scripts --no-audit --no-fund
 open shepherd.xcodeproj
 ```
 
-CEF와 `node_modules`는 커밋된 바이너리가 아니라 빌드 입력입니다. Xcode가 요청하면 정확한 SwiftTerm 1.20.0 빌드 플러그인만 승인하고, 플러그인 검증을 전역으로 끄지 마세요. Debug 빌드에는 Sparkle 업데이트 피드가 없습니다. 서명 없는 로컬 빌드에는 `CODE_SIGNING_ALLOWED=NO`를 사용하세요.
+Xcode가 요청하면 정확한 SwiftTerm 1.20.0 빌드 플러그인만 승인하고, 플러그인 검증을 전역으로 끄지 마세요. Debug 빌드에는 Sparkle 업데이트 피드가 없습니다. 서명 없는 로컬 빌드에는 `CODE_SIGNING_ALLOWED=NO`를 사용하세요.
 
 ## 문서
 

@@ -178,8 +178,6 @@ elif [[ -z "$SKIP_NOTARIZE" ]]; then
 fi
 
 [[ ! -e "$WORK" ]] || fail "Output already exists; preserve it and use SHEPHERD_RELEASE_WORK for a fresh attempt"
-# hc Release compiles an explicitly unavailable browser interface. CEF headers,
-# wrapper, framework/helpers and credits are Debug-fixture inputs only.
 # The notice resource is source-synchronized by Xcode. Stamp the candidate's
 # header before archiving, then always restore the reviewed source file when
 # this script exits. The exported bundle is checked against this stamped copy.

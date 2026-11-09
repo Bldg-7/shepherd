@@ -11,30 +11,19 @@ hc connection stays on the hc unavailable/error/help path. It never selects
 This is a source/build change, **not** deployment or approval to replace the
 installed app/core, restart user services, change privacy grants, or stop/relaunch
 existing agents. No existing legacy program is killed or relabeled as an hc
-terminal. Existing archives/settings/routes and code/evidence are preserved.
-The executable legacy SDK and fixture target are now partitioned out of every
-ordinary product configuration/action; see the [fixed code/build cleanup
-boundary](../Tests/HcBackend/CODE-CLEANUP-README.md). Required shared models,
-archive readers and pinned SSH remain intentionally, not as a selectable fallback.
+terminal. Existing archives/settings/routes are preserved.
+The legacy herdr client/transport/monitor code, its nonshipping fixture app and
+the deferred browser/agent-runtime/capture-helper code were later removed from
+the source tree (tag `archive/legacy-fixtures-2026-11-09` keeps the last commit
+with them). Shared models, archive readers and pinned SSH remain.
 
 ## Composition
 
-- `ShepherdApp.mainContent`: ordinary Debug/Release uses `hcContent`.
+- `ShepherdApp.mainContent`: Debug/Release use `hcContent`.
 - `ShepherdHcContent`: one product composition constructs `HcRootView` with the
   normal machine store. `HcMigrationHost` supplies owned test resources to the
   **same** composition, not a replacement diagnostic root.
-- Only the separately selected `Shepherd Legacy Fixtures` app compiles
-  `legacyFixtureContent` / the historical SDK. It requires DEBUG and the explicit
-  fixture flag plus an isolated launch. `ShepherdLegacyFixtureRouting` is always
-  false in ordinary Debug/Release and when the private hc fixture is requested.
-  It does not inspect connection phase, CLI status or saved user preferences.
-- Menu hosts pass legacy bindings only under that fixture predicate. During
-  ordinary hc startup/failure, old herdr-machine menu items are not offered just
-  because no hc command owner is available yet.
-- Ordinary Debug/Release startup/termination initializes the hc notification
-  path, not `NotificationCoordinator`, `MachineMonitors`, AgentRuntime,
-  browser/CDP or the capture proxy. Historical lifecycle/view/runtime sources
-  belong only to the explicit nonshipping fixture app, not the normal product.
+- Startup/termination initializes the hc notification path only.
 - hc detection/help/retry and explicit SSH host-key approval remain hc paths;
   failure never authorizes a legacy transport, automatic install or service stop.
 

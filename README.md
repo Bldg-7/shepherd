@@ -43,15 +43,13 @@ Browser resources are bundled and injected only into the new managed session. hr
 
 ## Build from source
 
-Use **Xcode 27** and its command-line tools. The repository pins Swift dependencies in `Package.resolved`, Chromium/CEF in `scripts/cef.sh`, and browser Node packages in `package-lock.json`.
+Use **Xcode 27** and its command-line tools. The repository pins Swift dependencies in `Package.resolved`.
 
 ```sh
-scripts/cef.sh
-npm ci --prefix Shepherd/Agents/AgentRuntime --ignore-scripts --no-audit --no-fund
 open shepherd.xcodeproj
 ```
 
-CEF and `node_modules` are build inputs, not committed binaries. Approve the exact SwiftTerm 1.20.0 build plugin if Xcode asks; do not disable plugin validation globally. Debug builds have no Sparkle update feed. For an unsigned local build, use `CODE_SIGNING_ALLOWED=NO`.
+Approve the exact SwiftTerm 1.20.0 build plugin if Xcode asks; do not disable plugin validation globally. Debug builds have no Sparkle update feed. For an unsigned local build, use `CODE_SIGNING_ALLOWED=NO`.
 
 ## Documentation
 

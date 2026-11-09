@@ -43,15 +43,13 @@ hrdrhrdrhrdr は、ローカルまたは SSH 接続したマシン、保存済�
 
 ## ソースからのビルド
 
-**Xcode 27** とその command-line tools を使います。リポジトリでは Swift 依存関係を `Package.resolved` に、Chromium/CEF を `scripts/cef.sh` に、ブラウザ用 Node パッケージを `package-lock.json` に固定しています。
+**Xcode 27** とその command-line tools を使います。リポジトリでは Swift 依存関係を `Package.resolved` に固定しています。
 
 ```sh
-scripts/cef.sh
-npm ci --prefix Shepherd/Agents/AgentRuntime --ignore-scripts --no-audit --no-fund
 open shepherd.xcodeproj
 ```
 
-CEF と `node_modules` はコミット済みバイナリではなくビルド入力です。Xcode から求められた場合は、正確に SwiftTerm 1.20.0 のビルドプラグインだけを承認し、プラグイン検証をグローバルに無効化しないでください。Debug ビルドには Sparkle の更新フィードはありません。署名なしのローカルビルドには `CODE_SIGNING_ALLOWED=NO` を使用します。
+Xcode から求められた場合は、正確に SwiftTerm 1.20.0 のビルドプラグインだけを承認し、プラグイン検証をグローバルに無効化しないでください。Debug ビルドには Sparkle の更新フィードはありません。署名なしのローカルビルドには `CODE_SIGNING_ALLOWED=NO` を使用します。
 
 ## ドキュメント
 
