@@ -97,7 +97,10 @@ credential was removed or stopped.
 follow-up exclusion of CEF runtime/helpers, AgentRuntime and proxy/LaunchAgent
 payloads from Release. Debug fixtures and archive codecs remain. This reduces
 shipping payload, not all compiled legacy code/build dependencies, and does not
-change installed services or qualify deployment/handover.
+change installed services or qualify deployment/handover. The subsequent
+[CEF build-input retirement](../Tests/HcBackend/BROWSER-RETIREMENT-README.md) also
+removes its real implementation, headers, wrapper and credits from Release, while
+keeping the actual Debug fixture and unavailable Release ABI.
 
 ## Still not release completion
 

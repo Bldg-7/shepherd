@@ -1,5 +1,10 @@
 # hc Release payload retirement
 
+This records the `8a3e9ab` payload-only stage. The subsequent
+[CEF implementation/build-input retirement](BROWSER-RETIREMENT-README.md) supersedes
+its remaining CEF header/wrapper/credits requirements; historical evidence below
+still describes that earlier archive accurately.
+
 The default product remains hc. This batch removes deferred **payloads** from
 Release, not every legacy implementation/dependency. No app/core/service is
 installed, launched, stopped or unregistered by these packaging checks.

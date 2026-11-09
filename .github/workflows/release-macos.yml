@@ -120,11 +120,8 @@ jobs:
           echo "$component"
           [[ "$component" == *"Status: installed"* ]]
 
-      # The bridge/static wrapper still compiles at this retirement stage.
-      # The Release bundle excludes the browser engine and all helper apps;
-      # Chromium credits remain attribution for retained bridge code.
-      - name: Prepare retained CEF bridge and attribution
-        run: scripts/cef.sh
+      # hc Release does not compile/link CEF or ship its credits/runtime.
+      # scripts/cef.sh is retained for isolated Debug browser fixtures only.
 
       # SwiftTerm is a reviewed local vendored package, not the old remote pin.
       # Keep plugin validation enabled; do not write a global trust override.

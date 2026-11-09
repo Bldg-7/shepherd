@@ -18,9 +18,10 @@ NSError *EngineError(SHBEngineError code, NSString *message) {
 
 }  // namespace
 
-// The CEF build the app carries is Apple silicon only; an Intel slice of the
-// app compiles the stubs at the end of this file instead.
-#if defined(__arm64__)
+// CEF is retained only for isolated Apple-silicon DEBUG fixtures. Ordinary
+// hc Release (including arm64) compiles the unavailable interface below, with
+// no CEF headers, wrapper, dynamic loader or runtime dependency.
+#if defined(__arm64__) && defined(DEBUG) && DEBUG
 
 #include <crt_externs.h>
 #include <objc/runtime.h>
@@ -1167,7 +1168,7 @@ class PageClient : public CefClient,
 
 @end
 
-#else  // An Intel slice: no browser.
+#else  // hc Release or an Intel slice: explicitly no browser.
 
 @implementation SHBEngine
 + (NSUInteger)generation { return gGeneration; }
@@ -1179,7 +1180,7 @@ class PageClient : public CefClient,
 + (BOOL)isRunning { return NO; }
 + (void)prepare {}
 + (BOOL)startWithRootCachePath:(NSString *)rootCachePath error:(NSError **)error {
-  if (error) *error = EngineError(SHBEngineErrorUnavailable, @"The browser needs a Mac with Apple silicon.");
+  if (error) *error = EngineError(SHBEngineErrorUnavailable, @"Browser integration is unavailable in this build.");
   return NO;
 }
 + (BOOL)shutDownWithin:(NSTimeInterval)timeout { return YES; }
@@ -1195,6 +1196,15 @@ class PageClient : public CefClient,
   if ((self = [super init])) _folder = [folder copy];
   return self;
 }
+- (BOOL)prepareCredentialProxyOnPort:(NSInteger)port
+                          username:(NSString *)username
+                          password:(NSString *)password
+                       authorities:(NSArray<NSString *> *)authorities
+                     networkPolicy:(BOOL (^)(NSString *))networkPolicy
+                 certificatePolicy:(BOOL (^)(NSString *, NSArray<NSData *> *))certificatePolicy {
+  return NO;
+}
+- (BOOL)removeCredentialProxy { return NO; }
 @end
 
 @implementation SHBPage

@@ -38,16 +38,6 @@
 		A9E100000000000000000067 /* AgentProxyProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = A9E100000000000000000043 /* AgentProxyProtocol */; };
 /* End PBXBuildFile section */
 
-/* Begin PBXContainerItemProxy section */
-		A9E100000000000000000081 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 000000000000000000000000 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = A9E100000000000000000060;
-			remoteInfo = "hrdrhrdrhrdr-agent-proxy";
-		};
-/* End PBXContainerItemProxy section */
-
 /* Begin PBXCopyFilesBuildPhase section */
 		C0EF00000000000000000002 /* Embed Browser Engine */ = {
 			isa = PBXCopyFilesBuildPhase;
@@ -267,7 +257,6 @@
 			buildRules = (
 			);
 			dependencies = (
-				A9E100000000000000000080 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				000000000000000000000010 /* Shepherd */,
@@ -401,15 +390,6 @@
 			);
 		};
 /* End PBXSourcesBuildPhase section */
-
-/* Begin PBXTargetDependency section */
-		A9E100000000000000000080 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			platformFilters = (macos, );
-			target = A9E100000000000000000060 /* hrdrhrdrhrdr-agent-proxy */;
-			targetProxy = A9E100000000000000000081 /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		A9E100000000000000000071 /* Debug configuration for PBXNativeTarget "hrdrhrdrhrdr-agent-proxy" */ = {
@@ -647,6 +627,7 @@
 					"$(inherited)",
 					AgentRuntime,
 					"Chromium*Embedded*Framework.framework",
+					ChromiumCredits.html,
 					"3rdr*Helper*.app",
 					"hrdrhrdrhrdr-agent-proxy",
 					"com.bldg-7.shepherd.agent-proxy*.plist",
@@ -656,23 +637,19 @@
 					"NDEBUG=1",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
-				"HEADER_SEARCH_PATHS[sdk=macosx*]" = "$(SHEPHERD_CEF_ROOT)";
+				"HEADER_SEARCH_PATHS[sdk=macosx*]" = "$(inherited)";
 				"INFOPLIST_FILE[sdk=macosx*]" = "Config/Info-macOS.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = hrdrhrdrhrdr;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MARKETING_VERSION = 0.3.1;
-				"OTHER_LDFLAGS[sdk=macosx*][arch=arm64]" = (
-					"$(inherited)",
-					"$(SHEPHERD_CEF_ROOT)/lib/$(CONFIGURATION)/libcef_dll_wrapper.a",
-				);
+				"OTHER_LDFLAGS[sdk=macosx*][arch=arm64]" = "$(inherited)";
 				PRODUCT_BUNDLE_IDENTIFIER = "com.bldg-7.shepherd";
 				PRODUCT_NAME = hrdrhrdrhrdr;
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = macosx;
 				SHEPHERD_APP_SIGN_IDENTITY = "Developer ID Application";
-				SHEPHERD_CEF_ROOT = "$(SRCROOT)/Vendor/CEF/out";
 				SPARKLE_FEED_URL = "https://github.com/Bldg-7/shepherd/releases/latest/download/appcast.xml";
 				SPARKLE_PUBLIC_ED_KEY = "skarCPyq1WUb5+GXaPSGInNaV2UsVa7VVnG8vheDZ8U=";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;

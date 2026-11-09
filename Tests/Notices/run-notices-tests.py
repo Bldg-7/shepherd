@@ -22,6 +22,7 @@ import subprocess
 import sys
 import tempfile
 from typing import Iterable
+import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[2]
 INVENTORY_PATH = ROOT / "Tests/Notices/inventory.json"
@@ -308,8 +309,39 @@ def check_source(*, hc_product: bool = False) -> dict:
     check_dependency_graph(inventory, hc_product=hc_product)
     if not hc_product:
         check_runtime_packages(inventory)
-    check_cef(inventory)
+        check_cef(inventory)
+    else:
+        check_hc_browser_build_inputs()
     return inventory
+
+
+def check_hc_browser_build_inputs() -> None:
+    project = ROOT / 'shepherd.xcodeproj/project.pbxproj'
+    parsed = subprocess.run(['/usr/bin/plutil', '-convert', 'json', '-o', '-', str(project)],
+                            capture_output=True, text=True, timeout=30, check=False)
+    if parsed.returncode:
+        fail('cannot inspect hc Release build settings')
+    objects = json.loads(parsed.stdout)['objects']
+    settings = objects['000000000000000112000000']['buildSettings']
+    main = objects['000000000000000100000000']
+    for dependency in main.get('dependencies', []):
+        if objects.get(dependency, {}).get('target') == 'A9E100000000000000000060':
+            fail('hc app has an unconditional capture forwarder target dependency')
+    retired = ('cef', 'chromium', 'Vendor/CEF')
+    for name, value in settings.items():
+        if name == 'EXCLUDED_SOURCE_FILE_NAMES':
+            continue
+        if any(word.casefold() in (name + str(value)).casefold() for word in retired):
+            fail('hc Release still has a CEF build input: ' + name)
+    scheme = ET.parse(ROOT / 'shepherd.xcodeproj/xcshareddata/xcschemes/Shepherd.xcscheme')
+    for entry in scheme.findall('.//BuildActionEntry'):
+        reference = entry.find('BuildableReference')
+        if reference is not None and reference.get('BlueprintIdentifier') == 'A9E100000000000000000060':
+            if entry.get('buildForArchiving') != 'NO' or entry.get('buildForProfiling') != 'NO':
+                fail('deferred Debug fixture must not be a Release archive/profile root')
+    source = (ROOT / 'Shepherd/Browser/Engine/BrowserEngine.mm').read_text()
+    if '#if defined(__arm64__) && defined(DEBUG) && DEBUG' not in source:
+        fail('CEF implementation must remain limited to Apple-silicon Debug fixtures')
 
 
 def check_app(inventory: dict, app: Path, *, hc_product: bool = False) -> None:
@@ -327,8 +359,6 @@ def check_app(inventory: dict, app: Path, *, hc_product: bool = False) -> None:
     version = re.match(r"Third-party notices for hrdrhrdrhrdr ([0-9]+(?:\.[0-9]+){1,2})\n", source_notice.read_text(encoding="utf-8"))
     if version is None or info.get("CFBundleShortVersionString") != version.group(1):
         fail("app notice header version does not match CFBundleShortVersionString")
-    credits = app / inventory["cefCredits"]["resourcePath"]
-    require_hash(credits, inventory["cefCredits"]["sha256"], "app Chromium credits")
     if hc_product:
         sys.path.insert(0, str(ROOT / 'Tests/HcBackend'))
         from hc_release_bundle import check_hc_payload, BundlePolicyFailure
@@ -337,6 +367,8 @@ def check_app(inventory: dict, app: Path, *, hc_product: bool = False) -> None:
         except BundlePolicyFailure as error:
             fail(str(error))
         return
+    credits = app / inventory["cefCredits"]["resourcePath"]
+    require_hash(credits, inventory["cefCredits"]["sha256"], "app Chromium credits")
     runtime = app / "Contents/Resources/AgentRuntime"
     if not runtime.is_dir():
         fail("app has no bundled AgentRuntime resource")
@@ -611,7 +643,8 @@ def check_hc_products(inventory: dict, app: Path, inputs: list[Path]) -> None:
     """Exact app-target archive/export/link/dSYM coherence, without a helper.
 
     The old frozen helper/Node inventory is not relabeled as shipped hc payload.
-    Archive codecs/protocol and the still-linked CEF bridge remain attributed.
+    Archive codecs/protocol remain attributed; only the unavailable Objective-C
+    browser interface may be linked, never CEF implementation/wrapper code.
     """
     archive, derived, archived_app = matching_archive_and_derived(inputs)
     check_app(inventory, app, hc_product=True)
@@ -636,6 +669,9 @@ def check_hc_products(inventory: dict, app: Path, inputs: list[Path]) -> None:
             fail(str(error))
     intermediate_root = archive_intermediates(derived)
     products_root = intermediate_root / 'BuildProductsPath/Release'
+    for name in ('AgentProxyForwarder.o', 'hrdrhrdrhrdr-agent-proxy'):
+        if (products_root / name).exists():
+            fail('hc Release unexpectedly built a deferred forwarder product: ' + name)
     target_inputs = {('app', arch): link_inputs(link_file_list(intermediate_root, 'app', arch), derived, arch)
                      for arch in sorted(app_arches)}
     evidence = {name: requirements for name, requirements in STATIC_PRODUCT_EVIDENCE.items() if name != 'AgentProxy'}
@@ -646,15 +682,20 @@ def check_hc_products(inventory: dict, app: Path, inputs: list[Path]) -> None:
             for arch in app_arches:
                 if expected not in target_inputs[(target, arch)]:
                     fail(f'hc linked product evidence unavailable for {identity}: {filename}')
-    # The implementation bridge/static wrapper has not been retired yet. Its
-    # exact app object and unchanged source/credits notices must remain covered.
+    # The Objective-C ABI is retained for deferred Swift source compatibility,
+    # but every slice must contain only the unavailable implementation.
     for arch in app_arches:
         if any(path.name == 'AgentProxyForwarder.o' for path in target_inputs[('app', arch)]):
             fail('hc app unexpectedly links the deferred capture forwarder')
         bridge = intermediate_root / ('IntermediateBuildFilesPath/shepherd.build/Release/'
                                       f'Shepherd.build/Objects-normal/{arch}/BrowserEngine.o')
         if bridge.resolve() not in target_inputs[('app', arch)]:
-            fail('hc retained CEF bridge link evidence is missing; review the attribution profile')
+            fail('hc unavailable browser interface link evidence is missing')
+        from hc_release_bundle import check_no_cef_symbols, BundlePolicyFailure
+        try:
+            check_no_cef_symbols(bridge)
+        except BundlePolicyFailure as error:
+            fail(str(error))
     bind_build_identities({'app': main}, {'app': archived_main}, intermediate_root,
                           target_inputs, targets=('app',))
 
@@ -699,7 +740,8 @@ def self_test(*, hc_product: bool = False) -> None:
         ),
     )
     rejected("source attribution hash", lambda: require_hash(ROOT / inventory["verbatimBlocks"][0]["sourcePath"], "0" * 64, "fixture"))
-    rejected("CEF provenance", lambda: check_cef({**inventory, "cefCredits": {**inventory["cefCredits"], "sha256": "0" * 64}}))
+    if not hc_product:
+        rejected("CEF provenance", lambda: check_cef({**inventory, "cefCredits": {**inventory["cefCredits"], "sha256": "0" * 64}}))
     rejected("package pin drift", lambda: check_dependency_graph({**inventory, "changeFingerprints": {**inventory["changeFingerprints"], "packageResolved": "Tests/Notices/fixtures/missing.json"}}))
     rejected("runtime lock/license drift", lambda: check_runtime_packages(inventory, ROOT / "Tests/Notices/fixtures"))
 
@@ -744,8 +786,8 @@ def self_test(*, hc_product: bool = False) -> None:
         resources.mkdir(parents=True)
         (app / "Contents/Info.plist").write_bytes(plistlib.dumps({"CFBundleShortVersionString": "0.6.0"}))
         shutil.copy2(ROOT / inventory["noticeFiles"]["macOS"], resources / "ThirdPartyNotices.txt")
-        shutil.copy2(ROOT / inventory["cefCredits"]["sourcePath"], resources / "ChromiumCredits.html")
         if not hc_product:
+            shutil.copy2(ROOT / inventory["cefCredits"]["sourcePath"], resources / "ChromiumCredits.html")
             copy_runtime_for_fixture(resources / "AgentRuntime")
         check_app(inventory, app, hc_product=hc_product)
         if hc_product:
@@ -774,7 +816,8 @@ def self_test(*, hc_product: bool = False) -> None:
         rejected("app notice/version content mismatch", lambda: check_app(inventory, app, hc_product=hc_product))
         shutil.copy2(ROOT / inventory["noticeFiles"]["macOS"], resources / "ThirdPartyNotices.txt")
         (resources / "ChromiumCredits.html").write_text("stale\n", encoding="utf-8")
-        rejected("app CEF credits hash", lambda: check_app(inventory, app, hc_product=hc_product))
+        rejected("excluded hc credits" if hc_product else "app CEF credits hash",
+                 lambda: check_app(inventory, app, hc_product=hc_product))
     print("self-test: all negative guards rejected")
 
 

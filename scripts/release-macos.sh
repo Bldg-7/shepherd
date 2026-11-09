@@ -178,11 +178,8 @@ elif [[ -z "$SKIP_NOTARIZE" ]]; then
 fi
 
 [[ ! -e "$WORK" ]] || fail "Output already exists; preserve it and use SHEPHERD_RELEASE_WORK for a fresh attempt"
-# hc Release excludes browser/runtime/proxy payloads. Only the still-compiled
-# CEF bridge's headers/static wrapper remain build inputs at this stage.
-CEF_BUILD_ROOT="${SHEPHERD_CEF_ROOT:-$ROOT/Vendor/CEF/out}"
-[[ -d "$CEF_BUILD_ROOT/include" && -f "$CEF_BUILD_ROOT/lib/Release/libcef_dll_wrapper.a" ]] \
-    || fail "The retained CEF bridge headers/static wrapper are not prepared"
+# hc Release compiles an explicitly unavailable browser interface. CEF headers,
+# wrapper, framework/helpers and credits are Debug-fixture inputs only.
 # The notice resource is source-synchronized by Xcode. Stamp the candidate's
 # header before archiving, then always restore the reviewed source file when
 # this script exits. The exported bundle is checked against this stamped copy.
@@ -214,7 +211,7 @@ xcodebuild archive -quiet \
     -clonedSourcePackagesDirPath "$ROOT/build/SourcePackages" \
     -packageCachePath "$ROOT/build/PackageCache" \
     -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates -jobs 4 \
-    SHEPHERD_APP_SIGN_IDENTITY="$SIGN_IDENTITY" SHEPHERD_CEF_ROOT="$CEF_BUILD_ROOT" MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
+    SHEPHERD_APP_SIGN_IDENTITY="$SIGN_IDENTITY" MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
 
 step "Exporting with Developer ID"
 cat > "$WORK/ExportOptions.plist" <<EOF

@@ -133,8 +133,9 @@ need the version's release notes to exist yet.
 
 ## Build on a Mac
 
-1. Prepare pinned CEF, Node and Swift dependencies.
-2. Approve only the exact SwiftTerm 1.20.0 build plugin if Xcode requires approval.
+1. Prepare the pinned Swift dependencies. hc Release needs neither CEF nor Node.
+2. Verify the local renderer with `python3 -B Tests/Terminal/SwiftTermWrap/verify-vendor.py`.
+   Keep plugin validation enabled; do not write global trust overrides.
 3. Keep the `build/updates` directory from the last release, which holds the update
    archives and the appcast as they were published, or download the earlier releases'
    archives and the published appcast into it. The script makes the delta updates from
@@ -158,12 +159,21 @@ show that signing and notarization will pass.
 
 The hc Release app excludes the CEF browser framework/helpers, AgentRuntime,
 capture proxy executable and capture LaunchAgents. Debug retains these only for
-isolated historical fixtures. The still-compiled browser bridge needs CEF headers
-and the Release static wrapper (`SHEPHERD_CEF_ROOT`, default `Vendor/CEF/out`),
-so CEF build-input retirement is not complete. Chromium credits and the bridge's
-attribution remain. There is no browser Node-package install or CEF helper signing
-step in the hc release workflow. Vendored SwiftTerm provenance is verified without
+isolated historical fixtures. Release compiles only the explicitly unavailable
+Objective-C browser interface, on arm64 as well as Intel; CEF implementation,
+headers, static wrapper, loader and ChromiumCredits.html are no longer Release
+inputs or payloads. The real CEF implementation remains Apple-silicon Debug-only.
+There is no CEF preparation/download, Node install or CEF signing step in the hc
+release workflow. Vendored SwiftTerm provenance is verified without
 writing a global plugin-trust file; plugin validation stays enabled.
+
+The main app has no unconditional dependency on the capture helper target. The
+scheme keeps that target explicitly for configured Debug run/test/analyze fixtures,
+not Release archive/profile. The archive product gate rejects built forwarder
+leftovers as well as shipped payloads. A manual `-configuration Release build`
+overrides the configured Debug run action and may still build its fixture root;
+use the archive path for Release qualification, not that override. Full fixture
+and legacy SDK separation from every build variant remains incomplete.
 
 This is a packaging policy, not authorization to update a user's installation.
 An older installed capture LaunchAgent can point into the old app bundle. Do not
@@ -179,8 +189,8 @@ what happens when the Sparkle key it was given is not the one the app trusts.
 Right after export, `Tests/HcBackend/hc_release_bundle.py --app` rejects excluded
 browser/helper/Node/proxy/LaunchAgent payloads, including nested/stale files and
 escaping symlinks. It also checks the actual executable's Mach-O architectures and
-load commands: Sparkle must remain linked, but the excluded browser runtime must not
-be required. Reused DerivedData can retain retired files; a fresh archive must pass
+load commands and CEF implementation/wrapper symbols: Sparkle must remain linked,
+but CEF code and its runtime must be absent. Reused DerivedData can retain retired files; a fresh archive must pass
 without post-build stripping. Never delete an in-use build/cache or user app to make
 a check pass. The old CEF-helper-name and proxy-bundle gates remain available for
 explicit legacy Debug fixtures; they are not the hc Release payload policy.
@@ -192,18 +202,23 @@ and the reviewed remote-pin set, with only the explicit SwiftTerm/CLI-parser ven
 delta. It verifies vendored renderer hashes, the unchanged MIT license and modified
 version attribution. Node/runtime package checks belong to the explicit retained
 `legacy-fixture` profile, not an absent hc payload. This does not waive any license
-for linked SSH, crypto, archive-codec or retained browser-bridge code.
+for linked SSH, crypto or archive-codec code. The frozen historical CEF inventory
+and explicit `legacy-fixture` checks remain; the hc profile does not require an
+unshipped CEF distribution. Historical attribution does not assert that it ships.
 
 The hc gate receives the `.xcarchive` and its exact Release DerivedData, compares
 archive/export Info.plist and architecture identities, and reads the app target's
 exact link-file-list for every slice. Each required static product must be a real
 non-empty Mach-O object at its expected product path and an actual app link input;
 this includes `AgentProxyCore` and `AgentProxyProtocol` for archive reading, not an
-unshipped `AgentProxyForwarder` helper. The retained bridge object is checked too.
+unshipped `AgentProxyForwarder` helper. Each slice's browser interface object is
+checked for absence of CEF implementation/wrapper symbols too. Source build settings
+must not reintroduce a CEF header or linker path.
 The exported main executable, archived main and exact app-target dSYM under
 `ArchiveIntermediates/Shepherd/BuildProductsPath` must have matching `LC_UUID`s.
-Sparkle must be embedded and directly loaded. Required notice/retained-credit bytes
-and bundle version must match source. Wrong targets/roots, empty objects and merely
+Sparkle must be embedded and directly loaded. Required notice bytes and bundle
+version must match source; stale Chromium credits are rejected like other retired
+payloads. Wrong targets/roots, empty objects and merely
 similar names fail closed. UUIDs prove ordinary build coherence, not cryptographic
 attestation against a malicious builder. The frozen legacy helper profile is not
 relabeled as hc release evidence.
@@ -219,9 +234,10 @@ framework signatures, notarization/staple, third-party notices, absence of exclu
 integration payloads, and absence of development credentials/profiles/evidence. The automated notice gate is not
 a replacement for a human resource review: in the candidate app, inspect
 `Contents/Resources/ThirdPartyNotices.txt` for the matching header version and the unique
-two BoringSSL sections, Niels Provos, WIDE Project, Rich Felker, and uSHET; manually open
-`Contents/Resources/ChromiumCredits.html` in Safari and confirm the credits are readable.
-This manual viewing remains required; do not automate a browser for it. Use private profiles
+two BoringSSL sections, Niels Provos, WIDE Project, Rich Felker, and uSHET. Confirm
+ChromiumCredits.html, CEF and Node are absent from hc Release. Viewing Chromium
+credits applies only to an explicitly retained browser Debug fixture, not this
+candidate; do not automate a browser for it. Use private profiles
 of your own for any runtime smoke tests. Do not restart or operate a copy of the app that
 someone is using.
 

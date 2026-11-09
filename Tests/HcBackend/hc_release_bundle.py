@@ -9,7 +9,7 @@ class BundlePolicyFailure(RuntimeError):
 def forbidden_name(name):
     name = name.casefold()
     return (name in {'agentruntime', 'node_modules', 'chromium embedded framework.framework',
-                     'hrdrhrdrhrdr-agent-proxy'} or name.startswith('3rdr helper') or
+                     'hrdrhrdrhrdr-agent-proxy', 'chromiumcredits.html'} or name.startswith('3rdr helper') or
             (name.startswith('com.bldg-7.shepherd.agent-proxy') and name.endswith('.plist')))
 
 def check_hc_payload(app):
@@ -31,7 +31,15 @@ def check_hc_payload(app):
     if forbidden:
         raise BundlePolicyFailure('excluded integration payload present: ' + ', '.join(sorted(forbidden)))
     return {'excludedPayloadsAbsent':True,'inspectedBundle':str(app),
-            'browserFrameworkOrHelpers':False,'agentRuntime':False,'captureExecutableOrLaunchAgent':False}
+            'browserFrameworkOrHelpers':False,'chromiumCredits':False,'agentRuntime':False,'captureExecutableOrLaunchAgent':False}
+
+def check_no_cef_symbols(binary):
+    symbols=subprocess.run(['/usr/bin/nm','-gj',str(binary)],capture_output=True,text=True,check=False)
+    if symbols.returncode:
+        raise BundlePolicyFailure('cannot inspect Mach-O browser dependency symbols')
+    retired=[word for word in symbols.stdout.split() if 'Cef' in word or 'cef_' in word or word.startswith('_CEF')]
+    if retired:
+        raise BundlePolicyFailure('excluded CEF implementation/wrapper symbols remain: ' + ', '.join(retired[:8]))
 
 def inspect_binary(app):
     app=Path(app)
@@ -52,7 +60,8 @@ def inspect_binary(app):
         raise BundlePolicyFailure('excluded browser runtime still required by a load command')
     if '@rpath/Sparkle.framework/' not in load.stdout:
         raise BundlePolicyFailure('expected updater dependency is missing')
-    return {'architectures':arch.stdout.split(),'version':info.get('CFBundleShortVersionString'),
+    check_no_cef_symbols(binary)
+    return {'architectures':arch.stdout.split(),'cefImplementationSymbols':False,'version':info.get('CFBundleShortVersionString'),
             'browserLoadCommand':False,'signingQualified':False,'notarizationQualified':False}
 
 def main():

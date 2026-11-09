@@ -6,7 +6,8 @@ legacy. See [source cutover boundary](../../docs/hc-default-backend-cutover.md).
 This is not installed-app deployment or completed service/release qualification.
 The [Release payload retirement](RELEASE-PAYLOAD-README.md) additionally excludes
 browser/runtime/proxy helper payloads while retaining Debug fixtures and required
-archive/SSH/crypto/bridge attribution; full legacy code/dependency pruning is separate.
+archive/SSH/crypto attribution. The subsequent [CEF build-input retirement](BROWSER-RETIREMENT-README.md)
+removes its real implementation/headers/wrapper/credits from Release; full legacy SDK pruning is separate.
 
 The app backend moves from legacy herdr (`HerdrClient` + `herdr terminal attach`
 over an SSH PTY) to hc (`CoreRPCConnection` + `terminal.attach` framed streams).

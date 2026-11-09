@@ -1,7 +1,7 @@
 // The browser engine as Swift sees it: CEF (the Chromium Embedded Framework)
-// behind three Objective-C classes. macOS only; on Apple silicon only, since
-// that is the only CEF build the app carries (see scripts/cef.sh) — elsewhere
-// `BrowserEngine.isAvailable` is false and nothing else may be used.
+// behind three Objective-C classes in isolated Apple-silicon DEBUG fixtures
+// (see scripts/cef.sh). hc Release and Intel builds expose only the unavailable
+// interface: `BrowserEngine.isAvailable` is false and nothing else may be used.
 //
 // Everything here is used on the main thread, which is also CEF's UI thread
 // (the app pumps CEF's message loop itself; see BrowserEngine.mm).
@@ -17,7 +17,7 @@ extern NSErrorDomain const SHBEngineErrorDomain;
 typedef NS_ERROR_ENUM(SHBEngineErrorDomain, SHBEngineError) {
   /// The framework couldn't be loaded.
   SHBEngineErrorLoadFailed = 1,
-  /// This build of the app has no browser: it runs as Intel code.
+  /// This build has no browser (hc Release or Intel code).
   SHBEngineErrorUnavailable = 2,
   /// CEF didn't start, most likely because another copy of the app is
   /// using the same folder.

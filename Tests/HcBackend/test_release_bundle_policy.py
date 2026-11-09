@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Offline hc packaging guards; synthetic layout is not binary/release qualification."""
 from pathlib import Path
-import importlib.util, json, os, tempfile, unittest
-from hc_release_bundle import check_hc_payload, inspect_binary, BundlePolicyFailure
+import importlib.util, json, os, subprocess, tempfile, unittest
+from unittest.mock import patch
+from hc_release_bundle import check_hc_payload, inspect_binary, check_no_cef_symbols, BundlePolicyFailure
 ROOT=Path(__file__).resolve().parents[2]
 spec=importlib.util.spec_from_file_location('notice_gate',ROOT/'Tests/Notices/run-notices-tests.py')
 notices=importlib.util.module_from_spec(spec); spec.loader.exec_module(notices)
@@ -27,7 +28,8 @@ class ReleaseBundlePolicyTests(unittest.TestCase):
                'Contents/MacOS/hrdrhrdrhrdr-agent-proxy',
                'Contents/Library/LaunchAgents/com.bldg-7.shepherd.agent-proxy.plist',
                'Contents/Library/LaunchAgents/com.bldg-7.shepherd.agent-proxy.debug.plist',
-               'Contents/Resources/hidden/AGENTRUNTIME/file']
+               'Contents/Resources/hidden/AGENTRUNTIME/file',
+               'Contents/Resources/ChromiumCredits.html']
         for index,relative in enumerate(paths):
             with self.subTest(path=relative):
                 candidate=self.root/('case-'+str(index)+'.app'); candidate.mkdir()
@@ -44,6 +46,34 @@ class ReleaseBundlePolicyTests(unittest.TestCase):
         (framework/'Versions/A').mkdir(parents=True)
         (framework/'Versions/Current').symlink_to('A',target_is_directory=True)
         self.assertTrue(check_hc_payload(self.app)['excludedPayloadsAbsent'])
+    def test_cef_symbol_and_inspector_failures_rejected(self):
+        for symbol in ['_cef_initialize','__ZN22CefScopedLibraryLoader4LoadEv','_CEF_something']:
+            with self.subTest(symbol=symbol), patch('hc_release_bundle.subprocess.run',
+                    return_value=subprocess.CompletedProcess([],0,symbol+'\n','')):
+                with self.assertRaisesRegex(BundlePolicyFailure,'CEF implementation/wrapper'):
+                    check_no_cef_symbols(self.root/'fixture')
+        with patch('hc_release_bundle.subprocess.run',return_value=subprocess.CompletedProcess([],1,'','invalid')):
+            with self.assertRaisesRegex(BundlePolicyFailure,'cannot inspect'):
+                check_no_cef_symbols(self.root/'fixture')
+    def test_unavailable_interface_symbols_allowed(self):
+        with patch('hc_release_bundle.subprocess.run',return_value=subprocess.CompletedProcess([],0,'_OBJC_CLASS_$_SHBEngine\n','')):
+            check_no_cef_symbols(self.root/'fixture')
+    def test_cef_build_settings_reintroduction_rejected(self):
+        for name,value in [('HEADER_SEARCH_PATHS[sdk=macosx*]','$(SRCROOT)/Vendor/CEF/out'),
+                           ('OTHER_LDFLAGS','-lcef_dll_wrapper'),('SHEPHERD_CEF_ROOT','fixture')]:
+            data={'objects':{'000000000000000112000000':{'buildSettings':{name:value}},
+                             '000000000000000100000000':{'dependencies':[]}}}
+            with self.subTest(setting=name), patch.object(notices.subprocess,'run',
+                    return_value=subprocess.CompletedProcess([],0,json.dumps(data),'')):
+                with self.assertRaisesRegex(notices.NoticeFailure,'CEF build input'):
+                    notices.check_hc_browser_build_inputs()
+    def test_unconditional_forwarder_target_rejected(self):
+        data={'objects':{'000000000000000112000000':{'buildSettings':{}},
+                         '000000000000000100000000':{'dependencies':['fixture-dep']},
+                         'fixture-dep':{'target':'A9E100000000000000000060'}}}
+        with patch.object(notices.subprocess,'run',return_value=subprocess.CompletedProcess([],0,json.dumps(data),'')):
+            with self.assertRaisesRegex(notices.NoticeFailure,'unconditional capture forwarder'):
+                notices.check_hc_browser_build_inputs()
     def test_hc_source_profile_and_reviewed_pin_delta(self):
         inv=notices.check_source(hc_product=True)
         with self.assertRaisesRegex(notices.NoticeFailure,'Package.resolved drift'):
@@ -64,6 +94,9 @@ class ReleaseBundlePolicyTests(unittest.TestCase):
         workflow=(ROOT/'.github/workflows/release-macos.yml').read_text()
         self.assertNotIn('npm ci --prefix Shepherd/Agents/AgentRuntime',workflow)
         self.assertNotIn('security/plugins.json',workflow)
+        self.assertNotIn('run: scripts/cef.sh',workflow)
+        self.assertNotIn('CEF_BUILD_ROOT=',script)
+        self.assertNotIn('SHEPHERD_CEF_ROOT=',script)
         self.assertIn('Tests/Terminal/SwiftTermWrap/verify-vendor.py',workflow)
         for required in ['codesign --verify --deep --strict', 'notarize "$WORK/notarize.zip"',
                          'spctl --assess --type execute', 'notary_ready', 'Push the exact reviewed source commit']:
