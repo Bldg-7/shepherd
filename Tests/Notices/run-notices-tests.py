@@ -340,8 +340,15 @@ def check_hc_browser_build_inputs() -> None:
             if entry.get('buildForArchiving') != 'NO' or entry.get('buildForProfiling') != 'NO':
                 fail('deferred Debug fixture must not be a Release archive/profile root')
     source = (ROOT / 'Shepherd/Browser/Engine/BrowserEngine.mm').read_text()
-    if '#if defined(__arm64__) && defined(DEBUG) && DEBUG' not in source:
-        fail('CEF implementation must remain limited to Apple-silicon Debug fixtures')
+    if '#if defined(__arm64__) && defined(DEBUG) && DEBUG && defined(SHEPHERD_LEGACY_FIXTURES) && SHEPHERD_LEGACY_FIXTURES' not in source:
+        fail('CEF implementation must remain limited to the explicit fixture target')
+    sys.path.insert(0, str(ROOT / 'Tests/HcBackend'))
+    from product_build_policy import check_product_project, check_sdk_boundary, ProductBuildPolicyFailure
+    try:
+        check_product_project(objects)
+        check_sdk_boundary()
+    except ProductBuildPolicyFailure as error:
+        fail(str(error))
 
 
 def check_app(inventory: dict, app: Path, *, hc_product: bool = False) -> None:
@@ -669,12 +676,17 @@ def check_hc_products(inventory: dict, app: Path, inputs: list[Path]) -> None:
             fail(str(error))
     intermediate_root = archive_intermediates(derived)
     products_root = intermediate_root / 'BuildProductsPath/Release'
-    for name in ('AgentProxyForwarder.o', 'hrdrhrdrhrdr-agent-proxy'):
+    for name in ('AgentProxyForwarder.o', 'hrdrhrdrhrdr-agent-proxy', 'ShepherdLegacyFixtures.o',
+                 'ShepherdLegacyFixtures.app', 'NIOSSL.o', 'X509.o', 'NIOHTTP1.o', 'NIOWebSocket.o'):
         if (products_root / name).exists():
             fail('hc Release unexpectedly built a deferred forwarder product: ' + name)
     target_inputs = {('app', arch): link_inputs(link_file_list(intermediate_root, 'app', arch), derived, arch)
                      for arch in sorted(app_arches)}
-    evidence = {name: requirements for name, requirements in STATIC_PRODUCT_EVIDENCE.items() if name != 'AgentProxy'}
+    # Reviewed product split: X509/NIOSSL belong only to the historical browser
+    # fixture. Their frozen license/provenance inventory is retained, not relabeled.
+    evidence = {name: requirements for name, requirements in STATIC_PRODUCT_EVIDENCE.items()
+                if name not in {'AgentProxy', 'swift-certificates', 'swift-nio-ssl'}}
+    evidence['ShepherdKit'] = (('app', 'ShepherdKit.o'),)
     evidence['AgentProxy archive codecs'] = (('app', 'AgentProxyCore.o'), ('app', 'AgentProxyProtocol.o'))
     for identity, requirements in evidence.items():
         for target, filename in requirements:
@@ -682,6 +694,26 @@ def check_hc_products(inventory: dict, app: Path, inputs: list[Path]) -> None:
             for arch in app_arches:
                 if expected not in target_inputs[(target, arch)]:
                     fail(f'hc linked product evidence unavailable for {identity}: {filename}')
+    from hc_release_bundle import check_no_legacy_backend_symbols, BundlePolicyFailure
+    try:
+        check_no_legacy_backend_symbols(products_root / 'ShepherdKit.o')
+    except BundlePolicyFailure as error:
+        fail(str(error))
+    # Symbols can be stripped; the actual per-slice compiler source list must
+    # independently prove that the historical SDK was not compiled at all.
+    fixture_roots = read_json(ROOT / 'Tests/HcBackend/legacy-fixture-sources.json')['SDK']
+    forbidden = set()
+    for relative in fixture_roots:
+        source = ROOT / 'ShepherdKit/Sources/ShepherdKit' / relative
+        forbidden.update(p.name for p in source.rglob('*.swift')) if source.is_dir() else forbidden.add(source.name)
+    for arch in app_arches:
+        filelist = intermediate_root / ('IntermediateBuildFilesPath/ShepherdKit.build/Release/'
+                                       f'ShepherdKit-t.build/Objects-normal/{arch}/ShepherdKit.SwiftFileList')
+        if not filelist.is_file(): fail('normal SDK compiler source evidence is missing')
+        names = {Path(line.strip().strip('"')).name for line in filelist.read_text().splitlines() if line.strip()}
+        if not {'CoreWire.swift', 'HcTerminalBoard.swift', 'MachineStore+Hc.swift', 'ConversationClient.swift', 'ShellQuoting.swift'} <= names:
+            fail('normal SDK core/shared SSH/archive source evidence is incomplete')
+        if names & forbidden: fail('normal SDK compiled historical backend sources: ' + str(sorted(names & forbidden)))
     # The Objective-C ABI is retained for deferred Swift source compatibility,
     # but every slice must contain only the unavailable implementation.
     for arch in app_arches:

@@ -7,7 +7,7 @@ for n in ['home','tmp','cache']:(out/n).mkdir(mode=0o700)
 from native_test_env import settings
 env,native_flags=settings(out)
 products=a.swiftterm_products.resolve();shutil.copytree(products/'SwiftTerm_SwiftTerm.bundle',out/'SwiftTerm_SwiftTerm.bundle')
-sources=['Shepherd/Hosts/Views/WorkspaceDetailSplitView.swift','Shepherd/Hosts/Views/WorkspaceNavigationSplitView.swift','Shepherd/Terminal/TerminalPaneFrame.swift','Shepherd/Terminal/TerminalFileGesture.swift','Shepherd/Terminal/TerminalWebLink.swift','Shepherd/Terminal/TerminalHostView.swift','Shepherd/FilePreview/TerminalFileHit.swift','Shepherd/FilePreview/FilePreviewLink.swift','Tests/Terminal/SidebarPeekLayoutTests.swift']
+sources=['Shepherd/Hosts/Views/WorkspaceDetailSplitView.swift','Shepherd/Hosts/Views/WorkspaceNavigationSplitView.swift','Shepherd/Terminal/TerminalPaneFrame.swift','Shepherd/Terminal/TerminalFileGesture.swift','Shepherd/Terminal/TerminalWebLink.swift','Shepherd/Terminal/SelectionKeepingTerminal.swift','Shepherd/Terminal/TerminalHostView.swift','Shepherd/FilePreview/TerminalFileHit.swift','Shepherd/FilePreview/FilePreviewLink.swift','Tests/Terminal/SidebarPeekLayoutTests.swift']
 (out/'source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in sources+['Tests/Terminal/native_test_env.py','Tests/Terminal/run-sidebar-peek-tests.py']},indent=2))
 if a.restoration_red:
  target='Shepherd/Hosts/Views/WorkspaceNavigationSplitView.swift';before=(ROOT/target).read_text();needle='                .background { WorkspaceNativeSidebarVisibility(state: state) }';assert before.count(needle)==1

@@ -36,12 +36,12 @@ nonisolated enum ShepherdKitResources {
     private final class BundleFinder {}
 }
 
-extension LocalizedStringResource.BundleDescription {
+public extension LocalizedStringResource.BundleDescription {
     /// The package's string catalog, for `LocalizedStringResource`.
     nonisolated static var shepherdKit: Self { .atURL(ShepherdKitResources.bundle.bundleURL) }
 }
 
-extension Bundle {
+public extension Bundle {
     /// The package's string catalog, for `String(localized:bundle:)`.
     nonisolated static var shepherdKit: Bundle { ShepherdKitResources.bundle }
 }

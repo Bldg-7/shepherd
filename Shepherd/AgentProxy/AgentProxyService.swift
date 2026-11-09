@@ -17,7 +17,7 @@ import Observation
 /// being signed in with a subscription: those go without the proxy from then
 /// on, until the setting is turned off and on again.
 @MainActor @Observable
-final class AgentProxyService: AgentProxyRouting {
+final class AgentProxyService {
     /// What the service stands on: the app's own, or stand-ins in tests.
     struct Environment {
         var launchAgent: any AgentProxyLaunchAgent
@@ -261,7 +261,9 @@ final class AgentProxyService: AgentProxyRouting {
         }
     }
 
-    // MARK: - Launches
+    // MARK: - Historical injected launches (explicit fixture product only)
+
+    #if SHEPHERD_LEGACY_FIXTURES
 
     func route(for kind: AgentKind, pane: AgentPaneIdentity, cliVersion: String?, on machine: Machine) async -> AgentProxyLaunchRoute? {
         if let skip = AgentProxyInjectionPolicy.skip(kind: kind, cliVersion: cliVersion, settingOn: isOn,
@@ -312,11 +314,17 @@ final class AgentProxyService: AgentProxyRouting {
         }
     }
 
+    #endif
+
     /// `http://127.0.0.1:PORT/p/<32 hex>`, as the proxy makes them.
     nonisolated static func isBaseURL(_ value: String) -> Bool {
         guard let match = value.wholeMatch(of: #/http://127\.0\.0\.1:([1-9][0-9]{0,4})/p/[0-9a-f]{32}/#), let port = Int(match.1) else { return false }
         return port <= 65535
     }
 }
+
+#if SHEPHERD_LEGACY_FIXTURES
+extension AgentProxyService: AgentProxyRouting {}
+#endif
 
 #endif

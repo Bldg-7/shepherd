@@ -1,3 +1,6 @@
+#if SHEPHERD_LEGACY_FIXTURE_MODULE
+import ShepherdKit
+#endif
 import Foundation
 
 /// The app's `MachineMonitor`s: one per machine — per connection identity,

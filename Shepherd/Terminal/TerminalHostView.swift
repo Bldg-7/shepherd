@@ -94,7 +94,7 @@ struct TerminalTextDrop {
 /// change: the keyboard also leaves a terminal when SwiftUI takes the
 /// terminal's view away in an update — another tab selected, the window
 /// closed — and the owner's state must not change in the middle of one.
-final class FocusReportingTerminalView: TerminalView {
+final class FocusReportingTerminalView: TerminalView, SelectionKeepingTerminal {
     var onFocusChange: ((Bool) -> Void)?
     var focusesWhenShown = false
     var keyboardFocusAllowed: () -> Bool = { true }

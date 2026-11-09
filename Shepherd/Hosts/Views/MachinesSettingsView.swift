@@ -81,16 +81,20 @@ struct MachinesSettingsView: View {
         .onAppear {
             // ContentView can hand this window an already-claimed startup
             // onboarding lease. Route that explicit request to the detail page.
+            #if SHEPHERD_LEGACY_FIXTURES
             if ShepherdBrowserFeature.shared.isEnabled,
                ShepherdBrowserFeature.shared.passwordManagers.presentationOwner == passwordManagerWindowID {
                 isAddingMachine = false
                 machineBeingEdited = nil
                 showsExperimentalFeatures = true
             }
+            #endif
         }
         .onDisappear {
             // Also covers dismissal before the requested detail page mounts.
+            #if SHEPHERD_LEGACY_FIXTURES
             ShepherdBrowserFeature.shared.passwordManagers.endVisit(owner: passwordManagerWindowID)
+            #endif
         }
         .confirmationDialog(removalTitle, isPresented: isConfirmingRemoval, presenting: machinePendingRemoval) { machine in
             removalActions(for: machine)

@@ -228,10 +228,6 @@ struct PaneTerminalView: View {
     }
 }
 
-/// The attach's output keeps the terminal's selection (see
-/// `FocusReportingTerminalView.feedKeepingSelection`).
-extension FocusReportingTerminalView: SelectionKeepingTerminal {}
-
 #Preview {
     NavigationStack {
         AgentTerminalView(

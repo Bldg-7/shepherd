@@ -1,3 +1,6 @@
+#if SHEPHERD_LEGACY_FIXTURE_MODULE
+import ShepherdKit
+#endif
 import Foundation
 
 /// When a machine's monitor reads herdr's snapshot again, and when it gives

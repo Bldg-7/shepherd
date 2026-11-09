@@ -53,6 +53,10 @@ public nonisolated struct AgentStartResult: Sendable {
     public let agent: AgentSummary
     /// May contain user instructions; never log this value.
     public let arguments: [String]
+
+    public init(agent: AgentSummary, arguments: [String]) {
+        self.agent = agent; self.arguments = arguments
+    }
 }
 
 public nonisolated struct PaneProcessInfo: Decodable, Sendable {

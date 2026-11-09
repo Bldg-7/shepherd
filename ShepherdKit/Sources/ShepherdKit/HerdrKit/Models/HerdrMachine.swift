@@ -28,6 +28,10 @@ public nonisolated struct HerdrCommandError: Error, LocalizedError {
     public let status: Int
     public let message: String
 
+    public init(status: Int, message: String) {
+        self.status = status; self.message = message
+    }
+
     public var errorDescription: String? {
         let trimmed = message
             .trimmingCharacters(in: .whitespacesAndNewlines)

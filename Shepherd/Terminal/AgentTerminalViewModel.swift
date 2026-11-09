@@ -250,9 +250,3 @@ final class AgentTerminalViewModel {
         }
     }
 }
-
-/// A terminal view that keeps its selection through the program's output
-/// (`FocusReportingTerminalView`).
-@MainActor protocol SelectionKeepingTerminal: AnyObject {
-    func feedKeepingSelection(_ bytes: ArraySlice<UInt8>)
-}

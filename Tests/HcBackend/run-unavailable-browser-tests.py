@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Actual unavailable Release interface without CEF; no app/core/service launch."""
+"""Actual unavailable product Debug/Release ABI; no app/core/service launch."""
 from pathlib import Path
 import argparse, hashlib, json, subprocess, sys
 sys.dont_write_bytecode=True
@@ -23,7 +23,7 @@ def stage(name,command):
         '--natural-exit-grace','5','--log',str(log),'--',*map(str,command)],cwd=ROOT,env=env,check=True,timeout=120)
     receipt=json.loads(log.with_suffix('.stage.json').read_text())
     assert receipt['naturalExitConfirmed'] and receipt['cleanupVerified'] and not receipt['signalsSent']
-for name,flags in [('release',['-DNDEBUG=1']),('debug-zero',['-DDEBUG=0'])]:
+for name,flags in [('release',['-DNDEBUG=1']),('debug-zero',['-DDEBUG=0']),('product-debug',['-DDEBUG=1'])]:
     exe=out/('unavailable-'+name)
     stage(name+'-build',['/usr/bin/sandbox-exec','-f',profile,'xcrun','clang++','-std=c++17','-fobjc-arc','-fblocks',
           '-Werror','-isysroot',sdk_flags[1],'-I',ROOT/'Shepherd/Browser/Engine',*flags,*sources,
@@ -31,6 +31,6 @@ for name,flags in [('release',['-DNDEBUG=1']),('debug-zero',['-DDEBUG=0'])]:
     check_no_cef_symbols(exe)
     stage(name+'-tests',['/usr/bin/sandbox-exec','-f',profile,exe])
 assert hashes()==before
-(out/'validation.json').write_text(json.dumps({'passed':True,'checksPerMode':10,'modes':['release','debug-zero'],
+(out/'validation.json').write_text(json.dumps({'passed':True,'checksPerMode':10,'modes':['release','debug-zero','product-debug'],
     'cefReadDenied':True,'cefSymbolsAbsent':True,'applicationCreated':False,'providerOrServiceUsed':False},indent=2))
 print('PASS unavailable browser interface:',out)

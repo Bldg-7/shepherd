@@ -41,7 +41,7 @@ def stage(name,command):
                     '--natural-exit-grace','10','--log',str(log),'--',*map(str,command)],cwd=ROOT,env=env,check=True,timeout=160)
     r=json.loads(log.with_suffix('.stage.json').read_text())
     assert r['naturalExitConfirmed'] and r['cleanupVerified'] and not r['signalsSent'], str(log)
-for mode,extra in [('debug',['-D','DEBUG']),('release',['-O'])]:
+for mode,extra in [('debug',['-D','DEBUG']),('release',['-O']),('explicit-fixture',['-D','DEBUG','-D','SHEPHERD_LEGACY_FIXTURES'])]:
     exe=out/('entry-'+mode)
     stage(mode+'-build',[*flags,*extra,str(policy),'Tests/HcBackend/HcDefaultBackendTests.swift',*map(str,objects),
                         '-framework','AppKit','-framework','Security','-framework','CoreText','-framework','QuartzCore',
@@ -49,7 +49,7 @@ for mode,extra in [('debug',['-D','DEBUG']),('release',['-O'])]:
     stage(mode+'-tests',['/usr/bin/sandbox-exec','-f',str(profile),str(exe),str(out/'fixture')])
 assert before==hashes()
 assert object_hashes=={name:digest(Path(name)) for name in object_hashes}
-(out/'validation.json').write_text(json.dumps({'passed':True,'modes':['debug','release'],'checksPerMode':20,
+(out/'validation.json').write_text(json.dumps({'passed':True,'modes':['debug','release','explicit-fixture'],'checksPerMode':20,
     'policySource':'exact extracted ShepherdLegacyFixtureRouting','fixtureValidation':'stand-ins, not path ownership qualification',
     'failurePaths':'actual product SDK transport-start errors; pre-transport missing discovery is source-guarded','realCoreOrCLIOrUserCredential':False,
     'defaultRootSourceWiring':'separate guards','deploymentQualified':False},indent=2))

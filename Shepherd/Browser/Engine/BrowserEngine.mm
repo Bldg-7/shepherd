@@ -18,10 +18,10 @@ NSError *EngineError(SHBEngineError code, NSString *message) {
 
 }  // namespace
 
-// CEF is retained only for isolated Apple-silicon DEBUG fixtures. Ordinary
-// hc Release (including arm64) compiles the unavailable interface below, with
+// CEF is retained only in the explicit Apple-silicon DEBUG fixture target.
+// Ordinary hc Debug and Release (including arm64) compile the unavailable interface below, with
 // no CEF headers, wrapper, dynamic loader or runtime dependency.
-#if defined(__arm64__) && defined(DEBUG) && DEBUG
+#if defined(__arm64__) && defined(DEBUG) && DEBUG && defined(SHEPHERD_LEGACY_FIXTURES) && SHEPHERD_LEGACY_FIXTURES
 
 #include <crt_externs.h>
 #include <objc/runtime.h>

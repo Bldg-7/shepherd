@@ -1,3 +1,6 @@
+#if SHEPHERD_LEGACY_FIXTURE_MODULE
+import ShepherdKit
+#endif
 import Foundation
 
 /// The herdr side of adding a herdr machine, removing one and checking one

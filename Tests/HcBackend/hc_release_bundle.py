@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Strict hc Release payload policy. Reads only the supplied bundle; never launches it."""
 from pathlib import Path
-import argparse, json, os, plistlib, subprocess
+import argparse, json, os, plistlib, re, subprocess
 
 class BundlePolicyFailure(RuntimeError):
     pass
@@ -41,6 +41,21 @@ def check_no_cef_symbols(binary):
     if retired:
         raise BundlePolicyFailure('excluded CEF implementation/wrapper symbols remain: ' + ', '.join(retired[:8]))
 
+def check_no_legacy_backend_symbols(binary):
+    symbols=subprocess.run(['/usr/bin/nm','-gj',str(binary)],capture_output=True,text=True,check=False)
+    if symbols.returncode:
+        raise BundlePolicyFailure('cannot inspect legacy SDK symbols')
+    demangled=subprocess.run(['xcrun','swift-demangle'],input=symbols.stdout,capture_output=True,text=True,check=False)
+    if demangled.returncode:
+        raise BundlePolicyFailure('cannot demangle legacy SDK symbols')
+    names=('HerdrClient','HerdrTransport','LocalHerdrTransport','SSHHerdrTransport','HerdrExecutable',
+           'MachineMonitor','MachineMonitors','TerminalSession','AgentTerminalViewModel','AgentLaunchService',
+           'AgentRuntime','PiHostBridge','BrowserStore','CredentialHTTPSProxy')
+    pattern=re.compile(r'\b(?:'+ '|'.join(names) +r')\b|ShepherdLegacyFixtures\.')
+    retired=[line for line in demangled.stdout.splitlines() if pattern.search(line)]
+    if retired:
+        raise BundlePolicyFailure('excluded legacy executable SDK symbols remain: '+ '; '.join(retired[:5]))
+
 def inspect_binary(app):
     app=Path(app)
     try:
@@ -61,7 +76,8 @@ def inspect_binary(app):
     if '@rpath/Sparkle.framework/' not in load.stdout:
         raise BundlePolicyFailure('expected updater dependency is missing')
     check_no_cef_symbols(binary)
-    return {'architectures':arch.stdout.split(),'cefImplementationSymbols':False,'version':info.get('CFBundleShortVersionString'),
+    check_no_legacy_backend_symbols(binary)
+    return {'architectures':arch.stdout.split(),'cefImplementationSymbols':False,'legacyExecutableSDKSymbols':False,'version':info.get('CFBundleShortVersionString'),
             'browserLoadCommand':False,'signingQualified':False,'notarizationQualified':False}
 
 def main():

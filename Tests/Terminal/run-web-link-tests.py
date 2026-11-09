@@ -83,7 +83,7 @@ assert 'explanation: "An in-app pane browser. Links clicked in a terminal open i
 assert not (ROOT/'Shepherd/Terminal/LinkDestinationPrompt.swift').exists()
 assert 'struct LinkDestinationPrompt' not in (ROOT/'Shepherd/Terminal/LinkOpenedNotice.swift').read_text()
 assert not any('"links.destination"' in f.read_text() for f in (ROOT/'Shepherd').rglob('*.swift')),'the old setting is not read'
-host=(ROOT/'Shepherd/Terminal/TerminalHostView.swift').read_text()
+host=(ROOT/'Shepherd/Terminal/SelectionKeepingTerminal.swift','Shepherd/Terminal/TerminalHostView.swift').read_text()
 assert 'at: point, clickCount: event.clickCount)' in host and 'windowPoint' not in host and 'topLeftWindowPoint' not in host
 strings=json.loads((ROOT/'Shepherd/Localizable.xcstrings').read_text())['strings']
 for gone in ['Open links in','Ask first','Default Browser','About opening links','Open in In-app Browser',"Don't ask again",'⌘-click opens a link in the other browser.','In-app Browser is off, so the link opened in the default browser.']:

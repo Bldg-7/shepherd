@@ -65,7 +65,7 @@ if args.swiftterm_products:
  products=args.swiftterm_products.resolve()
  bundle=products/'SwiftTerm_SwiftTerm.bundle'
  if bundle.exists():shutil.copytree(bundle,out/bundle.name)
- native=['Shepherd/Terminal/TerminalHostView.swift','Shepherd/Terminal/TerminalFileGesture.swift','Shepherd/Terminal/TerminalWebLink.swift','Shepherd/FilePreview/TerminalFileHit.swift','Shepherd/FilePreview/FilePreviewLink.swift']
+ native=['Shepherd/Terminal/SelectionKeepingTerminal.swift','Shepherd/Terminal/TerminalHostView.swift','Shepherd/Terminal/TerminalFileGesture.swift','Shepherd/Terminal/TerminalWebLink.swift','Shepherd/FilePreview/TerminalFileHit.swift','Shepherd/FilePreview/FilePreviewLink.swift']
  stage('drop-view-build',120,swiftc+['-I',str(products),*native,'Tests/FileDrop/DropViewTests.swift',str(products/'SwiftTerm.o'),'-framework','AppKit','-framework','QuartzCore','-framework','CoreText','-o',str(out/'drop-view-tests')])
  stage('drop-view-tests',30,[str(out/'drop-view-tests')])
  hashed.update(native+['Tests/FileDrop/DropViewTests.swift'])

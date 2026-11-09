@@ -192,7 +192,7 @@ nonisolated enum TerminalDropPaste {
     /// target from being read as an option, which `isUsableTarget` also
     /// refuses. ssh hands `receive` on to that machine's login shell as it is.
     static func sshArguments(to target: String, running receive: String) -> [String] {
-        ["-T"] + HerdrExecutable.sshOptions + ["--", target, receive]
+        ["-T"] + NoninteractiveSSHOptions.arguments + ["--", target, receive]
     }
 
     /// The command line, for the host's login shell, that receives one file

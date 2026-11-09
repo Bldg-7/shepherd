@@ -1,5 +1,9 @@
 # CEF implementation/build-input retirement from hc Release
 
+> Historical stage. The subsequent [fixed code/build cleanup](CODE-CLEANUP-README.md)
+> supersedes this stage's remaining ordinary-Debug fixture/SDK coupling and its
+> CLI Release-build caveat. The original receipts below keep their time boundary.
+
 Follow-up to `8a3e9ab`'s payload removal. **Release now compiles no CEF
 implementation and needs no CEF distribution, headers, static wrapper, runtime
 loader or Chromium credits.** Apple-silicon Debug retains the actual historical

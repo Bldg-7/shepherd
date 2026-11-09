@@ -47,7 +47,7 @@ private nonisolated final class EntryFailureTransport: CoreByteTransport {
                     HcMigrationConfiguration.requested = hcFixture
                     OwnedOperatorFixture.configuration = owned ? 1 : nil
                     ShepherdBrowserFeature.isAvailable = browser
-                    #if DEBUG
+                    #if DEBUG && SHEPHERD_LEGACY_FIXTURES
                     let expected = !hcFixture && (owned || browser)
                     #else
                     let expected = false

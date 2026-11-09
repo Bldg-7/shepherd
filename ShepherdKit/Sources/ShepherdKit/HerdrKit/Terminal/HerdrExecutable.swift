@@ -1,3 +1,6 @@
+#if SHEPHERD_LEGACY_FIXTURE_MODULE
+import ShepherdKit
+#endif
 import Foundation
 
 /// How an attach finds the herdr binary to run.
@@ -111,14 +114,7 @@ public nonisolated enum HerdrExecutable {
     /// `HerdrMachine` the way herdr's own requests to it do — same keys and
     /// ~/.ssh/config, same host-key policy — and fails rather than stopping
     /// to ask for a password or to trust a new host key.
-    public static let sshOptions = [
-        "-o", "BatchMode=yes",
-        "-o", "NumberOfPasswordPrompts=0",
-        "-o", "StrictHostKeyChecking=yes",
-        "-o", "ConnectTimeout=10",
-        "-o", "ServerAliveInterval=15",
-        "-o", "ServerAliveCountMax=4",
-    ]
+    public static let sshOptions = NoninteractiveSSHOptions.arguments
 
     /// The herdr arguments that attach to a pane's terminal and take it over
     /// — `terminal attach` rather than `agent attach`, which only reaches a

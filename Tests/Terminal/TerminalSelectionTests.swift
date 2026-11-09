@@ -5,7 +5,6 @@ import NIOCore
 
 // The app declares this in AgentTerminalView.swift, which needs the whole
 // app to compile; run-selection-tests.py checks that the line is there.
-extension FocusReportingTerminalView: SelectionKeepingTerminal {}
 
 func connectionFailureDescription(_ error: any Error) -> String { "\(error)" }
 

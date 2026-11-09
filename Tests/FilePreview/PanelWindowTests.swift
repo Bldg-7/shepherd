@@ -102,11 +102,17 @@ struct FindRoot: View {
     static func pane(_ id: String, terminal: String, cwd: String) -> AgentSummary {
         AgentSummary(json: .object(["pane_id": .string(id), "terminal_id": .string(terminal), "cwd": .string(cwd)]), on: nil)!
     }
-    /// Scrolls as a person would leave it: the clip view moved, which
-    /// SwiftUI hears of as for a scroll wheel.
+    /// One native wheel event to this exact owned scroll view. Moving only
+    /// NSClipView.bounds bypasses SwiftUI's scroll-input ownership and leaves
+    /// its initial scrollTo(line:) target latched across a content reload.
+    /// This is component event dispatch, not a physical gesture qualification.
     static func scroll(_ scroll: NSScrollView, to y: CGFloat) {
-        scroll.contentView.scroll(to: NSPoint(x: 0, y: y))
-        scroll.reflectScrolledClipView(scroll.contentView)
+        let distance = y - scroll.contentView.bounds.origin.y
+        precondition(distance.isFinite && abs(distance) < CGFloat(Int32.max))
+        guard let cg = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1,
+                               wheel1: Int32(-distance.rounded()), wheel2: 0, wheel3: 0),
+              let event = NSEvent(cgEvent: cg) else { preconditionFailure("owned wheel event") }
+        scroll.scrollWheel(with: event)
     }
 
     /// The panel's accessibility elements that have an identifier, as
@@ -1026,7 +1032,7 @@ struct FindRoot: View {
         check(await after(press(reloadButton())) { text(lined) == plan(5) }, "read again")
         drain(host.view)
         check(documentScroll(in: host.view) === linedView && abs(place().y - 2500) < 2 && (lined.visibleLines.first ?? 0) > 80,
-              "it stays where it was scrolled to, not taken back to the line")
+              "it stays where it was scrolled to, not taken back to the line; sameView=\(documentScroll(in: host.view) === linedView), viewport=\(place().y), model=\(lined.scrollOffset?.y ?? -1), lines=\(lined.visibleLines.prefix(3))")
         check(lined.showsSource && lined.link?.line == 40, "in the source, the line linked to kept")
         // Read again shorter than where it was scrolled to: at its end.
         let shorter = (1...60).map { "Line \($0) of the shorter plan" }.joined(separator: "\n")

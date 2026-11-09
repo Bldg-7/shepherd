@@ -10,11 +10,11 @@ for name in ['home','tmp','cache','modules']:(out/name).mkdir(mode=0o700)
 env=dict(os.environ,DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer',HOME=str(out/'home'),CFFIXED_USER_HOME=str(out/'home'),TMPDIR=str(out/'tmp'),CLANG_MODULE_CACHE_PATH=str(out/'cache'))
 products=args.swiftterm_products.resolve();bundle=products/'SwiftTerm_SwiftTerm.bundle'
 if bundle.exists():shutil.copytree(bundle,out/bundle.name)
-sources=['Shepherd/Terminal/TerminalFileGesture.swift','Shepherd/Terminal/TerminalWebLink.swift','Shepherd/Terminal/TerminalHostView.swift','Shepherd/FilePreview/TerminalFileHit.swift','Shepherd/FilePreview/FilePreviewLink.swift','Shepherd/Terminal/AgentTerminalViewModel.swift','Shepherd/Terminal/HerdrAttachInput.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/TerminalSessionProviding.swift','Tests/Terminal/TerminalSelectionTests.swift']
+sources=['Shepherd/Terminal/TerminalFileGesture.swift','Shepherd/Terminal/TerminalWebLink.swift','Shepherd/Terminal/SelectionKeepingTerminal.swift','Shepherd/Terminal/TerminalHostView.swift','Shepherd/FilePreview/TerminalFileHit.swift','Shepherd/FilePreview/FilePreviewLink.swift','Shepherd/Terminal/AgentTerminalViewModel.swift','Shepherd/Terminal/HerdrAttachInput.swift','ShepherdKit/Sources/ShepherdKit/HerdrKit/Terminal/TerminalSessionProviding.swift','Tests/Terminal/TerminalSelectionTests.swift']
 (out/'source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in sources+['Shepherd/Terminal/AgentTerminalView.swift']},indent=2))
 # The app makes the view model feed through the view's selection keeping in
-# AgentTerminalView.swift, which the test declares again for itself.
-assert 'extension FocusReportingTerminalView: SelectionKeepingTerminal {}' in (ROOT/'Shepherd/Terminal/AgentTerminalView.swift').read_text()
+# TerminalHostView.swift itself, shared by hc and the explicit legacy fixture.
+assert 'final class FocusReportingTerminalView: TerminalView, SelectionKeepingTerminal {' in (ROOT/'Shepherd/Terminal/TerminalHostView.swift').read_text()
 def stage(name,seconds,args):
  log=out/(name+'.log')
  code=subprocess.run([sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(seconds),'--natural-exit-grace','10','--log',str(log),'--',*args],cwd=ROOT,env=env,timeout=seconds+40).returncode

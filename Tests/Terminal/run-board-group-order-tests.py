@@ -15,7 +15,7 @@ products=args.swiftterm_products.resolve();bundle=products/'SwiftTerm_SwiftTerm.
 if bundle.exists():shutil.copytree(bundle,out/bundle.name)
 kit='ShepherdKit/Sources/ShepherdKit/'
 models=[kit+'Resources.swift',kit+'Machines/Machine.swift',kit+'Agents/AgentKind.swift']+[kit+'HerdrKit/Models/'+n for n in ['JSONValue.swift','AgentModels.swift','AgentLaunchModels.swift','AgentTitleDisplay.swift','TabModels.swift','HerdrMachine.swift']]
-sources=['Shepherd/Hosts/Views/BoardGroupOrder.swift','Shepherd/Terminal/HerdrItemDrag.swift','Shepherd/Terminal/TerminalHostView.swift','Shepherd/Terminal/TerminalFileGesture.swift','Shepherd/Terminal/TerminalWebLink.swift','Shepherd/FilePreview/TerminalFileHit.swift','Shepherd/FilePreview/FilePreviewLink.swift']+models+['Tests/Terminal/BoardGroupOrderTests.swift']
+sources=['Shepherd/Hosts/Views/BoardGroupOrder.swift','Shepherd/Terminal/HerdrItemDrag.swift','Shepherd/Terminal/SelectionKeepingTerminal.swift','Shepherd/Terminal/TerminalHostView.swift','Shepherd/Terminal/TerminalFileGesture.swift','Shepherd/Terminal/TerminalWebLink.swift','Shepherd/FilePreview/TerminalFileHit.swift','Shepherd/FilePreview/FilePreviewLink.swift']+models+['Tests/Terminal/BoardGroupOrderTests.swift']
 checked=['Shepherd/Hosts/Views/AgentBoardView.swift','ShepherdMobile/BoardView.swift']
 (out/'source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in sources+checked},indent=2))
 def stage(name,seconds,args,mirrorsLog=False):

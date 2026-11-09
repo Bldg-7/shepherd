@@ -12,6 +12,32 @@
 // mean it.
 import PackageDescription
 
+// The historical SDK is an explicit fixture product, never a dependency of
+// ShepherdKit. Shared models, pinned SSH primitives and archive readers stay
+// in the normal product; executable legacy backends live only in this list.
+let legacyFixtureSources = [
+    "HerdrKit/HerdrClient.swift",
+    "HerdrKit/Models/HerdrMessage.swift",
+    "HerdrKit/Models/HerdrSubscription.swift",
+    "HerdrKit/Transport/ConversationSSHLineChannel.swift",
+    "HerdrKit/HerdrMachineSetup",
+    "HerdrKit/Live",
+    "HerdrKit/Terminal/HerdrExecutable.swift",
+    "HerdrKit/Terminal/TerminalSession.swift",
+    "HerdrKit/Transport/HerdrTransport.swift",
+    "HerdrKit/Transport/LocalHerdrTransport.swift",
+    "HerdrKit/Transport/SSHHerdrTransport.swift",
+    "Machines/MachineMonitor.swift",
+    "Machines/MachineMonitors.swift",
+    "Machines/MachineStore+Transport.swift",
+]
+let sharedSwiftSettings: [SwiftSetting] = [
+    .defaultIsolation(MainActor.self),
+    .enableUpcomingFeature("MemberImportVisibility"),
+    .enableUpcomingFeature("NonisolatedNonsendingByDefault"),
+    .enableUpcomingFeature("InferIsolatedConformances")
+]
+
 let package = Package(
     name: "ShepherdKit",
     defaultLocalization: "en",
@@ -20,7 +46,8 @@ let package = Package(
         .iOS("17.0")
     ],
     products: [
-        .library(name: "ShepherdKit", targets: ["ShepherdKit"])
+        .library(name: "ShepherdKit", targets: ["ShepherdKit"]),
+        .library(name: "ShepherdLegacyFixtures", targets: ["ShepherdLegacyFixtures"])
     ],
     dependencies: [
         .package(path: "../AgentProxy"),
@@ -43,15 +70,28 @@ let package = Package(
                 .product(name: "NIOConcurrencyHelpers", package: "swift-nio"),
                 .product(name: "Crypto", package: "swift-crypto")
             ],
+            exclude: legacyFixtureSources,
             resources: [
                 .process("Resources")
             ],
-            swiftSettings: [
-                .defaultIsolation(MainActor.self),
-                .enableUpcomingFeature("MemberImportVisibility"),
-                .enableUpcomingFeature("NonisolatedNonsendingByDefault"),
-                .enableUpcomingFeature("InferIsolatedConformances")
-            ]
+            swiftSettings: sharedSwiftSettings
+        ),
+        .target(
+            name: "ShepherdLegacyFixtures",
+            dependencies: [
+                "ShepherdKit",
+                .product(name: "Citadel", package: "Citadel"),
+                .product(name: "NIOSSH", package: "swift-nio-ssh"),
+                .product(name: "NIOCore", package: "swift-nio"),
+                .product(name: "NIOPosix", package: "swift-nio"),
+                .product(name: "NIOFoundationCompat", package: "swift-nio"),
+                .product(name: "NIOConcurrencyHelpers", package: "swift-nio"),
+                .product(name: "Crypto", package: "swift-crypto")
+            ],
+            path: "Sources/ShepherdKit",
+            exclude: ["Resources"],
+            sources: legacyFixtureSources,
+            swiftSettings: sharedSwiftSettings + [.define("SHEPHERD_LEGACY_FIXTURE_MODULE")]
         )
     ],
     swiftLanguageModes: [.v6]

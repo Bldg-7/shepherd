@@ -7,10 +7,12 @@ ROOT = Path(__file__).resolve().parents[2]
 def source(name):
     return (ROOT / name).read_text()
 
-def macos_source(text, *, debug):
+def macos_source(text, *, debug, fixture=False):
     """Static conditional-source guard only; actual builds remain separate."""
     active, stack, lines = True, [], []
-    conditions = {'DEBUG': debug, 'os(macOS)': True, 'DEBUG&&os(macOS)': debug}
+    conditions = {'DEBUG': debug, 'os(macOS)': True, 'DEBUG&&os(macOS)': debug,
+                  'SHEPHERD_LEGACY_FIXTURES': fixture, 'DEBUG&&SHEPHERD_LEGACY_FIXTURES': debug and fixture,
+                  'DEBUG&&os(macOS)&&SHEPHERD_LEGACY_FIXTURES': debug and fixture}
     for line in text.splitlines():
         directive = line.strip()
         if directive.startswith('#if '):
@@ -45,6 +47,9 @@ class PreservationWiring(unittest.TestCase):
             root = active[active.index('private var hcContent:'):active.index('var body: some Scene')]
             self.assertIn('ShepherdHcContent(machineStore: machineStore)', root)
             self.assertIn('HcRootView(machineStore: machineStore, connection: connection', active)
+            self.assertNotIn('ContentView(', active)
+            self.assertNotIn('OwnedOperatorFixture', active)
+            self.assertNotIn('AgentLaunchService', active)
         release = macos_source(app, debug=False)
         for name in ['ContentView(', 'legacyFixtureContent', 'HcMigrationHost(', 'AgentProxyService.shared',
                      'AgentLaunchService.shared', 'MachineMonitors.shared', 'NotificationCoordinator.shared.prepare()']:
@@ -60,8 +65,9 @@ class PreservationWiring(unittest.TestCase):
         self.assertNotIn('if ', main)
 
     def test_only_isolated_debug_fixtures_can_select_legacy(self):
-        debug = macos_source(source('Shepherd/Shepherd.swift'), debug=True)
-        self.assertIn('else if ShepherdLegacyFixtureRouting.enabled', debug)
+        debug = macos_source(source('Shepherd/Shepherd.swift'), debug=True, fixture=True)
+        self.assertIn('if ShepherdLegacyFixtureRouting.enabled', debug)
+        self.assertIn('Legacy fixtures require an explicitly isolated fixture launch.', debug)
         routing = debug[debug.index('enum ShepherdLegacyFixtureRouting'):debug.index('/// One hc product composition')]
         self.assertIn('guard !HcMigrationConfiguration.requested else { return false }', routing)
         self.assertIn('OwnedOperatorFixture.configuration != nil || ShepherdBrowserFeature.isAvailable', routing)
@@ -134,9 +140,10 @@ class PreservationWiring(unittest.TestCase):
         self.assertIn('HcNotificationCoordinator.shared.start()', release)
         for name in ['AgentProxyService', 'AgentLaunchService', 'CDPProxy', 'BrowserEngine']:
             self.assertNotIn(name, release)
-        settings = source('Shepherd/Hosts/Views/ExperimentalFeaturesSettingsView.swift')
-        form = settings[settings.index('private var featuresForm:'):settings.index('private var browserSettings:')]
-        self.assertIn('if ShepherdBrowserFeature.isAvailable {\n                browserSettings', form)
+        form = source('Shepherd/HcBackend/HcExperimentalFeaturesSettingsView.swift')
+        self.assertIn('#if os(macOS) && !SHEPHERD_LEGACY_FIXTURES', form)
+        self.assertNotIn('browserSettings', form)
+        self.assertNotIn('AgentLaunchService', form)
         self.assertNotIn('showsDiagnostics', form)
         self.assertIn('settings.experimental-features.terminal-file-drop', form)
         machines = source('Shepherd/Hosts/Views/MachinesSettingsView.swift')

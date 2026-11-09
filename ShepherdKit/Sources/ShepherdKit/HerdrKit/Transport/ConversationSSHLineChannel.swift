@@ -1,3 +1,6 @@
+#if SHEPHERD_LEGACY_FIXTURE_MODULE
+import ShepherdKit
+#endif
 import Foundation
 #if canImport(Citadel)
 import NIOCore

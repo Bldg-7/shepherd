@@ -157,23 +157,29 @@ show that signing and notarization will pass.
 
 ## What the script does
 
-The hc Release app excludes the CEF browser framework/helpers, AgentRuntime,
-capture proxy executable and capture LaunchAgents. Debug retains these only for
-isolated historical fixtures. Release compiles only the explicitly unavailable
-Objective-C browser interface, on arm64 as well as Intel; CEF implementation,
-headers, static wrapper, loader and ChromiumCredits.html are no longer Release
-inputs or payloads. The real CEF implementation remains Apple-silicon Debug-only.
+Ordinary hc Debug and Release exclude the CEF browser framework/helpers,
+AgentRuntime, capture proxy executable and capture LaunchAgents. Both compile
+only the explicitly unavailable Objective-C browser interface, on arm64 as well
+as Intel; CEF implementation, headers, wrapper, loader and ChromiumCredits.html
+are not normal product inputs/payloads. Real CEF remains only in the explicitly
+selected Apple-silicon Debug fixture application.
 There is no CEF preparation/download, Node install or CEF signing step in the hc
 release workflow. Vendored SwiftTerm provenance is verified without
 writing a global plugin-trust file; plugin validation stays enabled.
 
-The main app has no unconditional dependency on the capture helper target. The
-scheme keeps that target explicitly for configured Debug run/test/analyze fixtures,
-not Release archive/profile. The archive product gate rejects built forwarder
-leftovers as well as shipped payloads. A manual `-configuration Release build`
-overrides the configured Debug run action and may still build its fixture root;
-use the archive path for Release qualification, not that override. Full fixture
-and legacy SDK separation from every build variant remains incomplete.
+The ordinary `Shepherd` scheme selects only the hc application for every action,
+including a CLI `-configuration Release build`. No normal configuration selects
+the legacy SDK, capture helper, CEF, Node or historical UI/runtime implementation.
+`ShepherdLegacyFixtures` is a disjoint-source SDK product consumed only by the
+separate `Shepherd Legacy Fixtures` application/scheme. That fixture app has its
+own bundle identity, requires an explicitly isolated launch, sets
+`SKIP_INSTALL=YES`, and is not an archive/profile build root. Historical source
+and user archives/settings/services are preserved, not deleted for this split.
+
+The product gate checks the exact normal SDK per-slice compiler source lists,
+link inputs and symbols, and rejects stale compiled fixture/browser products as
+well as payloads. Shared models, archive codecs and pinned SSH/crypto are retained
+intentionally; their historical folder names are not executable legacy backends.
 
 This is a packaging policy, not authorization to update a user's installation.
 An older installed capture LaunchAgent can point into the old app bundle. Do not
@@ -189,8 +195,10 @@ what happens when the Sparkle key it was given is not the one the app trusts.
 Right after export, `Tests/HcBackend/hc_release_bundle.py --app` rejects excluded
 browser/helper/Node/proxy/LaunchAgent payloads, including nested/stale files and
 escaping symlinks. It also checks the actual executable's Mach-O architectures and
-load commands and CEF implementation/wrapper symbols: Sparkle must remain linked,
-but CEF code and its runtime must be absent. Reused DerivedData can retain retired files; a fresh archive must pass
+load commands and CEF/legacy executable SDK symbols: Sparkle must remain linked,
+but CEF code, its runtime and old client/transport/monitor/attach code must be absent.
+Normal Debug inspection separately checks Xcode's launcher **and** its actual
+`.debug.dylib` implementation image; that is not a Release export qualification. Reused DerivedData can retain retired files; a fresh archive must pass
 without post-build stripping. Never delete an in-use build/cache or user app to make
 a check pass. The old CEF-helper-name and proxy-bundle gates remain available for
 explicit legacy Debug fixtures; they are not the hc Release payload policy.

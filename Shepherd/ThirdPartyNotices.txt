@@ -4197,19 +4197,19 @@ build/SourcePackages/checkouts/swift-certificates/Sources/X509/X509BaseTypes/Tim
 ========================================================================
 Shepherd/Agents/AgentRuntime/node_modules/@playwright/mcp bundled licenses
 ========================================================================
-The retained legacy Debug fixture runtime keeps its Node package licenses in this directory. See package-lock.json for the resolved identities. The hc Release app excludes AgentRuntime and does not bundle these Node packages; the attribution retained here is not a claim that the fixture payload ships in Release.
+The explicitly selected legacy fixture app keeps its Node package licenses in this directory. See package-lock.json for the resolved identities. Ordinary hc Debug and Release exclude AgentRuntime and do not bundle these Node packages; retained attribution is not a claim that a fixture payload ships in the product.
 
 
 ========================================================================
 Chromium credits (CEF 154.0.33+ga03e714+chromium-154.0.8037.94)
 ========================================================================
-Chromium and CEF third-party credits are distributed as ChromiumCredits.html only with the retained legacy Debug browser fixture. Its source CREDITS.html is supplied by the pinned CEF distribution. The hc Release app neither compiles/links CEF nor bundles this fixture credit file.
+Chromium and CEF third-party credits are distributed as ChromiumCredits.html only with the explicitly selected legacy browser fixture app. Its source CREDITS.html is supplied by the pinned CEF distribution. Ordinary hc Debug and Release neither compile/link CEF nor bundle this fixture credit file.
 
 
 ========================================================================
 hc Release composition and modified SwiftTerm
 ========================================================================
-The hc Release app excludes the Chromium browser framework/helpers, ChromiumCredits.html, and the capture proxy executable/LaunchAgents. The Objective-C browser interface is explicitly unavailable in Release and contains no CEF implementation, header, wrapper or loader dependency. Existing archive codecs/protocol, SSH/crypto and legacy SDK code remain linked; their notices are retained. Historical fixture attribution here does not claim that CEF or Node ships in Release, nor that all legacy SDK dependencies have been removed.
+Ordinary hc Debug and Release exclude the Chromium browser framework/helpers, ChromiumCredits.html, and the capture proxy executable/LaunchAgents. The Objective-C browser interface is explicitly unavailable and contains no CEF implementation, header, wrapper or loader dependency. The executable legacy client, transport, monitor and attach code is confined to the explicitly selected nonshipping fixture SDK/application, not the normal product. Shared presentation/persistence models, existing archive codecs/protocol and pinned SSH/crypto remain linked; their notices are retained. X509, NIOSSL, CEF and Node attribution here is historical fixture provenance, not a claim that these deferred products ship in the hc app.
 
 SwiftTerm is vendored from upstream 1.20.0 at commit 5d14406844143538cd8f8851d2d8a67c1fe443e5 as 1.20.0-shepherd.saved-wrap-default.1-modified. Shepherd changes the initial and DECSTR-reset saved wraparound defaults to true while preserving explicitly saved wrap-off. The upstream MIT license above is unchanged. Source provenance: Vendor/SwiftTerm/PROVENANCE.md and source-hashes.json.
 

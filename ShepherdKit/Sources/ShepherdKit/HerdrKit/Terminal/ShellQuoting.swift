@@ -19,3 +19,16 @@ import Foundation
 public nonisolated func shellQuoted(_ text: String) -> String {
     "'" + text.replacingOccurrences(of: "'", with: "'\\''") + "'"
 }
+
+/// Non-interactive SSH policy shared by file transfer and explicit historical
+/// attach fixtures. This neither locates nor starts a terminal backend.
+public nonisolated enum NoninteractiveSSHOptions {
+    public static let arguments = [
+        "-o", "BatchMode=yes",
+        "-o", "NumberOfPasswordPrompts=0",
+        "-o", "StrictHostKeyChecking=yes",
+        "-o", "ConnectTimeout=10",
+        "-o", "ServerAliveInterval=15",
+        "-o", "ServerAliveCountMax=4",
+    ]
+}

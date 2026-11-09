@@ -5,9 +5,11 @@ Default macOS Debug/Release source entry now uses hc through the shared
 legacy. See [source cutover boundary](../../docs/hc-default-backend-cutover.md).
 This is not installed-app deployment or completed service/release qualification.
 The [Release payload retirement](RELEASE-PAYLOAD-README.md) additionally excludes
-browser/runtime/proxy helper payloads while retaining Debug fixtures and required
-archive/SSH/crypto attribution. The subsequent [CEF build-input retirement](BROWSER-RETIREMENT-README.md)
-removes its real implementation/headers/wrapper/credits from Release; full legacy SDK pruning is separate.
+browser/runtime/proxy helper payloads while retaining explicit fixtures and required
+archive/SSH/crypto attribution. The [fixed code/build cleanup](CODE-CLEANUP-README.md)
+now partitions executable legacy SDK/UI/runtime from **all ordinary Debug/Release
+configurations and actions**, including CLI Release builds. Historical
+[CEF build-input retirement](BROWSER-RETIREMENT-README.md) evidence remains preserved.
 
 The app backend moves from legacy herdr (`HerdrClient` + `herdr terminal attach`
 over an SSH PTY) to hc (`CoreRPCConnection` + `terminal.attach` framed streams).

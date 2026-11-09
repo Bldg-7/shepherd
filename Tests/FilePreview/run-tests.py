@@ -13,7 +13,7 @@ env=dict(os.environ,DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer',H
 DERIVED_HASHES={
  'Shepherd/FilePreview/FilePreviewPanel.swift':'fdbb7e360d0741973f7095f043e00bfece7addd450d227d7bf4ade59b60234e3',
  'Shepherd/FilePreview/SourceFilePreview.swift':'9d07eec8d9b1dd8cbbdc5d6a20b1a7c8cb3bccaa5b64f52ea8f692e64637d9f6',
- 'Tests/FilePreview/PanelWindowTests.swift':'5ea00c7483a2bdb8d2a159f9dd2d9bb457caded3fd9ccc2b0539ea2b46b1103a'
+ 'Tests/FilePreview/PanelWindowTests.swift':'fffb0528f32cfaa7d87468872fd81355a43f9cc3fccb3a55558359a168d0ab46'
 }
 def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 def once(text,old,new,label):
@@ -215,7 +215,7 @@ if not args.static_contracts_only:
   products=args.swiftterm_products.resolve()
   bundle=products/'SwiftTerm_SwiftTerm.bundle'
   if bundle.exists():shutil.copytree(bundle,out/bundle.name)
-  native=['Shepherd/FilePreview/FilePreviewLink.swift','Shepherd/FilePreview/TerminalFileHit.swift','Shepherd/Terminal/TerminalFileGesture.swift','Shepherd/Terminal/TerminalWebLink.swift','Shepherd/Terminal/TerminalHostView.swift','Tests/FilePreview/TerminalLinkTests.swift']
+  native=['Shepherd/FilePreview/FilePreviewLink.swift','Shepherd/FilePreview/TerminalFileHit.swift','Shepherd/Terminal/TerminalFileGesture.swift','Shepherd/Terminal/TerminalWebLink.swift','Shepherd/Terminal/SelectionKeepingTerminal.swift','Shepherd/Terminal/TerminalHostView.swift','Tests/FilePreview/TerminalLinkTests.swift']
   stage('terminal-link-build',90,['xcrun','swiftc','ShepherdKit/Sources/ShepherdKit/Resources.swift','-target',platform.machine()+'-apple-macos26.6.2','-swift-version','6','-default-isolation','MainActor','-parse-as-library','-I',str(products),*native,str(products/'SwiftTerm.o'),'-framework','AppKit','-framework','QuartzCore','-framework','CoreText','-o',str(out/'terminal-link-tests')])
   stage('terminal-link-tests',20,[str(out/'terminal-link-tests')])
   (out/'native-source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in native},indent=2))

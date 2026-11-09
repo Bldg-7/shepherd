@@ -1,3 +1,6 @@
+#if SHEPHERD_LEGACY_FIXTURE_MODULE
+import ShepherdKit
+#endif
 import Foundation
 
 // Needs our patched local Citadel (see Vendor/) — upstream's withPTY can only

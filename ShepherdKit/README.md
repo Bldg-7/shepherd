@@ -6,25 +6,19 @@ both depend on it (docs/mobile-design.md, section 8).
 
 ## What is in it
 
-- `CoreKit/`: the new herdr-core generation-1 wire foundation (SHPHRD-149):
-  bounded frame/event-line codecs and plain-to-framed hello negotiation.
-  Foundation-only and not connected to the app yet; it does not replace the
-  legacy backend until transport and feature-parity gates pass. See
-  `Tests/CoreProtocol/README.md` and `docs/hc-connect-migration-review.md`.
-- `HerdrKit/`: everything that talks to herdr. `HerdrTransport` carries
-  herdr's socket API, over the Unix socket on this Mac or over SSH, and
-  `HerdrClient` wraps it in typed calls. The folder also holds three more
-  things: the pane, tab and workspace models that herdr's snapshots are read
-  into; the agent event JSON contract, `AgentEvent`; and `TerminalSession`,
-  which attaches to a pane's terminal over SSH.
-  `HerdrMachineSetup/` adds herdr machines (computers saved in a host's herdr) to a
-  host's herdr, checks one that fails to connect, and removes one. Each check is a
-  script run on the host with a deadline (`HostStep`), and `HerdrMachineSetup` is the
-  state machine that the macOS app's setup overlay shows.
-- `Machines/`: a `Machine` (a saved SSH host running herdr), the Keychain
-  store for its credential, `MachineStore`, and `MachineMonitor`, which keeps
-  one machine's panes up to date for the board, the list of panes the apps
-  show.
+- `CoreKit/`: the bounded generation-1 framed wire/RPC/streams, official hc
+  process/SSH transports, workspace CAS/recovery, terminal and attention models.
+  This is the ordinary macOS Debug/Release and mobile backend, not a candidate
+  waiting to replace a legacy runtime. See `Tests/CoreProtocol/README.md`.
+- `HerdrKit/`: retained presentation/persistence models, event formats, pinned
+  SSH credentials/key handling, bounded line primitives, local command execution
+  and shell quoting. A directory name does **not** select a backend. The explicit
+  `legacyFixtureSources` list in `Package.swift` excludes executable old client,
+  wire, monitor and attach sources from the normal `ShepherdKit` target.
+- `Machines/`: saved machine metadata/credentials, `MachineStore`,
+  `HcMachineConnection`, `HcAttentionMonitor` and the hc mobile screen model.
+  `MachineMonitor` / `MachineMonitors` / `makeHerdrTransport` are not normal SDK
+  APIs; their implementation belongs only to the fixture product.
 - `Pairing/`: what the macOS and iOS apps both need to pair a Mac with the iOS
   app by QR code: the address kinds and the ranges each is held to
   (`PairingAddress`), looking a name up once and keeping only an address in
@@ -40,13 +34,27 @@ both depend on it (docs/mobile-design.md, section 8).
 - `Agents/AgentKind.swift`: the agents herdr recognises (Claude Code, Codex,
   Pi).
 
-Everything macOS-only stays in the app: the embedded browser, the Node agent
-runtime, Terminal File Drop, the file preview, the password managers, the
-notification coordinator and presenter, and `LocalTerminalSession`, which
-attaches to a pane on this Mac through a local PTY. One exception sits in the
-package under `#if os(macOS)`: `LocalHerdrTransport` and `LocalCommand`,
-which reach this Mac's own herdr. The iOS app compiles the package without
-them.
+The normal macOS app retains Terminal File Drop, file Preview, the hc
+notification coordinator/presenter and the original shared native UI. It does
+not compile the historical agent/browser/credential-proxy UI/runtime or ship
+Node, CEF or the capture helper. The normal mobile app retains hc screen/input,
+pairing, cache and existing archive history, not the old live board/conversation.
+
+## Explicit historical fixtures
+
+`ShepherdLegacyFixtures` is a separate, opt-in SDK product depending on
+`ShepherdKit`; dependency direction never points back from the normal SDK.
+It compiles the preserved old client, socket/SSH transports, monitor, setup and
+attach sources. Sharing one source directory is deliberate: the targets have
+**disjoint source lists**, not a runtime backend switch or fallback.
+
+The `Shepherd Legacy Fixtures` Xcode scheme selects a distinct nonshipping app
+(bundle ID `com.bldg-7.shepherd.legacy-fixtures`, `SKIP_INSTALL=YES`) and the helper.
+It cannot archive/profile and refuses an unisolated launch. Only that app imports
+the fixture SDK and compiles `SHEPHERD_LEGACY_FIXTURES`. Ordinary `Shepherd`
+Debug/Release run, test, build and archive actions select only the hc product.
+The fixture implementation and existing data are preserved; no service is stopped
+or user archive/configuration deleted to establish this build boundary.
 
 ## How the apps use the package
 
@@ -78,10 +86,10 @@ A string that both the package and the app show is kept in both catalogs.
 
 ## Tests
 
-The runners under `Tests/` don't import the ShepherdKit module. Each runner
-compiles a chosen set of production source files, from the package and from
-the app alike, together with fakes written for that test, into a single test
-module. So the runners list the package's files by path. `Resources.swift`
+Many runners under `Tests/` compile chosen production sources, from the package
+and app alike, together with fakes into one test module. Other integration gates
+import/link the actual normal product SDK and its exact objects. Historical
+component source tests do not mean those files are part of the shipping SDK. So the runners list the package's files by path. `Resources.swift`
 is part of every such build because the strings in the other files read
 `bundle: .shepherdKit`, which it defines.
 

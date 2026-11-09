@@ -71,6 +71,11 @@ struct CloseCommandTarget: Equatable {
 /// driving the detail column. What it lists comes from the machine's
 /// `MachineMonitor`, which it keeps running while it is on screen; the
 /// notifications share it.
+enum BoardDisplayPreferences {
+    static let showsTabsKey = "AgentBoardView.showsTabs"
+}
+
+#if SHEPHERD_LEGACY_FIXTURES
 struct AgentBoardView: View {
     let machine: Machine
     let machineStore: MachineStore
@@ -204,7 +209,7 @@ struct AgentBoardView: View {
 
     /// Where the tab setting is kept. `ContentView` reads it too: a pane
     /// selected in one mode means nothing in the other.
-    static let showsTabsKey = "AgentBoardView.showsTabs"
+    static let showsTabsKey = BoardDisplayPreferences.showsTabsKey
 
     /// Whether this device offers the tab mode at all. Selecting a tab shows
     /// all of its panes side by side, and an iPhone's screen is too small to
@@ -1396,3 +1401,10 @@ struct AgentBoardView: View {
         }
     }
 }
+#else
+// Compatibility name for the existing presentation preference, not a backend.
+// No monitor, client, transport or legacy view is compiled into normal builds.
+enum AgentBoardView {
+    static let showsTabsKey = BoardDisplayPreferences.showsTabsKey
+}
+#endif
