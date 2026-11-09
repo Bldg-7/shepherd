@@ -2,31 +2,6 @@ import Foundation
 import Observation
 import Synchronization
 
-/// Where a pane is, as far as a dropped file's path goes: whether a path on
-/// this Mac is any use to its program, and if not, how an upload gets there.
-nonisolated enum TerminalDropRoute: Equatable {
-    /// A pane of this Mac's own herdr: this Mac's paths are its paths.
-    case thisMac
-    /// A pane on one of this Mac's herdr machines, reached with this Mac's
-    /// `ssh` (see `LocalSSHDropUploader`).
-    case thisMacMachine(HerdrMachine)
-    /// A pane of the host's own herdr (see `RemoteExecDropUploader`).
-    case host
-    /// A pane on one of the host's herdr machines, reached with the host's
-    /// `ssh` (see `RemoteExecDropUploader`).
-    case hostMachine(HerdrMachine)
-
-    /// `isLocal` is the pane's `Machine`'s, `herdrMachine` the pane's own.
-    init(isLocal: Bool, herdrMachine: HerdrMachine?) {
-        switch (isLocal, herdrMachine) {
-        case (true, nil): self = .thisMac
-        case (true, let machine?): self = .thisMacMachine(machine)
-        case (false, nil): self = .host
-        case (false, let machine?): self = .hostMachine(machine)
-        }
-    }
-}
-
 /// What `TerminalDropController` does with a drop, from its pane's route.
 enum TerminalDropDestination {
     case thisMac

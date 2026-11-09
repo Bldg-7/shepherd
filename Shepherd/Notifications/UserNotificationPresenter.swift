@@ -14,9 +14,8 @@ nonisolated enum NotificationAuthorization: Equatable, Sendable {
 /// The app's one way to the system's notifications — the only file that
 /// uses UserNotifications. Shows a notification, takes it away again, sets
 /// the Dock icon's badge, asks for permission, and hands a click on a
-/// notification to whoever asked for it (see `becomeDelegate`).
+/// notification to whoever asked for it (see `becomeHcDelegate`).
 final class UserNotificationPresenter: NSObject, UNUserNotificationCenterDelegate {
-    private var onOpen: ((NotificationRoute) -> Void)?
     private var onHcOpen: ((HcNotificationRoute) -> Void)?
 
     private var center: UNUserNotificationCenter { .current() }
@@ -24,13 +23,8 @@ final class UserNotificationPresenter: NSObject, UNUserNotificationCenterDelegat
     /// Receives clicked notifications from now on, and has notifications
     /// shown while the app is in front, too. To be called before the app
     /// finishes launching, so that a click that launched it isn't missed.
-    func becomeDelegate(onOpen: @escaping (NotificationRoute) -> Void) {
-        self.onOpen = onOpen; onHcOpen = nil
-        center.delegate = self
-    }
-
     func becomeHcDelegate(onOpen: @escaping (HcNotificationRoute) -> Void) {
-        onHcOpen = onOpen; self.onOpen = nil; center.delegate = self
+        onHcOpen = onOpen; center.delegate = self
     }
     func presentHc(identifier: String, content: NotificationText.Content, route: HcNotificationRoute) async -> Bool {
         // The coordinator already requested permission and reconfirmed the
@@ -84,44 +78,12 @@ final class UserNotificationPresenter: NSObject, UNUserNotificationCenterDelegat
         _ = done.wait(timeout: .now() + 1)
     }
 
-    /// Shows a notification, in place of one shown before with the same
-    /// `identifier`. Asks for permission first if the person hasn't been
-    /// asked yet. Returns the permission it went by.
-    func present(identifier: String, content: NotificationText.Content, route: NotificationRoute,
-                 threadIdentifier: String) async -> NotificationAuthorization {
-        var status = await authorization()
-        if status == .notDetermined {
-            status = await requestAuthorization()
-        }
-        guard status == .allowed else { return status }
-        let notification = UNMutableNotificationContent()
-        notification.title = content.title
-        notification.subtitle = content.subtitle
-        notification.body = content.body
-        notification.sound = .default
-        notification.threadIdentifier = threadIdentifier
-        notification.userInfo = route.userInfo
-        try? await center.add(UNNotificationRequest(identifier: identifier, content: notification, trigger: nil))
-        return status
-    }
-
     /// Takes away the notifications with these identifiers, from the screen
     /// and from Notification Center.
     func retract(identifiers: [String]) {
         guard !identifiers.isEmpty else { return }
         center.removeDeliveredNotifications(withIdentifiers: identifiers)
         center.removePendingNotificationRequests(withIdentifiers: identifiers)
-    }
-
-    /// Takes away every notification about the machines with these IDs,
-    /// whichever run of the app showed it.
-    func retract(machineIDs: Set<UUID>) async {
-        guard !machineIDs.isEmpty else { return }
-        let identifiers = await center.deliveredNotifications().compactMap { notification in
-            NotificationRoute(userInfo: notification.request.content.userInfo)
-                .flatMap { machineIDs.contains($0.machineID) ? notification.request.identifier : nil }
-        }
-        retract(identifiers: identifiers)
     }
 
     func retractHc(machineIDs: Set<UUID>, before: Date? = nil) async {
@@ -147,6 +109,5 @@ final class UserNotificationPresenter: NSObject, UNUserNotificationCenterDelegat
         guard response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
         let info = response.notification.request.content.userInfo
         if let route = HcNotificationRoute(userInfo: info) { await MainActor.run { onHcOpen?(route) } }
-        else if let route = NotificationRoute(userInfo: info) { await MainActor.run { onOpen?(route) } }
     }
 }

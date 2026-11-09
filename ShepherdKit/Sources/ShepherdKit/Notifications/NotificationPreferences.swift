@@ -74,3 +74,14 @@ public final class NotificationPreferences {
         }
     }
 }
+
+/// Which kinds of agent event the person wants notifications for (see
+/// `NotificationPreferences`).
+public nonisolated struct NotificationKinds: Equatable, Sendable {
+    public var needsInput: Bool
+    public var finished: Bool
+    public var exited: Bool
+
+    /// Whether there is any notification to give at all.
+    public var any: Bool { needsInput || finished || exited }
+}

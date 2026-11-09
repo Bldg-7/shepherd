@@ -124,28 +124,3 @@ nonisolated enum TerminalLinkRoute: Equatable, Sendable {
         self = .file(raw)
     }
 }
-
-/// Hands a link to the Mac's default browser. A web link goes to whatever
-/// opens it. A page — an HTML file on this Mac — goes to the app that opens
-/// `https` links, which is the browser, rather than to the app that opens
-/// its file type: for `.html` that can be an editor. With no app for
-/// `https` links, it goes to whatever opens it, as a web link does.
-///
-/// The opening itself is given, so that what decides it runs without
-/// opening anything.
-struct DefaultBrowserOpener {
-    /// The app that opens `https` links, if there is one.
-    var webBrowser: () -> URL?
-    /// Opens a URL in whatever opens it.
-    var openWithDefaultApp: (URL) -> Void
-    /// Opens a URL in the app at the second URL.
-    var openWithApp: (URL, URL) -> Void
-
-    func open(_ url: URL) {
-        if url.isFileURL, let browser = webBrowser() {
-            openWithApp(url, browser)
-        } else {
-            openWithDefaultApp(url)
-        }
-    }
-}

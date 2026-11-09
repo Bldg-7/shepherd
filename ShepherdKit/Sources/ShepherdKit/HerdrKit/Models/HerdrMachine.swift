@@ -20,25 +20,3 @@ public nonisolated struct HerdrMachine: Identifiable, Hashable, Sendable, Decoda
     public let session: String
     public let enabled: Bool
 }
-
-/// The herdr CLI exited with a failure. Its message is herdr's own, from
-/// stderr — e.g. "error: machine 'gpu' (session default): ssh: connect to
-/// host … Connection refused" — which says more than any summary could.
-public nonisolated struct HerdrCommandError: Error, LocalizedError {
-    public let status: Int
-    public let message: String
-
-    public init(status: Int, message: String) {
-        self.status = status; self.message = message
-    }
-
-    public var errorDescription: String? {
-        let trimmed = message
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "error: ", with: "", options: .anchored)
-        guard !trimmed.isEmpty else {
-            return String(localized: "herdr exited with status \(status).", bundle: .shepherdKit)
-        }
-        return trimmed
-    }
-}

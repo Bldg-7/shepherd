@@ -90,42 +90,6 @@ nonisolated enum FirewallStatusReader {
     }
 }
 
-/// Whether this Mac's herdr is running: its default session's socket
-/// exists and takes a connection. A device's first connection ends at
-/// herdr, so pairing while it isn't running fails that check.
-nonisolated enum LocalHerdrStatus {
-    static func isRunning(socketPath: String) async -> Bool {
-        await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                continuation.resume(returning: accepts(socketPath))
-            }
-        }
-    }
-
-    private static func accepts(_ path: String) -> Bool {
-        var status = stat()
-        guard lstat(path, &status) == 0, status.st_mode & S_IFMT == S_IFSOCK else { return false }
-        var address = sockaddr_un()
-        address.sun_family = sa_family_t(AF_UNIX)
-        let bytes = Array(path.utf8)
-        guard bytes.count < MemoryLayout.size(ofValue: address.sun_path) else { return false }
-        withUnsafeMutableBytes(of: &address.sun_path) { raw in
-            raw.copyBytes(from: bytes)
-            raw[bytes.count] = 0
-        }
-        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard fd >= 0 else { return false }
-        defer { close(fd) }
-        _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
-        var on: Int32 = 1
-        _ = setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
-        let result = withUnsafePointer(to: &address) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
-        }
-        return result == 0
-    }
-}
-
 /// Asks the person at the Mac to prove they are its owner before a device
 /// is let in: Touch ID, or the account's password (`DeviceOwnerApproval`).
 /// The pairing page goes through this protocol, so the tests can answer

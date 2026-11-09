@@ -4,6 +4,3 @@
 // file by file together with the package's, with no ShepherdKit module to
 // import, go on compiling them: this file is in none of their lists.
 @_exported import ShepherdKit
-#if SHEPHERD_LEGACY_FIXTURES
-@_exported import ShepherdLegacyFixtures
-#endif

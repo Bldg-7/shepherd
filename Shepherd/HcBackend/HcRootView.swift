@@ -47,7 +47,7 @@ struct HcRootView: View {
     @State private var closeRequests = 0
     @State private var launcherUsesCurrentWorkspace = false
     @State private var renamingTitle = false
-    @AppStorage(AgentBoardView.showsTabsKey) private var showsTabs = false
+    @AppStorage(BoardDisplayPreferences.showsTabsKey) private var showsTabs = false
     @State private var routeNotice: String?
     @State private var operationError: String?
     @State private var viewingEpoch = UUID()

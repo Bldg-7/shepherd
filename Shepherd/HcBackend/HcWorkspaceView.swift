@@ -17,7 +17,7 @@ struct HcWorkspaceView: View {
     let onRenameVisibility: (Bool) -> Void
     let presentation: HcWorkspacePresentation
     let unavailable: AnyView
-    @AppStorage(AgentBoardView.showsTabsKey) private var showsTabs = false
+    @AppStorage(BoardDisplayPreferences.showsTabsKey) private var showsTabs = false
     @State private var presentations = HcPanePresentationStore()
     @State private var titleRename: HcTitleRenameSession?
     @State private var renameError: String?
@@ -283,7 +283,7 @@ private struct HcAgentBoard: View {
     let scopeIsCurrent: @MainActor () -> Bool
     let onRename: (HcBoardSelection) -> Void
     let onActivate: () -> Void
-    @AppStorage(AgentBoardView.showsTabsKey) private var showsTabs = false
+    @AppStorage(BoardDisplayPreferences.showsTabsKey) private var showsTabs = false
     @State private var search = ""
     @State private var workspaces = Set<UUID>()
     @State private var closing: HcCloseRequest?

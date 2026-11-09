@@ -1,10 +1,9 @@
-#if os(macOS) && !SHEPHERD_LEGACY_FIXTURES
+#if os(macOS)
 import SwiftUI
 
 /// The hc Settings page retains File Drop; no browser/runtime initialization.
 struct ExperimentalFeaturesSettingsView: View {
     let machineStore: MachineStore
-    let passwordManagerWindowID: UUID
     let onBack: () -> Void
     @AppStorage(TerminalFileDropFeature.preferenceKey) private var terminalFileDropEnabled = false
     var body: some View {

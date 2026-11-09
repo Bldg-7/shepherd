@@ -136,7 +136,7 @@ struct HcTerminalPane: View {
     var machineStore: MachineStore? = nil
     let keyboardIntent: HcWorkspacePresentation?
     let isCurrentScope: @MainActor () -> Bool
-    @AppStorage(AgentBoardView.showsTabsKey) private var showsTabs = false
+    @AppStorage(BoardDisplayPreferences.showsTabsKey) private var showsTabs = false
     @Environment(\.hcPaneKeyboardRequest) private var keyboardRequest
     private let suppliedPresentation: HcPanePresentation?
     @State private var standalonePresentation = HcPanePresentation()

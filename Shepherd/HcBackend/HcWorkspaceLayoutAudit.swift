@@ -783,7 +783,7 @@ private nonisolated struct HcLayoutAuditOwnedStatus: Decodable, Sendable {
                     "filterValue":filterValue ?? "nil",
                     "noMatches":tree["workspace.board.no-matches"] != nil,
                     "tabRow":tree["hc-workspace.tab.\(tabID)"] != nil,
-                    "groupedPreference":UserDefaults.standard.bool(forKey:AgentBoardView.showsTabsKey),
+                    "groupedPreference":UserDefaults.standard.bool(forKey:BoardDisplayPreferences.showsTabsKey),
                     "modelTabIDs":(model.document?.workspaces.flatMap(\.tabs).map { $0.id.uuidString }) ?? [],
                     "paneRows":tree.keys.filter { $0.hasPrefix("hc-workspace.pane.") }.count]
                 try? JSONSerialization.data(withJSONObject:facts).write(to:root.appending(path:"filter-clear-focus.json"),options:.atomic)

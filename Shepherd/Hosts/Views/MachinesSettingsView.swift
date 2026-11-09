@@ -1,9 +1,8 @@
 import SwiftUI
 
-/// Machine management: Settings, presented as a sheet over the main window
-/// by `ContentView`. Exactly one Machine is active at a time —
-/// `ContentView`'s sidebar always reflects `machineStore.activeMachine`, so
-/// switching here is immediate.
+/// Machine management: Settings, presented as a sheet over the main window.
+/// Exactly one Machine is active at a time, and the window always shows
+/// `machineStore.activeMachine`, so switching here is immediate.
 struct MachinesSettingsView: View {
     let machineStore: MachineStore
 
@@ -14,12 +13,6 @@ struct MachinesSettingsView: View {
     @State private var showsNotifications = false
     @State private var showsExperimentalFeatures = false
     @State private var hoveredMachineID: UUID?
-    @State private var passwordManagerWindowID: UUID
-
-    init(machineStore: MachineStore, passwordManagerWindowID: UUID = UUID()) {
-        self.machineStore = machineStore
-        _passwordManagerWindowID = State(initialValue: passwordManagerWindowID)
-    }
     #endif
     /// The machine whose removal is waiting for the person to confirm it.
     /// Removing a machine deletes its credential from the Keychain, and a
@@ -49,8 +42,6 @@ struct MachinesSettingsView: View {
             } else if showsPairedDevices {
                 PairedDevicesSettingsView(model: .system(),
                                           makeCoordinator: { PairingCoordinator(environment: .system()) },
-                                          agentProxy: ShepherdBrowserFeature.isAvailable ? .shared : nil,
-                                          agentProxyUnavailableReason: LocalOnlyAddition.agentProxy.unavailableReason(on: machineStore.activeMachine),
                                           addUnavailableReason: LocalOnlyAddition.device.unavailableReason(on: machineStore.activeMachine)) {
                     withAnimation(Self.pageAnimation) { showsPairedDevices = false }
                 }
@@ -61,8 +52,7 @@ struct MachinesSettingsView: View {
                 }
                 .transition(.move(edge: .trailing))
             } else if showsExperimentalFeatures {
-                ExperimentalFeaturesSettingsView(machineStore: machineStore,
-                                                 passwordManagerWindowID: passwordManagerWindowID) {
+                ExperimentalFeaturesSettingsView(machineStore: machineStore) {
                     withAnimation(Self.pageAnimation) { showsExperimentalFeatures = false }
                 }
                 .transition(.move(edge: .trailing))
@@ -78,24 +68,6 @@ struct MachinesSettingsView: View {
         // wide as the authorized_keys command it shows, a single line with
         // no spaces to wrap at for most of its length.
         .frame(width: 540, height: 620)
-        .onAppear {
-            // ContentView can hand this window an already-claimed startup
-            // onboarding lease. Route that explicit request to the detail page.
-            #if SHEPHERD_LEGACY_FIXTURES
-            if ShepherdBrowserFeature.shared.isEnabled,
-               ShepherdBrowserFeature.shared.passwordManagers.presentationOwner == passwordManagerWindowID {
-                isAddingMachine = false
-                machineBeingEdited = nil
-                showsExperimentalFeatures = true
-            }
-            #endif
-        }
-        .onDisappear {
-            // Also covers dismissal before the requested detail page mounts.
-            #if SHEPHERD_LEGACY_FIXTURES
-            ShepherdBrowserFeature.shared.passwordManagers.endVisit(owner: passwordManagerWindowID)
-            #endif
-        }
         .confirmationDialog(removalTitle, isPresented: isConfirmingRemoval, presenting: machinePendingRemoval) { machine in
             removalActions(for: machine)
         } message: { _ in

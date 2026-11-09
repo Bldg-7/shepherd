@@ -1,32 +1,5 @@
 import SwiftUI
 
-/// Uses the board's existing snapshots: no additional connection or agent launch.
-struct PaneDestination: Identifiable, Equatable {
-    let pane: AgentSummary
-    let item: BoardItem
-    let location: String
-    let isAvailable: Bool
-    var id: String { pane.id }
-    static func resolve(_ requested: Self, in destinations: [Self], contextMatches: Bool) -> Self? {
-        guard contextMatches else { return nil }
-        return destinations.first { $0.id == requested.id && $0.pane.terminalID == requested.pane.terminalID && $0.isAvailable }
-    }
-    func matches(_ query: String) -> Bool {
-        let texts = [pane.title, pane.id, pane.agentName ?? "", pane.workingDirectory ?? "", location]
-        return query.split(whereSeparator: \.isWhitespace).allSatisfy { term in
-            texts.contains { $0.localizedStandardContains(String(term)) }
-        }
-    }
-}
-
-nonisolated struct TerminalPaneFocus: Equatable, Sendable {
-    let paneID: String // qualified by herdr machine, not raw w1:p1
-    let token = UUID()
-}
-extension EnvironmentValues {
-    @Entry var terminalPaneFocus: TerminalPaneFocus?
-}
-
 /// Backend-independent data for the existing switcher presentation.
 struct WorkspaceSwitcherItem<ID: Hashable>: Identifiable, Equatable {
     let id: ID
@@ -47,21 +20,6 @@ struct WorkspaceSwitcherItem<ID: Hashable>: Identifiable, Equatable {
         }
     }
 }
-struct PaneSwitcher: View {
-    let destinations: [PaneDestination]
-    let onSelect: (PaneDestination) -> Void
-    let onClose: () -> Void
-    var body: some View {
-        WorkspacePaneSwitcher(destinations: destinations.map {
-            WorkspaceSwitcherItem(id: $0.id, title: $0.pane.title, location: $0.location + " · " + $0.pane.id,
-                searchTerms: [$0.pane.agentName ?? "",$0.pane.workingDirectory ?? ""],
-                hasAgent: $0.pane.hasAgent, isAvailable: $0.isAvailable)
-        }, onSelect: { item in
-            if let current = destinations.first(where: { $0.id == item.id && $0.isAvailable }) { onSelect(current) }
-        }, onClose: onClose)
-    }
-}
-
 struct WorkspacePaneSwitcher<ID: Hashable>: View {
     let destinations: [WorkspaceSwitcherItem<ID>]
     let onSelect: (WorkspaceSwitcherItem<ID>) -> Void

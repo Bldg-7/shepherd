@@ -27,15 +27,6 @@ struct LaunchWorkspace: Identifiable, Equatable {
     var id: String { workspace.id }
 }
 
-/// How the launcher is asked to come up.
-enum LauncherStart {
-    /// With nothing picked but what there is no choice of.
-    case blank
-    /// With the herdr and the workspace of the selected pane or tab picked
-    /// — see `LaunchPreset.current`.
-    case currentWorkspace
-}
-
 /// What the launcher comes up with already picked: a target and, where
 /// there is one to pick, a workspace on it.
 struct LaunchPreset: Equatable {
