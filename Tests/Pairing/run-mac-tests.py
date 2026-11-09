@@ -8,9 +8,7 @@ read back with Core Image, the coordinator end to end with a device on
 127.0.0.1, the SSH server probe's key exchange half against the Citadel and
 swift-nio-ssh an app build made (--products), and Settings' iPhone and iPad
 pages in never-shown windows, read and pressed through accessibility — with
-Add Device… on This Mac only (SHPHRD-110), and "Show Conversations on iPhone
-and iPad" (SHPHRD-105) over the agent proxy's service with a stand-in
-LaunchAgent and proxy.
+Add Device… on This Mac only (SHPHRD-110), and that rule on its own.
 
 No app, no SSH server (127.0.0.1:22 included), no Keychain, no Secure
 Enclave, no LocalAuthentication, no DNS, no System Settings, no pasteboard,
@@ -114,26 +112,25 @@ assert maps and any(o.endswith('/NIOSSH.o') for o in objects) and any(o.endswith
 transport = sorted(str(x.relative_to(ROOT)) for x in (ROOT / KIT / 'HerdrKit/Transport').glob('*.swift'))
 models = sorted(str(x.relative_to(ROOT)) for x in (ROOT / KIT / 'HerdrKit/Models').glob('*.swift'))
 probe = [f'{KIT}/Resources.swift', f'{KIT}/Agents/AgentKind.swift', f'{KIT}/Machines/Machine.swift', f'{KIT}/Machines/MachineStore.swift',
-         f'{KIT}/Machines/MachineStore+Transport.swift', f'{KIT}/Machines/KeychainStore.swift', *kit_pairing, *transport, *models,
-         f'{KIT}/HerdrKit/Terminal/HerdrExecutable.swift', f'{KIT}/HerdrKit/Terminal/ShellQuoting.swift', f'{KIT}/HerdrKit/Terminal/LocalCommand.swift',
+         f'{KIT}/Machines/KeychainStore.swift', *kit_pairing, *transport, *models,
+         f'{KIT}/HerdrKit/Terminal/ShellQuoting.swift', f'{KIT}/HerdrKit/Terminal/LocalCommand.swift',
          f'{APP}/LocalSSHServerProbe.swift', f'{APP}/PairingPreflight.swift', 'Tests/Pairing/PairingProbeTests.swift']
 stage('probe-build', 600, [*swiftc, '-I', str(products), *[a for m in maps for a in ('-Xcc', f'-fmodule-map-file={m}')], *probe, *objects,
                            '-o', str(out / 'pairing-probe-tests')])
 probe_result = stage('probe-tests', 120, [*sandboxed, str(out / 'pairing-probe-tests')])
 
-# 3. Settings' pages, in never-shown windows, with the agent proxy's setting
-# over its service (not its system environment: no SMAppService, defaults or herdr).
-proxy_protocol = sorted(str(x.relative_to(ROOT)) for x in (ROOT / 'AgentProxy/Sources/AgentProxyProtocol').glob('*.swift'))
-proxy = proxy_protocol + ['Shepherd/AgentProxy/AgentProxyService.swift', 'Shepherd/AgentProxy/AgentProxyControlClient.swift',
-                          'Shepherd/AgentProxy/AgentProxyLaunchAgent.swift', 'Shepherd/AgentProxy/AgentProxyInjectionPolicy.swift',
-                          'Shepherd/Agents/AgentProxyRouting.swift', 'Shepherd/Agents/AgentRuntime.swift', f'{KIT}/Agents/AgentKind.swift',
-                          'Shepherd/Hosts/Views/AgentProxySettingSection.swift']
-views = kit + app + proxy + ['Shepherd/Hosts/Views/SettingsPageChrome.swift', 'Shepherd/Hosts/Views/InfoButton.swift', 'Shepherd/Hosts/Views/PairDeviceView.swift',
+# 3. Settings' pages, in never-shown windows.
+views = kit + app + ['Shepherd/Hosts/Views/SettingsPageChrome.swift', 'Shepherd/Hosts/Views/InfoButton.swift', 'Shepherd/Hosts/Views/PairDeviceView.swift',
                              'Shepherd/Hosts/Views/PairedDevicesSettingsView.swift', fixtures, 'Tests/Pairing/PairingSettingsViewTests.swift']
 stage('views-build', 600, [*swiftc, *views, '-o', str(out / 'pairing-view-tests')])
 views_result = stage('views-tests', 240, [*sandboxed, str(out / 'pairing-view-tests'), str(out / 'views-output')])
 
-# 4. Where it is wired in, and what the tests stay away from.
+# 4. Adding a device on This Mac only (SHPHRD-110): the rule.
+local_only = [f'{KIT}/Machines/Machine.swift', 'Shepherd/Hosts/Views/LocalOnlyAddition.swift', 'Tests/Pairing/LocalOnlyAdditionTests.swift']
+stage('local-only-build', 300, [*swiftc, *local_only, '-o', str(out / 'local-only-tests')])
+local_result = stage('local-only-tests', 60, [*sandboxed, str(out / 'local-only-tests')])
+
+# 5. Where it is wired in, and what the tests stay away from.
 read = lambda n: (ROOT / n).read_text()
 settings = read('Shepherd/Hosts/Views/MachinesSettingsView.swift')
 section = settings[settings.index('                Section {\n                    pageRow('):]
@@ -143,17 +140,7 @@ assert 'PairedDevicesSettingsView(model: .system(),' in settings and 'PairingCoo
 assert 'addUnavailableReason: LocalOnlyAddition.device.unavailableReason(on: machineStore.activeMachine)) {' in settings, \
     'Add Device… while the window shows This Mac only'
 devices_page = read('Shepherd/Hosts/Views/PairedDevicesSettingsView.swift')
-assert 'PairDeviceView(coordinator: coordinator, agentProxy: agentProxy, agentProxyUnavailableReason: agentProxyUnavailableReason,\n' \
-       '                               unavailableReason: addUnavailableReason) {' in devices_page
-# Show Conversations on iPhone and iPad: on both pages, from This Mac only (SHPHRD-105).
-assert 'agentProxy: ShepherdBrowserFeature.isAvailable ? .shared : nil,\n                                          agentProxyUnavailableReason: LocalOnlyAddition.agentProxy.unavailableReason(on: machineStore.activeMachine),' \
-    in settings, 'the setting while the window shows This Mac only'
-assert 'AgentProxySettingSection(service: agentProxy, unavailableReason: agentProxyUnavailableReason, identifier: "settings.devices")' in devices_page
-assert 'AgentProxySettingSection(service: agentProxy, unavailableReason: agentProxyUnavailableReason, identifier: "settings.pair")' in \
-    read('Shepherd/Hosts/Views/PairDeviceView.swift')
-section_view = read('Shepherd/Hosts/Views/AgentProxySettingSection.swift')
-assert '.disabled(unavailableReason != nil)\n            .accessibilityIdentifier(identifier + ".conversations")' in section_view
-assert 'SMAppService' not in ''.join(read(n) for n in proxy), 'the views are built without the system environment' 
+assert 'PairDeviceView(coordinator: coordinator, unavailableReason: addUnavailableReason) {' in devices_page
 assert '.disabled(addUnavailableReason != nil)\n                        .accessibilityIdentifier("settings.devices.add")' in devices_page
 assert '.onChange(of: unavailableReason, initial: true) { _, reason in\n            coordinator.setUnavailable(reason)' in \
     read('Shepherd/Hosts/Views/PairDeviceView.swift'), 'the Add page follows the window'
@@ -176,11 +163,11 @@ for name in app_all + ['Shepherd/Hosts/Views/PairDeviceView.swift', 'Shepherd/Ho
         assert forbidden not in text, (name, forbidden)
 assert 'socketfilterfw' in read(f'{APP}/PairingPreflight.swift') and 'Services_RemoteLogin' in read(f'{APP}/PairingPreflight.swift')
 tests = ['Tests/Pairing/PairingMacFixtures.swift', 'Tests/Pairing/PairingMacTests.swift', 'Tests/Pairing/PairingSettingsViewTests.swift',
-         'Tests/Pairing/PairingProbeTests.swift']
+         'Tests/Pairing/PairingProbeTests.swift', 'Tests/Pairing/LocalOnlyAdditionTests.swift']
 for name in tests:
     text = read(name)
     for forbidden in ['LAContext', 'DeviceOwnerApproval', 'SystemTailscaleNameResolver', 'SystemPairingNameResolver', 'NetworkChangeWatcher',
-                      '.system()', 'UserDefaults', 'NSPasteboard', 'NSWorkspace', 'FirewallStatusReader.current', 'LocalHerdrStatus',
+                      '.system()', 'UserDefaults', 'NSPasteboard', 'NSWorkspace', 'FirewallStatusReader.current',
                       'forThisAccount', 'PairedDeviceStore.standard', '.probe()', 'beginSheet', 'runModal', 'NSAlert', 'makeKey', 'orderFront',
                       'SecItem', 'KeychainStore()', 'SecureEnclave.P256', 'getaddrinfo', 'getnameinfo', '"tailscale"', 'Tailscale.app',
                       'bin/tailscale', 'Process(']:
@@ -191,10 +178,10 @@ pressed = re.findall(r'press\(([^\n]*)\)', read('Tests/Pairing/PairingSettingsVi
 assert pressed and not [p for p in pressed if re.search(r'remove|open-sharing|copy|Copy', p)], pressed
 stages.append('static-checks')
 
-hashed = core + probe + views + ['Tests/Pairing/run-mac-tests.py', 'Shepherd/Hosts/Views/MachinesSettingsView.swift',
-                                 'Shepherd/Hosts/Views/LocalOnlyAddition.swift', 'Shepherd/AgentProxy/AgentProxyService+System.swift'] + system_only
+hashed = core + probe + views + local_only + ['Tests/Pairing/run-mac-tests.py', 'Shepherd/Hosts/Views/MachinesSettingsView.swift'] + system_only
 (out / 'source-hashes.json').write_text(json.dumps({n: hashlib.sha256((ROOT / n).read_bytes()).hexdigest() for n in sorted(set(hashed))}, indent=2))
-summary = {'core': core_result.strip().splitlines()[-1], 'probe': probe_result.strip().splitlines()[-1], 'views': views_result.strip().splitlines()[-1]}
+summary = {'core': core_result.strip().splitlines()[-1], 'probe': probe_result.strip().splitlines()[-1], 'views': views_result.strip().splitlines()[-1],
+           'localOnly': local_result.strip().splitlines()[-1]}
 (out / 'validation.json').write_text(json.dumps({'passed': True, 'stages': stages, 'summary': summary, 'sandboxed': True,
                                                  'networkAccess': 'loopback only', 'listeners': '127.0.0.1 only', 'nameLookups': False,
                                                  'realSSH': False, 'keychain': False, 'secureEnclave': False, 'localAuthentication': False,
@@ -202,4 +189,5 @@ summary = {'core': core_result.strip().splitlines()[-1], 'probe': probe_result.s
 print('core:', summary['core'])
 print('probe:', summary['probe'])
 print('views:', summary['views'])
+print('local only:', summary['localOnly'])
 print('passed:', ', '.join(stages))

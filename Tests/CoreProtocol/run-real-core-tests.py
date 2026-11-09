@@ -76,7 +76,7 @@ if a.machine_owner_tests:
 
 def stage(name, seconds, args):
     log = out / (name + ".log")
-    code = subprocess.run([sys.executable, str(ROOT / "Tests/AgentBrowser/Phase2/run-stage.py"),
+    code = subprocess.run([sys.executable, str(ROOT / "Tests/Support/run-stage.py"),
                            "--timeout", str(seconds), "--natural-exit-grace", "10", "--log", str(log), "--", *args],
                           cwd=ROOT, env=env, timeout=seconds + 40).returncode
     receipt = json.loads(log.with_suffix(".stage.json").read_text())

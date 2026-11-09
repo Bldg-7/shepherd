@@ -14,11 +14,13 @@ Search edits and metadata refreshes do not issue requests; context menus and
 row dragging keep their native behavior. Clicking a row also ends title editing
 and moves an expanded preview back beside the terminal.
 
-The test compiles the production row modifier, focus request and terminal view
-model, drives a List fixture's activation callback, and checks the actual AppKit
-first responder in an owned never-shown window. It covers first selection,
+The test compiles the production row modifier and terminal view, makes focus
+requests as the pane does (a fresh one each time), drives a List fixture's
+activation callback, and checks the actual AppKit first responder in an owned
+never-shown window. It covers first selection,
 reselection with fresh tokens, split targeting, retained views and refreshes
-while another input owns the keyboard. App wiring is source-checked; synthetic
+while another input owns the keyboard. App wiring (`HcWorkspaceView`) is
+source-checked; synthetic
 mouse delivery in an inactive test app is not a live click test. Manually check
 single/repeated row clicks, drag cancellation and context menus in the running
 macOS app. No herdr/SSH session or user-window input is used.
@@ -55,10 +57,9 @@ bytes, one local preview on release. Plain-text paths, source locations and
 host/read failure and missing callbacks stay local. Callback ownership is captured
 at press; modifier or pane changes cannot redirect a release.
 HTTP(S) URLs, plain text or OSC8, are claimed the same way. On release the view
-hands the URL, and whether ⌘ was held at that moment, to the window: a plain
-click opens it in the clicked pane's In-app Browser, a ⌘-click in the Mac's
-default browser (`run-web-link-tests.py`), and nothing opens it on the remote
-machine. A double or triple click on a link opens it once, with mouse reporting
+hands the URL, and whether ⌘ was held at that moment, to the pane, which opens
+it in the Mac's default browser (`run-web-link-tests.py`); nothing opens it on
+the remote machine. A double or triple click on a link opens it once, with mouse reporting
 off or on. Its second and third presses are claimed too, even if they land off
 the link; they open nothing and send zero bytes. The next single click still
 goes to the TUI. A double click on a word still selects it with mouse reporting
@@ -68,10 +69,9 @@ credentials, control characters and unsupported schemes.
 
 An OSC8 target that is an `.html` or `.htm` file is claimed like any other file
 target: zero bytes to the PTY, and one open for a double or triple click. In a
-pane of This Mac (not of a herdr machine), `TerminalLinkRoute` then hands it to
-the window's `openWeb` as a `file://` URL, together with whether ⌘ was held, the
-way it hands an HTTP(S) URL; in a pane of an SSH machine or a herdr machine it
-still goes to the preview. `run-pointer-tests.py` clicks `report.html`,
+pane of This Mac, `TerminalLinkRoute` then makes it a `file://` URL for the
+default browser, the way it hands on an HTTP(S) URL; in a pane of an SSH
+machine it still goes to the preview. `run-pointer-tests.py` clicks `report.html`,
 `file:///…/Report.HTM#sec` and `report.html:12`, plainly and with ⌘, with one,
 two and three presses, and sends each through the app's own `TerminalLinkRoute`
 for a pane of This Mac and for a pane elsewhere. `run-web-link-tests.py`
@@ -79,17 +79,14 @@ checks:
 - the page URLs: the extension in any letter case, a file link's `#fragment`
   kept, a `path:line` link's line dropped, a query or another host left to the
   preview, Korean names kept composed;
-- the four pane locations: This Mac, a herdr machine of This Mac, an SSH
-  machine, and a herdr machine of an SSH machine;
-- the destination table in section 10 of `docs/link-opening-ux.md`: plain
-  click or ⌘, In-app Browser on or off, Intel, an agent connected or not, and
-  the two notices (In-app Browser unavailable, an agent using it);
-- that a file for the default browser goes to the app that opens `https`
-  links, with a stand-in opener (nothing is actually opened);
-- by reading the source, that `openWeb` asks whether an agent is connected only
-  about the browser the file would open in, and that an agent connecting to a
-  pane's browser empties its `file:` tabs before the agent is given control of
-  its pages.
+- the routes, as the terminal pane asks for them: from a pane that opens
+  pages (This Mac) and from one that doesn't (an SSH machine);
+- the destination table of `LinkDestinationPolicy`, as in section 10 of
+  `docs/link-opening-ux.md`: plain click or ⌘, In-app Browser on or off,
+  Intel, an agent connected or not, and the two notices;
+- by reading the source, that the terminal pane (`HcTerminalPane`) routes a
+  click with `TerminalLinkRoute`, opening pages only on This Mac, and sends a
+  page to the app that opens `https` links rather than to what opens `.html`.
 
 Non-link clicks retain the complete remote TUI press/release gesture. No user GUI or SSH server is
 operated. Live remote acceptance remains separate.
@@ -145,9 +142,8 @@ Claude Code, and on, as in Pi or Codex.
   the program). The monitor leaves the event to SwiftTerm when ⇧ is held, when
   another view is drawn over the terminal, for another window, for a hidden
   terminal, and on the normal screen. A view outside a window has no monitor.
-- `AgentTerminalViewModel` passes an attach's output to the view through
-  `feedKeepingSelection`. It runs with an in-memory session and a stand-in for
-  swift-nio's `ByteBuffer`.
+- The terminal pane (`HcTerminalPane`) passes an attach's output to the view
+  through `feedKeepingSelection`; the runner checks this in the source.
 
 The test makes wheel events from CoreGraphics scroll events and sends them
 through `NSApp.sendEvent`, which hands them to local event monitors. AppKit has
@@ -201,79 +197,8 @@ strings below are written with CSI for `ESC [`.
   - ⌃⇧B: `0x02` with the protocol off, `CSI 98;6u` under `> 1 u`, and
     `CSI 98:2;6u` under `> 5 u` and `> 7 u`.
 
-  Each Ctrl+B press, and ⌃⇧B's `0x02`, is then written to herdr twice; see
-  "Ctrl+B and herdr's attach" below.
-
 The test runs with a private HOME, so the user's own key bindings can't change
 the result.
-
-## Ctrl+B and herdr's attach
-
-```sh
-python3 Tests/Terminal/run-attach-input-tests.py --output /tmp/shepherd-attach-input-FRESH
-```
-
-Each pane's terminal is a `herdr terminal attach`, and herdr's attach client
-takes Ctrl+B as its prefix: it holds the key back and waits for the next one, and
-q after it ends the attach. So the bytes the terminal view sends go through
-`AgentTerminalViewModel.send`, which hands them to `HerdrAttachInput` before
-writing them to the attach. `HerdrAttachInput` writes each Ctrl+B press that
-herdr would take as its prefix twice, and herdr then passes one Ctrl+B on to the
-pane.
-
-Which forms herdr takes as its prefix depends on its version. herdr 0.9.0 and
-later take `0x02` and the kitty keyboard protocol's and modifyOtherKeys' forms of
-Ctrl+B; older herdr takes only `0x02`. The attach runs on the machine the pane
-belongs to, This Mac or an SSH machine, and that machine's `MachineMonitor` runs
-herdr commands there. `herdr machine list` exists only from 0.9.0 on, so when
-herdr answers it with "unknown command", the monitor notes that this herdr is
-older than 0.9.0. The terminal asks the monitor at every write. Until the monitor
-knows, and for a pane on a herdr machine, whose version the app can't learn,
-herdr is taken to be 0.9.0 or later.
-
-The test uses Foundation only: no herdr, no process, no terminal and no key
-presses.
-
-- A table of single writes, for herdr 0.9.0 and later:
-  - Written twice: `0x02` (as `0x02 0x02`), and `ESC 0x02`, which some
-    terminals send for Alt+Ctrl+B (as `ESC 0x02 0x02`); a kitty press whose key
-    code is 98 (b) with Ctrl alone, that is `CSI 98;5u`, also with Caps Lock
-    (`CSI 98;69u`) or Num Lock on, with the press event type written out
-    (`CSI 98;5:1u`), or with the alternate-key fields that `> 5 u` adds; and
-    modifyOtherKeys' `CSI 27;5;98~`.
-  - Written as they are: a repeat or a release; Ctrl+B with Shift, Alt or Super
-    added (`CSI 98;6u`, `CSI 98;7u` and so on); a press that carries its text; a
-    press from a non-Latin layout, whose key code isn't 98 even when its base
-    layout key is b (`CSI 1080::98;5u`); and q and other letters.
-  - A bracketed paste with `0x02 q` inside it is written as it is.
-  - Each row is also run through the model below, to check that what is written
-    twice is exactly what herdr 0.9 takes as its prefix.
-  - For an older herdr, the same table is checked with only the `0x02` bytes
-    written twice.
-- A ⌘V paste, which SwiftTerm sends in three writes (the paste's start marker,
-  its text and its end marker): the text is written as it is even when it holds
-  `0x02`, and a Ctrl+B after the end marker is written twice again.
-- A model of herdr's attach client, ported from herdr's source. For 0.9.0, 0.9.1
-  and master: the stdin framer (`src/raw_input.rs`), `filter_input`
-  (`src/client/attach.rs`, lines 57–146) and the key parser
-  (`src/input/parse.rs`). For 0.5.12 to 0.8.2: the byte loop in
-  `src/client/mod.rs`. The test types key sequences such as Ctrl+B then q into
-  the model:
-  - Without `HerdrAttachInput`, Ctrl+B then q ends the attach, as it did in the
-    app. On 0.9 the same happens when that Ctrl+B comes in its kitty, Caps Lock,
-    modifyOtherKeys or `ESC 0x02` form.
-  - With `HerdrAttachInput`, no key sequence ends the attach on either version,
-    and the pane gets exactly the bytes the view sent, whether herdr reads them
-    all at once or one byte at a time.
-  - One limit of herdr 0.8.2 remains, and the test checks it: `0x02 q` inside a
-    paste still ends the attach.
-  - The test also shows why the version matters. If the writes meant for 0.8.2
-    went to herdr 0.9, a kitty Ctrl+B followed by q would still end the attach.
-    If the writes meant for 0.9 went to herdr 0.8.2, a kitty Ctrl+B would reach
-    the pane twice.
-
-The model is a port, not herdr itself. When herdr is updated, compare its
-`attach.rs` and `parse.rs` with the model.
 
 ## Pasting a pane's or tab's ID
 
@@ -323,15 +248,14 @@ herdr, SSH or the installed app.
 - File drops (Terminal File Drop) still work on the same view. The file handler
   and the ID handler each register only their own pasteboard type.
 - The terminal inside an `NSHostingView`, wrapped in `TerminalHostView` the way
-  the app's `PaneTerminalView` wraps it: the drop reaches the terminal view;
+  the app's terminal pane wraps it: the drop reaches the terminal view;
   taking the drop handler away unregisters its pasteboard type; and clicks on
   the border still reach the terminal. `ImageRenderer` draws the border: accent
   color at the edge, nothing inside.
 - Source checks:
-  - the sidebar's pane rows and tab rows use the modifier;
-  - a pane's terminal takes the drop whenever its attach is connected, whatever
-    the Terminal File Drop setting, and shows the border;
-  - with Group by Tab on, each pane is attached through the same view;
+  - the terminal pane (`HcTerminalPane`) gives the view its row drop and shows
+    the border; which rows it takes is `HcWorkspaceItemDrag`'s, checked in
+    `Tests/HcBackend`;
   - the marker type is declared for this process only, so no other app can
     read it or send it;
   - the ID is written to the pasteboard as data, not as an `NSString`.
@@ -339,80 +263,6 @@ herdr, SSH or the installed app.
 Not covered: a real mouse drag, the system's drag pasteboard, real drops from
 other apps (the test only marks a drag as coming from one), and the installed
 app.
-
-## Reordering the sidebar's groups
-
-```sh
-python3 Tests/Terminal/run-board-group-order-tests.py --output /tmp/shepherd-group-order-FRESH \
-  --swiftterm-products /path/to/DerivedData/Build/Products/Debug
-```
-
-(`FRESH` stands for a new folder name of your choice, as in the other runners.)
-One test program (`BoardGroupOrderTests.swift`), built with the pinned SwiftTerm,
-then source checks. It uses never-shown windows, named pasteboards of its own
-(not the general one) for the row drag it compares against, and a kernel PTY it
-opens itself. It starts no real drag session, and doesn't touch the user's
-pasteboard or defaults, herdr, SSH or the installed app.
-
-- The rules (`BoardGroupOrder`, `BoardGroupFolding`):
-  - The order is kept as one group ID per line. Groups in the kept order come
-    first, in that order. The others follow in herdr's order, the host's own
-    first. IDs of groups that are gone are ignored.
-  - A header let go at a given height goes into the gap above the first header
-    whose middle is below it.
-  - When a search hides some groups, a group moves only among the shown ones:
-    moved up, it goes right before the shown group just below the line; moved
-    down, right after the shown group just above the line. Hidden groups keep
-    their places.
-  - While a header is dragged, no group lists its rows, whatever the search or
-    the groups the person folded. The saved folding (which groups the person
-    folded) is not written during a drag, and a header click changes it only
-    when no drag is going on.
-- The drag (`BoardGroupDrag`), with AppKit views standing in for the list and
-  its headers:
-  - The first move starts it. The line goes between the two headers the group
-    would go between, and isn't drawn over the group's own place or outside the
-    list.
-  - The headers' positions are read from AppKit views, so after the list moves
-    a header, its new position is used.
-  - Let go inside the list, the group moves to the line. Let go outside the
-    list, over the group's own place or outside the window, nothing moves.
-    Escape also moves nothing, and the rest of that drag is ignored.
-  - When the mouse button comes up and the gesture hasn't ended the drag, the
-    drag ends shortly after. A mouse button going down ends a drag still open
-    at once.
-  - After a drop the groups change in three steps: first the order changes
-    while every group still shows only its header; then every group but the
-    last unfolds as it was; then the last one does.
-- The board: the production header drag and insertion line, in a sidebar List
-  laid out as `AgentBoardView`'s, beside the production terminal view. The test
-  calls the drag as the gesture's `onChanged` and `onEnded` would. It checks:
-  - every group shows its header alone while a header is dragged, and its rows
-    again after a drop, Escape, or the mouse coming up or going down;
-  - the saved folding is never written by a drag;
-  - the selected row stays selected, and ↓ and ↑ follow the new order;
-  - a header let go over the terminal changes no order and writes zero bytes to
-    the PTY, so no group name is pasted; a row dragged onto the terminal still
-    pastes its ID;
-  - headers give the List nothing to drag, and rows still do;
-  - a group herdr adds goes last, and one that is gone is left out the next time
-    the order is kept.
-
-  The run fails if the system log shows SwiftUI's "Modifying state during view
-  update", AppKit's `layoutSubtreeIfNeeded` warning or its reentrant table view
-  warning.
-- Source checks (reading the source files): the order is kept per host under
-  `AgentBoardView.groupOrder.<machine id>`; the host and the herdr machines are
-  listed in one `ForEach` in that order; both kinds of header use the drag; a
-  header click saves the folding only when no drag is going on; rows still use
-  `herdrItemDrag` (the row drag of SHPHRD-94), and nothing of the header drag
-  uses a pasteboard; Escape is consumed by the drag's event monitor; the iOS
-  app's board is unchanged.
-
-Not covered: a real mouse or trackpad drag (SwiftUI takes no clicks or gestures
-in a never-shown window), that Escape pressed during a drag doesn't reach the
-terminal that has the keyboard (the test's windows never become the key
-window), and the installed app.
 
 ## Drawing while hidden
 
@@ -437,15 +287,10 @@ are also tested directly, without a window.
 python3 Tests/Terminal/run-title-rename-tests.py --output /tmp/shepherd-title-rename-FRESH
 ```
 
-Needs no SwiftTerm build. It has three stages.
+Needs no SwiftTerm build. The rename session is a stand-in with what the app's
+holds (the starting name, the grey placeholder, whether it names a tab); a tab
+name left empty is refused as the workspace view refuses it.
 
-- Model: the rules, without views. A rename starts with the current name, and
-  the automatic title as grey placeholder. Names are trimmed. An empty tab name
-  is refused. An empty pane name removes the name given to the pane, so it shows
-  its automatic title again. An unchanged name is not sent. Panes with the same
-  ID on different herdr machines are kept apart. The title shows the typed name
-  right after Return, until herdr's own snapshot shows it too or the rename
-  fails.
 - Field: the production title field in a never-shown window. It takes the
   keyboard with the name selected and gives it back afterwards. While a syllable
   is being composed, Return and Escape go to the input method. Once the syllable
@@ -488,61 +333,18 @@ Needs no SwiftTerm build. It has three stages.
 
 The field and toolbar stages also read the system log
 (`OS_ACTIVITY_DT_MODE=1`) and fail on SwiftUI's "Modifying state during view
-update" or AppKit's `layoutSubtreeIfNeeded` warning. Source checks: the board has
-no rename dialog, Cmd-W is ignored while renaming, the field's text is set only
-when the field is made, and Return and Escape are handled only when nothing is
-being composed. The source checks also look for three things in the code. The
-flexible space after the field is there only while the field is up. The field
-uses its own cell. A double-click on the title renames what Cmd-W would close,
-and does so only while no name is being typed and no sheet is over the window.
+update" or AppKit's `layoutSubtreeIfNeeded` warning. Source checks: the
+workspace view (`HcWorkspaceView`) puts the field in the title's place, the
+field's text is set only when the field is made, and Return and Escape are
+handled only when nothing is being composed. The source checks also look for
+three things in the code. The flexible space after the field is there only
+while the field is up. The field uses its own cell. A double-click on the title
+starts a rename of the current selection, and the watcher does nothing while a
+sheet is over the window.
 A physical keyboard, physical input method, real window-resize gestures, full
 screen and the installed app are not covered. Nor is what the system does with
 a double-click in the title bar, because a never-shown window neither zooms nor
 minimizes.
-
-## Passing the name on to the agent's session
-
-```sh
-python3 Tests/Agents/run-session-naming-tests.py --output /tmp/shepherd-session-naming-FRESH
-```
-
-(`FRESH` stands for a new folder name of your choice, as in the other runners.)
-Needs no app, herdr, agent or SSH. The runner has three stages (build, the Swift
-tests, the Pi tests) and then source checks:
-
-- Swift tests (`Tests/Agents/SessionNamingTests.swift`), compiled with the real
-  `HerdrClient`, `TitleRename` and `BoardItem` (the sidebar's row type). They
-  check:
-  - the `/rename <name>` command;
-  - name clean-up: trimming, control characters, line breaks and U+2028 turned
-    into spaces, the cut at 200 characters, and nothing sent for an empty name;
-  - what a rename registers: nothing for a tab, an empty name or a pane with no
-    agent, and a Pi rename going to its launch;
-  - the verdicts: idle and done are sent; working, blocked, unknown and
-    `launch_pending` are held; a closed pane, or another terminal, agent kind or
-    agent session, drops the name;
-  - the input box check: Claude's empty prompt and its dim suggestion count as
-    empty, a draft or a prompt dialog does not, and the resume check still
-    treats a suggestion as text;
-  - held names: a newer rename replaces the held one, and the same pane ID on
-    another Machine or herdr machine is a different pane;
-  - sending, against a fake herdr written in the test: an empty input box gets
-    `agent.prompt` exactly once; a draft gets nothing until the box is empty;
-    blocked and a failed connection keep the name and send again later;
-    `agent_not_found` or another session drops it; two renames send only the
-    last name; a herdr machine is reached with `herdr --machine`, and a name
-    with quotes in it stays one argument.
-- Pi tests (`Tests/AgentBrowser/Phase3/PiIntegrationTests.mjs`):
-  `pi-session-name.mjs` sets each sequence number's name once, right away when Pi
-  is idle and after `agent_settled` when Pi is working, and sets the name of a
-  new number. The same runs through `createPiHost` against a fake bridge socket.
-- Source checks: only a rename herdr accepted is passed on, the sidebar passes
-  every snapshot to `AgentSessionNamer`, Pi is named through its launch and the
-  bridge, and the resource hash in `runtime.mjs` covers `pi-session-name.mjs`.
-
-`Tests/AgentBrowser/Phase3/run-pi-bridge-tests.py` checks the bridge itself:
-each launch's `status` replies carry only that launch's latest name, and invalid
-names are refused.
 
 ## Agent logos in the sidebar
 
@@ -596,10 +398,10 @@ input. Real `TerminalViewDelegate.sizeChanged` requests are mirrored to this own
 PTY via `TIOCSWINSZ` and verified with `TIOCGWINSZ`.
 
 At 800×480, 520×330 and 1040×600 points:
-- The native terminal is inset 7pt on every edge, outside the 2pt stroke band,
-  with Group by Tab ON or OFF. Standalone uses the actual AgentTerminalView
-  wrapper with a session-only test seam; tab mode uses the same production
-  frame, with its parent wiring audited. The inner pane does not double-pad.
+- The native terminal is inset 7pt on every edge, outside the 2pt stroke band.
+  The source check confirms that the terminal pane (`HcTerminalPane`) is the
+  frame's one production user and wraps its content in it once, so the inner
+  pane does not double-pad.
 - Actual native row/column counts and resize callback/kernel-PTY dimensions agree.
 - Focus changes retain the same native view, bounds, grid and resize count.
 - The bottom-left first cell of owned status text remains intact.

@@ -1,24 +1,38 @@
 import SwiftUI
 import AppKit
 
-// Runtime launch/authentication is not exercised by typing a name.
-public nonisolated enum AgentKind: String, Sendable {
-    case claude, codex, pi
-    var supportsLegacySessionInspection: Bool { self != .pi }
+/// A rename as the app's session holds it: what the field starts with, its
+/// prompt, and whether it names a tab; the first ending counts.
+@MainActor final class RenameSession: TitleRenameEditing {
+    let id = UUID()
+    let startText: String
+    let prompt: String
+    let isTab: Bool
+    var text: String
+    weak var keyboardBefore: AnyObject?
+    private(set) var isEnded = false
+    init(startText: String, prompt: String, isTab: Bool = false) {
+        self.startText = startText; self.prompt = prompt; self.isTab = isTab; text = startText
+    }
+    /// A pane: its own name, if it has one; its title as the prompt.
+    static func pane(_ label: String?) -> RenameSession { RenameSession(startText: label ?? "", prompt: "zsh") }
+    /// A tab: its label, which is also the prompt.
+    static func tab(_ label: String) -> RenameSession { RenameSession(startText: label, prompt: label, isTab: true) }
+    func end() -> Bool { guard !isEnded else { return false }; isEnded = true; return true }
 }
 
-/// Stands in for `ContentView`: shows the production field for the session
-/// it holds, and ends a session the way `endTitleRename` does — the first
+/// Stands in for `HcWorkspaceView`: shows the production field for the session
+/// it holds, and ends a session the way `endRename` does — the first
 /// ending counts. A board refresh is `refresh` going up: the field's parent
-/// is evaluated again, as every snapshot does to `ContentView`.
+/// is evaluated again, as every snapshot does to the workspace view.
 @MainActor @Observable final class FieldProbe {
-    var session: TitleRenameSession?
+    var session: RenameSession?
     var refresh = 0
     @ObservationIgnored var calls: [(id: UUID, ending: TitleRenameEnding)] = []
     @ObservationIgnored var endings: [(id: UUID, ending: TitleRenameEnding, text: String)] = []
     @ObservationIgnored var refusals = 0
 
-    func end(_ session: TitleRenameSession, _ ending: TitleRenameEnding) {
+    func end(_ session: RenameSession, _ ending: TitleRenameEnding) {
         calls.append((session.id, ending))
         guard session.end() else { return }
         endings.append((session.id, ending, session.text))
@@ -46,7 +60,8 @@ struct Host: View {
             if let session = probe.session {
                 TitleRenameField(
                     session: session,
-                    canSubmit: { TitleRename.canSubmit($0, for: session.item) },
+                    // As HcWorkspaceView passes it: a tab's name can't be left empty.
+                    canSubmit: { !session.isTab || !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty },
                     onEnd: probe.end,
                     refuse: { probe.refusals += 1 }
                 )
@@ -104,13 +119,6 @@ struct Host: View {
         return nil
     }
 
-    static func pane(_ label: String?) -> AgentSummary {
-        var json: [String: JSONValue] = ["pane_id": .string("w1:p1"), "tab_id": .string("w1:t1"), "terminal_id": .string("terminal-1"),
-                                         "terminal_title_stripped": .string("zsh")]
-        if let label { json["label"] = .string(label) }
-        return AgentSummary(json: .object(json), on: nil)!
-    }
-
     static func main() {
         _ = NSApplication.shared
         NSApp.setActivationPolicy(.prohibited)
@@ -125,8 +133,7 @@ struct Host: View {
         func editing(_ field: NSTextField) -> Bool { editor()?.isFieldEditor == true && editor()?.delegate === field }
         check(window.makeFirstResponder(otherField) && editing(otherField), "the other field has the keyboard first")
 
-        func begin(_ item: BoardItem) -> (TitleRenameSession, TitleRenameTextField, NSTextView) {
-            let session = TitleRenameSession(item: item)
+        func begin(_ session: RenameSession) -> (RenameSession, TitleRenameTextField, NSTextView) {
             probe.session = session
             spin(until: { fields(in: window.contentView!).count == 1 && editing(fields(in: window.contentView!)[0]) },
                  "the field takes the keyboard once it is in the window")
@@ -136,7 +143,7 @@ struct Host: View {
 
         // Return, after a composition the input method has committed.
         do {
-            let (session, field, text) = begin(.pane(pane("build")))
+            let (session, field, text) = begin(.pane("build"))
             check(session.keyboardBefore === otherField, "what had the keyboard before is remembered — the field, not its editor")
             check(text.string == "build" && text.selectedRange() == NSRange(location: 0, length: 5), "starts with the name, all of it selected")
             check(field.placeholderString == "zsh" && field.toolTip != nil, "the pane's title as the prompt, and how to take its name away")
@@ -154,7 +161,7 @@ struct Host: View {
             check(editing(field) && text.hasMarkedText() && text.string == "serverㅎ" && field.placeholderString == "zsh",
                   "board refreshes leave the composition, the text and the prompt alone")
             check(probe.calls.isEmpty, "nor do they end anything")
-            let coordinator = field.delegate as! TitleRenameField<TitleRenameSession>.Coordinator
+            let coordinator = field.delegate as! TitleRenameField<RenameSession>.Coordinator
             check(!coordinator.control(field, textView: text, doCommandBy: #selector(NSResponder.insertNewline(_:))),
                   "Return in the middle of a composition is the input method's")
             check(!coordinator.control(field, textView: text, doCommandBy: #selector(NSResponder.cancelOperation(_:))),
@@ -175,11 +182,11 @@ struct Host: View {
 
         // Escape, once nothing is being composed.
         do {
-            let (session, field, text) = begin(.tab(TabSummary(tab: .object(["tab_id": .string("w1:t1"), "label": .string("Owned")]), layout: nil, panes: [:], on: nil)!))
+            let (session, field, text) = begin(.tab("Owned"))
             check(text.string == "Owned" && field.placeholderString == "Owned" && field.toolTip == nil, "a tab starts with its label")
             text.insertText("Changed", replacementRange: none)
             text.setMarkedText("ㄱ", selectedRange: NSRange(location: 1, length: 0), replacementRange: none)
-            let coordinator = field.delegate as! TitleRenameField<TitleRenameSession>.Coordinator
+            let coordinator = field.delegate as! TitleRenameField<RenameSession>.Coordinator
             check(!coordinator.control(field, textView: text, doCommandBy: #selector(NSResponder.cancelOperation(_:))) && probe.endings.count == 1,
                   "Escape while composing doesn't cancel")
             text.unmarkText()
@@ -191,7 +198,7 @@ struct Host: View {
 
         // Return with a tab's name left empty.
         do {
-            let (session, field, text) = begin(.tab(TabSummary(tab: .object(["tab_id": .string("w1:t1"), "label": .string("Owned")]), layout: nil, panes: [:], on: nil)!))
+            let (session, field, text) = begin(.tab("Owned"))
             text.insertText("  ", replacementRange: none)
             text.doCommand(by: #selector(NSResponder.insertNewline(_:)))
             check(probe.refusals == 1 && probe.endings.count == 2 && editing(field), "an empty tab name isn't sent; the field stays, with the keyboard")
@@ -206,7 +213,7 @@ struct Host: View {
 
         // The keyboard going elsewhere, in the middle of a composition.
         do {
-            let (session, _, text) = begin(.pane(pane(nil)))
+            let (session, _, text) = begin(.pane(nil))
             check(text.string == "", "a pane without a name of its own starts empty")
             text.insertText("abc", replacementRange: none)
             text.setMarkedText("ㄱ", selectedRange: NSRange(location: 1, length: 0), replacementRange: none)
@@ -226,7 +233,7 @@ struct Host: View {
         // The field going away while it has the keyboard: the title no longer
         // the item's (another row selected, the item gone).
         do {
-            let (session, _, text) = begin(.pane(pane(nil)))
+            let (session, _, text) = begin(.pane(nil))
             text.insertText("xyz", replacementRange: none)
             let before = probe.endings.count
             probe.session = nil
@@ -242,7 +249,7 @@ struct Host: View {
         // Where what is typed starts: further in from the bezel's left end
         // than AppKit puts it, and the prompt with it.
         do {
-            let (_, field, text) = begin(.pane(pane("zsh")))
+            let (_, field, text) = begin(.pane("zsh"))
             text.setSelectedRange(NSRange(location: 0, length: 0))
             var actual = NSRange()
             let caret = field.convert(window.convertFromScreen(text.firstRect(forCharacterRange: NSRange(location: 0, length: 0), actualRange: &actual)), from: nil)
@@ -252,15 +259,14 @@ struct Host: View {
             spin(until: { fields(in: window.contentView!).isEmpty }, "the field goes away")
             // Fields whose renames are over before they land, which leave the
             // keyboard alone and only show what they start out with.
-            func shown(_ item: BoardItem) -> TitleRenameTextField {
-                let session = TitleRenameSession(item: item)
+            func shown(_ session: RenameSession) -> TitleRenameTextField {
                 _ = session.end()
                 probe.session = session
                 spin(until: { fields(in: window.contentView!).map(\.stringValue) == [session.startText] }, "the field is in the window")
                 return fields(in: window.contentView!)[0]
             }
-            let named = shown(.pane(pane("zsh"))), textInk = inkStart(named)
-            let unnamed = shown(.pane(pane(nil))), promptInk = inkStart(unnamed)
+            let named = shown(.pane("zsh")), textInk = inkStart(named)
+            let unnamed = shown(.pane(nil)), promptInk = inkStart(unnamed)
             check(unnamed.placeholderString == "zsh" && unnamed.currentEditor() == nil, "an empty field shows the prompt")
             check(textInk.map { $0 >= 12 && $0 < 14 } == true, "the text is drawn from there too")
             check(promptInk != nil && abs(promptInk! - textInk!) < 0.5, "and so is the prompt")
@@ -269,6 +275,6 @@ struct Host: View {
         }
 
         window.close()
-        print("PASS \(checks) title rename field keyboard/Return/Escape/IME composition/board refresh/focus loss/removal/text inset checks; owned never-shown window, no app or herdr")
+        print("PASS \(checks) title rename field keyboard/Return/Escape/IME composition/board refresh/focus loss/removal/text inset checks; owned never-shown window, no app or hc")
     }
 }

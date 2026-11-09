@@ -94,8 +94,8 @@ import Darwin
         }
         let arguments = TerminalDropPaste.sshArguments(to: "gpu", running: "RECEIVE")
         check(arguments.first == "-T" && arguments.suffix(3) == ["--", "gpu", "RECEIVE"], "no terminal, and the target after --")
-        check(Array(arguments.dropFirst().dropLast(3)) == HerdrExecutable.sshOptions, "herdr's own non-interactive ssh options")
-        check(HerdrExecutable.sshOptions.contains("StrictHostKeyChecking=yes") && HerdrExecutable.sshOptions.contains("BatchMode=yes"),
+        check(Array(arguments.dropFirst().dropLast(3)) == NoninteractiveSSHOptions.arguments, "the shared non-interactive ssh options")
+        check(NoninteractiveSSHOptions.arguments.contains("StrictHostKeyChecking=yes") && NoninteractiveSSHOptions.arguments.contains("BatchMode=yes"),
               "no new host key is trusted and nothing is asked")
         check(!TerminalDropPaste.receiveScript.contains("\n") && !TerminalDropPaste.receiveScript.contains("\\\\")
               && !TerminalDropPaste.receiveScript.contains("!"), "one line, with no backslash pairs and no !")

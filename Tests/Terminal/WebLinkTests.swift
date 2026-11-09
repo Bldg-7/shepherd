@@ -1,11 +1,5 @@
 import Foundation
 
-// Runtime-only enum dependency; actual Machine/pane/session models are intact.
-public nonisolated enum AgentKind: String, Sendable {
-    case claude, codex, pi
-    var supportsLegacySessionInspection: Bool { self != .pi }
-}
-
 @main @MainActor enum WebLinkTests {
     static var checks = 0
     static func check(_ b: Bool, line: UInt = #line) { precondition(b, "line \(line)"); checks += 1 }
@@ -92,8 +86,7 @@ public nonisolated enum AgentKind: String, Sendable {
         let click = TerminalLinkClick(commandHeld: true)
         // A click SwiftTerm reports itself is taken for a plain click.
         check(!TerminalLinkClick.unknown.commandHeld && Policy.destination(commandHeld: TerminalLinkClick.unknown.commandHeld, browserEnabled: true, engineAvailable: true) == .shepherd)
-        check(TerminalWebLinkRequest(machine: Machine(displayName: "Owned", hostname: "owned.invalid", username: "fixture"), pane: AgentSummary(json: .object(["pane_id": .string("p1"), "terminal_id": .string("t1")]))!, url: "https://example.invalid/", click: click).click == click)
-        check(TerminalWebLinkRequest(machine: Machine(displayName: "Owned", hostname: "owned.invalid", username: "fixture"), pane: AgentSummary(json: .object(["pane_id": .string("p1"), "terminal_id": .string("t1")]))!, url: "https://example.invalid/").click == .unknown)
+        check(click.commandHeld)
         check(TerminalWebLink.isWebLink("http:malformed"))
         check(!TerminalWebLink.isWebLink("ssh://example.invalid"))
         check(TerminalWebLink.token(in: "Read https://example.invalid/a?q=b#c, now", characterOffset: 12) == "https://example.invalid/a?q=b#c")
@@ -102,27 +95,8 @@ public nonisolated enum AgentKind: String, Sendable {
         check(TerminalWebLink.token(in: "PR은 https://example.invalid/pull/16048에서 확인", characterOffset: 8) == "https://example.invalid/pull/16048")
         check(TerminalWebLink.token(in: "PR은 https://example.invalid/pull/16048에서 확인", characterOffset: 38) == nil)
         check(TerminalWebLink.token(in: "https://example.invalid/wiki/서울", characterOffset: 3) == "https://example.invalid/wiki/서울")
-        var machine = Machine(displayName: "Owned", hostname: "owned.invalid", username: "fixture")
-        func pane(_ terminal: String, nested: HerdrMachine? = nil) -> AgentSummary {
-            AgentSummary(json: .object(["pane_id": .string("p1"), "terminal_id": .string(terminal)]), on: nested)!
-        }
-        let original = pane("terminal-1"), request = TerminalWebLinkRequest(machine: machine, pane: original, url: "https://example.invalid/")
-        check(request.pane(in: [original], on: machine)?.terminalID == "terminal-1")
-        check(request.pane(in: [pane("replacement-terminal")], on: machine) == nil)
-        check(request.pane(in: [], on: machine) == nil)
-        machine.hostname = "changed.invalid"
-        check(request.pane(in: [original], on: machine) == nil)
-        machine = request.machine; machine.keychainTag = "replaced-secret-tag"
-        check(request.pane(in: [original], on: machine) == nil)
-        machine = request.machine; machine.displayName = "Renamed"
-        check(request.pane(in: [original], on: machine) != nil)
-        let nested = HerdrMachine(id: "nested", label: "Owned", target: "owned.invalid", session: "default", enabled: true)
-        check(request.pane(in: [pane("terminal-1", nested: nested)], on: machine) == nil)
-        let nestedRequest = TerminalWebLinkRequest(machine: machine, pane: pane("terminal-1", nested: nested), url: request.rawURL)
-        check(nestedRequest.pane(in: [original], on: machine) == nil)
-        check(nestedRequest.pane(in: [pane("terminal-1", nested: nested)], on: machine) != nil)
         try pageLinks()
-        print("PASS \(checks) production URL validation/click destination and notice table/stale connection/pane/terminal/nested scope checks, HTML page links, pane locations, routes, the file and agent table and the default-browser opener; no network/browser/credential access")
+        print("PASS \(checks) production URL validation/click destination and notice table checks, HTML page links, pane locations, routes and the file and agent table; no network/browser/credential access")
     }
 
     /// HTML files on this Mac as pages: the links, the panes they open
@@ -202,71 +176,40 @@ public nonisolated enum AgentKind: String, Sendable {
             check(!Page.isLocalFileAddress(address))
         }
 
-        // Where a pane is: only one of this Mac's own herdr opens pages.
-        let thisMac = Machine(displayName: "This Mac", hostname: host, username: "me", isLocal: true)
-        let sshMachine = Machine(displayName: "Server", hostname: "server.invalid", username: "me")
-        let herdrMachine = HerdrMachine(id: "box", label: "Box", target: "box.invalid", session: "default", enabled: true)
-        func pane(cwd: String? = directory, on nested: HerdrMachine? = nil) -> AgentSummary {
-            var json: [String: JSONValue] = ["pane_id": .string("p1"), "terminal_id": .string("t1")]
-            if let cwd { json["cwd"] = .string(cwd) }
-            return AgentSummary(json: .object(json), on: nested)!
-        }
-        check(Page.opensPages(in: pane(), on: thisMac))
-        check(!Page.opensPages(in: pane(on: herdrMachine), on: thisMac))
-        check(!Page.opensPages(in: pane(), on: sshMachine))
-        check(!Page.opensPages(in: pane(on: herdrMachine), on: sshMachine))
+        // Where a pane is: only a pane of This Mac itself opens pages.
         check(Page.opensPages(machineIsLocal: true, onHerdrMachine: false) && !Page.opensPages(machineIsLocal: true, onHerdrMachine: true)
               && !Page.opensPages(machineIsLocal: false, onHerdrMachine: false) && !Page.opensPages(machineIsLocal: false, onHerdrMachine: true))
 
-        // Where a click goes, from each.
-        typealias Route = TerminalLinkRoute
-        check(Route("report.html", in: pane(), on: thisMac) == .page("file:///Users/me/proj/report.html"))
-        check(Route("file:///Users/me/proj/Report.HTM#sec", in: pane(), on: thisMac) == .page("file:///Users/me/proj/Report.HTM#sec"))
-        check(Route("report.html:3", in: pane(), on: thisMac) == .page("file:///Users/me/proj/report.html"))
-        for (location, machine, nested) in [("SSH machine", sshMachine, nil), ("herdr machine on this Mac", thisMac, herdrMachine), ("herdr machine on an SSH machine", sshMachine, herdrMachine)] as [(String, Machine, HerdrMachine?)] {
-            check(Route("report.html", in: pane(on: nested), on: machine) == .file("report.html"), location)
-            check(Route("file:///Users/me/report.html#sec", in: pane(on: nested), on: machine) != nil, location)
-            check(Route("https://example.invalid/", in: pane(on: nested), on: machine) == .web("https://example.invalid/"), location)
+        // Where a click goes, from each: as HcTerminalPane asks, with the
+        // pane's directory, the machine's hostname and whether it opens pages.
+        func route(_ link: String, cwd: String? = directory, hostname: String = host, opensPages: Bool = true) -> TerminalLinkRoute? {
+            TerminalLinkRoute(link: link, directory: cwd, hostname: hostname, additionalHosts: [], opensPages: opensPages)
         }
-        check(Route("file:///Users/me/report.html#sec", in: pane(), on: sshMachine) == .file("file:///Users/me/report.html#sec"))
-        check(Route("README.md", in: pane(), on: thisMac) == .file("README.md"))
-        check(Route("docs/index.xhtml", in: pane(), on: thisMac) == .file("docs/index.xhtml"))
-        check(Route("image.svg", in: pane(), on: thisMac) == .file("image.svg"))
-        check(Route(" https://example.invalid/a ", in: pane(), on: thisMac) == .web("https://example.invalid/a"))
-        check(Route(" report.html ", in: pane(), on: thisMac) == .page("file:///Users/me/proj/report.html"))
+        check(route("report.html") == .page("file:///Users/me/proj/report.html"))
+        check(route("file:///Users/me/proj/Report.HTM#sec") == .page("file:///Users/me/proj/Report.HTM#sec"))
+        check(route("report.html:3") == .page("file:///Users/me/proj/report.html"))
+        for (location, hostname) in [("SSH machine", "server.invalid"), ("a pane that doesn't open pages", host)] {
+            check(route("report.html", hostname: hostname, opensPages: false) == .file("report.html"), location)
+            check(route("file:///Users/me/report.html#sec", hostname: hostname, opensPages: false) != nil, location)
+            check(route("https://example.invalid/", hostname: hostname, opensPages: false) == .web("https://example.invalid/"), location)
+        }
+        check(route("file:///Users/me/report.html#sec", hostname: "server.invalid", opensPages: false) == .file("file:///Users/me/report.html#sec"))
+        check(route("README.md") == .file("README.md"))
+        check(route("docs/index.xhtml") == .file("docs/index.xhtml"))
+        check(route("image.svg") == .file("image.svg"))
+        check(route(" https://example.invalid/a ") == .web("https://example.invalid/a"))
+        check(route(" report.html ") == .page("file:///Users/me/proj/report.html"))
         check(Page.pageURL(" report.html ", directory: directory, hostname: host) == nil)
-        check(Route("http:malformed", in: pane(), on: thisMac) == .web("http:malformed"))
-        check(Route("ssh://example.invalid/a.html", in: pane(), on: thisMac) == nil)
+        check(route("http:malformed") == .web("http:malformed"))
+        check(route("ssh://example.invalid/a.html") == nil)
         // The preview still says why for what it couldn't take before.
-        check(Route("file:///Users/me/report.html?x=1", in: pane(), on: thisMac) == .file("file:///Users/me/report.html?x=1"))
-        check(Route("file://otherhost/Users/me/report.html", in: pane(), on: thisMac) == .file("file://otherhost/Users/me/report.html"))
-        check(Route("report.html", in: pane(cwd: nil), on: thisMac) == .file("report.html"))
-        check(Route("~/report.html", in: pane(), on: thisMac) == .file("~/report.html"))
+        check(route("file:///Users/me/report.html?x=1") == .file("file:///Users/me/report.html?x=1"))
+        check(route("file://otherhost/Users/me/report.html") == .file("file://otherhost/Users/me/report.html"))
+        check(route("report.html", cwd: nil) == .file("report.html"))
+        check(route("~/report.html") == .file("~/report.html"))
         // A relative `name.htm:line` reads as a scheme, as it did: not a link.
-        check(Route("report.htm:12", in: pane(), on: thisMac) == nil && !FilePreviewLink.isFileGestureLink("report.htm:12"))
-        check(Route("/abs/report.htm:12", in: pane(), on: thisMac) == .page("file:///abs/report.htm"))
-        // A page link goes with the click it came with, to `openWeb`.
-        let request = TerminalWebLinkRequest(machine: thisMac, pane: pane(), url: "file:///Users/me/proj/report.html", click: TerminalLinkClick(commandHeld: true))
-        check(request.click.commandHeld && Page.isPageURL(request.rawURL) && request.pane(in: [pane()], on: thisMac) != nil)
-
-        // The default browser: a file goes to the app that opens https
-        // links, not to what opens .html; with none, to what opens it.
-        var opened: [String] = [], asked = 0
-        let browser = URL(fileURLWithPath: "/Applications/Owned Browser.app")
-        func opener(_ app: URL?) -> DefaultBrowserOpener {
-            DefaultBrowserOpener(webBrowser: { asked += 1; return app },
-                                 openWithDefaultApp: { opened.append("default " + $0.absoluteString) },
-                                 openWithApp: { opened.append("\($1.lastPathComponent) " + $0.absoluteString) })
-        }
-        let file = try require(URL(string: "file:///Users/me/proj/report.html#sec"))
-        opener(browser).open(file)
-        check(opened == ["Owned Browser.app file:///Users/me/proj/report.html#sec"] && asked == 1)
-        opened = []; asked = 0
-        opener(nil).open(file)
-        check(opened == ["default file:///Users/me/proj/report.html#sec"] && asked == 1)
-        opened = []; asked = 0
-        opener(browser).open(try require(URL(string: "https://example.invalid/a")))
-        check(opened == ["default https://example.invalid/a"] && asked == 0)
+        check(route("report.htm:12") == nil && !FilePreviewLink.isFileGestureLink("report.htm:12"))
+        check(route("/abs/report.htm:12") == .page("file:///abs/report.htm"))
     }
 
     static func check(_ b: Bool, _ why: String, line: UInt = #line) { precondition(b, "\(why), line \(line)"); checks += 1 }

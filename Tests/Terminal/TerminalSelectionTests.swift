@@ -1,37 +1,13 @@
 import AppKit
 import SwiftTerm
 import Darwin
-import NIOCore
-
-// The app declares this in AgentTerminalView.swift, which needs the whole
-// app to compile; run-selection-tests.py checks that the line is there.
-
-func connectionFailureDescription(_ error: any Error) -> String { "\(error)" }
-
-/// A pane whose output the test sends, piece by piece, as herdr's frames.
-actor FrameSession: TerminalSessionProviding {
-    private var continuation: AsyncStream<ByteBuffer>.Continuation?
-    private let first: String
-    init(first: String) { self.first = first }
-    func start(columns: Int, rows: Int) async throws -> AsyncStream<ByteBuffer> {
-        AsyncStream { continuation in
-            self.continuation = continuation
-            var buffer = ByteBuffer(); buffer.writeString(first)
-            continuation.yield(buffer)
-        }
-    }
-    func push(_ text: String) { var buffer = ByteBuffer(); buffer.writeString(text); continuation?.yield(buffer) }
-    func write(_ data: Data) async throws {}
-    func resize(columns: Int, rows: Int) async throws {}
-    func stop() async { continuation?.finish(); continuation = nil }
-}
 
 /// A view drawn over part of the terminal, as a sheet or a panel would be.
 final class Cover: NSView {}
 
 /// Text selection on the production terminal view (SHPHRD-93), with real
 /// AppKit mouse, key and wheel events, an owned kernel PTY standing in for
-/// the attach, never-shown windows and the output herdr sends. Byte strings
+/// the attach, never-shown windows and the output a pane's program sends. Byte strings
 /// are what the PTY received. No user GUI, herdr or SSH.
 @main @MainActor enum TerminalSelectionTests {
     static var checks = 0
@@ -515,42 +491,6 @@ final class Cover: NSView {}
         NSApp.sendEvent(wheel(1, at: wheelAt))
         exactlySent(up, "the wheel once it is back")
 
-        // The attach's output reaches the view through the view model,
-        // which keeps the selection.
-        let pane = FocusReportingTerminalView(frame: container.bounds)
-        pane.terminalDelegate = coordinator
-        view.removeFromSuperview()
-        container.addSubview(pane, positioned: .below, relativeTo: cover)
-        let session = FrameSession(first: "\u{1b}[?1049h\u{1b}[2J\u{1b}[H" + rows[0] + "\r\n" + rows[1] + "\u{1b}[H")
-        let model = AgentTerminalViewModel(makeSession: { session })
-        model.attach(terminalView: pane)
-        await model.start()
-        check(model.connectionState == .connected, "the session is attached")
-        func paneMouse(_ type: NSEvent.EventType, _ at: (Int, Int), _ flags: NSEvent.ModifierFlags) -> NSEvent {
-            eventNumber += 1
-            return NSEvent.mouseEvent(with: type, location: pane.convert(point(at), to: nil), modifierFlags: flags,
-                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil,
-                eventNumber: eventNumber, clickCount: 1, pressure: 1)!
-        }
-        pane.mouseDown(with: paneMouse(.leftMouseDown, (0, 0), []))
-        for i in 0...6 { pane.mouseDragged(with: paneMouse(.leftMouseDragged, (i / 6, 5 * i / 6), [])) }
-        pane.mouseUp(with: paneMouse(.leftMouseUp, (1, 5), []))
-        check(pane.getSelection() == firstSpan, "a selection in the attached pane")
-        func until(_ marker: String) async {
-            for _ in 0..<500 {
-                if let line = pane.getTerminal().getLine(row: 8), line.translateToString(trimRight: true) == marker { return }
-                try? await Task.sleep(for: .milliseconds(10))
-            }
-            preconditionFailure("output \(marker) never arrived")
-        }
-        for n in 0..<5 { await session.push("\u{1b}[?2026h\u{1b}[9;1Hframe\(n)\u{1b}[1;1H\u{1b}[?2026l") }
-        await until("frame4")
-        check(pane.getSelection() == firstSpan, "the selection outlives the session's frames")
-        await session.push(overSecond + "\u{1b}[9;1H\u{1b}[2Klast\u{1b}[1;1H")
-        await until("last")
-        check((pane.getSelection() ?? "").isEmpty, "and ends when they change its text")
-        model.stop()
-        nothingSent("the view model's pane")
         print("PASS \(checks) selection checks: plain, ⇧, ⌥, ⌃ and ⌘ presses and drags with mouse reporting on and off, links, XTSHIFTESCAPE, selections through output and what ends them, mouse reporting restored, wheel reports from the event monitor; real SwiftTerm, owned PTY, never-shown windows; no user GUI, herdr or SSH")
     }
 }

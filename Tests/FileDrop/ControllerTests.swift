@@ -89,20 +89,11 @@ nonisolated final class FakeUploader: TerminalDropUploading, @unchecked Sendable
         let big = Darwin.open("\(work)/big.png", O_CREAT | O_WRONLY, 0o600)
         precondition(big >= 0 && ftruncate(big, off_t(TerminalDropPaste.maximumFileBytes + 1)) == 0); Darwin.close(big)
 
-        routes()
         try await thisMac()
         try await elsewhere()
         try await failures()
         try await leaving()
         print("controller checks: \(checks)")
-    }
-
-    static func routes() {
-        let machine = HerdrMachine(id: "m", label: "M", target: "gpu", session: "default", enabled: true)
-        check(TerminalDropRoute(isLocal: true, herdrMachine: nil) == .thisMac, "A: this Mac's herdr")
-        check(TerminalDropRoute(isLocal: false, herdrMachine: nil) == .host, "B: the host's herdr")
-        check(TerminalDropRoute(isLocal: true, herdrMachine: machine) == .thisMacMachine(machine), "C: this Mac's herdr machine")
-        check(TerminalDropRoute(isLocal: false, herdrMachine: machine) == .hostMachine(machine), "D: the host's herdr machine")
     }
 
     static func thisMac() async throws {

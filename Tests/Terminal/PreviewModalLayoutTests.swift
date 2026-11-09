@@ -13,7 +13,7 @@ import Darwin
 }
 private struct ModalTerminal: View {
     let probe: ModalProbe
-    /// The selected pane: `ContentView` makes a terminal view of its own for
+    /// The selected pane: the workspace view makes a terminal view of its own for
     /// each (`TerminalIdentity`), as this does for each key.
     var key = 0
     var body: some View {
@@ -81,7 +81,7 @@ private struct ModalTerminal: View {
 
         // Another pane is selected while a preview is expanded: its terminal
         // takes the old one's place under the cover, and the expansion ends,
-        // as `ContentView` ends it on any change of selection. The keyboard
+        // as the workspace view ends it on a change of selection. The keyboard
         // isn't handed back to a terminal that has left the window.
         controller.showPanel(true); drain(controller.view)
         window.makeFirstResponder(terminal)

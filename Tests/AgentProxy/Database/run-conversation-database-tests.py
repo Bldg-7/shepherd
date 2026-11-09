@@ -12,7 +12,7 @@ protocol = sorted((root/'AgentProxy/Sources/AgentProxyProtocol').glob('*.swift')
 core = sorted((root/'AgentProxy/Sources/AgentProxyCore').glob('*.swift'))
 forwarder = [root/'AgentProxy/Sources/AgentProxyForwarder'/name for name in ('ConversationStateRoot.swift', 'ConversationDatabase.swift')]
 tests = root/'Tests/AgentProxy/Database/ConversationDatabaseTests.swift'
-stage_runner = root/'Tests/AgentBrowser/Phase2/run-stage.py'
+stage_runner = root/'Tests/Support/run-stage.py'
 assert all(x.is_file() for x in protocol + core + forwarder + [tests, stage_runner])
 profile = out/'sandbox.sb'; profile.write_text('(version 1)\n(allow default)\n(deny network*)\n')
 stages = []

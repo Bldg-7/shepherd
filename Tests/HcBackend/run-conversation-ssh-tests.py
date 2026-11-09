@@ -35,7 +35,7 @@ for feature in ['MemberImportVisibility','NonisolatedNonsendingByDefault','Infer
 flags += [x for m in maps for x in ['-Xcc','-fmodule-map-file='+str(m)]]
 def stage(name,args,seconds):
  log=out/(name+'.log')
- r=subprocess.run([sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(seconds),'--natural-exit-grace','10','--log',str(log),'--',*map(str,args)],cwd=ROOT,env=env,timeout=seconds+40)
+ r=subprocess.run([sys.executable,str(ROOT/'Tests/Support/run-stage.py'),'--timeout',str(seconds),'--natural-exit-grace','10','--log',str(log),'--',*map(str,args)],cwd=ROOT,env=env,timeout=seconds+40)
  record=json.loads(log.with_suffix('.stage.json').read_text())
  assert r.returncode==0 and record['naturalExitConfirmed'] and not record['signalsSent'] and record['cleanupVerified'],str(log)
 exe=out/'capture-ssh-tests';report=out/'report.json'

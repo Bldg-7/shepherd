@@ -1,10 +1,8 @@
 import SwiftUI
 
 /// What the Mac app adds only while the machine its window shows is This
-/// Mac (SHPHRD-110): a herdr machine, to the herdr whose panes the window
-/// shows, and an iPhone or iPad, which logs in to this Mac. While another
-/// machine is shown they are greyed out, with why. A herdr machine's group on This Mac's board goes
-/// through This Mac's herdr, so it counts as This Mac.
+/// Mac (SHPHRD-110): an iPhone or iPad, which logs in to this Mac. While
+/// another machine is shown it is greyed out, with why.
 enum LocalOnlyAddition {
     case device
 

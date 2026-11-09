@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Actual fixture-routing predicate + product SDK failure path, not deployment."""
+"""The product SDK's hc failure path at entry (no substitute backend), not deployment."""
 from pathlib import Path
 import argparse, hashlib, json, platform, subprocess, sys
 sys.dont_write_bytecode = True
@@ -10,16 +10,11 @@ p.add_argument('--output',type=Path,required=True)
 a = p.parse_args(); out = a.output.resolve(); out.mkdir(mode=0o700,parents=True,exist_ok=False)
 for name in ['home','tmp','cache','fixture']: (out/name).mkdir(mode=0o700)
 products = a.products.resolve()
-tracked = ['Shepherd/Shepherd.swift','Shepherd/HcBackend/HcWindowCommands.swift',
-           'Tests/HcBackend/HcDefaultBackendTests.swift','Tests/HcBackend/run-default-backend-tests.py']
+tracked = ['Tests/HcBackend/HcDefaultBackendTests.swift','Tests/HcBackend/run-default-backend-tests.py']
 tracked += [str(path.relative_to(ROOT)) for path in (ROOT/'ShepherdKit/Sources/ShepherdKit').rglob('*.swift')]
 def digest(path): return hashlib.sha256(path.read_bytes()).hexdigest()
 def hashes(): return {name:digest(ROOT/name) for name in tracked}
 before=hashes(); (out/'source-hashes.json').write_text(json.dumps(before,indent=2))
-source=(ROOT/'Shepherd/Shepherd.swift').read_text()
-start=source.index('@MainActor enum ShepherdLegacyFixtureRouting {')
-end=source.index('/// One hc product composition',start)
-policy=out/'Routing.swift'; policy.write_text('import Foundation\n'+source[start:end])
 env={'PATH':'/usr/bin:/bin:/usr/sbin:/sbin','HOME':str(out/'home'),'CFFIXED_USER_HOME':str(out/'home'),
      'TMPDIR':str(out/'tmp'),'CLANG_MODULE_CACHE_PATH':str(out/'cache'),
      'DEVELOPER_DIR':'/Applications/Xcode.app/Contents/Developer','LANG':'en_US.UTF-8'}
@@ -37,20 +32,19 @@ for feature in ['MemberImportVisibility','NonisolatedNonsendingByDefault','Infer
 for module in maps: flags += ['-Xcc','-fmodule-map-file='+str(module)]
 def stage(name,command):
     log=out/(name+'.log')
-    subprocess.run([sys.executable,'-B',str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout','120',
+    subprocess.run([sys.executable,'-B',str(ROOT/'Tests/Support/run-stage.py'),'--timeout','120',
                     '--natural-exit-grace','10','--log',str(log),'--',*map(str,command)],cwd=ROOT,env=env,check=True,timeout=160)
     r=json.loads(log.with_suffix('.stage.json').read_text())
     assert r['naturalExitConfirmed'] and r['cleanupVerified'] and not r['signalsSent'], str(log)
-for mode,extra in [('debug',['-D','DEBUG']),('release',['-O']),('explicit-fixture',['-D','DEBUG','-D','SHEPHERD_LEGACY_FIXTURES'])]:
+for mode,extra in [('debug',['-D','DEBUG']),('release',['-O'])]:
     exe=out/('entry-'+mode)
-    stage(mode+'-build',[*flags,*extra,str(policy),'Tests/HcBackend/HcDefaultBackendTests.swift',*map(str,objects),
+    stage(mode+'-build',[*flags,*extra,'Tests/HcBackend/HcDefaultBackendTests.swift',*map(str,objects),
                         '-framework','AppKit','-framework','Security','-framework','CoreText','-framework','QuartzCore',
                         '-lz','-lsqlite3','-o',str(exe)])
     stage(mode+'-tests',['/usr/bin/sandbox-exec','-f',str(profile),str(exe),str(out/'fixture')])
 assert before==hashes()
 assert object_hashes=={name:digest(Path(name)) for name in object_hashes}
-(out/'validation.json').write_text(json.dumps({'passed':True,'modes':['debug','release','explicit-fixture'],'checksPerMode':20,
-    'policySource':'exact extracted ShepherdLegacyFixtureRouting','fixtureValidation':'stand-ins, not path ownership qualification',
+(out/'validation.json').write_text(json.dumps({'passed':True,'modes':['debug','release'],'checksPerMode':9,
     'failurePaths':'actual product SDK transport-start errors; pre-transport missing discovery is source-guarded','realCoreOrCLIOrUserCredential':False,
     'defaultRootSourceWiring':'separate guards','deploymentQualified':False},indent=2))
-print('PASS default hc routing/failure:',out)
+print('PASS default hc failure path:',out)

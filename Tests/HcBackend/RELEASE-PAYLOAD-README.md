@@ -1,9 +1,10 @@
 # hc Release payload retirement
 
-This records the `8a3e9ab` payload-only stage. The subsequent
-[CEF implementation/build-input retirement](BROWSER-RETIREMENT-README.md) supersedes
-its remaining CEF header/wrapper/credits requirements; historical evidence below
-still describes that earlier archive accurately.
+This records the `8a3e9ab` payload-only stage; the evidence below describes that
+earlier archive. The CEF headers/wrapper/credits, the Debug fixture payloads and the
+`legacy-fixture` notice profile it mentions were later deleted together with the
+browser, agent runtime and capture-service code. `hc_release_bundle.py` and the
+notice gate's `--profile hc` (now its only profile) still reject those payloads.
 
 The default product remains hc. This batch removes deferred **payloads** from
 Release, not every legacy implementation/dependency. No app/core/service is

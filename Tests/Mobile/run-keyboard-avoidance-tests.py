@@ -19,7 +19,7 @@ app = output / 'KeyboardAvoidanceHarness.app'
 app.mkdir()
 bundle = 'com.bldg7.shepherd.tests.keyboard.' + uuid.uuid4().hex
 sources = ['ShepherdMobile/KeyboardAvoidance.swift', 'Tests/Mobile/KeyboardAvoidanceHarness.swift']
-hashed_sources = [*sources, 'ShepherdMobile/ConversationView.swift', 'Tests/Mobile/run-keyboard-avoidance-tests.py']
+hashed_sources = [*sources, 'ShepherdMobile/HcMobileBoardView.swift', 'Tests/Mobile/run-keyboard-avoidance-tests.py']
 (output / 'source-hashes.json').write_text(json.dumps(
     {source: hashlib.sha256((ROOT / source).read_bytes()).hexdigest() for source in hashed_sources}, indent=2))
 sdk = subprocess.check_output(['xcrun', '--sdk', 'iphonesimulator', '--show-sdk-path'], text=True).strip()
@@ -105,9 +105,8 @@ finally:
     (output / 'owned-devices.json').write_text(json.dumps(created))
 assert len(reports) == 2
 assert all(report['hostedProductionWrapper'] and report['deterministicLayoutSource'] for report in reports)
-conversation = (ROOT / 'ShepherdMobile/ConversationView.swift').read_text()
-assert 'KeyboardAvoidingBottomBarContainer(state: keyboardAvoidance)' in conversation
-assert 'ResponseBar(model: model)' in conversation and 'Composer(model: model)' in conversation
+terminal = (ROOT / 'ShepherdMobile/HcMobileBoardView.swift').read_text()
+assert 'KeyboardAvoidingBottomBarContainer(state: keyboardAvoidance)' in terminal
 (output / 'verification.json').write_text(json.dumps({
     'passed': True,
     'fixtures': ['iPhone', 'iPad'],

@@ -12,7 +12,7 @@ flags=['xcrun','swiftc','-swift-version','6','-default-isolation','MainActor','-
 for f in ['MemberImportVisibility','NonisolatedNonsendingByDefault','InferIsolatedConformances']:flags+=['-enable-upcoming-feature',f]
 records=[]
 def stage(name,seconds,args):
- log=o/(name+'.log');subprocess.run([sys.executable,str(R/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(seconds),'--natural-exit-grace','5','--log',str(log),'--',*map(str,args)],cwd=R,env=env,check=True,timeout=seconds+20)
+ log=o/(name+'.log');subprocess.run([sys.executable,str(R/'Tests/Support/run-stage.py'),'--timeout',str(seconds),'--natural-exit-grace','5','--log',str(log),'--',*map(str,args)],cwd=R,env=env,check=True,timeout=seconds+20)
  v=json.loads(log.with_suffix('.stage.json').read_text());assert v['naturalExitConfirmed'] and v['cleanupVerified'] and not v['signalsSent'];records.append(name)
 for mode,opt in [('debug','-Onone'),('optimized','-O')]:
  exe=o/(mode+'-tests');stage(mode+'-build',90,[*flags,opt,*sources,'-o',exe]);stage(mode+'-tests',20,['/usr/bin/sandbox-exec','-p','(version 1)(allow default)(deny network*)',exe])

@@ -184,7 +184,7 @@ profile=out/'private-unix.sb';profile.write_text('(version 1)\n(allow default)\n
 env={'PATH':'/usr/bin:/bin:/usr/sbin:/sbin','HOME':str(out/'home'),'CFFIXED_USER_HOME':str(out/'home'),'TMPDIR':str(out/'tmp')}
 source_hash=hashlib.sha256(Path(__file__).read_bytes()).hexdigest();(out/'source-hashes.json').write_text(json.dumps({str(Path(__file__).relative_to(ROOT)):source_hash}))
 try:
- result=subprocess.run([sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout','90','--natural-exit-grace','10','--log',str(out/'probe.log'),'--','/usr/bin/sandbox-exec','-f',str(profile),sys.executable,'-I','-S',str(Path(__file__).resolve()),'--worker',str(out),str(binary)]+([str(a.document_sdk_executable.resolve())] if a.document_sdk_executable else []),cwd=ROOT,env=env,timeout=130)
+ result=subprocess.run([sys.executable,str(ROOT/'Tests/Support/run-stage.py'),'--timeout','90','--natural-exit-grace','10','--log',str(out/'probe.log'),'--','/usr/bin/sandbox-exec','-f',str(profile),sys.executable,'-I','-S',str(Path(__file__).resolve()),'--worker',str(out),str(binary)]+([str(a.document_sdk_executable.resolve())] if a.document_sdk_executable else []),cwd=ROOT,env=env,timeout=130)
 finally:
  # A failed worker still gets an owned-scope stop; never the installed daemon.
  for name in ['h','r','q']:

@@ -100,7 +100,7 @@ for module in maps:
     flags += ['-Xcc','-fmodule-map-file='+str(module)]
 def stage(name, seconds, command):
     log = out/(name+'.log')
-    r = subprocess.run([sys.executable,'-B',str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(seconds),
+    r = subprocess.run([sys.executable,'-B',str(ROOT/'Tests/Support/run-stage.py'),'--timeout',str(seconds),
                         '--natural-exit-grace','10','--log',str(log),'--',*map(str,command)],env=env,cwd=ROOT,timeout=seconds+40)
     receipt = json.loads(log.with_suffix('.stage.json').read_text())
     assert r.returncode == 0 and receipt['naturalExitConfirmed'] and receipt['cleanupVerified'] and not receipt['signalsSent'], str(log)

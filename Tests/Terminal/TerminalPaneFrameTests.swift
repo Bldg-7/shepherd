@@ -13,23 +13,8 @@ import Darwin
     init(ownedPTY: Int32) { self.ownedPTY = ownedPTY }
 }
 
-// Only session construction/model values are seams. The runner compiles
-// AgentTerminalView's complete production wrapper unchanged; its inner pane
-// below uses the same real TerminalHostView/SwiftTerm, without a live attach.
-struct Machine {}
-struct AgentSummary { let title = "Owned" }
-struct FilePreviewRequest {}
-struct TerminalWebLinkRequest {}
-struct MachineStore { let probe: FrameProbe }
-struct PaneTerminalView: View {
-    let machine: Machine
-    let pane: AgentSummary
-    let machineStore: MachineStore
-    var onOpenFile: ((FilePreviewRequest) -> Void)?
-    var onOpenWeb: ((TerminalWebLinkRequest) -> Void)?
-    var body: some View { FrameTerminal(probe: machineStore.probe) }
-}
-
+// The real TerminalPaneFrame around the real TerminalHostView/SwiftTerm,
+// without a live attach.
 private struct FrameTerminal: View {
     let probe: FrameProbe
     var body: some View {
@@ -43,19 +28,11 @@ private struct FrameTerminal: View {
     }
 }
 
-private enum FrameMode: String, CaseIterable { case standalone, tab }
 private struct FrameFixture: View {
     let probe: FrameProbe
-    let mode: FrameMode
     var body: some View {
-        Group {
-            if mode == .standalone {
-                AgentTerminalView(machine: Machine(), agent: AgentSummary(), machineStore: MachineStore(probe: probe))
-            } else {
-                TerminalPaneFrame(isFocused: probe.focused) { FrameTerminal(probe: probe) }
-            }
-        }
-        .accentColor(.blue)
+        TerminalPaneFrame(isFocused: probe.focused) { FrameTerminal(probe: probe) }
+            .accentColor(.blue)
     }
 }
 
@@ -89,12 +66,12 @@ private struct FrameFixture: View {
         _ = fcntl(master, F_SETFD, FD_CLOEXEC)
         _ = fcntl(slave, F_SETFD, FD_CLOEXEC)
         var receipts: [[String: Double]] = []
-        for mode in FrameMode.allCases {
+        do {
         let probe = FrameProbe(ownedPTY: slave)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 480), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { window.close() }
-        let host = NSHostingView(rootView: FrameFixture(probe: probe, mode: mode))
+        let host = NSHostingView(rootView: FrameFixture(probe: probe))
         window.contentView = host
         for size in [CGSize(width: 800, height: 480), CGSize(width: 520, height: 330), CGSize(width: 1040, height: 600)] {
             window.setContentSize(size)
@@ -126,7 +103,7 @@ private struct FrameFixture: View {
             // not a transformed or scrolled overlay coordinate system.
             view.feed(text: "\u{1b}[2J\u{1b}[HLEFT\u{1b}[\(grid.rows);1Hgpt owned STATUS")
             check(grid.getCharacter(col: 0, row: grid.rows - 1) == "g", "bottom-left first column preserved")
-            receipts.append(["standalone": mode == .standalone ? 1 : 0, "width": size.width, "height": size.height, "innerWidth": rect.width, "innerHeight": rect.height, "columns": Double(grid.cols), "rows": Double(grid.rows), "x": rect.minX, "y": rect.minY])
+            receipts.append(["width": size.width, "height": size.height, "innerWidth": rect.width, "innerHeight": rect.height, "columns": Double(grid.cols), "rows": Double(grid.rows), "x": rect.minX, "y": rect.minY])
         }
         check(Set(probe.sizes.map { "\($0.0)x\($0.1)" }).count >= 3, "resize delegate must produce distinct actual grids")
         }

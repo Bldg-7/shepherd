@@ -24,7 +24,7 @@ profile=out/'deny-network.sb';profile.write_text('(version 1)\n(allow default)\n
 stages=[]
 def stage(name,command,seconds):
     log=out/(name+'.log')
-    subprocess.run([sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(seconds),'--natural-exit-grace','5','--log',str(log),'--',*map(str,command)],cwd=ROOT,env=env,timeout=seconds+30,check=True)
+    subprocess.run([sys.executable,str(ROOT/'Tests/Support/run-stage.py'),'--timeout',str(seconds),'--natural-exit-grace','5','--log',str(log),'--',*map(str,command)],cwd=ROOT,env=env,timeout=seconds+30,check=True)
     r=json.loads(log.with_suffix('.stage.json').read_text());assert r['naturalExitConfirmed'] and r['cleanupVerified'] and not r['signalsSent']
     stages.append(name)
 for mode,extra in [('debug',[]),('optimized',['-O'])]:

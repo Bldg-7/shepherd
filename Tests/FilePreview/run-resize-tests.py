@@ -11,7 +11,7 @@ syntax=['ShepherdKit/Sources/ShepherdKit/Rendering/PreviewMarkdownBlock.swift','
 (out/'source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in sources+syntax},indent=2))
 def stage(name,seconds,args,expect_layout_failure=False):
  log=out/(name+'.log')
- code=subprocess.run([sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(seconds),'--natural-exit-grace','10','--log',str(log),'--',*args],cwd=ROOT,env=env,timeout=seconds+40).returncode
+ code=subprocess.run([sys.executable,str(ROOT/'Tests/Support/run-stage.py'),'--timeout',str(seconds),'--natural-exit-grace','10','--log',str(log),'--',*args],cwd=ROOT,env=env,timeout=seconds+40).returncode
  v=json.loads(log.with_suffix('.stage.json').read_text());assert not v['signalsSent'] and v['cleanupVerified'],name
  if expect_layout_failure:
   assert code!=0 and 'source must' in log.read_text(), 'legacy renderer did not reproduce the layout failure'

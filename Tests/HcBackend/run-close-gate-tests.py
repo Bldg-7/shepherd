@@ -20,7 +20,7 @@ productHashes={str(v):h(v) for v in [*objects,*maps,*list((products/'ShepherdKit
 shutil.copytree(products/'SwiftTerm_SwiftTerm.bundle',o/'SwiftTerm_SwiftTerm.bundle')
 def stage(name,seconds,cmd):
  log=o/(name+'.log')
- subprocess.run([sys.executable,str(R/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(seconds),'--natural-exit-grace','5','--log',str(log),'--',*cmd],cwd=R,env=env,check=True,timeout=seconds+20)
+ subprocess.run([sys.executable,str(R/'Tests/Support/run-stage.py'),'--timeout',str(seconds),'--natural-exit-grace','5','--log',str(log),'--',*cmd],cwd=R,env=env,check=True,timeout=seconds+20)
  r=json.loads(log.with_suffix('.stage.json').read_text());assert r['naturalExitConfirmed'] and r['cleanupVerified'] and not r['signalsSent']
 flags=['xcrun','swiftc','-D','DEBUG','-swift-version','6','-default-isolation','MainActor','-parse-as-library','-warnings-as-errors','-I',str(products)]
 for f in ['MemberImportVisibility','NonisolatedNonsendingByDefault','InferIsolatedConformances']:flags+=['-enable-upcoming-feature',f]

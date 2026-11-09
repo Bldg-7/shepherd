@@ -3,11 +3,16 @@ import SwiftUI
 import SwiftTerm
 import Observation
 
-func connectionFailureDescription(_ error: any Error) -> String { "\(error)" }
+/// A request for a pane's terminal to take the keyboard: a fresh one each
+/// time, so that asking again for the same pane is a change.
+struct FocusRequest: Equatable {
+    let id = UUID()
+    let paneID: String
+}
 
 @MainActor @Observable private final class FocusProbe {
     var selection: String?
-    var request: TerminalPaneFocus?
+    var request: FocusRequest?
     var revision = 0
     var lastTabPane = "tab-b"
     @ObservationIgnored var terminals: [String: TerminalView] = [:]
@@ -15,7 +20,7 @@ func connectionFailureDescription(_ error: any Error) -> String { "\(error)" }
     @ObservationIgnored var activations = 0
     func activate(_ id: String) {
         selection = id
-        request = TerminalPaneFocus(paneID: id == "tab" ? lastTabPane : id)
+        request = FocusRequest(paneID: id == "tab" ? lastTabPane : id)
         activations += 1
     }
 }
@@ -23,16 +28,22 @@ func connectionFailureDescription(_ error: any Error) -> String { "\(error)" }
 private struct FocusTerminal: View {
     let id: String
     let probe: FocusProbe
-    @State private var model = AgentTerminalViewModel(makeSession: { fatalError("focus must never start an attach") })
+    /// The terminal takes the keyboard on the next turn, once it is in the
+    /// window, as the app's pane does.
+    private func requestKeyboardFocus() {
+        DispatchQueue.main.async {
+            guard let view = probe.terminals[id], let window = view.window else { return }
+            window.makeFirstResponder(view)
+        }
+    }
     var body: some View {
         TerminalHostView(onCreate: { view in
-            model.attach(terminalView: view)
             probe.terminals[id] = view
             probe.creations[id, default: 0] += 1
-            if probe.request?.paneID == id { model.requestKeyboardFocus() }
+            if probe.request?.paneID == id { requestKeyboardFocus() }
         }, onInput: { _ in }, onResize: { _, _ in })
         .onChange(of: probe.request) { _, request in
-            if request?.paneID == id { model.requestKeyboardFocus() }
+            if request?.paneID == id { requestKeyboardFocus() }
         }
     }
 }
@@ -140,6 +151,6 @@ private struct FocusFixture: View {
         check(window.makeFirstResponder(list), "list owns keyboard for non-click navigation")
         _ = settle(host) { probe.creations["pane-a"] == 2 }
         check(probe.activations == count && window.firstResponder === list, "non-click selection creates no activation request")
-        print("PASS \(checks) sidebar activation/focus checks; production terminal focus, callback-driven unshown fixture, native mouse delivery NOTRUN, no session or network")
+        print("PASS \(checks) sidebar activation/focus checks; production terminal view, callback-driven unshown fixture, native mouse delivery NOTRUN, no session or network")
     }
 }

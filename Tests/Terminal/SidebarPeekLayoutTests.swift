@@ -19,7 +19,7 @@ private struct TerminalDetail: View {
     let probe: SidebarProbe
     let legacy: Bool
     var body: some View {
-        // Exactly the native hosting boundary present in ContentView.
+        // Exactly the native hosting boundary present in the workspace view.
         if legacy {
             HSplitView { terminal.frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity) }
         } else {

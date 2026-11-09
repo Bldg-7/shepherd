@@ -2,7 +2,7 @@
 """The marks the sidebar shows for Claude and Pi in place of their names (SHPHRD-107): which herdr names have one, the path
 data against the makers' SVGs by sha256, the parser, the marks drawn by ImageRenderer at 1x, 2x and 3x in light and dark and
 in a selected row, in their own colors and inside the room around them, and a pane row as tall with a mark as in words;
-then where the board uses them, the search, the iOS app left as it is, and the trademark notice. No window, herdr or app."""
+then where the board uses them, the iOS app left as it is, and the trademark notice. No window, herdr or app."""
 from pathlib import Path
 import argparse,os,json,subprocess,sys,hashlib,platform
 ROOT=Path(__file__).resolve().parents[2]
@@ -12,26 +12,21 @@ env=dict(os.environ,DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer',H
 kit='ShepherdKit/Sources/ShepherdKit/'
 models=[kit+'Resources.swift',kit+'Agents/AgentKind.swift']+[kit+'HerdrKit/Models/'+n for n in ['JSONValue.swift','AgentModels.swift','AgentLaunchModels.swift','AgentTitleDisplay.swift','HerdrMachine.swift']]
 sources=models+['Shepherd/Hosts/Views/AgentLogo.swift','Tests/Agents/AgentLogoTests.swift']
-checked=['Shepherd/Hosts/Views/AgentBoardView.swift','ShepherdMobile/BoardView.swift','Shepherd/ThirdPartyNotices.txt','ShepherdMobile/ThirdPartyNotices.txt']
+checked=['Shepherd/HcBackend/HcWorkspaceView.swift','Shepherd/ThirdPartyNotices.txt','ShepherdMobile/ThirdPartyNotices.txt']
 (out/'source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in sources+checked},indent=2))
 def stage(name,seconds,args):
  log=out/(name+'.log')
- code=subprocess.run([sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(seconds),'--natural-exit-grace','10','--log',str(log),'--',*args],cwd=ROOT,env=env,timeout=seconds+40).returncode
+ code=subprocess.run([sys.executable,str(ROOT/'Tests/Support/run-stage.py'),'--timeout',str(seconds),'--natural-exit-grace','10','--log',str(log),'--',*args],cwd=ROOT,env=env,timeout=seconds+40).returncode
  v=json.loads(log.with_suffix('.stage.json').read_text());assert code==0 and v['naturalExitConfirmed'] and not v['signalsSent'] and v['cleanupVerified'],name+': '+log.read_text(errors='replace')[-3000:]
 stage('logo-build',120,['xcrun','swiftc','-swift-version','6','-default-isolation','MainActor','-target',platform.machine()+'-apple-macos26.6.2','-parse-as-library',*sources,'-framework','AppKit','-o',str(out/'logo-tests')])
 stage('logo-tests',60,[str(out/'logo-tests')])
 assert 'agent logo checks:' in (out/'logo-tests.log').read_text(),'the tests ran to the end'
 
 def read(n):return (ROOT/n).read_text()
-# The pane row's second line, and nothing else of the board changed for it.
-b=read('Shepherd/Hosts/Views/AgentBoardView.swift')
-pane=b[b.index('    private func row(for agent:'):b.index("    /// A tab's row")]
-assert 'AgentPaneCaption(subtitle(for: agent), agentName: agent.agentName)' in pane,'the row shows the caption'
-assert 'Text(subtitle(for: agent))' not in b and b.count('AgentPaneCaption(')==1,'in one place'
-assert 'private func subtitle(for agent: AgentSummary) -> String {\n        if agent.hasAgent {\n            return agent.agentName ?? agent.source ?? agent.paneID\n        }' in b,'the words as they were'
-assert '[pane.title, subtitle(for: pane)]' in b[b.index('    private func searchTexts(for pane:'):],'a search goes by the words'
+# The board's pane row shows its second line through the caption, in one place.
+b=read('Shepherd/HcBackend/HcWorkspaceView.swift')
+assert b.count('AgentPaneCaption(')==1,'in one place'
 assert 'AgentLogo' not in b,'the board knows only the caption'
-assert b.count('.herdrItemDrag(')==2
 # The mark: its own colors, read as the agent's name, no image of its own.
 l=read('Shepherd/Hosts/Views/AgentLogo.swift')
 caption=l[l.index('struct AgentPaneCaption: View {'):l.index('struct AgentLogoMark: View {')]
@@ -48,7 +43,6 @@ assert 'case claude, codex, pi\n' in read(kit+'Agents/AgentKind.swift'),'AgentKi
 for f in sorted(list((ROOT/'ShepherdMobile').rglob('*.swift'))+list((ROOT/'ShepherdKit').rglob('*.swift'))):
  t=f.read_text()
  assert 'AgentLogo' not in t and 'AgentPaneCaption' not in t,f
-assert 'Text(verbatim: pane.agentName ?? String(localized: "Shell"))' in read('ShepherdMobile/BoardView.swift'),'the iOS board shows the name'
 # Who the marks belong to, in the macOS app's notices.
 n=read('Shepherd/ThirdPartyNotices.txt')
 assert '\n\n========================================================================\nTrademarks\n========================================================================\n' in n

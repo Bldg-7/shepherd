@@ -20,7 +20,7 @@ flags=['xcrun','swiftc','-swift-version','6','-default-isolation','MainActor','-
 for f in ['MemberImportVisibility','NonisolatedNonsendingByDefault','InferIsolatedConformances']:flags+=['-enable-upcoming-feature',f]
 for m in maps:flags+=['-Xcc','-fmodule-map-file='+str(m)]
 link=[*map(str,objects),'-framework','AppKit','-framework','Security','-framework','UserNotifications','-framework','CoreText','-framework','QuartzCore','-lz','-lsqlite3']
-def command(name,seconds,args):return [sys.executable,str(R/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(seconds),'--natural-exit-grace','10','--log',str(o/(name+'.log')),'--',*map(str,args)]
+def command(name,seconds,args):return [sys.executable,str(R/'Tests/Support/run-stage.py'),'--timeout',str(seconds),'--natural-exit-grace','10','--log',str(o/(name+'.log')),'--',*map(str,args)]
 def stage(name,seconds,args):
  subprocess.run(command(name,seconds,args),cwd=R,env=env,check=True,timeout=seconds+40)
  r=json.loads((o/(name+'.stage.json')).read_text());assert r['naturalExitConfirmed'] and r['cleanupVerified'] and not r['signalsSent']

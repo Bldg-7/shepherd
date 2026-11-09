@@ -22,24 +22,6 @@ import Foundation
     }
 }
 
-// Test-only transport constructors: no network, SSH accounts or actual Keychain.
-public protocol HerdrTransport {}
-struct LocalHerdrTransport: HerdrTransport {
-    init() {}
-    init(socketPath: String) {}
-}
-struct StubHerdrTransport: HerdrTransport {}
-struct HostCredential { let authMethod: Machine.AuthMethod; let secretData: Data }
-struct SSHHerdrTransport: HerdrTransport {
-    let host: String
-    let port: Int
-    let username: String
-    let credential: HostCredential
-    let sessionName: String
-    let pinnedFingerprint: String?
-    let addressKind: Machine.AddressKind?
-}
-
 @main @MainActor enum MachineEditTests {
     static var checks = 0
     static func check(_ condition: @autoclosure () -> Bool, _ name: String) {
@@ -100,7 +82,7 @@ struct SSHHerdrTransport: HerdrTransport {
         store.pinHostKeyFingerprint("SHA256:stale", for: beforeHost)
         check(store.machines[0].pinnedHostKeyFingerprint == nil, "late old-host pin denied")
         rejects("stale secret read denied") { _ = try store.secret(for: beforeHost) }
-        rejects("stale transport denied before resolving credentials") { _ = try store.makeHerdrTransport(for: beforeHost) }
+        rejects("stale machine lookup denied before resolving credentials") { _ = try store.currentMachine(matching: beforeHost) }
         check(secrets.events.isEmpty, "stale calls do not access Keychain")
         let beforePin = current
         store.pinHostKeyFingerprint("SHA256:owned-b", for: current)
@@ -110,10 +92,8 @@ struct SSHHerdrTransport: HerdrTransport {
         check(store.machines[0].pinnedHostKeyFingerprint == "SHA256:owned-b", "existing host pin cannot be overwritten")
         let refreshed = try store.currentMachine(matching: beforePin)
         check(refreshed.pinnedHostKeyFingerprint == "SHA256:owned-b", "current pin refreshed for old view value")
-        let transport = try store.makeHerdrTransport(for: beforePin) as! SSHHerdrTransport
-        check(transport.pinnedFingerprint == "SHA256:owned-b", "transport uses freshly stored pin")
-        check(transport.host == current.hostname && transport.credential.secretData == originalSecret, "transport uses expected endpoint and saved credential")
-        check(transport.addressKind == nil, "a machine added by hand has no address kind")
+        check(refreshed.hostname == current.hostname && (try? store.secret(for: refreshed)) == originalSecret, "current endpoint and saved credential")
+        check(refreshed.addressKind == nil, "a machine added by hand has no address kind")
 
         for field in ["username", "session", "port"] {
             let old = current; draft = current
@@ -167,11 +147,8 @@ struct SSHHerdrTransport: HerdrTransport {
         try store.updateMachine(current, replacing: current, replacementSecret: Data("synthetic-another-key".utf8)); current = store.machines[0]
         check(current.authMethod == beforeSameMethod.authMethod && current.connectionIdentity != beforeSameMethod.connectionIdentity, "same-method key replacement also reconnects")
         secrets.failRead = true
-        rejects("Keychain read failure is not a stub transport") { _ = try store.makeHerdrTransport(for: current) }
+        rejects("Keychain read failure is surfaced") { _ = try store.secret(for: current) }
         secrets.failRead = false
-        let kept = secrets.values.removeValue(forKey: current.keychainTag)
-        rejects("missing credential is not a stub transport") { _ = try store.makeHerdrTransport(for: current) }
-        secrets.values[current.keychainTag] = kept
 
         var local = current; local.isLocal = true
         rejects("local identity edit denied") { try store.updateMachine(local, replacing: current) }
@@ -186,17 +163,17 @@ struct SSHHerdrTransport: HerdrTransport {
         check(store.machines.map(\.id) == [second.id] && secrets.values[second.keychainTag] != nil, "other machines and credentials retained")
         rejects("removed machine cannot be resurrected by old editor") { try store.updateMachine(current, replacing: current) }
 
-        // A Mac paired by QR code (SHPHRD-77): its address kind reaches the
-        // transport, and a later scan moves its address without touching
-        // the pin or the credential.
+        // A Mac paired by QR code (SHPHRD-77): its address kind is kept, and
+        // a later scan moves its address without touching the pin or the
+        // credential.
         var paired = Machine(id: UUID(), displayName: "Studio", hostname: "studio.local", username: "minsu",
                              authMethod: .secureEnclaveKey, addressKind: .localName)
         paired.pinnedHostKeyFingerprint = "SHA256:studio"
         try store.addMachine(paired, privateKey: Data("synthetic-device-key".utf8))
-        let pairedTransport = try store.makeHerdrTransport(for: paired) as! SSHHerdrTransport
-        check(pairedTransport.addressKind == .localName && pairedTransport.host == "studio.local"
-              && pairedTransport.credential.authMethod == .secureEnclaveKey && pairedTransport.pinnedFingerprint == "SHA256:studio",
-              "a paired Mac's transport gets its address kind, key and pin")
+        let added = try store.currentMachine(matching: paired)
+        check(added.addressKind == .localName && added.hostname == "studio.local" && added.authMethod == .secureEnclaveKey
+              && added.pinnedHostKeyFingerprint == "SHA256:studio" && (try? store.secret(for: added)) == Data("synthetic-device-key".utf8),
+              "a paired Mac keeps its address kind, key and pin")
         secrets.events = []
         try store.updatePairedAddress(of: paired, hostname: " 100.101.102.103 ", addressKind: .tailscaleIPv4)
         let moved = store.machines.first { $0.id == paired.id }!

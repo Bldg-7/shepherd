@@ -1,12 +1,6 @@
 import Foundation
 import ShepherdKit
 
-// These stand-ins exercise only the exact extracted fixture-routing predicate.
-// They do not qualify the real fixture's path/marker/ownership validation.
-@MainActor enum HcMigrationConfiguration { static var requested = false }
-@MainActor enum OwnedOperatorFixture { static var configuration: Int? }
-@MainActor enum ShepherdBrowserFeature { static var isAvailable = false }
-
 private actor EntryFailureState {
     private var starts = 0
     private var closes = 0
@@ -41,25 +35,6 @@ private nonisolated final class EntryFailureTransport: CoreByteTransport {
         guard value else { throw NSError(domain: name, code: 1) }; checks += 1
     }
     static func main() async throws {
-        for hcFixture in [false, true] {
-            for owned in [false, true] {
-                for browser in [false, true] {
-                    HcMigrationConfiguration.requested = hcFixture
-                    OwnedOperatorFixture.configuration = owned ? 1 : nil
-                    ShepherdBrowserFeature.isAvailable = browser
-                    #if DEBUG && SHEPHERD_LEGACY_FIXTURES
-                    let expected = !hcFixture && (owned || browser)
-                    #else
-                    let expected = false
-                    #endif
-                    try check(ShepherdLegacyFixtureRouting.enabled == expected, "exact fixture routing predicate")
-                }
-            }
-        }
-        HcMigrationConfiguration.requested = false
-        OwnedOperatorFixture.configuration = nil
-        ShepherdBrowserFeature.isAvailable = false
-        try check(!ShepherdLegacyFixtureRouting.enabled, "ordinary entry never enables legacy")
         let root = URL(fileURLWithPath: CommandLine.arguments[1])
         let domain = "com.bldg-7.shepherd.default-entry-test." + UUID().uuidString
         let defaults = UserDefaults(suiteName: domain)!
@@ -78,11 +53,10 @@ private nonisolated final class EntryFailureTransport: CoreByteTransport {
             try check(owner.model == nil && owner.identity == nil && owner.message != nil, "failure has no live or substitute model")
             let state = await transport.state.snapshot()
             try check(state.0 == 1 && state.1 == 1, "one hc attempt, closed, no transport replay")
-            try check(!ShepherdLegacyFixtureRouting.enabled, "hc failure cannot select legacy")
             try check(secrets.accesses == 0, "local failure does not read credentials")
         }
         await owner.close()
         try check(owner.phase == .idle && owner.model == nil, "failed owner can retire without starting anything")
-        print("PASS \(checks) default hc fixture-routing/failure checks; no real core, network, CLI, Keychain or GUI")
+        print("PASS \(checks) default hc failure checks; no real core, network, CLI, Keychain or GUI")
     }
 }

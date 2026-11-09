@@ -87,7 +87,7 @@ def main():
     args=parser.parse_args()
     try:
         result={**check_hc_payload(args.app),**inspect_binary(args.app),'passed':True,
-                'legacyCodeDependenciesRetired':False,'installedAppOrServiceChanged':False}
+                'legacyCodeDependenciesRetired':True,'installedAppOrServiceChanged':False}
     except (BundlePolicyFailure,OSError) as error:
         parser.exit(1,'error: '+str(error)+'\n')
     if args.output: args.output.write_text(json.dumps(result,indent=2))

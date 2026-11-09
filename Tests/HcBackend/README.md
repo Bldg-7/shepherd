@@ -4,12 +4,13 @@ Default macOS Debug/Release source entry now uses hc through the shared
 `ShepherdHcContent → HcRootView` composition; missing/failed hc never selects
 legacy. See [source cutover boundary](../../docs/hc-default-backend-cutover.md).
 This is not installed-app deployment or completed service/release qualification.
-The [Release payload retirement](RELEASE-PAYLOAD-README.md) additionally excludes
-browser/runtime/proxy helper payloads while retaining explicit fixtures and required
-archive/SSH/crypto attribution. The [fixed code/build cleanup](CODE-CLEANUP-README.md)
-now partitions executable legacy SDK/UI/runtime from **all ordinary Debug/Release
-configurations and actions**, including CLI Release builds. Historical
-[CEF build-input retirement](BROWSER-RETIREMENT-README.md) evidence remains preserved.
+The [Release payload retirement](RELEASE-PAYLOAD-README.md) and the
+[fixed code/build cleanup](CODE-CLEANUP-README.md) record the earlier stages. The
+nonshipping Shepherd Legacy Fixtures app/scheme, the `ShepherdLegacyFixtures` SDK
+target, the legacy herdr UI/client/transports and the deferred browser (CEF),
+Node agent runtime, credential broker and app-side capture service were later
+deleted outright. `product_build_policy.py` and `hc_release_bundle.py` keep them
+from coming back into the project or the Release bundle.
 
 The app backend moves from legacy herdr (`HerdrClient` + `herdr terminal attach`
 over an SSH PTY) to hc (`CoreRPCConnection` + `terminal.attach` framed streams).
@@ -492,9 +493,9 @@ are refreshed from current store state before applying to the screen.
 The hc release now ignores persisted browser opt-in and refuses re-enabling it;
 normal startup/quit hooks cannot revive browser/injection/legacy endpoints.
 Preferences/profiles are preserved, old sessions are not adopted or terminated,
-and the new root explains the retirement. Only explicitly isolated DEBUG legacy
-browser fixtures can exercise the old browser feature. This does not claim that
-external CLIs' inherited hooks were edited or removed.
+and the new root explains the retirement. The old browser implementation and its
+DEBUG fixtures have since been deleted. This does not claim that external CLIs'
+inherited hooks were edited or removed.
 
 `/private/tmp/hc-screen-app.p3gksodb` passes 11 actual-app checks: live OSC8 file
 link in real SwiftTerm, escaped Finder-path bytes arriving in the inert owned

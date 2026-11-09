@@ -54,7 +54,7 @@ for name in ['claude','codex','pi']:
         label=name+option;log=out/(label+'.log')
         command=['/usr/bin/sandbox-exec','-f',str(profile),*base,option]
         print(label+': start',flush=True)
-        code=subprocess.run([sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout','20','--natural-exit-grace','5',
+        code=subprocess.run([sys.executable,str(ROOT/'Tests/Support/run-stage.py'),'--timeout','20','--natural-exit-grace','5',
             '--log',str(log),'--',*command],cwd=work,env=env,timeout=50).returncode
         record=json.loads(log.with_suffix('.stage.json').read_text())
         ok=code==0 and record['naturalExitConfirmed'] and not record['signalsSent'] and record['cleanupVerified']

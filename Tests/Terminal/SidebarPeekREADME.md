@@ -15,8 +15,8 @@ even before a queued collapse update arrives. Tests include automatic-expanded, 
 native close → one-button reopen regression. macOS sizing is min280/ideal360/
 max480pt; native fullscreen automatic sizing is capped at360pt rather than
 using the standard sidebar fraction to shrink the hover drawer. Explicit divider
-resizing still works. Mobile retains its previous220/280/360pt sizing. Actual production ContentView/board/terminal + owned Herdr was
-also tested in a separate whole-app fullscreen window, never toggling the pin
+resizing still works. Mobile retains its previous220/280/360pt sizing. The whole app (board, terminal and owned herdr, before the hc migration) was
+also tested in a separate fullscreen window, never toggling the pin
 button before the first mouse hover; see build/sidebar-production-v4 evidence.
 
 In actual fullscreen the hover drawer came up 140pt wide, half the 280pt
@@ -47,7 +47,7 @@ narrowing a pinned sidebar until it closes. Native hover/reveal never grants it.
 **The actual detail is an HSplitView, not a directly hosted terminal.** Its
 children create native hosting boundaries which reapply inherited sidebar safe
 areas. The outer-only fix passed a flat-view GUI test but failed this real layout
-(1714→1426pt). Each terminal/preview/browser child now uses production
+(1714→1426pt). Each terminal/preview child now uses production
 `WorkspaceSidebarDetailLayout`, driven by the window's explicit pin environment.
 A second failure was found with two HSplitView children: its native delegate
 redistributes pane widths according to inherited safe area even if children

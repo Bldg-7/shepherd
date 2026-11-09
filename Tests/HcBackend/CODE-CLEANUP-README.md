@@ -13,18 +13,21 @@ Installation/handover, signing/notarization and physical/device/OS-delivery
 qualification were separately declared before this batch and are not silently
 included in a code-cleanup verdict.
 
-## 1. SDK source partition
+> **Later change.** The fixture partition described in this batch no longer
+> exists: the `Shepherd Legacy Fixtures` app/scheme, the `ShepherdLegacyFixtures`
+> SDK target and `legacy-fixture-sources.json` were deleted along with the legacy
+> herdr sources, the CEF browser, the Node agent runtime and the app-side capture
+> service. Sections 1 and 2 describe the current boundary; the evidence sections
+> below are this batch's historical receipts.
 
-`ShepherdKit/Package.swift` gives the normal target an explicit exclusion list
-and `ShepherdLegacyFixtures` an explicit, disjoint source list over that same
-historical directory. There is no duplicate source copy, runtime backend switch,
-`canImport`-selected fallback, or dependency from the normal SDK to the fixture.
-The reviewed roots are in `legacy-fixture-sources.json`.
+## 1. SDK
 
-The old typed RPC client, socket/SSH transports, request/subscription wire types,
-monitor/scheduler, machine setup and legacy terminal attach are fixture-only.
-Normal source lists and SDK objects must independently exclude them; inspecting
-only the final executable after dead stripping is insufficient.
+`ShepherdKit/Package.swift` has one target. The old typed RPC client,
+socket/SSH transports, request/subscription wire types, monitor/scheduler,
+machine setup and legacy terminal attach are deleted, not partitioned.
+`product_build_policy.check_sdk_boundary` rejects a reintroduced fixture
+target/source set, and the archive gate's executable-legacy symbol check runs on
+the Release `ShepherdKit.o`.
 
 Shared presentation/persistence models, bounded archive line protocols/readers,
 pinned SSH credentials/keys, local command execution, shell quoting, notifications,
@@ -37,28 +40,23 @@ The terminal's existing selection-preserving renderer protocol/conformance is
 shared independently of the historical terminal view model. hc uses the same
 native terminal implementation, not a substituted renderer or new UI.
 
-## 2. Native product / fixture partition
+## 2. Native products
 
 | Product | SDK | Build behavior |
 | --- | --- | --- |
-| Ordinary `Shepherd` | `ShepherdKit` | hc only for normal Debug/Release run/test/build/archive; even `-configuration Release build` selects no fixture root |
-| `Shepherd Mobile` | `ShepherdKit` | hc screen/input/cache/pairing/archive history; no old live board/conversation sources |
-| `Shepherd Legacy Fixtures` | `ShepherdKit` + `ShepherdLegacyFixtures` | explicit separate application/scheme; validated isolated launch required; distinct bundle/module identity; `SKIP_INSTALL=YES`; no archive/profile roots |
+| `Shepherd` | `ShepherdKit` | hc only for Debug/Release run/test/build/archive |
+| `Shepherd Mobile` | `ShepherdKit` | hc screen/input/cache/pairing/archive history |
 
-The normal application has neither deferred Copy Files phases nor Node/credits
-resource references, and does not link browser-only X509/NIOSSL/HTTP/WebSocket
-products. Normal Debug **and** Release compile only the unavailable browser ABI.
-Real CEF additionally requires the explicit fixture compile flag. Preserved
-capture management/data types cannot provide the fixture-only injected-launch
-conformance in the normal app. Plain CLI argument mapping is unchanged.
+The project has only these two targets and their two schemes. The macOS app has
+no Copy Files phase or Node/credits resource references, and does not link the
+browser-only X509/NIOSSL/HTTP/WebSocket products.
 
-`product_build_policy.py` fails closed on configuration/action/product/source
-reintroductions. Its negative tests mutate each normal configuration, fixture
-identity/install policy, scheme roots and framework/resource edges.
-`hc_release_bundle.py` rejects retired payloads, CEF and executable-legacy SDK
-symbols; the exact archive gate additionally checks per-slice SDK compiler source
-lists, real object/link inputs, dSYM/UUID and licenses. Historical attribution
-remains frozen rather than being relabeled as shipped implementation.
+`product_build_policy.py` fails closed when another target or scheme, a target
+dependency, a retired package product, a CEF/fixture build setting, a Copy Files
+phase or a retired resource payload comes back. `hc_release_bundle.py` rejects
+retired payloads, CEF and executable-legacy SDK symbols; the exact archive gate
+(`Tests/Notices/run-notices-tests.py --profile hc --app --products`) additionally
+checks real object/link inputs, retired built products, dSYM/UUID and licenses.
 
 ## Evidence and boundaries
 

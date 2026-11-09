@@ -14,11 +14,11 @@ if bundle.exists():shutil.copytree(bundle,out/bundle.name)
 kit='ShepherdKit/Sources/ShepherdKit/'
 models=[kit+'Resources.swift',kit+'Machines/Machine.swift',kit+'Agents/AgentKind.swift']+[kit+'HerdrKit/Models/'+n for n in ['JSONValue.swift','AgentModels.swift','AgentLaunchModels.swift','AgentTitleDisplay.swift','TabModels.swift','HerdrMachine.swift']]
 sources=['Shepherd/Terminal/HerdrItemDrag.swift','Shepherd/Terminal/SelectionKeepingTerminal.swift','Shepherd/Terminal/TerminalHostView.swift','Shepherd/Terminal/TerminalFileGesture.swift','Shepherd/Terminal/TerminalWebLink.swift','Shepherd/FilePreview/TerminalFileHit.swift','Shepherd/FilePreview/FilePreviewLink.swift']+models+['Tests/Terminal/ItemDropTests.swift']
-checked=['Shepherd/Hosts/Views/AgentBoardView.swift','Shepherd/Terminal/AgentTerminalView.swift','Shepherd/Terminal/TabTerminalView.swift']
+checked=['Shepherd/HcBackend/HcTerminalPane.swift']
 (out/'source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in sources+checked},indent=2))
 def stage(name,seconds,args):
  log=out/(name+'.log')
- code=subprocess.run([sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(seconds),'--natural-exit-grace','10','--log',str(log),'--',*args],cwd=ROOT,env=env,timeout=seconds+40).returncode
+ code=subprocess.run([sys.executable,str(ROOT/'Tests/Support/run-stage.py'),'--timeout',str(seconds),'--natural-exit-grace','10','--log',str(log),'--',*args],cwd=ROOT,env=env,timeout=seconds+40).returncode
  v=json.loads(log.with_suffix('.stage.json').read_text());assert code==0 and v['naturalExitConfirmed'] and not v['signalsSent'] and v['cleanupVerified'],name+': '+log.read_text(errors='replace')[-3000:]
 stage('item-drop-build',150,['xcrun','swiftc','-target',platform.machine()+'-apple-macos26.6.2','-swift-version','6','-default-isolation','MainActor','-parse-as-library','-I',str(products),*sources,str(products/'SwiftTerm.o'),'-framework','AppKit','-framework','QuartzCore','-framework','CoreText','-o',str(out/'item-drop-tests')])
 stage('item-drop-tests',60,[str(out/'item-drop-tests')])
@@ -27,22 +27,10 @@ assert 'item drop checks:' in log,'the tests ran to the end'
 
 # Where it is wired in.
 def read(n):return (ROOT/n).read_text()
-b=read('Shepherd/Hosts/Views/AgentBoardView.swift')
-pane=b[b.index('    private func row(for agent:'):b.index("    /// A tab's row")]
-tab=b[b.index('    private func row(for tab:'):b.index('    /// A status dot')]
-assert '.herdrItemDrag(HerdrItemDrag.Item(pane: agent, on: machine.connectionIdentity))' in pane,'a pane row drags its pane'
-assert '.herdrItemDrag(HerdrItemDrag.Item(tab: tab, on: machine.connectionIdentity))' in tab,'a tab row drags its tab'
-assert b.count('.herdrItemDrag(')==2 and '.onDrag' not in b and '.draggable(' not in b,'the rows only'
-assert '.herdrItemDrag(' not in b[b.index('enum BoardItem:'):b.index('/// The sidebar content')]
-a=read('Shepherd/Terminal/AgentTerminalView.swift')
-inner=a[a.index("/// One pane's live terminal:"):]
-assert 'self.connection = machine.connectionIdentity' in inner and 'self.herdrMachineID = pane.herdrMachine?.id' in inner
-assert ('textDrop: viewModel.connectionState == .connected\n'
-        '                ? HerdrItemDrag.terminalDrop(connection: connection, herdrMachineID: herdrMachineID) { takesItemDrag = $0 } : nil') in inner,'any live attach, whatever the File Drop setting'
-assert 'takesFileDrops' not in inner[inner.index('textDrop:'):inner.index('.itemDropHighlight(')],'not gated by File Drop'
-assert inner.count('.itemDropHighlight(takesItemDrag)')==1 and inner.index('.itemDropHighlight(takesItemDrag)')<inner.index('TerminalDropBanner(')
-assert 'HerdrItemDrag' not in a[:a.index("/// One pane's live terminal:")],'the standalone wrapper is unchanged'
-assert 'PaneTerminalView(' in read('Shepherd/Terminal/TabTerminalView.swift'),'tab mode attaches each pane through PaneTerminalView'
+# The terminal pane takes a row's drop while it is the current, connected
+# one (HcWorkspaceItemDrag, checked by Tests/HcBackend), highlighted as here.
+pane=read('Shepherd/HcBackend/HcTerminalPane.swift')
+assert 'textDrop: rowDrop)' in pane and pane.count('.itemDropHighlight(itemDropTargeted)')==1
 d=read('Shepherd/Terminal/HerdrItemDrag.swift')
 assert 'registerDataRepresentation(forTypeIdentifier: typeIdentifier, visibility: .ownProcess)' in d,'the mark is for this process only'
 assert 'registerDataRepresentation(forTypeIdentifier: UTType.utf8PlainText.identifier, visibility: .all)' in d and 'registerObject' not in d,'text as data, no NSString'

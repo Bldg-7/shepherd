@@ -62,7 +62,7 @@ assert any(p.endswith('/ShepherdKit.o') for p in objects) and any(p.endswith('/S
 records=[]
 def stage(name,seconds,cmd):
  log=out/(name+'.log')
- code=subprocess.run([sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(seconds),
+ code=subprocess.run([sys.executable,str(ROOT/'Tests/Support/run-stage.py'),'--timeout',str(seconds),
   '--natural-exit-grace','10','--log',str(log),'--',*cmd],cwd=ROOT,env=env,timeout=seconds+40).returncode
  r=json.loads(log.with_suffix('.stage.json').read_text());records.append(r)
  assert code==0 and r['naturalExitConfirmed'] and not r['signalsSent'] and r['cleanupVerified'],str(log)

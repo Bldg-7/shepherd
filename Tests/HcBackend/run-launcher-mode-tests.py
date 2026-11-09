@@ -16,13 +16,11 @@ sources = ['ShepherdKit/Sources/ShepherdKit/Resources.swift'] + [f'ShepherdKit/S
 sources += ['ShepherdKit/Sources/ShepherdKit/Agents/AgentKind.swift',
             'ShepherdKit/Sources/ShepherdKit/HerdrKit/Transport/ConnectionFailureDescription.swift',
             'Shepherd/Hosts/Views/LauncherMachineStep.swift','Shepherd/Hosts/Views/NewTabLauncher.swift',
+            'Shepherd/Hosts/Views/BoardItem.swift',
             'Tests/Terminal/LauncherTabKeyTests.swift']
-tracked = sources + ['Shepherd/Hosts/Views/AgentBoardView.swift', 'Tests/HcBackend/run-launcher-mode-tests.py']
+tracked = sources + ['Tests/HcBackend/run-launcher-mode-tests.py']
 def hashes(): return {n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in tracked}
 baseline = hashes(); (out/'source-hashes.json').write_text(json.dumps(baseline,indent=2))
-text = (ROOT/'Shepherd/Hosts/Views/AgentBoardView.swift').read_text()
-board = out/'BoardItem.swift'
-board.write_text('import SwiftUI\n'+text[text.index('enum BoardItem:'):text.index('/// The sidebar content')])
 sdk = subprocess.check_output(['xcrun','--sdk','macosx','--show-sdk-path'],env=env,text=True).strip()
 usr = Path(env['DEVELOPER_DIR'])/'Platforms/MacOSX.platform/Developer/usr'
 flags = ['xcrun','swiftc','-swift-version','6','-default-isolation','MainActor','-parse-as-library',
@@ -30,13 +28,13 @@ flags = ['xcrun','swiftc','-swift-version','6','-default-isolation','MainActor',
          '-external-plugin-path',str(usr/'lib/swift/host/plugins')+'#'+str(usr/'bin/swift-plugin-server')]
 def stage(name, seconds, command):
     log = out/(name+'.log')
-    r = subprocess.run([sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(seconds),
+    r = subprocess.run([sys.executable,str(ROOT/'Tests/Support/run-stage.py'),'--timeout',str(seconds),
         '--natural-exit-grace','10','--log',str(log),'--',*command],cwd=ROOT,env={**env,'OS_ACTIVITY_DT_MODE':'1'},timeout=seconds+40)
     record = json.loads(log.with_suffix('.stage.json').read_text())
     assert r.returncode == 0 and record['naturalExitConfirmed'] and record['cleanupVerified'] and not record['signalsSent'], str(log)
     assert 'Modifying state during view update' not in log.read_text(errors='replace'), str(log)
 exe = out/'launcher-tests'
-stage('build',120,flags+sources+[str(board),'-framework','AppKit','-o',str(exe)])
+stage('build',120,flags+sources+['-framework','AppKit','-o',str(exe)])
 stage('test',45,[str(exe)])
 assert baseline == hashes(), 'source changed during validation'
 (out/'validation.json').write_text(json.dumps({'passed':True,'actualLauncher':True,'ownedNeverShownWindows':True,

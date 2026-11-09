@@ -26,7 +26,7 @@ profile=out/'no-network.sb';profile.write_text('(version 1)\n(allow default)\n(d
 stages=[];counts=[];store_counts=[];lifecycle_counts=[];delivery_counts=[];gateway_counts=[]
 def stage(name,cmd):
     log=out/(name+'.log')
-    result=subprocess.run([sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout','120','--natural-exit-grace','5','--log',str(log),'--',*map(str,cmd)],cwd=ROOT,env=env,timeout=155)
+    result=subprocess.run([sys.executable,str(ROOT/'Tests/Support/run-stage.py'),'--timeout','120','--natural-exit-grace','5','--log',str(log),'--',*map(str,cmd)],cwd=ROOT,env=env,timeout=155)
     record=json.loads(log.with_suffix('.stage.json').read_text())
     if result.returncode or not record['naturalExitConfirmed'] or record['signalsSent'] or not record['cleanupVerified']:raise RuntimeError(str(log))
     stages.append(name)

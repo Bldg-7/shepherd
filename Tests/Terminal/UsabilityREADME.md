@@ -59,20 +59,12 @@ controller, SwiftTerm and shared terminal frame, and the whole new tab launcher,
   picked). A failure before the hand-off shows in the launcher, with Show
   Created Pane only for `CreatedPaneLaunchError`. A shell's tab is never handed
   off; the launcher closes once the tab is made.
-- Cmd-W: the File menu's Close is replaced and never closes the window. Cmd-W
-  closes the selected tab (Group by Tab on) or pane (off, or a herdr too old to
-  report tabs) after the sidebar's confirmation; Close Window stays, without a
-  shortcut. Nothing selected disables it; the launcher, Settings, the pane
-  switcher, an alert or an expanded preview over the terminal make it close
-  nothing. The board also ignores it while a name is being typed into the
-  window's title, and while its own close or failure dialog is up.
-- Cmd-P: the window's focused-scene menu replaces Print. Search uses existing
-  board snapshots, independent of sidebar filters/folded groups. Arrow keys,
-  Return, Escape/cancel. Each word matches title/agent/paneID/cwd/location.
-  Disconnected rows cannot be selected. On native sheet dismissal revalidate
-  machine connection, qualified pane ID and terminal ID against latest snapshot;
-  grouped mode selects the current containing tab, then focuses the exact pane.
-  Focus is presentation-only, with no attach recreation for an already-open tab.
+- Cmd-W: the runner checks in the source that the File menu's Close is
+  replaced by Close Window, without a shortcut, and Close Tab/Close Pane on
+  Cmd-W, both through the hc window commands; Close Window is translated.
+- Cmd-P: the pane switcher's menu item replaces Print and takes Cmd-P. Return
+  in the switcher takes the current search results, never a stale or disabled
+  highlight, and nothing when no result can be chosen.
 - Quit with a sheet up: the runner checks in the source that the Cmd-P pane
   switcher's sheet and the Settings sheet both carry
   `.presentationPreventsAppTermination(false)`. Without that modifier, Cmd-Q or

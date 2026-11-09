@@ -11,7 +11,7 @@ env,native_flags=settings(out)
 env['OS_ACTIVITY_DT_MODE']='1'
 def stage(name, seconds, command):
     log = out/(name+'.log')
-    subprocess.run([sys.executable, str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'), '--timeout', str(seconds), '--natural-exit-grace', '10', '--log', str(log), '--', *command], cwd=ROOT, env=env, timeout=seconds+40, check=True)
+    subprocess.run([sys.executable, str(ROOT/'Tests/Support/run-stage.py'), '--timeout', str(seconds), '--natural-exit-grace', '10', '--log', str(log), '--', *command], cwd=ROOT, env=env, timeout=seconds+40, check=True)
     record = json.loads(log.with_suffix('.stage.json').read_text())
     assert record['naturalExitConfirmed'] and record['cleanupVerified'] and not record['signalsSent']
     text = log.read_text(errors='replace')
@@ -19,16 +19,15 @@ def stage(name, seconds, command):
 sources = ['Shepherd/Hosts/Views/BoardSelectionEmphasis.swift', 'Tests/Terminal/BoardSelectionEmphasisTests.swift']
 stage('style-build', 90, ['xcrun','swiftc','-swift-version','6','-default-isolation','MainActor','-target',platform.machine()+'-apple-macos26.6.2','-parse-as-library',*native_flags,*sources,'-framework','AppKit','-o',str(out/'style-tests')])
 stage('style-tests', 30, [str(out/'style-tests')])
-board = (ROOT/'Shepherd/Hosts/Views/AgentBoardView.swift').read_text()
-assert '.onBoardRowActivation { activate(.pane(agent)) }\n        .boardSelectionEmphasized(selection?.id == agent.id)' in board
-assert '.onBoardRowActivation { activate(.tab(tab)) }\n        .boardSelectionEmphasized(selection?.id == tab.id)' in board
+board = (ROOT/'Shepherd/HcBackend/HcWorkspaceView.swift').read_text()
+assert '.onBoardRowActivation { selection.wrappedValue = .tab(tab.id); onActivate() }\n                                    .boardSelectionEmphasized(selection.wrappedValue == .tab(tab.id))' in board
+assert '.onBoardRowActivation { selection.wrappedValue = .pane(pane.id); onActivate() }\n                                    .boardSelectionEmphasized(selection.wrappedValue == .pane(pane.id))' in board
 assert board.count('.boardSelectionEmphasized(') == 2
 style = (ROOT/sources[0]).read_text()
 assert 'makeFirstResponder' not in style and 'controlActiveState' not in style and 'NSColor' not in style
 assert 'method_exchangeImplementations' not in style and 'object_setClass' not in style
-assert 'let windowIsKey = controlActiveState == .key' in board, 'seen state still follows the real window'
-stage('board-parse', 60, ['xcrun','swiftc','-frontend','-parse','Shepherd/Hosts/Views/AgentBoardView.swift'])
-sources += ['Shepherd/Hosts/Views/AgentBoardView.swift', 'Shepherd/Hosts/Views/BoardRowActivation.swift', 'Shepherd/ContentView.swift', 'Tests/Terminal/native_test_env.py', 'Tests/Terminal/run-board-selection-style-tests.py']
+assert 'windowIsKey: controlActiveState == .key' in (ROOT/'Shepherd/HcBackend/HcRootView.swift').read_text(), 'seen state still follows the real window'
+sources += ['Shepherd/HcBackend/HcWorkspaceView.swift', 'Shepherd/HcBackend/HcRootView.swift', 'Shepherd/Hosts/Views/BoardRowActivation.swift', 'Tests/Terminal/native_test_env.py', 'Tests/Terminal/run-board-selection-style-tests.py']
 (out/'source-hashes.json').write_text(json.dumps({s:hashlib.sha256((ROOT/s).read_bytes()).hexdigest() for s in sources},indent=2))
 (out/'validation.json').write_text(json.dumps({'passed':True,'nativeRowAppearance':True,'lightDarkHighContrast':True,'focusUnchanged':True,'realSwiftUIList':True,'ownedNeverShownWindow':True,'appLaunched':False,'liveMouseInput':False},indent=2))
 print('PASS sidebar selection appearance and app wiring; keyboard and real window activity untouched')

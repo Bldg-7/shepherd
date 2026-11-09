@@ -18,7 +18,7 @@ productHashes={str(v):h(v) for v in [*objects,*maps]};(o/'product-hashes.json').
 flags=['xcrun','swiftc','-swift-version','6','-parse-as-library','-warnings-as-errors']
 for f in ['MemberImportVisibility','NonisolatedNonsendingByDefault','InferIsolatedConformances']:flags+=['-enable-upcoming-feature',f]
 def stage(name,seconds,cmd):
- log=o/(name+'.log');subprocess.run([sys.executable,str(R/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(seconds),'--natural-exit-grace','5','--log',str(log),'--',*map(str,cmd)],cwd=R,env=env,check=True,timeout=seconds+20)
+ log=o/(name+'.log');subprocess.run([sys.executable,str(R/'Tests/Support/run-stage.py'),'--timeout',str(seconds),'--natural-exit-grace','5','--log',str(log),'--',*map(str,cmd)],cwd=R,env=env,check=True,timeout=seconds+20)
  r=json.loads(log.with_suffix('.stage.json').read_text());assert r['naturalExitConfirmed'] and r['cleanupVerified'] and not r['signalsSent']
 module=o/'module/AgentProxyProtocol.swiftmodule';obj=o/'module/AgentProxyProtocol.o'
 stage('protocol-build',90,[*flags,'-whole-module-optimization','-emit-module','-emit-object','-module-name','AgentProxyProtocol',*protocol,'-emit-module-path',module,'-o',obj])

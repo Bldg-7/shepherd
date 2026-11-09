@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Offline hc packaging guards; synthetic layout is not binary/release qualification."""
 from pathlib import Path
-import importlib.util, json, os, subprocess, tempfile, unittest
+import importlib.util, os, subprocess, tempfile, unittest
 from unittest.mock import patch
 from hc_release_bundle import check_hc_payload, inspect_binary, check_no_cef_symbols, BundlePolicyFailure
 ROOT=Path(__file__).resolve().parents[2]
@@ -55,35 +55,18 @@ class ReleaseBundlePolicyTests(unittest.TestCase):
         with patch('hc_release_bundle.subprocess.run',return_value=subprocess.CompletedProcess([],1,'','invalid')):
             with self.assertRaisesRegex(BundlePolicyFailure,'cannot inspect'):
                 check_no_cef_symbols(self.root/'fixture')
-    def test_unavailable_interface_symbols_allowed(self):
-        with patch('hc_release_bundle.subprocess.run',return_value=subprocess.CompletedProcess([],0,'_OBJC_CLASS_$_SHBEngine\n','')):
-            check_no_cef_symbols(self.root/'fixture')
-    def test_cef_build_settings_reintroduction_rejected(self):
-        for name,value in [('HEADER_SEARCH_PATHS[sdk=macosx*]','$(SRCROOT)/Vendor/CEF/out'),
-                           ('OTHER_LDFLAGS','-lcef_dll_wrapper'),('SHEPHERD_CEF_ROOT','fixture')]:
-            data={'objects':{'000000000000000112000000':{'buildSettings':{name:value}},
-                             '000000000000000100000000':{'dependencies':[]}}}
-            with self.subTest(setting=name), patch.object(notices.subprocess,'run',
-                    return_value=subprocess.CompletedProcess([],0,json.dumps(data),'')):
-                with self.assertRaisesRegex(notices.NoticeFailure,'CEF build input'):
-                    notices.check_hc_browser_build_inputs()
-    def test_unconditional_forwarder_target_rejected(self):
-        data={'objects':{'000000000000000112000000':{'buildSettings':{}},
-                         '000000000000000100000000':{'dependencies':['fixture-dep']},
-                         'fixture-dep':{'target':'A9E100000000000000000060'}}}
-        with patch.object(notices.subprocess,'run',return_value=subprocess.CompletedProcess([],0,json.dumps(data),'')):
-            with self.assertRaisesRegex(notices.NoticeFailure,'unconditional capture forwarder'):
-                notices.check_hc_browser_build_inputs()
-    def test_hc_source_profile_and_reviewed_pin_delta(self):
-        inv=notices.check_source(hc_product=True)
-        with self.assertRaisesRegex(notices.NoticeFailure,'Package.resolved drift'):
-            notices.check_dependency_graph(inv,hc_product=False)
-        self.assertEqual(notices.HC_REMOVED_REMOTE_PINS,{'swiftterm','swift-argument-parser'})
+    def test_source_profile_and_reviewed_pins(self):
+        inv=notices.check_source()
+        for name in ['swiftterm','swift-argument-parser','swift-certificates']:
+            self.assertNotIn(name,notices.REMOTE_REVISIONS)
+        with patch.dict(notices.REMOTE_REVISIONS,{'swift-certificates':'f4cd9e78a1ec209b27e426a5f5c693675f95e75a'}):
+            with self.assertRaisesRegex(notices.NoticeFailure,'Package.resolved drift'):
+                notices.check_dependency_graph(inv)
     def test_archive_gate_has_no_named_empty_success_path(self):
         inv=notices.load_inventory()
         for roots in [[self.root],[self.root,self.root/'fake.xcarchive']]:
             with self.assertRaises(notices.NoticeFailure):
-                notices.check_products(inv,self.app,roots,hc_product=True)
+                notices.check_products(inv,self.app,roots)
     def test_hc_profile_does_not_remove_signature_or_publish_gates(self):
         script=(ROOT/'scripts/release-macos.sh').read_text()
         self.assertIn('hc_release_bundle.py',script)

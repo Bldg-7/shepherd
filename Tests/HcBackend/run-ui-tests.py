@@ -114,12 +114,12 @@ try:
         executable_hashes=json.loads((receipt.parent/'executable-hashes.json').read_text())
         assert digest(sidecar)==executable_hashes[str(sidecar)],'sidecar executable changed'
         sidecar_log=out/'remote-sidecar.log'
-        remote_controller=subprocess.Popen([sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout','400','--natural-exit-grace','10','--log',str(sidecar_log),'--',*sandbox,str(sidecar),str(binary),str(remote_root),str(remote_port),'360'],env=env,cwd=ROOT)
+        remote_controller=subprocess.Popen([sys.executable,str(ROOT/'Tests/Support/run-stage.py'),'--timeout','400','--natural-exit-grace','10','--log',str(sidecar_log),'--',*sandbox,str(sidecar),str(binary),str(remote_root),str(remote_port),'360'],env=env,cwd=ROOT)
         ready_end=time.monotonic()+15
         while not (remote_root/'remote-ready.json').exists():
             assert remote_controller.poll() is None and time.monotonic()<ready_end,'private SSH sidecar readiness failed'
             time.sleep(.025)
-    command=[sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(stage_seconds),'--natural-exit-grace','10','--log',str(log),'--','/usr/bin/open','-n','-W','--env','SHEPHERD_OWNED_UI_LAUNCH_ROOT='+str(out),'--env','HOME='+str(out/'home'),'--env','CFFIXED_USER_HOME='+str(out/'home'),'--env','TMPDIR='+str(out/'tmp'),str(helper)]
+    command=[sys.executable,str(ROOT/'Tests/Support/run-stage.py'),'--timeout',str(stage_seconds),'--natural-exit-grace','10','--log',str(log),'--','/usr/bin/open','-n','-W','--env','SHEPHERD_OWNED_UI_LAUNCH_ROOT='+str(out),'--env','HOME='+str(out/'home'),'--env','CFFIXED_USER_HOME='+str(out/'home'),'--env','TMPDIR='+str(out/'tmp'),str(helper)]
     child=subprocess.Popen(command,env=env,cwd=out)
     announced=False;focus_announced=False;focus_requested=None;deadline=time.monotonic()+stage_seconds+40
     try:

@@ -59,12 +59,12 @@ Where a test must show that nothing connected, it opens its own listener on
 - SSH (`PairingSSHTests.swift`), linked with the build's Citadel and
   swift-nio-ssh: the device key as swift-nio-ssh uses it; the key offered once,
   through Citadel's custom authentication; the QR code's host key pin against
-  `HostKeyFingerprint.compute`; `SSHHerdrTransport`, given an address kind,
-  refusing an address outside the kind's range before it connects (127.0.0.1,
-  100.100.100.100, `localhost`, a name resolving to loopback or a public
-  address, a slow lookup); `MachineStore.updatePairedAddress`.
-- Static checks: the transport looks the address up before it reads the
-  credential or connects, and connects to the address it found.
+  `HostKeyFingerprint.compute`; the text a host key mismatch on a local
+  network shows.
+- Static checks: the hc connection factory (`MachineStore.makeHcConnection`)
+  looks a paired Mac's address up by its kind before it reads the credential
+  or connects, and connects to the address it found. (Its refusal of a paired
+  loopback address at run time is in `Tests/CoreProtocol`.)
 
 ## The Mac's side (`run-mac-tests.py`)
 
@@ -105,6 +105,9 @@ Where a test must show that nothing connected, it opens its own listener on
   port, and LocalAuthentication used only in `PairingApproval.swift`.
   Also, that Settings tells the iPhone and iPad page whether the window shows
   This Mac, and that the Add Device page uses that value.
+- Local only: `LocalOnlyAddition.device`'s rule on its own — allowed on This
+  Mac, refused with its reason on an SSH host, a paired Mac, an SSH machine set
+  up like This Mac, and with no machine shown.
 
 ## The device's side (`run-device-tests.py`)
 

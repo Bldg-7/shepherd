@@ -1,10 +1,17 @@
 import SwiftUI
 import AppKit
 
-// Runtime launch/authentication is not exercised by the window's size.
-public nonisolated enum AgentKind: String, Sendable {
-    case claude, codex, pi
-    var supportsLegacySessionInspection: Bool { self != .pi }
+/// A name being typed into the window's title, as the app's rename session
+/// holds it; only the field's room in the toolbar is measured here.
+@MainActor final class RenameProbe: TitleRenameEditing {
+    let id = UUID()
+    let startText = "build"
+    let prompt = "Pane name"
+    var text = "build"
+    let isTab = false
+    private(set) var isEnded = false
+    weak var keyboardBefore: AnyObject?
+    func end() -> Bool { guard !isEnded else { return false }; isEnded = true; return true }
 }
 
 /// Where the terminal and the panel end up, found by identifier.
@@ -15,25 +22,23 @@ struct MarkerView: NSViewRepresentable {
     func updateNSView(_ view: Marker, context: Context) {}
 }
 
-enum Panel { case none, preview, browser }
+enum Panel { case none, preview }
 
 @MainActor @Observable final class SizeProbe {
     var panel = Panel.none
-    var session: TitleRenameSession?
+    var session: RenameProbe?
 }
 
-/// The production split views with the detail as `ContentView` lays it out:
-/// the terminal at 320pt or more, the preview's or the browser's column
-/// beside it, the window's toolbar items over the sidebar and the detail.
+/// The production split views with the detail as `HcWorkspaceView` lays it
+/// out: the terminal at 320pt or more, the preview's column beside it, the
+/// window's toolbar items over the sidebar and the detail.
 struct SizeRoot: View {
     let probe: SizeProbe
     let sidebarState: WorkspaceSidebarState
     var body: some View {
-        let shownPreview: Bool? = probe.panel == .preview ? true : nil
-        let browserShown = probe.panel == .browser
-        // The same expression as ContentView's (the runner checks it there).
-        let detailMinimumWidth: CGFloat = 320 + (shownPreview != nil ? 1 + 320 : browserShown ? 1 + 360 : 0)
-        WorkspaceNavigationSplitView(sidebarState: sidebarState, detailMinimumWidth: detailMinimumWidth) {
+        let previewShown = probe.panel == .preview
+        // The same minimum as HcWorkspaceView's (the runner checks it there).
+        WorkspaceNavigationSplitView(sidebarState: sidebarState, detailMinimumWidth: previewShown ? 641 : 320) {
             Text(verbatim: "board")
                 .navigationSplitViewColumnWidth(min: WorkspaceSidebarMetrics.minimum, ideal: WorkspaceSidebarMetrics.preferred, max: WorkspaceSidebarMetrics.maximum)
                 .toolbar {
@@ -42,13 +47,12 @@ struct SizeRoot: View {
                     ToolbarItem { Button {} label: { Label("Go to Agent or Pane", systemImage: "rectangle.stack") } }
                 }
         } detail: {
-            WorkspaceDetailSplitView(showsPanel: shownPreview != nil || browserShown,
-                                     panelMinimum: shownPreview != nil ? 320 : 360, panelIdeal: shownPreview != nil ? 560 : 640) {
+            WorkspaceDetailSplitView(showsPanel: previewShown, panelMinimum: 320, panelIdeal: 560) {
                 MarkerView(tag: "terminal").frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
                     .modifier(WorkspaceSidebarDetailLayout())
             } panel: {
-                if shownPreview != nil || browserShown {
-                    MarkerView(tag: "panel").frame(minWidth: browserShown ? 360 : 320, maxWidth: .infinity, maxHeight: .infinity)
+                if previewShown {
+                    MarkerView(tag: "panel").frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
                         .modifier(WorkspaceSidebarDetailLayout())
                 }
             }
@@ -65,7 +69,6 @@ struct SizeRoot: View {
                     .sharedBackgroundVisibility(.hidden)
                     ToolbarSpacer(.flexible, placement: .navigation)
                 }
-                ToolbarItem(placement: .primaryAction) { Button {} label: { Label("Show Browser", systemImage: "globe") } }
                 ToolbarItem(placement: .primaryAction) { Button {} label: { Label("Show Preview", systemImage: "doc.text") } }
             }
         }
@@ -133,12 +136,11 @@ struct SizeRoot: View {
         _ = NSApplication.shared
         NSApp.setActivationPolicy(.prohibited)
         policyChecks()
-        let item = AgentSummary(json: .object(["pane_id": .string("w1:p1"), "terminal_id": .string("terminal-1"), "label": .string("build")]), on: nil)!
         var measurements: [[String: Any]] = []
 
         // Each sidebar state and panel at exactly the window's minimum.
         for pinned in [true, false] {
-            for panel in [Panel.none, .preview, .browser] {
+            for panel in [Panel.none, .preview] {
                 let probe = SizeProbe(); probe.panel = panel
                 let state = WorkspaceSidebarState()
                 let (window, host) = window(SizeRoot(probe: probe, sidebarState: state), width: 1200)
@@ -148,7 +150,7 @@ struct SizeRoot: View {
                     state.togglePin()
                     spin(until: { split(in: host.view)!.splitViewItems.first!.isCollapsed && !state.nativeSidebarIsOpen }, "the sidebar hides")
                 }
-                let detail: CGFloat = panel == .none ? 320 : panel == .preview ? 641 : 681
+                let detail: CGFloat = panel == .none ? 320 : 641
                 let width = max(480, detail + (pinned ? 280 : 0))
                 spin(until: { window.contentMinSize.width == width }, "\(pinned ? "pinned" : "hidden") \(panel): the window's minimum width becomes \(width), is \(window.contentMinSize.width)")
                 window.setContentSize(window.contentMinSize)
@@ -163,14 +165,14 @@ struct SizeRoot: View {
                 }
                 check(terminal.width == (panel == .none ? width - (pinned ? 280 : 0) : 320), "\(pinned) \(panel): the terminal keeps its 320pt minimum, is \(terminal.width)")
                 if panel != .none {
-                    check(panelFrame.width == (panel == .preview ? 320 : 360), "\(panel) keeps its minimum, is \(panelFrame.width)")
+                    check(panelFrame.width == 320, "\(panel) keeps its minimum, is \(panelFrame.width)")
                     check(panelFrame.minX == terminal.maxX + 1, "past the detail split's 1pt divider")
                 }
                 check(terminal.height == 400 && terminal.height - 2 * 7 >= 240, "the terminal keeps at least 240pt of display height below the toolbar")
                 check(window.toolbar != nil && host.view.safeAreaInsets.top >= 40, "the toolbar stays over the content")
                 let shown = window.toolbar!.items.filter { $0.view?.window === window }.count
                 // The title's place, as the field that is typed into it.
-                probe.session = TitleRenameSession(item: .pane(item))
+                probe.session = RenameProbe()
                 spin(until: { window.toolbar!.items.contains { $0.itemIdentifier.rawValue == TitleRenameToolbar.itemID && $0.minSize.width == TitleRenameToolbar.minimumWidth } }, "the rename item gets its 120...280pt range")
                 spin()
                 let field = fields(in: window.contentView!.superview!).first { $0.window === window }
@@ -195,17 +197,17 @@ struct SizeRoot: View {
             defer { window.close() }
             spin(until: { split(in: host.view) != nil && state.reservesWidth && window.contentMinSize.width == 600 }, "pinned terminal: 600pt minimum")
             let origin = window.frame.origin
-            probe.panel = .browser
-            spin(until: { window.contentLayoutRect.width == 961 }, "opening the browser grows the window to 961pt, is \(window.contentLayoutRect.width)")
+            probe.panel = .preview
+            spin(until: { window.contentLayoutRect.width == 921 }, "opening the preview grows the window to 921pt, is \(window.contentLayoutRect.width)")
             check(window.frame.origin.x == origin.x, "growing keeps the window's leading edge")
             probe.panel = .none
-            spin(until: { window.contentMinSize.width == 600 }, "closing the browser relaxes the minimum")
+            spin(until: { window.contentMinSize.width == 600 }, "closing the preview relaxes the minimum")
             spin()
-            check(window.contentLayoutRect.width == 961, "closing the browser leaves the window as wide as it was")
+            check(window.contentLayoutRect.width == 921, "closing the preview leaves the window as wide as it was")
             state.togglePin()
             spin(until: { window.contentMinSize.width == 480 }, "hiding the sidebar relaxes the minimum")
             spin()
-            check(window.contentLayoutRect.width == 961, "hiding the sidebar leaves the window as wide as it was")
+            check(window.contentLayoutRect.width == 921, "hiding the sidebar leaves the window as wide as it was")
             window.setContentSize(NSSize(width: 480, height: 400))
             spin()
             state.togglePin()
@@ -236,6 +238,6 @@ struct SizeRoot: View {
 
         try JSONSerialization.data(withJSONObject: measurements, options: [.prettyPrinted, .sortedKeys])
             .write(to: URL(fileURLWithPath: CommandLine.arguments[1]))
-        print("PASS \(checks) main window minimum size policy/geometry/grow-not-shrink/restored-hidden checks; owned never-shown windows, no app or herdr")
+        print("PASS \(checks) main window minimum size policy/geometry/grow-not-shrink/restored-hidden checks; owned never-shown windows, no app or hc")
     }
 }

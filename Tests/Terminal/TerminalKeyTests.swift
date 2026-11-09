@@ -125,21 +125,19 @@ import SwiftTerm
                 check(press(up, code: 126, arrow.union(.command)).bytes == csi("1;9A"), "\(mode): ⌘↑ is still super+↑")
                 check(press(forwardDelete, code: 117, [.function, .command]).bytes == csi("3;9~"), "\(mode): ⌘⌦ is still super+Delete")
             }
-            // Ctrl+B, which herdr's attach keeps as its prefix: the view
-            // sends what SwiftTerm makes of it, unchanged, and the app writes
-            // to the attach (HerdrAttachInput) each write that herdr takes as
-            // the prefix twice and every other one as it is. A release is
+            // Ctrl+B: the view sends what SwiftTerm makes of it, unchanged.
+            // A release is
             // sent at all only with event types (> 7 u), and a repeat is
             // reported as such only then; otherwise it is another press.
             let events = push == ">7u"
-            let ctrlB: [(name: String, ignoring: String, flags: NSEvent.ModifierFlags, repeating: Bool, sent: [UInt8], twice: Bool)] = [
-                ("⌃B", "b", .control, false, kitty ? csi("98;5u") : [0x02], true),
-                ("⌃B with Caps Lock", "b", [.control, .capsLock], false, kitty ? csi("98;69u") : [0x02], true),
-                ("⌃B repeated", "b", .control, true, kitty ? csi(events ? "98;5:2u" : "98;5u") : [0x02], !events),
-                ("⌃⌥B", "b", [.control, .option], false, kitty ? csi("98;7u") : [esc, 0x62], false),
+            let ctrlB: [(name: String, ignoring: String, flags: NSEvent.ModifierFlags, repeating: Bool, sent: [UInt8])] = [
+                ("⌃B", "b", .control, false, kitty ? csi("98;5u") : [0x02]),
+                ("⌃B with Caps Lock", "b", [.control, .capsLock], false, kitty ? csi("98;69u") : [0x02]),
+                ("⌃B repeated", "b", .control, true, kitty ? csi(events ? "98;5:2u" : "98;5u") : [0x02]),
+                ("⌃⌥B", "b", [.control, .option], false, kitty ? csi("98;7u") : [esc, 0x62]),
                 // Legacy has no ⌃⇧B of its own; with alternates (> 5 u, > 7 u) the
                 // shifted key is the ⌃⇧B event's characters, 0x02.
-                ("⌃⇧B", "B", [.control, .shift], false, kitty ? csi(push == ">1u" ? "98;6u" : "98:2;6u") : [0x02], !kitty),
+                ("⌃⇧B", "B", [.control, .shift], false, kitty ? csi(push == ">1u" ? "98;6u" : "98:2;6u") : [0x02]),
             ]
             for key in ctrlB {
                 sink.bytes = []
@@ -147,18 +145,11 @@ import SwiftTerm
                 let taken = deliver(event("\u{2}", ignoringModifiers: key.ignoring, code: 11, key.flags, in: window, repeating: key.repeating), to: window)
                 check(!taken, "\(mode): \(key.name) is no key equivalent")
                 check(sink.bytes == key.sent, "\(mode): \(key.name) sends what SwiftTerm makes of it")
-                let written = sink.writes.flatMap { HerdrAttachInput.escaped($0[...]) }
-                check(written == (key.twice ? key.sent + key.sent : key.sent), "\(mode): \(key.name) is written to the attach \(key.twice ? "twice" : "as it is")")
-                // herdr 0.8.2 and older take only the 0x02 byte as the prefix.
-                let twiceForOlder = key.twice && !kitty
-                let writtenForOlder = sink.writes.flatMap { HerdrAttachInput.escaped($0[...], takesEncodedPrefix: false) }
-                check(writtenForOlder == (twiceForOlder ? key.sent + key.sent : key.sent), "\(mode): \(key.name) is written to herdr 0.8.2's attach \(twiceForOlder ? "twice" : "as it is")")
             }
             sink.bytes = []
             sink.writes = []
             window.firstResponder?.keyUp(with: event("\u{2}", ignoringModifiers: "b", code: 11, .control, in: window, type: .keyUp))
             check(sink.bytes == (events ? csi("98;5:3u") : []), "\(mode): letting go of ⌃B sends \(events ? "its release" : "nothing")")
-            check(sink.writes.flatMap { HerdrAttachInput.escaped($0[...]) } == sink.bytes, "\(mode): ⌃B's release is written to the attach as it is")
             if let push {
                 // Auto-repeat goes through as the Home or End key's repeat:
                 // reported as such only where the program asked for event
@@ -184,7 +175,7 @@ import SwiftTerm
 
         twoTerminals()
         hostingView()
-        print("PASS \(checks) real SwiftTerm key-down checks: ⌘⌫ sends Ctrl-U in legacy and kitty keyboard modes; ⌘←/⌘→ send Home/End with the kitty keyboard on (> 1 u, > 5 u, > 7 u; repeat and Caps Lock as Home/End) and ESC b/ESC f with it off or popped; other keys unchanged; ⌃B sent as SwiftTerm sends it and its presses written twice to herdr's attach, only as 0x02 for herdr 0.8.2, its repeats (with event types), release, ⌃⌥B and kitty ⌃⇧B as they are; only the terminal with the keyboard takes ⌘←/⌘→, in a plain window and in NSHostingView; no user terminal/GUI")
+        print("PASS \(checks) real SwiftTerm key-down checks: ⌘⌫ sends Ctrl-U in legacy and kitty keyboard modes; ⌘←/⌘→ send Home/End with the kitty keyboard on (> 1 u, > 5 u, > 7 u; repeat and Caps Lock as Home/End) and ESC b/ESC f with it off or popped; other keys unchanged; ⌃B, its repeats (with event types), release, ⌃⌥B and ⌃⇧B sent as SwiftTerm sends them; only the terminal with the keyboard takes ⌘←/⌘→, in a plain window and in NSHostingView; no user terminal/GUI")
     }
 
     /// Two terminals in one window: only the one with the keyboard takes

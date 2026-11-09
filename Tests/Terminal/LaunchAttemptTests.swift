@@ -4,9 +4,9 @@ import Foundation
 // LaunchAttempt (extracted from NewTabLauncher.swift by the runner), wired as
 // NewTabLauncher wires it: its `close` is the launcher's close, which tells
 // the attempt and calls onClose; its `fail` shows the error in the launcher.
-// onClose is ContentView's: it takes down whichever launcher is up.
+// onClose is the root view's: it takes down whichever launcher is up.
 
-/// ContentView's `launcherStart`: the launcher that is up, if any.
+/// The root view's launcher state: the launcher that is up, if any.
 @MainActor final class Window {
     var launcher: Launcher?
     var onCloseCalls = 0

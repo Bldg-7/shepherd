@@ -33,8 +33,10 @@ class NoticeContentTests(unittest.TestCase):
         for block in self.inventory["verbatimBlocks"]:
             self.assertEqual(digest(block["sourcePath"]), block["sha256"])
 
-    def test_all_six_notice_blocks_are_verbatim(self):
-        for block in self.inventory["verbatimBlocks"][:6]:
+    def test_all_notice_blocks_are_verbatim(self):
+        for block in self.inventory["verbatimBlocks"]:
+            if not block["section"].endswith(" NOTICE"):
+                continue
             title = block["sourcePath"]
             expected = "\n".join(line.rstrip(" \t") for line in (ROOT / title).read_text().splitlines()).rstrip("\n")
             self.assertEqual(section(self.mac, title), expected, title)
@@ -50,8 +52,6 @@ class NoticeContentTests(unittest.TestCase):
     def test_source_header_blocks_follow_the_frozen_extraction_rules(self):
         sha = (ROOT / "build/SourcePackages/checkouts/swift-nio/Sources/CNIOSHA1/c_nio_sha1.c").read_text().splitlines()[9:38]
         self.assertEqual(section(self.mac, "build/SourcePackages/checkouts/swift-nio/Sources/CNIOSHA1/c_nio_sha1.c:10-38 (FreeBSD SHA-1)"), "\n".join(line.rstrip(" \t") for line in sha))
-        musl = (ROOT / "build/SourcePackages/checkouts/swift-certificates/Sources/X509/X509BaseTypes/TimeCalculations.swift").read_text().splitlines()[21:45]
-        self.assertEqual(section(self.mac, "build/SourcePackages/checkouts/swift-certificates/Sources/X509/X509BaseTypes/TimeCalculations.swift:22-45 (musl)"), "\n".join(line.rstrip(" \t") for line in musl))
         self.assertEqual(self.mac.count("Vendor/Citadel/Sources/CCitadelBcrypt/bcrypt.c (ISC)"), 1)
         self.assertEqual(self.mac.count("Vendor/Citadel/Sources/CCitadelBcrypt/blf.c and blf.h (BSD advertising clause)"), 1)
 
@@ -72,14 +72,6 @@ class NoticeContentTests(unittest.TestCase):
         self.assertTrue(self.mac.rstrip().endswith("hrdrhrdrhrdr is not affiliated with or endorsed by them."))
         self.assertIn("Copyright (c) 1997 Niels Provos", self.mac)
         self.assertIn("Copyright (C) 1995, 1996, 1997, and 1998 WIDE Project.", self.mac)
-        self.assertIn("Copyright © 2005-2020 Rich Felker, et al.", self.mac)
-
-    def test_cef_metadata_is_not_a_committed_credits_copy(self):
-        cef = self.inventory["cefCredits"]
-        self.assertEqual(cef["bytes"], 8679939)
-        self.assertEqual(cef["newlines"], 154598)
-        self.assertEqual(digest(cef["sourcePath"]), cef["sha256"])
-        self.assertFalse((ROOT / "ChromiumCredits.html").exists())
 
 
 if __name__ == "__main__":

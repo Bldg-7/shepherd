@@ -25,7 +25,7 @@ flags = ['xcrun','swiftc','-swift-version','6','-default-isolation','MainActor',
          '-target',platform.machine()+'-apple-macos26.6.2',*sdk_flags]
 def stage(name, command):
     log = out/(name+'.log')
-    subprocess.run([sys.executable,'-B',str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout','90',
+    subprocess.run([sys.executable,'-B',str(ROOT/'Tests/Support/run-stage.py'),'--timeout','90',
                     '--natural-exit-grace','5','--log',str(log),'--',*map(str,command)],cwd=ROOT,env=env,check=True,timeout=120)
     record = json.loads(log.with_suffix('.stage.json').read_text())
     assert record['naturalExitConfirmed'] and record['cleanupVerified'] and not record['signalsSent'], str(log)

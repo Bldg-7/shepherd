@@ -8,14 +8,12 @@ import NIOEmbedded
 // The half of pairing a Mac by QR code (SHPHRD-77) that goes through Citadel
 // and swift-nio-ssh, compiled from ShepherdKit's sources against the modules
 // an app build made: the device key as swift-nio-ssh signs and offers it,
-// the QR code's host key pin against the pin a connection takes, and
-// `SSHHerdrTransport` refusing a paired Mac's address that is out of its
-// kind's range before it connects anywhere.
+// the QR code's host key pin against the pin a connection takes, and the
+// text a host key mismatch on a local network shows. (The hc connection
+// factory's address-kind refusal is checked in Tests/CoreProtocol.)
 //
-// Nothing here connects to an SSH server. A listener of the test's own on
-// 127.0.0.1 counts connections, to show that none was attempted; the runner
-// runs this in a sandbox where nothing but loopback can be reached and no
-// name can be looked up.
+// Nothing here connects to an SSH server; the runner runs this in a sandbox
+// where nothing but loopback can be reached and no name can be looked up.
 
 nonisolated(unsafe) var failures = 0
 nonisolated(unsafe) var checks = 0
@@ -28,103 +26,10 @@ nonisolated func expect(_ condition: Bool, _ message: @autoclosure () -> String,
     }
 }
 
-func thrown(_ work: () async throws -> Void) async -> (any Error)? {
-    do {
-        try await work()
-        return nil
-    } catch {
-        return error
-    }
-}
-
 func blob(_ key: NIOSSHPublicKey) -> Data {
     var buffer = ByteBuffer()
     _ = key.write(to: &buffer)
     return Data(buffer.readableBytesView)
-}
-
-nonisolated final class FakeResolver: PairingNameResolving, @unchecked Sendable {
-    private let lock = NSLock()
-    private let answers: [String: [PairingIPv4]]
-    private let delay: Duration?
-    private var asked: [String] = []
-
-    init(_ answers: [String: [PairingIPv4]], delay: Duration? = nil) {
-        self.answers = answers
-        self.delay = delay
-    }
-
-    var lookups: [String] {
-        lock.withLock { asked }
-    }
-
-    struct NotFound: Error {}
-
-    func ipv4Addresses(for name: String) async throws -> [PairingIPv4] {
-        lock.withLock { asked.append(name) }
-        if let delay { try await Task.sleep(for: delay) }
-        guard let addresses = answers[name] else { throw NotFound() }
-        return addresses
-    }
-}
-
-/// Accepts connections on 127.0.0.1 and counts them, closing each at once.
-nonisolated final class Tripwire: @unchecked Sendable {
-    private let lock = NSLock()
-    private var accepted = 0
-    let port: Int
-
-    init() {
-        let listening = Darwin.socket(AF_INET, SOCK_STREAM, 0)
-        precondition(listening >= 0)
-        var address = sockaddr_in()
-        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
-        address.sin_family = sa_family_t(AF_INET)
-        address.sin_port = 0
-        address.sin_addr.s_addr = UInt32(0x7F00_0001).bigEndian
-        let bound = withUnsafePointer(to: &address) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { Darwin.bind(listening, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
-        }
-        precondition(bound == 0 && listen(listening, 8) == 0)
-        var length = socklen_t(MemoryLayout<sockaddr_in>.size)
-        _ = withUnsafeMutablePointer(to: &address) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(listening, $0, &length) }
-        }
-        port = Int(UInt16(bigEndian: address.sin_port))
-        Thread.detachNewThread { [self] in
-            while true {
-                let connection = accept(listening, nil, nil)
-                if connection < 0 { return }
-                lock.withLock { accepted += 1 }
-                close(connection)
-            }
-        }
-    }
-
-    var count: Int {
-        lock.withLock { accepted }
-    }
-
-    /// Connects to the listener with a plain socket, to show it counts.
-    func knock() -> Bool {
-        let client = Darwin.socket(AF_INET, SOCK_STREAM, 0)
-        defer { close(client) }
-        var address = sockaddr_in()
-        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
-        address.sin_family = sa_family_t(AF_INET)
-        address.sin_port = UInt16(port).bigEndian
-        address.sin_addr.s_addr = UInt32(0x7F00_0001).bigEndian
-        return withUnsafePointer(to: &address) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(client, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
-        } == 0
-    }
-}
-
-@MainActor final class MemorySecrets: MachineSecretStore {
-    var values: [String: Data] = [:]
-    func saveSecret(_ data: Data, tag: String) throws { values[tag] = data }
-    func loadSecret(tag: String) throws -> Data? { values[tag] }
-    func deleteSecret(tag: String) throws { values.removeValue(forKey: tag) }
 }
 
 // MARK: - The device key in swift-nio-ssh
@@ -202,90 +107,9 @@ func testHostKeyPin() throws {
     expect(try PairingPayload.HostKey(publicKeyBlob: blob(NIOSSHPrivateKey(p256Key: .init()).publicKey)).algorithm == .ecdsaP256, "P-256")
 }
 
-// MARK: - The transport
+// MARK: - What a host key mismatch on a local network says
 
-func testTransport() async throws {
-    let tripwire = Tripwire()
-    expect(tripwire.knock(), "the listener takes a plain connection")
-    try await Task.sleep(for: .milliseconds(200))
-    expect(tripwire.count == 1, "and counts it")
-    let credential = HostCredential(authMethod: .secureEnclaveKey, secretData: SecureEnclaveSSHKey.makeSoftware().storedRepresentation)
-
-    func connect(_ host: String, _ kind: Machine.AddressKind, resolver: FakeResolver, timeout: Duration = .seconds(5)) async -> (any Error)? {
-        let transport = SSHHerdrTransport(host: host, port: tripwire.port, username: "minsu", credential: credential,
-                                          pinnedFingerprint: "SHA256:pinned", addressKind: kind,
-                                          addressResolver: PairingAddressResolver(resolver: resolver, timeout: timeout))
-        return await thrown { try await transport.connect() }
-    }
-
-    let resolver = FakeResolver([
-        "studio.local": [PairingIPv4(127, 0, 0, 1), PairingIPv4(203, 0, 113, 5)],
-        "studio.tail1234.ts.net": [PairingIPv4(203, 0, 113, 5), PairingIPv4(127, 0, 0, 1)]
-    ])
-    var error = await connect("127.0.0.1", .privateIPv4, resolver: resolver)
-    expect(error as? PairingAddressError == .invalid(.privateIPv4, "127.0.0.1"), "loopback isn't a private address: \(String(describing: error))")
-    error = await connect("100.100.100.100", .tailscaleIPv4, resolver: resolver)
-    expect(error as? PairingAddressError == .invalid(.tailscaleIPv4, "100.100.100.100"), "quad-100 isn't a node: \(String(describing: error))")
-    error = await connect("localhost", .localName, resolver: resolver)
-    expect(error as? PairingAddressError == .invalid(.localName, "localhost"), "localhost isn't a .local name: \(String(describing: error))")
-    error = await connect("Studio.local", .localName, resolver: resolver)
-    expect(error is PairingAddressError, "capitals: \(String(describing: error))")
-    expect(resolver.lookups.isEmpty, "nothing looked up for values the kind refuses")
-
-    error = await connect("studio.local", .localName, resolver: resolver)
-    if case PairingAddressResolutionError.noAddressInRange(.localName, "studio.local", let found)? = error {
-        expect(found.count == 2, "a .local name that resolves to loopback and a public address is refused")
-    } else {
-        expect(false, ".local out of range: \(String(describing: error))")
-    }
-    error = await connect("studio.tail1234.ts.net", .tailscaleMagicDNS, resolver: resolver)
-    if case PairingAddressResolutionError.noAddressInRange(.tailscaleMagicDNS, _, _)? = error {
-        expect(error.map(connectionFailureDescription)?.contains("Tailscale") == true, "the board's text: \(error.map(connectionFailureDescription) ?? "")")
-    } else {
-        expect(false, "MagicDNS to a public address: \(String(describing: error))")
-    }
-    expect(resolver.lookups == ["studio.local", "studio.tail1234.ts.net"], "each name looked up once: \(resolver.lookups)")
-
-    let slow = FakeResolver(["studio.local": [PairingIPv4(127, 0, 0, 1)]], delay: .seconds(5))
-    error = await connect("studio.local", .localName, resolver: slow, timeout: .milliseconds(200))
-    if case PairingAddressResolutionError.timedOut("studio.local")? = error {
-        expect(true, "a lookup that takes too long")
-    } else {
-        expect(false, "timeout: \(String(describing: error))")
-    }
-
-    // The production path: a saved machine with an address kind, through
-    // MachineStore and the system resolver, which an address never reaches.
-    let domain = "shepherd.pairing.tests." + UUID().uuidString
-    let defaults = UserDefaults(suiteName: domain)!
-    defer { defaults.removePersistentDomain(forName: domain) }
-    let store = MachineStore(defaults: defaults, keychain: MemorySecrets())
-    var machine = Machine(displayName: "Studio", hostname: "127.0.0.1", port: tripwire.port, username: "minsu",
-                          authMethod: .secureEnclaveKey, addressKind: .privateIPv4)
-    machine.pinnedHostKeyFingerprint = "SHA256:pinned"
-    try store.addMachine(machine, privateKey: SecureEnclaveSSHKey.makeSoftware().storedRepresentation)
-    let transport = try store.makeHerdrTransport(for: machine)
-    error = await thrown { try await transport.connect() }
-    expect(error as? PairingAddressError == .invalid(.privateIPv4, "127.0.0.1"), "a saved machine's kind holds: \(String(describing: error))")
-    expect(error.map(connectionFailureDescription)?.contains("127.0.0.1") == true, "the board names the address")
-
-    // The address moves with a later scan of the same Mac's code.
-    let saved = store.machines[0]
-    try store.updatePairedAddress(of: saved, hostname: "100.101.102.103", addressKind: .tailscaleIPv4)
-    expect(store.machines[0].hostname == "100.101.102.103" && store.machines[0].addressKind == .tailscaleIPv4
-           && store.machines[0].pinnedHostKeyFingerprint == "SHA256:pinned" && store.machines[0].keychainTag == saved.keychainTag,
-           "only the address and its kind change")
-    do {
-        try store.updatePairedAddress(of: saved, hostname: "studio.local", addressKind: .localName)
-        expect(false, "a stale machine isn't updated")
-    } catch {
-        expect(error as? MachineStore.EditError == .settingsChanged, "stale: \(error)")
-    }
-
-    try await Task.sleep(for: .milliseconds(200))
-    expect(tripwire.count == 1, "no connection was attempted (\(tripwire.count - 1) beyond the knock)")
-
-    // What a host key mismatch on a local network says.
+func testConnectionText() {
     let anotherDevice = PairedConnectionError.anotherDeviceAnswered(address: "studio.local")
     expect(connectionFailureDescription(anotherDevice).contains("studio.local"), connectionFailureDescription(anotherDevice))
 }
@@ -294,7 +118,7 @@ func testTransport() async throws {
     static func main() async throws {
         try testDeviceKey()
         try testHostKeyPin()
-        try await testTransport()
+        testConnectionText()
         print(failures == 0 ? "\(checks) checks passed" : "\(failures) of \(checks) checks failed")
         exit(failures == 0 ? 0 : 1)
     }

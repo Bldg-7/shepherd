@@ -9,17 +9,16 @@ env=dict(os.environ,DEVELOPER_DIR='/Applications/Xcode.app/Contents/Developer',H
 products=args.swiftterm_products.resolve();bundle=products/'SwiftTerm_SwiftTerm.bundle'
 if bundle.exists():shutil.copytree(bundle,out/bundle.name)
 sources=['Shepherd/Terminal/TerminalPaneFrame.swift','Shepherd/Terminal/TerminalFileGesture.swift','Shepherd/Terminal/TerminalWebLink.swift','Shepherd/Terminal/SelectionKeepingTerminal.swift','Shepherd/Terminal/TerminalHostView.swift','Shepherd/FilePreview/TerminalFileHit.swift','Shepherd/FilePreview/FilePreviewLink.swift','Tests/Terminal/TerminalPaneFrameTests.swift']
-definition=(ROOT/'Shepherd/Terminal/AgentTerminalView.swift').read_text()
-wrapper=definition[:definition.index("/// One pane's live terminal:")]
-projected=out/'AgentTerminalWrapper.swift';projected.write_text(wrapper)
-tab=(ROOT/'Shepherd/Terminal/TabTerminalView.swift').read_text()
-assert wrapper.count('TerminalPaneFrame(isFocused:')==1 and tab.count('TerminalPaneFrame(isFocused:')==1
-assert 'TerminalPaneFrame(' not in definition[len(wrapper):], 'inner pane must not double-pad'
-(out/'source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in sources+['Shepherd/Terminal/AgentTerminalView.swift','Shepherd/Terminal/TabTerminalView.swift']},indent=2))
+# The one production user of the frame; the content inside it does not pad again.
+users=[str(x.relative_to(ROOT)) for x in sorted((ROOT/'Shepherd').rglob('*.swift')) if 'TerminalPaneFrame(' in x.read_text() and x.name!='TerminalPaneFrame.swift']
+assert users==['Shepherd/HcBackend/HcTerminalPane.swift'],users
+pane=(ROOT/users[0]).read_text()
+assert pane.count('TerminalPaneFrame(isFocused:')==1
+(out/'source-hashes.json').write_text(json.dumps({n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in sources+users},indent=2))
 def stage(name,seconds,args):
  log=out/(name+'.log')
- code=subprocess.run([sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(seconds),'--natural-exit-grace','10','--log',str(log),'--',*args],cwd=ROOT,env=env,timeout=seconds+40).returncode
+ code=subprocess.run([sys.executable,str(ROOT/'Tests/Support/run-stage.py'),'--timeout',str(seconds),'--natural-exit-grace','10','--log',str(log),'--',*args],cwd=ROOT,env=env,timeout=seconds+40).returncode
  v=json.loads(log.with_suffix('.stage.json').read_text());assert code==0 and v['naturalExitConfirmed'] and not v['signalsSent'] and v['cleanupVerified'],name
-stage('frame-build',90,['xcrun','swiftc','-target',platform.machine()+'-apple-macos26.6.2','-swift-version','6','-default-isolation','MainActor','-parse-as-library','-I',str(products),str(projected),*sources,str(products/'SwiftTerm.o'),'-framework','AppKit','-framework','QuartzCore','-framework','CoreText','-o',str(out/'frame-tests')])
+stage('frame-build',90,['xcrun','swiftc','-target',platform.machine()+'-apple-macos26.6.2','-swift-version','6','-default-isolation','MainActor','-parse-as-library','-I',str(products),*sources,str(products/'SwiftTerm.o'),'-framework','AppKit','-framework','QuartzCore','-framework','CoreText','-o',str(out/'frame-tests')])
 stage('frame-tests',30,[str(out/'frame-tests'),str(out/'geometry.json')])
-(out/'validation.json').write_text(json.dumps({'passed':True,'actualSwiftTerm':True,'ownedUnshownWindow':True,'userGUIInput':False,'ownedKernelPTY':True,'userPTYOrSSH':False,'actualStandaloneProductionWrapper':True,'tabCommonFrameAndStaticWiring':True,'standalonePaneSessionSeam':True,'insetPoints':7,'noDoublePadding':True,'stages':2},indent=2))
+(out/'validation.json').write_text(json.dumps({'passed':True,'actualSwiftTerm':True,'ownedUnshownWindow':True,'userGUIInput':False,'ownedKernelPTY':True,'userPTYOrSSH':False,'hcPaneFrameStaticWiring':True,'insetPoints':7,'noDoublePadding':True,'stages':2},indent=2))

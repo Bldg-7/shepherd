@@ -5,14 +5,14 @@ text, the HPKE messages and confirmation code, the authorized_keys line (read
 back with ssh-keygen), the device key with a software P-256 key in the Secure
 Enclave's place, Machine's JSON, and, against the Citadel and swift-nio-ssh an
 app build made (--products), the key as swift-nio-ssh offers it, the QR code's
-host key pin, and SSHHerdrTransport refusing a paired Mac's address that is
-out of range before it connects anywhere.
+host key pin and the text a host key mismatch shows; and, in the sources, that
+the hc connection factory resolves a paired Mac's address by its kind before it
+reads a credential or connects.
 
 No app, no SSH server, no Keychain, no Secure Enclave, no LocalAuthentication.
 The test programs run under sandbox-exec with a profile that lets them reach
 nothing but loopback and look no name up (mDNSResponder's socket is denied),
-so a real lookup can't happen even by mistake; one of them listens on
-127.0.0.1 to count connections that must not come.
+so a real lookup can't happen even by mistake.
 
 Each stage runs in a process group of its own, which is ended if it outlasts
 its time; nothing here lists or inspects other processes.
@@ -97,8 +97,8 @@ for feature in ['MemberImportVisibility', 'NonisolatedNonsendingByDefault', 'Inf
 transport = sorted(str(x.relative_to(ROOT)) for x in (ROOT / KIT / 'HerdrKit/Transport').glob('*.swift'))
 models = sorted(str(x.relative_to(ROOT)) for x in (ROOT / KIT / 'HerdrKit/Models').glob('*.swift'))
 ssh = [f'{KIT}/Resources.swift', f'{KIT}/Agents/AgentKind.swift', f'{KIT}/Machines/Machine.swift', f'{KIT}/Machines/MachineStore.swift',
-       f'{KIT}/Machines/MachineStore+Transport.swift', f'{KIT}/Machines/KeychainStore.swift', *pairing, *transport, *models,
-       f'{KIT}/HerdrKit/Terminal/HerdrExecutable.swift', f'{KIT}/HerdrKit/Terminal/ShellQuoting.swift', f'{KIT}/HerdrKit/Terminal/LocalCommand.swift',
+       f'{KIT}/Machines/KeychainStore.swift', *pairing, *transport, *models,
+       f'{KIT}/HerdrKit/Terminal/ShellQuoting.swift', f'{KIT}/HerdrKit/Terminal/LocalCommand.swift',
        'Tests/Pairing/PairingSSHTests.swift']
 stage('ssh-build', 600, ['xcrun', 'swiftc', *target, '-swift-version', '6', '-default-isolation', 'MainActor', *features, '-parse-as-library',
                          '-I', str(products), *[a for m in maps for a in ('-Xcc', f'-fmodule-map-file={m}')], *ssh, *objects,
@@ -107,12 +107,11 @@ ssh_result = stage('ssh-tests', 120, [*sandboxed, str(out / 'pairing-ssh-tests')
 
 # 3. Where it is wired in, and what the tests stay away from.
 read = lambda n: (ROOT / n).read_text()
-transport_source = read(f'{KIT}/HerdrKit/Transport/SSHHerdrTransport.swift')
-connect = transport_source[transport_source.index('public func connect() async throws {'):transport_source.index('private func resolveRemoteHome')]
-assert connect.index('addressResolver.resolve(hostname: host, kind: addressKind)') < connect.index('credential.authenticationFactory') < connect.index('SSHClient.connect(')
-assert 'host: connectionHost,' in connect and 'host: host,' not in connect
-assert 'catch is HostKeyValidationError where addressKind?.isLAN == true' in connect
-assert 'addressKind: current.addressKind' in read(f'{KIT}/Machines/MachineStore+Transport.swift')
+factory = read(f'{KIT}/Machines/MachineStore+Hc.swift')
+connect = factory[factory.index('            #if canImport(Citadel) && canImport(NIOSSH)'):factory.index('let connection = try CoreRPCConnection(')]
+assert connect.index('if let kind = current.addressKind { host = try await addressResolver.resolve(hostname: current.hostname, kind: kind).description }') \
+    < connect.index('guard let bytes = try secret(for: fresh)') < connect.index('transport = CoreSSHTransport(')
+assert 'try .init(host: host, port: current.port,' in connect and 'host: current.hostname' not in connect
 assert 'case .secureEnclaveKey(let stored):' in read(f'{KIT}/HerdrKit/Transport/HostCredential.swift')
 for name in pairing + [f'{KIT}/HerdrKit/Transport/SecureEnclaveSSHKey.swift']:
     text = read(name)
@@ -123,7 +122,7 @@ for name in ['Tests/Pairing/PairingCoreTests.swift', 'Tests/Pairing/PairingSSHTe
     assert 'SystemPairingNameResolver' not in text and 'KeychainStore()' not in text, name
 stages.append('static-checks')
 
-hashed = core + ssh + ['Tests/Pairing/run-tests.py']
+hashed = core + ssh + [f'{KIT}/Machines/MachineStore+Hc.swift', 'Tests/Pairing/run-tests.py']
 (out / 'source-hashes.json').write_text(json.dumps({n: hashlib.sha256((ROOT / n).read_bytes()).hexdigest() for n in sorted(set(hashed))}, indent=2))
 summary = {'core': core_result.strip().splitlines()[-1], 'ssh': ssh_result.strip().splitlines()[-1]}
 (out / 'validation.json').write_text(json.dumps({'passed': True, 'stages': stages, 'summary': summary, 'sandboxed': True,

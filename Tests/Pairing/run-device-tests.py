@@ -116,8 +116,7 @@ transport = sorted(str(x.relative_to(ROOT)) for x in (ROOT / KIT / 'HerdrKit/Tra
 models = sorted(str(x.relative_to(ROOT)) for x in (ROOT / KIT / 'HerdrKit/Models').glob('*.swift'))
 hc = sorted(str(x.relative_to(ROOT)) for x in (ROOT / KIT / 'CoreKit').glob('*.swift'))
 ssh = hc + [f'{KIT}/Resources.swift', f'{KIT}/Agents/AgentKind.swift', f'{KIT}/Machines/Machine.swift', f'{KIT}/Machines/MachineStore.swift',
-       f'{KIT}/Machines/MachineStore+Transport.swift', f'{KIT}/Machines/KeychainStore.swift', *kit_pairing, *transport, *models,
-       f'{KIT}/HerdrKit/HerdrClient.swift', f'{KIT}/HerdrKit/Terminal/HerdrExecutable.swift', f'{KIT}/HerdrKit/Terminal/ShellQuoting.swift',
+       f'{KIT}/Machines/KeychainStore.swift', *kit_pairing, *transport, *models, f'{KIT}/HerdrKit/Terminal/ShellQuoting.swift',
        f'{KIT}/HerdrKit/Terminal/LocalCommand.swift', *mobile, *ssh_only, 'Tests/Pairing/PairingDeviceSSHTests.swift']
 stage('ssh-build', 600, [*swiftc, '-I', str(products), *[a for m in maps for a in ('-Xcc', f'-fmodule-map-file={m}')], *ssh, *objects,
                          '-o', str(out / 'pairing-device-ssh-tests')])
@@ -147,8 +146,7 @@ assert 'Label("Scan Mac\'s QR Code", systemImage: "qrcode.viewfinder")' in machi
 transport_source = read(f'{KIT}/CoreKit/CoreSSHTransport.swift')
 assert 'CoreSSHHostPin(config.pinnedFingerprint)' in transport_source
 assert 'hostKeyApprovalRequired' in transport_source
-assert 'HerdrClient(' not in checker and 'SSHHerdrTransport(' not in checker
-assert 'HcMobileBoardView(' in machines and 'MobileAgentListCache' not in read('ShepherdMobile/ShepherdMobileApp.swift')
+assert 'HcMobileBoardView(' in machines
 plist = read('Config/Info-iOS.plist')
 assert '<key>NSCameraUsageDescription</key>' in plist and '<key>NSLocalNetworkUsageDescription</key>' in plist
 info_strings = json.loads(read('ShepherdMobile/InfoPlist.xcstrings'))['strings']

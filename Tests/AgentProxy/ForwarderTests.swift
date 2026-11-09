@@ -191,7 +191,6 @@ final class Suite {
             ("forward-claude-body-and-headers", forwardClaude),
             ("forward-codex-zstd-chunked", forwardCodex),
             ("forward-pi-openai-subscription", forwardOpenAI),
-            ("node-fetch-pi-openai", nodeFetchOpenAI),
             ("head-request", headRequest),
             ("sse-immediacy", sseImmediacy),
             ("client-disconnect-closes-upstream", clientDisconnect),
@@ -542,26 +541,6 @@ final class Suite {
         let wrongHeaders = headers.map { $0.0 == "Host" ? ($0.0, "127.0.0.1:\(wrong.port)") : $0 }
         try check(try send(wrong.port, request("POST", "/p/\(wrongRoute.token)/openai/v1/responses", wrongHeaders, body: body)).status == 502, "OpenAI TLS rejects a certificate for chatgpt.com")
         try check(wrongHost.requests.isEmpty, "no credentials sent over unverified TLS")
-    }
-
-    func nodeFetchOpenAI() throws {
-        let upstream = try fake(openaiIdentity) { _, connection in connection.send(okJSON("{\"fixture\":true}")) }
-        let proxy = try self.proxy("node-fetch", openai: upstream.address)
-        let pi = try route(try proxy.control(), "pi")
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["node", "Tests/AgentProxy/node-fetch-test.mjs", pi.baseURL]
-        process.environment = ["PATH": ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin", "HOME": out, "TMPDIR": out]
-        let output = Pipe(); process.standardOutput = output; process.standardError = output
-        try process.run()
-        let text = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        process.waitUntilExit()
-        try check(process.terminationStatus == 0, "actual Node fetch failed: \(text)")
-        try check(upstream.requests.count == 1, "Node request reached the loopback TLS upstream")
-        let got = upstream.requests[0]
-        try check(got.header("sec-fetch-mode") == ["cors"] && got.header("origin").isEmpty, "Node adds only cors mode, not browser Origin/site")
-        try check(got.requestLine == "POST /v1/responses HTTP/1.1" && got.body == bytes("{\"input\":\"synthetic-native-fetch\"}"), "SDK-style fetch path and body preserved")
-        try check(!got.headers.contains { $0.0.lowercased().hasPrefix("x-3rdr-") }, "Node fetch metadata stripped before upstream")
     }
 
     func headRequest() throws {

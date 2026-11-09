@@ -26,7 +26,7 @@ flags=['xcrun','swiftc','-swift-version','6','-default-isolation','MainActor','-
 for f in ['MemberImportVisibility','NonisolatedNonsendingByDefault','InferIsolatedConformances']:flags+=['-enable-upcoming-feature',f]
 flags += [v for m in maps for v in ['-Xcc','-fmodule-map-file='+str(m)]]
 exe=out/'gateway-store-tests'
-r=subprocess.run([sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout','180','--natural-exit-grace','10','--log',str(out/'build.log'),'--',*flags,str(source),*map(str,objects),'-framework','AppKit','-framework','Security','-framework','CoreText','-framework','QuartzCore','-lz','-lsqlite3','-o',str(exe)],env=env,cwd=ROOT,timeout=220)
+r=subprocess.run([sys.executable,str(ROOT/'Tests/Support/run-stage.py'),'--timeout','180','--natural-exit-grace','10','--log',str(out/'build.log'),'--',*flags,str(source),*map(str,objects),'-framework','AppKit','-framework','Security','-framework','CoreText','-framework','QuartzCore','-lz','-lsqlite3','-o',str(exe)],env=env,cwd=ROOT,timeout=220)
 record=json.loads((out/'build.stage.json').read_text())
 assert r.returncode==0 and record['naturalExitConfirmed'] and not record['signalsSent'] and record['cleanupVerified'],'SDK test compilation/cleanup failed: '+str(out/'build.log')
 r=subprocess.run([sys.executable,str(ROOT/'Tests/CoreWorkspace/run-gateway-probe.py'),'--official-017-archive',str(a.official_017_archive),'--document-sdk-executable',str(exe),'--output',str(out/'real')],env=env,cwd=ROOT,timeout=150)

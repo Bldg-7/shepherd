@@ -56,7 +56,7 @@ for m in maps:flags+=['-Xcc','-fmodule-map-file='+str(m)]
 exe=out/'passive-tests'; report=out/'report.json'
 def stage(name,seconds,args):
     log=out/(name+'.log')
-    code=subprocess.run([sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'),'--timeout',str(seconds),
+    code=subprocess.run([sys.executable,str(ROOT/'Tests/Support/run-stage.py'),'--timeout',str(seconds),
         '--natural-exit-grace','10','--log',str(log),'--',*map(str,args)],cwd=ROOT,env=env,timeout=seconds+40).returncode
     result=json.loads(log.with_suffix('.stage.json').read_text())
     candidate.require(code==0 and result['naturalExitConfirmed'] and not result['signalsSent'] and result['cleanupVerified'],str(log))

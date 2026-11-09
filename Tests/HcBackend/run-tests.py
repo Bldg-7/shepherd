@@ -65,7 +65,7 @@ if a.narrow_render_tests and local_renderer:
 
 def stage(name, seconds, args):
     log = out / (name + '.log')
-    code = subprocess.run([sys.executable, str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'), '--timeout', str(seconds),
+    code = subprocess.run([sys.executable, str(ROOT/'Tests/Support/run-stage.py'), '--timeout', str(seconds),
                            '--natural-exit-grace', '10', '--log', str(log), '--', *map(str, args)], cwd=ROOT, env=env, timeout=seconds + 40).returncode
     receipt = json.loads(log.with_suffix('.stage.json').read_text())
     assert code == 0 and receipt['naturalExitConfirmed'] and not receipt['signalsSent'] and receipt['cleanupVerified'], name + ': ' + str(log)

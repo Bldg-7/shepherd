@@ -1,13 +1,21 @@
 import SwiftUI
 import AppKit
 
-// Runtime launch/authentication is not exercised by the window's title.
-public nonisolated enum AgentKind: String, Sendable {
-    case claude, codex, pi
-    var supportsLegacySessionInspection: Bool { self != .pi }
+/// A rename as the app's session holds it: a pane's name, its title the
+/// prompt; the first ending counts.
+@MainActor final class RenameSession: TitleRenameEditing {
+    let id = UUID()
+    let startText: String
+    let prompt = "pane title"
+    let isTab = false
+    var text: String
+    weak var keyboardBefore: AnyObject?
+    private(set) var isEnded = false
+    init(_ name: String) { startText = name; text = name }
+    func end() -> Bool { guard !isEnded else { return false }; isEnded = true; return true }
 }
 
-/// The window's title as `ContentView` builds it, around the production
+/// The window's title as the workspace view builds it, around the production
 /// split views: the column's title, the terminal's own title set inside the
 /// detail's native hosting, a file preview's beside it, and the title taken
 /// out of the toolbar while a name is typed in its place.
@@ -34,17 +42,17 @@ struct SplitRoot: View {
 }
 
 /// The production field in a `.navigation` toolbar item of the production
-/// split views' detail, with the space after it, as `ContentView` puts them
-/// there; and the production watcher for a double-click on the title,
+/// split views' detail, with the space after it, as `HcWorkspaceView` puts
+/// them there; and the production watcher for a double-click on the title,
 /// which renames `item` unless something covers the terminal.
 @MainActor @Observable final class ToolbarProbe {
-    var session: TitleRenameSession?
-    @ObservationIgnored var item: BoardItem?
+    var session: RenameSession?
+    @ObservationIgnored var item: String?
     @ObservationIgnored var coversTerminal = false
     @ObservationIgnored var endings: [(TitleRenameEnding, String)] = []
     @ObservationIgnored var renamesFromTitle = 0
     var refresh = 0
-    func end(_ session: TitleRenameSession, _ ending: TitleRenameEnding) {
+    func end(_ session: RenameSession, _ ending: TitleRenameEnding) {
         guard session.end() else { return }
         endings.append((ending, session.text))
         if self.session === session { self.session = nil }
@@ -52,7 +60,7 @@ struct SplitRoot: View {
     func renameFromTitle() -> Bool {
         guard session == nil, !coversTerminal, let item else { return false }
         renamesFromTitle += 1
-        session = TitleRenameSession(item: item)
+        session = RenameSession(item)
         return true
     }
 }
@@ -81,14 +89,13 @@ struct ToolbarRoot: View {
                 .toolbar {
                     if let session = probe.session {
                         ToolbarItem(id: TitleRenameToolbar.itemID, placement: .navigation) {
-                            TitleRenameField(session: session, canSubmit: { TitleRename.canSubmit($0, for: session.item) }, onEnd: probe.end)
+                            TitleRenameField(session: session, canSubmit: { _ in true }, onEnd: probe.end)
                                 .id(session.id)
                                 .frame(minWidth: TitleRenameToolbar.minimumWidth, idealWidth: TitleRenameToolbar.idealWidth, maxWidth: TitleRenameToolbar.idealWidth)
                         }
                         .sharedBackgroundVisibility(.hidden)
                         ToolbarSpacer(.flexible, placement: .navigation)
                     }
-                    ToolbarItem(placement: .primaryAction) { Button("Browser") {} }
                     ToolbarItem(placement: .primaryAction) { Button("Preview") {} }
                 }
         }
@@ -170,7 +177,7 @@ final class RecordingWindow: NSWindow {
         let split = window(SplitRoot(state: state), width: 1200)
         spin(until: { split.title == "terminal" }, "the terminal's own title is the window's, over the column's")
         state.terminalTitle = "typed name"
-        spin(until: { split.title == "typed name" }, "so a name shown before herdr reports it has to be set on the terminal")
+        spin(until: { split.title == "typed name" }, "so a name shown before the core reports it has to be set on the terminal")
         state.showsPanel = true
         state.terminalTitle = "terminal"
         spin(until: { split.title == "terminal" }, "and it stays the window's while a file preview is open beside it")
@@ -194,8 +201,7 @@ final class RecordingWindow: NSWindow {
         let legacyProbe = ToolbarProbe()
         let legacy = window(ToolbarRoot(probe: legacyProbe, sidebarState: WorkspaceSidebarState(initialVisibility: .all), appliesToolbarRoom: false), width: 700)
         spin(until: { legacy.toolbar != nil }, "the legacy fixture has a toolbar")
-        let legacyItemSource = AgentSummary(json: .object(["pane_id": .string("legacy:pane"), "terminal_id": .string("legacy-terminal"), "label": .string("build")]), on: nil)!
-        legacyProbe.session = TitleRenameSession(item: .pane(legacyItemSource))
+        legacyProbe.session = RenameSession("build")
         spin(until: {
             legacy.toolbar?.items.first { $0.itemIdentifier.rawValue == TitleRenameToolbar.itemID }.map {
                 $0.minSize.width == 280 && $0.maxSize.width == 280
@@ -208,7 +214,7 @@ final class RecordingWindow: NSWindow {
         let sidebarState = WorkspaceSidebarState(initialVisibility: .all)
         let toolbar = window(ToolbarRoot(probe: probe, sidebarState: sidebarState), width: 1000)
         spin(until: { toolbar.toolbar != nil && toolbar.title == "pane title" }, "the detail's title is the window's")
-        let item = AgentSummary(json: .object(["pane_id": .string("w1:p1"), "terminal_id": .string("terminal-1"), "label": .string("build")]), on: nil)!
+        let item = "build"
         /// The detail's last item, the Preview button, where it is in the window.
         func previewFrame() -> NSRect? {
             toolbar.contentView!.superview!.layoutSubtreeIfNeeded()
@@ -309,7 +315,7 @@ final class RecordingWindow: NSWindow {
         }
         let previewBefore = previewFrame()
         check(previewBefore != nil, "the Preview button is in the window's toolbar")
-        let session = TitleRenameSession(item: .pane(item))
+        let session = RenameSession(item)
         probe.session = session
         func frameView() -> NSView { toolbar.contentView!.superview! }
         spin(until: { fields(in: frameView()).count == 1 && fields(in: frameView())[0].window === toolbar }, "the field is in the window's toolbar")
@@ -327,7 +333,7 @@ final class RecordingWindow: NSWindow {
         let rehostProbe = ToolbarProbe()
         let rehostWindow = window(ToolbarRoot(probe: rehostProbe, sidebarState: WorkspaceSidebarState(initialVisibility: .all), appliesToolbarRoom: false), width: 1000)
         spin(until: { rehostWindow.toolbar != nil && rehostWindow.title == "pane title" }, "isolated B has its own toolbar without an independent room writer")
-        rehostProbe.session = TitleRenameSession(item: .pane(item))
+        rehostProbe.session = RenameSession(item)
         func rehostFrameView() -> NSView { rehostWindow.contentView!.superview! }
         spin(until: { fields(in: rehostFrameView()).count == 1 && fields(in: rehostFrameView())[0].window === rehostWindow }, "isolated B has an attached title field")
         let rehostedItem = rehostWindow.toolbar!.items.first { $0.itemIdentifier.rawValue == TitleRenameToolbar.itemID }!
@@ -410,7 +416,7 @@ final class RecordingWindow: NSWindow {
         check(text.string == "build" && text.selectedRange() == NSRange(location: 0, length: 5), "starting from the name, selected")
         text.insertText("server", replacementRange: NSRange(location: NSNotFound, length: 0))
         text.setMarkedText("ㅎ", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
-        let coordinator = field.delegate as! TitleRenameField<TitleRenameSession>.Coordinator
+        let coordinator = field.delegate as! TitleRenameField<RenameSession>.Coordinator
         check(!coordinator.control(field, textView: text, doCommandBy: #selector(NSResponder.insertNewline(_:))), "Return remains with a synthetic input-method composition")
         text.insertText("한", replacementRange: text.markedRange())
         text.doCommand(by: #selector(NSResponder.insertNewline(_:)))
@@ -420,7 +426,7 @@ final class RecordingWindow: NSWindow {
 
         // A double-click on the title's text: the same rename. Every other
         // click, and a double-click anywhere else, is the system's.
-        probe.item = .pane(item)
+        probe.item = item
         spin(until: { titleLabel(in: toolbar) != nil }, "the title's label is in the toolbar")
         let label = titleLabel(in: toolbar)!, title = label.convert(label.bounds, to: nil)
         let onTitle = NSPoint(x: title.midX, y: title.midY)
@@ -461,7 +467,7 @@ final class RecordingWindow: NSWindow {
         let hiddenSidebar = WorkspaceSidebarState(initialVisibility: .detailOnly)
         let narrow = window(ToolbarRoot(probe: narrowProbe, sidebarState: hiddenSidebar), width: 1000)
         spin(until: { narrow.toolbar != nil && narrow.title == "pane title" }, "the hidden-sidebar fixture has its own toolbar")
-        narrowProbe.session = TitleRenameSession(item: .pane(item))
+        narrowProbe.session = RenameSession(item)
         func narrowFrameView() -> NSView { narrow.contentView!.superview! }
         spin(until: { fields(in: narrowFrameView()).count == 1 && fields(in: narrowFrameView())[0].window === narrow }, "the hidden-sidebar field is in its own toolbar")
         let narrowField = fields(in: narrowFrameView())[0]
@@ -479,7 +485,7 @@ final class RecordingWindow: NSWindow {
         check((narrow.firstResponder as? NSTextView)?.delegate === narrowField && (narrow.firstResponder as? NSTextView)?.selectedRange() == NSRange(location: 0, length: 5),
               "a hidden-sidebar rename retains native focus and selection while narrowing")
 
-        probe.session = TitleRenameSession(item: .pane(item))
+        probe.session = RenameSession(item)
         spin(until: { fields(in: frameView()).count == 1 }, "the first window can rebuild its title item")
         let narrowItem = narrow.toolbar!.items.first { $0.itemIdentifier.rawValue == TitleRenameToolbar.itemID }!
         narrowItem.minSize.width = 777
@@ -496,7 +502,7 @@ final class RecordingWindow: NSWindow {
         let startNarrowProbe = ToolbarProbe()
         let startNarrow = window(ToolbarRoot(probe: startNarrowProbe, sidebarState: WorkspaceSidebarState(initialVisibility: .detailOnly)), width: 450)
         spin(until: { startNarrow.toolbar != nil }, "the start-narrow hidden-sidebar fixture has a toolbar")
-        startNarrowProbe.session = TitleRenameSession(item: .pane(item))
+        startNarrowProbe.session = RenameSession(item)
         func startNarrowFrameView() -> NSView { startNarrow.contentView!.superview! }
         spin(until: { fields(in: startNarrowFrameView()).count == 1 && fields(in: startNarrowFrameView())[0].window === startNarrow }, "a rename starting narrow stays in its hidden-sidebar toolbar")
         let startNarrowField = fields(in: startNarrowFrameView())[0]
@@ -522,6 +528,6 @@ final class RecordingWindow: NSWindow {
         narrow.close()
         toolbar.close()
 
-        print("PASS \(checks) title rename window title/terminal title precedence/preview/title removal/toolbar width/layout/two-window isolation/title double-click checks; owned never-shown windows, no app or herdr")
+        print("PASS \(checks) title rename window title/terminal title precedence/preview/title removal/toolbar width/layout/two-window isolation/title double-click checks; owned never-shown windows, no app or hc")
     }
 }

@@ -25,7 +25,7 @@ hashes = {str(f.relative_to(ROOT)): hashlib.sha256(f.read_bytes()).hexdigest() f
 records = []
 def stage(name, args, seconds=120):
     log = out/(name+'.log')
-    result = subprocess.run([sys.executable,str(ROOT/'Tests/AgentBrowser/Phase2/run-stage.py'), '--timeout',str(seconds),
+    result = subprocess.run([sys.executable,str(ROOT/'Tests/Support/run-stage.py'), '--timeout',str(seconds),
         '--natural-exit-grace','10','--log',str(log),'--',*map(str,args)],cwd=ROOT,env=env,timeout=seconds+40)
     record=json.loads(log.with_suffix('.stage.json').read_text()); records.append(record)
     (out/'stages.json').write_text(json.dumps(records,indent=2))
