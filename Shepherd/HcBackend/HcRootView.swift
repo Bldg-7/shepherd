@@ -153,7 +153,16 @@ struct HcRootView: View {
             }
         }
     }
+    /// The notices go under the split view rather than into its bottom safe
+    /// area: the sidebar column doesn't take an outer safe-area inset, so a
+    /// notice there was drawn over the sidebar's own bottom bar.
     private var contents: some View {
+        VStack(spacing: 0) {
+            workspace
+            bottomNotices
+        }
+    }
+    private var workspace: some View {
         HcWorkspaceView(model: scopedModel, machine: machineStore.activeMachine, machineStore: machineStore,
             isCurrentModel: { [weak connection, machineStore] candidate in
                 guard let connection, let machine = machineStore.activeMachine else { return false }
@@ -178,14 +187,21 @@ struct HcRootView: View {
                     onClose: { launchSheet = false })
             }
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if let routeNotice { Text(routeNotice).font(.caption).padding(8) }
-            if !retirementDismissed && UserDefaults.standard.bool(forKey: ShepherdBrowserFeature.preferenceKey) {
-                HStack {
-                    Text("In-app Browser and injected integrations are unavailable. Existing programs and data are preserved.").font(.caption)
-                    Spacer(); Button("Dismiss") { retirementDismissed = true }
-                }.padding(8)
+    }
+    @ViewBuilder private var bottomNotices: some View {
+        let showsRetirement = !retirementDismissed && UserDefaults.standard.bool(forKey: ShepherdBrowserFeature.preferenceKey)
+        if routeNotice != nil || showsRetirement {
+            VStack(alignment: .leading, spacing: 0) {
+                Divider()
+                if let routeNotice { Text(routeNotice).font(.caption).padding(8) }
+                if showsRetirement {
+                    HStack {
+                        Text("In-app Browser and injected integrations are unavailable. Existing programs and data are preserved.").font(.caption)
+                        Spacer(); Button("Dismiss") { retirementDismissed = true }
+                    }.padding(8)
+                }
             }
+            .background(.bar)
         }
     }
     private func launchTargets(_ model: HcWorkspaceModel) -> [LaunchTarget] {
