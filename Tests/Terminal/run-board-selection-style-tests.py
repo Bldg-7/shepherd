@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Native sidebar selection emphasis without changing keyboard focus or window activity."""
+"""Native gray sidebar selection without changing keyboard focus or window activity."""
 from pathlib import Path
 import argparse, hashlib, json, os, platform, subprocess, sys
 ROOT = Path(__file__).resolve().parents[2]
@@ -20,9 +20,9 @@ sources = ['Shepherd/Hosts/Views/BoardSelectionEmphasis.swift', 'Tests/Terminal/
 stage('style-build', 90, ['xcrun','swiftc','-swift-version','6','-default-isolation','MainActor','-target',platform.machine()+'-apple-macos26.6.2','-parse-as-library',*native_flags,*sources,'-framework','AppKit','-o',str(out/'style-tests')])
 stage('style-tests', 30, [str(out/'style-tests')])
 board = (ROOT/'Shepherd/HcBackend/HcWorkspaceView.swift').read_text()
-assert '.onBoardRowActivation { selection.wrappedValue = .tab(tab.id); onActivate() }\n                                    .boardSelectionEmphasized(selection.wrappedValue == .tab(tab.id))' in board
-assert '.onBoardRowActivation { selection.wrappedValue = .pane(pane.id); onActivate() }\n                                    .boardSelectionEmphasized(selection.wrappedValue == .pane(pane.id))' in board
-assert board.count('.boardSelectionEmphasized(') == 2
+assert '.onBoardRowActivation { selection.wrappedValue = .tab(tab.id); onActivate() }\n                                    .boardSelectionMuted(selection.wrappedValue == .tab(tab.id))' in board
+assert '.onBoardRowActivation { selection.wrappedValue = .pane(pane.id); onActivate() }\n                                    .boardSelectionMuted(selection.wrappedValue == .pane(pane.id))' in board
+assert board.count('.boardSelectionMuted(') == 2
 style = (ROOT/sources[0]).read_text()
 assert 'makeFirstResponder' not in style and 'controlActiveState' not in style and 'NSColor' not in style
 assert 'method_exchangeImplementations' not in style and 'object_setClass' not in style

@@ -58,7 +58,7 @@ private struct FocusFixture: View {
                     HStack { Text("\(id) \(probe.revision)"); Spacer() }
                         .tag(id)
                         .onBoardRowActivation { probe.activate(id) }
-                        .boardSelectionEmphasized(probe.selection == id)
+                        .boardSelectionMuted(probe.selection == id)
                 }
             }.listStyle(.sidebar).frame(width: 240)
             if let selected = probe.selection {

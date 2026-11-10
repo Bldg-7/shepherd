@@ -1,9 +1,11 @@
 import SwiftUI
 
 extension View {
-    /// Selection is navigation state, not keyboard ownership. Keep AppKit's
-    /// native focused selection appearance while input belongs to the terminal.
-    func boardSelectionEmphasized(_ selected: Bool) -> some View {
+    /// Selection is navigation state, not keyboard ownership. Draw it with
+    /// AppKit's native gray (unemphasized) selection whether the sidebar or the
+    /// terminal has the keyboard, so status colors and text keep their own colors
+    /// rather than sitting on the accent-blue fill.
+    func boardSelectionMuted(_ selected: Bool) -> some View {
         #if os(macOS)
         background {
             BoardSelectionEmphasis(selected: selected)
@@ -36,8 +38,8 @@ private struct BoardSelectionEmphasis: NSViewRepresentable {
 
 /// Scoped to the containing native row. No delegate replacement, method
 /// swizzling, fake window activity, first-responder changes or custom colors.
-/// AppKit also propagates the emphasized background style to its cell contents,
-/// keeping the native selected text contrast in light/dark appearances.
+/// AppKit also propagates the unemphasized background style to its cell
+/// contents, keeping the native selected text contrast in light/dark appearances.
 final class BoardSelectionAnchor: NSView {
     private var selected = false
     private weak var row: NSTableRowView?
@@ -71,17 +73,17 @@ final class BoardSelectionAnchor: NSView {
                 MainActor.assumeIsolated {
                     guard let self, self.row === observed, !self.applying else { return }
                     self.naturalEmphasis = change.newValue ?? observed.isEmphasized
-                    self.emphasize()
+                    self.mute()
                 }
             }
         }
-        emphasize()
+        mute()
     }
 
-    private func emphasize() {
-        guard let row, !row.isEmphasized else { return }
+    private func mute() {
+        guard let row, row.isEmphasized else { return }
         applying = true
-        row.isEmphasized = true
+        row.isEmphasized = false
         row.needsDisplay = true
         applying = false
     }

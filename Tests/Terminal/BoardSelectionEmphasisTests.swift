@@ -21,7 +21,7 @@ private struct SelectionList: View {
                     Spacer()
                 }
                 .tag(id)
-                .boardSelectionEmphasized(probe.selected == id)
+                .boardSelectionMuted(probe.selected == id)
             }
         }.listStyle(.sidebar)
     }
@@ -66,25 +66,25 @@ private final class KeyboardSink: NSView {
             row.appearance = NSAppearance(named: name)
             row.selectionHighlightStyle = .regular
             row.isSelected = true
-            row.isEmphasized = false
+            row.isEmphasized = true
             content.addSubview(row)
             let cell = NSTableCellView(frame: row.bounds); row.addSubview(cell)
             let anchor = BoardSelectionAnchor(frame: row.bounds); cell.addSubview(anchor)
             anchor.setSelected(true)
-            check(row.isEmphasized, "selected row uses native emphasized appearance in \(name.rawValue)")
-            let focusedStyle = row.interiorBackgroundStyle
-            row.isEmphasized = false
-            check(row.isEmphasized && row.interiorBackgroundStyle == focusedStyle, "inactive write keeps focused native background style")
+            check(!row.isEmphasized, "selected row uses native gray (unemphasized) appearance in \(name.rawValue)")
+            let mutedStyle = row.interiorBackgroundStyle
+            row.isEmphasized = true
+            check(!row.isEmphasized && row.interiorBackgroundStyle == mutedStyle, "a focused write keeps the gray selection")
             check(window.firstResponder === sink && row.isSelected, "appearance never steals keyboard or changes selection")
             check(anchor.hitTest(.zero) == nil && !anchor.acceptsFirstResponder, "anchor cannot take clicks or keyboard")
             anchor.setSelected(false)
-            check(!row.isEmphasized, "native inactive value restored after deselection")
-            row.isEmphasized = true
+            check(row.isEmphasized, "native focused value restored after deselection")
             row.isEmphasized = false
-            check(!row.isEmphasized, "observer removed after deselection")
+            row.isEmphasized = true
+            check(row.isEmphasized, "observer removed after deselection")
             anchor.setSelected(true)
             anchor.removeFromSuperview()
-            check(!row.isEmphasized, "removal restores row and releases observation")
+            check(row.isEmphasized, "removal restores row and releases observation")
             row.removeFromSuperview()
         }
 
@@ -97,40 +97,40 @@ private final class KeyboardSink: NSView {
         check(settle(host) { table(host)?.numberOfRows == 3 && anchors(host).count >= 3 }, "real sidebar rows and anchors mounted")
         let list = table(host)!
         func row(_ index: Int) -> NSTableRowView { list.rowView(atRow: index, makeIfNecessary: true)! }
-        check(settle(host) { row(0).isSelected && row(0).isEmphasized }, "selected pane highlighted in real native List")
+        check(settle(host) { row(0).isSelected && !row(0).isEmphasized }, "selected pane shown with the gray selection in real native List")
         check(window.makeFirstResponder(list), "sidebar can actually own keyboard")
-        _ = settle(host) { row(0).isEmphasized }
+        row(0).isEmphasized = true
+        check(settle(host) { !row(0).isEmphasized }, "selected row stays gray while the sidebar has the keyboard")
         func pixels(_ view: NSView) -> Data {
             let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds)!
             view.cacheDisplay(in: view.bounds, to: bitmap)
             return Data(bytes: bitmap.bitmapData!, count: bitmap.bytesPerRow * bitmap.pixelsHigh)
         }
-        let focusedPixels = pixels(row(0))
-        check(!focusedPixels.isEmpty && focusedPixels.contains { $0 != 0 }, "native selected row renders nonempty pixels")
+        let sidebarFocusedPixels = pixels(row(0))
+        check(!sidebarFocusedPixels.isEmpty && sidebarFocusedPixels.contains { $0 != 0 }, "native selected row renders nonempty pixels")
         check(window.makeFirstResponder(sink), "keyboard returns to terminal stand-in")
-        row(0).isEmphasized = false
-        _ = settle(host) { row(0).isEmphasized }
-        check(pixels(row(0)) == focusedPixels, "selected focused/unfocused row pixels are identical")
-        check(row(0).isEmphasized, "real selected row stays emphasized after terminal focus")
-        row(1).isEmphasized = false
-        check(!row(1).isEmphasized, "unselected tab is not forced emphasized")
+        _ = settle(host) { !row(0).isEmphasized }
+        check(pixels(row(0)) == sidebarFocusedPixels, "selected row looks the same whichever view has the keyboard")
+        check(!row(0).isEmphasized, "real selected row stays gray after terminal focus")
+        row(1).isEmphasized = true
+        check(row(1).isEmphasized, "unselected tab is not forced gray")
         probe.selected = "tab"
-        check(settle(host) { row(1).isSelected && row(1).isEmphasized }, "tab selection uses same appearance")
-        row(1).isEmphasized = false
-        check(row(1).isEmphasized, "selected tab also stays emphasized")
-        row(0).isEmphasized = false
-        check(!row(0).isEmphasized, "previous selection no longer has an emphasis override")
+        check(settle(host) { row(1).isSelected && !row(1).isEmphasized }, "tab selection uses same appearance")
+        row(1).isEmphasized = true
+        check(!row(1).isEmphasized, "selected tab also stays gray")
+        row(0).isEmphasized = true
+        check(row(0).isEmphasized, "previous selection no longer has an override")
         probe.revision += 1
-        check(settle(host) { row(1).isEmphasized }, "metadata refresh preserves selection emphasis")
+        check(settle(host) { !row(1).isEmphasized }, "metadata refresh keeps the gray selection")
         probe.rows = ["other", "pane", "tab"]
-        check(settle(host) { row(2).isSelected && row(2).isEmphasized }, "reordered selected row rebinds its native host")
-        row(2).isEmphasized = false
-        check(row(2).isEmphasized && window.firstResponder === sink, "reordering does not move keyboard")
+        check(settle(host) { row(2).isSelected && !row(2).isEmphasized }, "reordered selected row rebinds its native host")
+        row(2).isEmphasized = true
+        check(!row(2).isEmphasized && window.firstResponder === sink, "reordering does not move keyboard")
         probe.selected = nil
         check(settle(host) { list.selectedRow == -1 }, "selection can still clear")
-        for index in 0..<3 { row(index).isEmphasized = false; check(!row(index).isEmphasized, "cleared rows have no forced emphasis") }
+        for index in 0..<3 { row(index).isEmphasized = true; check(row(index).isEmphasized, "cleared rows have no override") }
         check(!window.isVisible, "test window was never shown")
         host.removeFromSuperview()
-        print("PASS \(count) selected-row emphasis checks; native light/dark/high-contrast style, no keyboard takeover, scoped teardown and real List hosting")
+        print("PASS \(count) selected-row gray selection checks; native light/dark/high-contrast style, no keyboard takeover, scoped teardown and real List hosting")
     }
 }

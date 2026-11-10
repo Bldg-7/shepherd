@@ -324,7 +324,7 @@ private struct HcAgentBoard: View {
                                     .tag(HcBoardSelection.tab(tab.id))
                                     .accessibilityIdentifier("hc-workspace.tab.\(tab.id)")
                                     .onBoardRowActivation { selection.wrappedValue = .tab(tab.id); onActivate() }
-                                    .boardSelectionEmphasized(selection.wrappedValue == .tab(tab.id))
+                                    .boardSelectionMuted(selection.wrappedValue == .tab(tab.id))
                                     .contextMenu { tabActions(tab) }
                             } else {
                                 ForEach(visiblePanes(tab, workspace: workspace.name), id: \.id) { pane in
@@ -336,7 +336,7 @@ private struct HcAgentBoard: View {
                                     .tag(HcBoardSelection.pane(pane.id))
                                     .accessibilityIdentifier("hc-workspace.pane.\(pane.id)")
                                     .onBoardRowActivation { selection.wrappedValue = .pane(pane.id); onActivate() }
-                                    .boardSelectionEmphasized(selection.wrappedValue == .pane(pane.id))
+                                    .boardSelectionMuted(selection.wrappedValue == .pane(pane.id))
                                     .contextMenu {
                                         Button("Rename Pane…") { onRename(.pane(pane.id)) }
                                         Button("New shell to right") { split(pane, axis: .horizontal) }.disabled(pane.terminal?.coreID != model.coreID)
