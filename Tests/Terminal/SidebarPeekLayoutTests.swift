@@ -167,6 +167,8 @@ private struct Fixture: View {
             defer { close(master); close(slave) }
             _ = fcntl(master, F_SETFD, FD_CLOEXEC); _ = fcntl(slave, F_SETFD, FD_CLOEXEC)
             let probe = SidebarProbe(ownedPTY: slave, startsHidden: startsHidden, restoredHidden: restoredHidden)
+            // The reveal checks below stand in for the fullscreen drawer.
+            probe.sidebarState.keepsUnpinnedRevealInWindow = true
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1200, height: 700), styleMask: [.titled, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
             window.isReleasedWhenClosed = false; defer { window.close() }
             let host = NSHostingController(rootView: Fixture(probe: probe, visibility: startsHidden ? .detailOnly : .automatic, legacy: legacy))
@@ -240,6 +242,21 @@ private struct Fixture: View {
                 check(settle(host.view) { sidebar.isCollapsed && probe.sidebarState.columnVisibility == .detailOnly }, "native hover dismissal restores detailOnly")
                 for _ in 0..<35 { host.view.layoutSubtreeIfNeeded(); RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01)) }
                 check(terminal.convert(terminal.bounds, to: host.view) == hideFrame && probe.sizes.count == hideCount, "closing repeated peek must not shift or resize terminal")
+            }
+            if !restorationRed && !legacy {
+                // Outside fullscreen nothing dismisses AppKit's edge reveal, so
+                // an unpinned reveal closes again; the sidebar button still opens it.
+                probe.sidebarState.keepsUnpinnedRevealInWindow = false
+                let hideFrame = terminal.convert(terminal.bounds, to: host.view)
+                controller.toggleSidebar(nil)
+                for _ in 0..<60 { host.view.layoutSubtreeIfNeeded(); RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01)) }
+                check(sidebar.isCollapsed && !probe.sidebarState.isPinned && probe.sidebarState.columnVisibility == .detailOnly,
+                      "outside fullscreen an unpinned reveal closes again")
+                check(terminal.convert(terminal.bounds, to: host.view) == hideFrame, "a closed windowed reveal leaves the terminal where it was")
+                probe.sidebarState.togglePin()
+                check(settle(host.view) { !sidebar.isCollapsed && probe.sidebarState.isPinned }, "outside fullscreen the sidebar button still opens the sidebar")
+                for _ in 0..<35 { host.view.layoutSubtreeIfNeeded(); RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01)) }
+                check(!sidebar.isCollapsed, "a pinned sidebar stays open outside fullscreen")
             }
         }
         try JSONSerialization.data(withJSONObject: measurements, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: CommandLine.arguments[1]))

@@ -39,7 +39,10 @@ enum WorkspaceWindowMetrics {
     private(set) var nativeSidebarIsOpen = false
     @ObservationIgnored private(set) var pinRevision = 0
     @ObservationIgnored var nativeSidebarCollapsed: (() -> Bool?)?
-    @ObservationIgnored private var awaitingNativeOpen: Bool
+    @ObservationIgnored private(set) var awaitingNativeOpen: Bool
+    /// Keeps an unpinned reveal open outside fullscreen. Only the component
+    /// test sets it, to drive the fullscreen drawer's path in a plain window.
+    @ObservationIgnored var keepsUnpinnedRevealInWindow = false
 
     init(initialVisibility: NavigationSplitViewVisibility = .automatic) {
         columnVisibility = initialVisibility
@@ -148,6 +151,20 @@ private struct WorkspaceNativeSidebarVisibility: NSViewRepresentable {
             } else { restoreInlinePolicy() }
         }
 
+        /// Outside fullscreen, AppKit reveals a collapsed sidebar when the
+        /// pointer rests on the window's leading edge, but nothing hides it
+        /// again there. Only the sidebar button, a divider drag, a click or a
+        /// key opens it in a window; the fullscreen drawer keeps hover.
+        private func isWindowedHoverReveal() -> Bool {
+            guard let window, !window.styleMask.contains(.fullScreen),
+                  !state.isPinned, !state.awaitingNativeOpen, !state.keepsUnpinnedRevealInWindow,
+                  NSEvent.pressedMouseButtons == 0 else { return false }
+            switch NSApp.currentEvent?.type {
+            case .keyDown, .leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp, .otherMouseDown, .otherMouseUp: return false
+            default: return true
+            }
+        }
+
         init(state: WorkspaceSidebarState) {
             self.state = state
             super.init(frame: .zero)
@@ -200,6 +217,8 @@ private struct WorkspaceNativeSidebarVisibility: NSViewRepresentable {
                                 MainActor.assumeIsolated {
                                     guard let self, let item = self.observedItem else { return }
                                     let collapsed = item.isCollapsed, revision = self.state.pinRevision
+                                    // Read the input now; it's gone by the queued update.
+                                    let hoverReveal = !collapsed && self.isWindowedHoverReveal()
                                     // A rapid drag can close it again before the
                                     // queued expansion callback runs. Record the
                                     // open acknowledgment synchronously (only
@@ -212,8 +231,12 @@ private struct WorkspaceNativeSidebarVisibility: NSViewRepresentable {
                                               self.observedItem === item, item.isCollapsed == collapsed else { return }
                                         #if DEBUG
                                         WorkspaceSidebarDiagnostics.record(["event":"collapse","pinned":self.state.isPinned,"collapsed":collapsed,
-                                            "width":item.viewController.view.bounds.width,"revision":revision])
+                                            "width":item.viewController.view.bounds.width,"revision":revision,"hoverReveal":hoverReveal])
                                         #endif
+                                        if hoverReveal, revision == self.state.pinRevision, !self.state.isPinned {
+                                            item.isCollapsed = true
+                                            return
+                                        }
                                         self.state.noteNativeSidebar(isCollapsed: collapsed)
                                         self.state.reconcileNativeSidebar(isCollapsed: collapsed, revision: revision)
                                         self.scheduleObservation()
