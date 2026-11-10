@@ -329,7 +329,7 @@ private struct HcAgentBoard: View {
                             } else {
                                 ForEach(visiblePanes(tab, workspace: workspace.name), id: \.id) { pane in
                                     WorkspaceBoardRow(title: paneTitle(pane, tab: tab), state: state(pane)) { EmptyView() } caption: {
-                                        let cwd = record(pane)?.cwd ?? ""
+                                        let cwd = record(pane)?.currentFolder ?? ""
                                         AgentPaneCaption(cwd.isEmpty ? "" : (cwd as NSString).lastPathComponent, agentName: nil)
                                     }
                                     .itemProvider { itemProvider(.pane(pane.id)) }
@@ -461,7 +461,7 @@ private struct HcAgentBoard: View {
     private func visiblePanes(_ tab: CoreWorkspaceDocument.Tab, workspace: String) -> [CoreWorkspaceDocument.Pane] {
         (tab.layout?.panes ?? []).filter { pane in
             let terminal = record(pane)
-            return HcBoardSearch.matches(search,fields:[workspace,tab.name,paneTitle(pane,tab:tab),terminal?.cwd ?? "",terminal?.name ?? ""])
+            return HcBoardSearch.matches(search,fields:[workspace,tab.name,paneTitle(pane,tab:tab),terminal?.currentFolder ?? "",terminal?.name ?? ""])
         }
     }
     @ViewBuilder private func tabActions(_ tab: CoreWorkspaceDocument.Tab) -> some View {

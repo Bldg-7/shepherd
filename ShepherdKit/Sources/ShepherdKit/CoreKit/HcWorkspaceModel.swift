@@ -186,7 +186,7 @@ private nonisolated struct HcWorkspaceTerminalInitial: Decodable, Sendable { let
     }
     /// With `followingFocus`, the new workspace keeps the current folder of the
     /// terminal in view, and its first tab starts there. Without a terminal in
-    /// view it has no folder, and hc starts its tabs where the core runs.
+    /// view it has no folder, and its tabs start in the home folder.
     @discardableResult public func createWorkspace(name: String, followingFocus: Bool = false) async throws -> UUID {
         guard !operationBusy else { throw Failure.unavailable }
         let (store, snapshot) = try baseline(), token = generation
@@ -228,8 +228,12 @@ private nonisolated struct HcWorkspaceTerminalInitial: Decodable, Sendable { let
         try await commit(.appendTab(workspace: workspaceID, tab: tab), snapshot: snapshot, store: store)
         guard token == generation, let document else { throw Failure.stale }
         try focus.select(tab: tab.id, in: document); try persistFocus()
-        try await launchInto(pane: pane, argv: argv, cwd: directory, journal: journal, store: store, token: token)
+        try await launchInto(pane: pane, argv: argv, cwd: directory ?? Self.homeFolder, journal: journal, store: store, token: token)
     }
+    /// An empty folder makes hc start the program in the home folder of the
+    /// machine its core runs on. Without it hc uses the core's own folder,
+    /// which is `/` for a core that launchd started.
+    nonisolated static let homeFolder = ""
     /// Resolve context before placeholder CAS changes local focus: the current
     /// folder of the focused pane in the workspace's tab in view, else the
     /// workspace's own folder. No labels, remote-qualified selectors,
@@ -271,7 +275,7 @@ private nonisolated struct HcWorkspaceTerminalInitial: Decodable, Sendable { let
         try await commit(.splitPane(paneID, axis: axis, ratio: 0.5, newPane: pane), snapshot: snapshot, store: store)
         guard token == generation, let document else { throw Failure.stale }
         try focus.select(pane: pane.id, in: document); try persistFocus()
-        try await launchInto(pane: pane, argv: argv, cwd: directory, journal: journal, store: store, token: token)
+        try await launchInto(pane: pane, argv: argv, cwd: directory ?? Self.homeFolder, journal: journal, store: store, token: token)
     }
     private func launchInto(pane: CoreWorkspaceDocument.Pane, argv: [String], cwd: String?, journal: CoreWorkspaceRecovery, store: CoreWorkspaceStore, token: UUID) async throws {
         guard token == generation, let document else { throw Failure.stale }

@@ -251,6 +251,13 @@ private nonisolated struct Notice: Decodable, Sendable {
         guard let firstTab = model.selectedTab, let firstRef = firstTab.layout?.panes.first?.terminal else { throw NSError(domain:"firstTab not bound to a program",code:1) }
         try await trackModel(connection,home:home)
         try check(try await board.get(firstRef.terminalID).cwd == current,"new workspace's first tab starts in its folder")
+        let bare = try await model.createWorkspace(name:"no folder")
+        try await model.launchTab(workspaceID:bare,name:"home",argv:["/bin/sleep","60"])
+        guard let homeTab = model.selectedTab, let homeRef = homeTab.layout?.panes.first?.terminal else { throw NSError(domain:"homeTab not bound to a program",code:1) }
+        try await trackModel(connection,home:home)
+        func real(_ path: String) -> String { guard let r = realpath(path, nil) else { return path }; defer { free(r) }; return String(cString: r) }
+        try check(real(try await board.get(homeRef.terminalID).cwd) == real(home.path),"with no folder to follow, a tab starts in the core's home folder, not the core's own folder")
+        try await model.closeTab(homeTab.id,endPrograms:true)
         try await model.closeTab(firstTab.id,endPrograms:true)
         try await model.closeTab(followTab.id,endPrograms:true)
         try await model.closeTab(movedTab.id,endPrograms:true)

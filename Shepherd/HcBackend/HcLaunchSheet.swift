@@ -35,7 +35,7 @@ struct HcPaneSwitcher: View {
         }
         return placed + unplaced.map { terminal in
             WorkspaceSwitcherItem(id:.terminal(terminal.address),title:terminal.name ?? (terminal.title.isEmpty ? terminal.address : terminal.title),
-                location:terminal.cwd,searchTerms:[terminal.address],hasAgent:false,isAvailable:model.canEdit,
+                location:terminal.currentFolder ?? "",searchTerms:[terminal.address],hasAgent:false,isAvailable:model.canEdit,
                 accessibilityID:"workspace.switcher.terminal.\(terminal.address)")
         }
     }

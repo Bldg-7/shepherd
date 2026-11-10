@@ -3490,18 +3490,18 @@
         }
       }
     },
-    "Name the new workspace and press Return. Left empty, it's named Workspace. It starts in the current folder of the terminal in view." : {
+    "Name the new workspace and press Return. Left empty, it's named Workspace. It starts in the current folder of the terminal in view, or else in the home folder." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新しい workspace の名前を入力して Return キーを押してください。空欄のままにすると名前は Workspace になります。表示中のターミナルの現在のフォルダで開始します。"
+            "value" : "新しい workspace の名前を入力して Return キーを押してください。空欄のままにすると名前は Workspace になります。表示中のターミナルの現在のフォルダで、なければホームフォルダで開始します。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "새 workspace의 이름을 입력하고 Return 키를 누르십시오. 비워 두면 이름이 Workspace가 됩니다. 지금 보고 있는 터미널의 현재 폴더에서 시작합니다."
+            "value" : "새 workspace의 이름을 입력하고 Return 키를 누르십시오. 비워 두면 이름이 Workspace가 됩니다. 지금 보고 있는 터미널의 현재 폴더에서, 없으면 홈 폴더에서 시작합니다."
           }
         }
       }

@@ -252,11 +252,11 @@ struct HcTerminalPane: View {
         guard currentScope, let machine, let machineStore, machineStore.isCurrentConnection(machine),
               pane.terminal?.coreID == model.coreID, model.document?.pane(pane.id)?.terminal == pane.terminal,
               let record = model.terminals.first(where: { $0.address == pane.terminal?.terminalID }),
-              let route = TerminalLinkRoute(link: link, directory: record.cwd, hostname: machine.hostname,
+              let route = TerminalLinkRoute(link: link, directory: record.currentFolder ?? "", hostname: machine.hostname,
                 additionalHosts: machine.isLocal ? FilePreviewLink.localHostAliases : [], opensPages: machine.isLocal) else { return }
         switch route {
         case .file(let raw):
-            presentation.open(FilePreviewRequest(machine: machine, hcPaneID: pane.id, terminalID: record.address, directory: record.cwd, link: raw),from:pane)
+            presentation.open(FilePreviewRequest(machine: machine, hcPaneID: pane.id, terminalID: record.address, directory: record.currentFolder ?? "", link: raw),from:pane)
         case .web(let raw), .page(let raw):
             // Browser feature is retired: human links use the default browser,
             // never a saved agent lease, in-app engine, or injected MCP server.
