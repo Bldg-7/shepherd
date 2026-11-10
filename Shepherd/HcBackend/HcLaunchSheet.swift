@@ -17,7 +17,6 @@ struct HcPaneSwitcher: View {
             }
             onSelectTarget(item.id)
         }, onClose: { dismiss() })
-        .padding(16)
     }
     private var unplaced: [HcTerminalRecord] {
         HcWorkspaceSwitcherCandidates.unplaced(model.terminals,coreID:model.coreID ?? "",
