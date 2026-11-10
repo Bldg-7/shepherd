@@ -222,6 +222,39 @@ private nonisolated struct Notice: Decodable, Sendable {
             } catch { try? await model.disconnect(); throw error }
         }
     }
+    /// A new tab and a new workspace start where the pane in view is now
+    /// (hc's foreground cwd after `cd`), not where that pane started.
+    static func liveFolderFollowed(model: HcWorkspaceModel, connection: CoreRPCConnection, workspaceID: UUID,
+                                   start: URL, home: URL) async throws {
+        let moved = start.appending(path:"moved here")
+        try FileManager.default.createDirectory(at:moved,withIntermediateDirectories:true)
+        try await model.launchTab(workspaceID:workspaceID,name:"moved",argv:["/bin/sh","-c","cd \"$1\" && exec /bin/sleep 60","sh",moved.path],cwd:start.path)
+        guard let movedTab = model.selectedTab, let movedRef = movedTab.layout?.panes.first?.terminal else { throw NSError(domain:"movedTab not bound to a program",code:1) }
+        try await trackModel(connection,home:home)
+        let board = HcTerminalBoard(connection:connection)
+        var current: String?
+        for _ in 0..<200 {
+            let record = try await board.get(movedRef.terminalID)
+            if let folder = record.foregroundCwd, folder.hasSuffix("/moved here") { current = folder; break }
+            try await Task.sleep(for:.milliseconds(25))
+        }
+        guard let current else { throw NSError(domain:"foreground cwd never reported the moved folder",code:1) }
+        try check(try await board.get(movedRef.terminalID).cwd == start.path,"record cwd stays the folder the pane started in")
+        try await model.launchTab(workspaceID:workspaceID,name:"follows cd",argv:["/bin/sleep","60"])
+        guard let followTab = model.selectedTab, let followRef = followTab.layout?.panes.first?.terminal else { throw NSError(domain:"followTab not bound to a program",code:1) }
+        try await trackModel(connection,home:home)
+        try check(try await board.get(followRef.terminalID).cwd == current,"new tab starts in the focused pane's current folder")
+        try model.select(tab:movedTab.id)
+        let created = try await model.createWorkspace(name:"follows focus",followingFocus:true)
+        try check(model.document?.workspaces.first(where:{ $0.id == created })?.cwd == current,"new workspace keeps the focused pane's current folder")
+        try await model.launchTab(workspaceID:created,name:"first tab",argv:["/bin/sleep","60"])
+        guard let firstTab = model.selectedTab, let firstRef = firstTab.layout?.panes.first?.terminal else { throw NSError(domain:"firstTab not bound to a program",code:1) }
+        try await trackModel(connection,home:home)
+        try check(try await board.get(firstRef.terminalID).cwd == current,"new workspace's first tab starts in its folder")
+        try await model.closeTab(firstTab.id,endPrograms:true)
+        try await model.closeTab(followTab.id,endPrograms:true)
+        try await model.closeTab(movedTab.id,endPrograms:true)
+    }
     static func screenModel(config: CoreProcessTransport.Configuration, home: URL) async throws -> [UInt32] {
         let transport = try CoreProcessTransport(configuration: config)
         let connection = try CoreRPCConnection(transport: transport)
@@ -243,6 +276,7 @@ private nonisolated struct Notice: Decodable, Sendable {
             let inheritedProgram = try await HcTerminalBoard(connection:connection).get(inheritedRef.terminalID)
             try check(inheritedProgram.cwd == projectDirectory.path,"current workspace new tab inherits focused canonical program cwd, not core HOME")
             try await model.closeTab(inheritedTab.id,endPrograms:true)
+            try await liveFolderFollowed(model:model,connection:connection,workspaceID:id,start:projectDirectory,home:home)
             try model.select(tab:tab.id)
             try await foreignActionsRefused(connection:connection,model:model,workspaceID:id,home:home)
             try await model.launchSplit(paneID: pane.id, axis: .horizontal, argv: ["/bin/sleep", "60"])

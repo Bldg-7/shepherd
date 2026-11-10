@@ -6,11 +6,16 @@ import Foundation
 /// so a newer core can add facts without breaking an older board.
 public nonisolated struct HcTerminalRecord: Decodable, Equatable, Sendable {
     public struct OSCStatus: Decodable, Equatable, Sendable { public let state: String }
+    /// The program in front right now, as the OS reports it. Only its folder is read.
+    private struct Foreground: Decodable { let cwd: String? }
     public let address: String
     public let name: String?
     public let labels: [String: String]
     public let argv: [String]
+    /// The folder the terminal started in.
     public let cwd: String
+    /// The folder of the program in front right now (after `cd`), when hc knows it.
+    public let foregroundCwd: String?
     public let state: String
     public let pid: UInt32?
     public let exitCode: Int32?
@@ -24,7 +29,7 @@ public nonisolated struct HcTerminalRecord: Decodable, Equatable, Sendable {
     public let reported: Bool
     public let turn: UInt64
     private enum CodingKeys: String, CodingKey {
-        case address, name, labels, argv, cwd, state, pid, exit_code, reason, title, cols, rows
+        case address, name, labels, argv, cwd, foreground, state, pid, exit_code, reason, title, cols, rows
         case created_ms, finished_ms, status, reported, turn
     }
     public init(from decoder: any Decoder) throws {
@@ -34,6 +39,8 @@ public nonisolated struct HcTerminalRecord: Decodable, Equatable, Sendable {
         labels = try c.decodeIfPresent([String: String].self, forKey: .labels) ?? [:]
         argv = try c.decodeIfPresent([String].self, forKey: .argv) ?? []
         cwd = try c.decodeIfPresent(String.self, forKey: .cwd) ?? ""
+        let foreground = try? c.decodeIfPresent(Foreground.self, forKey: .foreground)
+        foregroundCwd = foreground?.cwd.flatMap { $0.isEmpty ? nil : $0 }
         state = try c.decode(String.self, forKey: .state)
         pid = try c.decodeIfPresent(UInt32.self, forKey: .pid)
         exitCode = try c.decodeIfPresent(Int32.self, forKey: .exit_code)
@@ -47,6 +54,9 @@ public nonisolated struct HcTerminalRecord: Decodable, Equatable, Sendable {
         reported = try c.decodeIfPresent(Bool.self, forKey: .reported) ?? false
         turn = try c.decodeIfPresent(UInt64.self, forKey: .turn) ?? 0
     }
+    /// Where a new terminal beside this one should start: its current folder,
+    /// else the folder it started in.
+    public var currentFolder: String? { foregroundCwd ?? (cwd.isEmpty ? nil : cwd) }
 }
 
 /// A minimal hc board: list/get/run/read/kill/attach on one already-negotiated

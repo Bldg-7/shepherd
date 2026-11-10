@@ -184,10 +184,20 @@ private nonisolated struct HcWorkspaceTerminalInitial: Decodable, Sendable { let
         case .uncertain: failure = .uncertain; throw Failure.uncertain
         }
     }
-    @discardableResult public func createWorkspace(name: String) async throws -> UUID {
+    /// With `followingFocus`, the new workspace keeps the current folder of the
+    /// terminal in view, and its first tab starts there. Without a terminal in
+    /// view it has no folder, and hc starts its tabs where the core runs.
+    @discardableResult public func createWorkspace(name: String, followingFocus: Bool = false) async throws -> UUID {
         guard !operationBusy else { throw Failure.unavailable }
-        let (store, snapshot) = try baseline(), workspace = CoreWorkspaceDocument.Workspace(name: name)
+        let (store, snapshot) = try baseline(), token = generation
         operationBusy = true; defer { operationBusy = false }
+        var folder: String?
+        if followingFocus, let focused = focus.workspaceID,
+           snapshot.document?.workspaces.contains(where: { $0.id == focused }) == true {
+            folder = try await launchDirectory(workspaceID: focused, requested: nil, snapshot: snapshot, token: token)
+        }
+        guard token == generation, state == .connected else { throw Failure.stale }
+        let workspace = CoreWorkspaceDocument.Workspace(name: name, cwd: folder)
         try await commit(.appendWorkspace(workspace), snapshot: snapshot, store: store)
         if let document { try focus.select(workspace: workspace.id, in: document); try persistFocus() }
         return workspace.id
@@ -220,24 +230,30 @@ private nonisolated struct HcWorkspaceTerminalInitial: Decodable, Sendable { let
         try focus.select(tab: tab.id, in: document); try persistFocus()
         try await launchInto(pane: pane, argv: argv, cwd: directory, journal: journal, store: store, token: token)
     }
-    /// Resolve context before placeholder CAS changes local focus. No labels,
-    /// remote-qualified selectors, interactive rc or host filesystem scans.
+    /// Resolve context before placeholder CAS changes local focus: the current
+    /// folder of the focused pane in the workspace's tab in view, else the
+    /// workspace's own folder. No labels, remote-qualified selectors,
+    /// interactive rc or host filesystem scans.
     private func launchDirectory(workspaceID: UUID, requested: String?, snapshot: CoreWorkspaceCAS.Snapshot,
                                  token: UUID) async throws -> String? {
         if let requested { return requested }
         guard let workspace = snapshot.document?.workspaces.first(where:{ $0.id == workspaceID }) else { throw Failure.stale }
-        if let saved = workspace.cwd, !saved.isEmpty { return saved }
-        guard let tabID = focus.tabByWorkspace[workspaceID], let tab = workspace.tabs.first(where:{ $0.id == tabID }),
-              let pane = tab.layout?.panes.first(where:{ $0.id == focus.paneByTab[tabID] }) ?? tab.layout?.panes.first,
-              let reference = pane.terminal else { return nil }
-        return try await confirmedDirectory(reference,token:token)
+        if let tabID = focus.tabByWorkspace[workspaceID], let tab = workspace.tabs.first(where:{ $0.id == tabID }),
+           let pane = tab.layout?.panes.first(where:{ $0.id == focus.paneByTab[tabID] }) ?? tab.layout?.panes.first,
+           let reference = pane.terminal, let current = try await confirmedDirectory(reference,token:token) {
+            return current
+        }
+        return workspace.cwd.flatMap { $0.isEmpty ? nil : $0 }
     }
+    /// The pane's current folder (after `cd`), else the folder it started in.
+    /// A pane of another core refuses the launch rather than falling back; a
+    /// terminal hc can no longer show gives no folder.
     private func confirmedDirectory(_ reference: CoreWorkspaceDocument.TerminalReference, token: UUID) async throws -> String? {
         guard reference.coreID == coreID, CoreTerminalID.isCanonical(reference.terminalID) else { throw Failure.unavailable }
-        let record = try await HcTerminalBoard(connection:connection).get(reference.terminalID)
-        guard !Task.isCancelled, token == generation, state == .connected,
-              coreID == reference.coreID, record.address == reference.terminalID else { throw Failure.stale }
-        return record.cwd.isEmpty ? nil : record.cwd
+        let record = try? await HcTerminalBoard(connection:connection).get(reference.terminalID)
+        guard !Task.isCancelled, token == generation, state == .connected, coreID == reference.coreID else { throw Failure.stale }
+        guard let record, record.address == reference.terminalID else { return nil }
+        return record.currentFolder
     }
     public func launchSplit(paneID: UUID, axis: CoreWorkspaceDocument.Axis, argv: [String], cwd: String? = nil) async throws {
         guard !operationBusy, let journal else { throw Failure.unavailable }
@@ -245,10 +261,12 @@ private nonisolated struct HcWorkspaceTerminalInitial: Decodable, Sendable { let
         guard let source = snapshot.document?.pane(paneID),
               source.terminal.map({ $0.coreID == coreID && CoreTerminalID.isCanonical($0.terminalID) }) ?? true else { throw Failure.unavailable }
         operationBusy = true; defer { operationBusy = false }
-        let directory: String?
-        if let cwd { directory = cwd }
-        else if let reference = source.terminal { directory = try await confirmedDirectory(reference,token:token) }
-        else { directory = nil }
+        var directory = cwd
+        if directory == nil, let reference = source.terminal { directory = try await confirmedDirectory(reference,token:token) }
+        if directory == nil {
+            let workspace = snapshot.document?.workspaces.first { $0.tabs.contains { $0.layout?.panes.contains { $0.id == paneID } == true } }
+            directory = workspace?.cwd.flatMap { $0.isEmpty ? nil : $0 }
+        }
         guard token == generation, state == .connected else { throw Failure.stale }
         try await commit(.splitPane(paneID, axis: axis, ratio: 0.5, newPane: pane), snapshot: snapshot, store: store)
         guard token == generation, let document else { throw Failure.stale }

@@ -234,7 +234,7 @@ struct HcRootView: View {
             }
             workspaceID = id
         case .new(let name):
-            workspaceID = try await model.createWorkspace(name: name ?? "Workspace")
+            workspaceID = try await model.createWorkspace(name: name ?? "Workspace", followingFocus: true)
         }
         guard scopedModel === model else { throw HcWorkspaceModel.Failure.stale }
         try await model.launchTab(workspaceID: workspaceID, name: request.tabName ?? String(localized: request.program.title),

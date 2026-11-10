@@ -352,9 +352,9 @@ struct NewTabLauncher: View {
                 Divider()
                 optionList
             case .newWorkspaceName:
-                hint("Name the new workspace and press Return. Left empty, herdr names it. It starts in the home folder of the machine.")
+                hint("Name the new workspace and press Return. Left empty, it's named Workspace. It starts in the current folder of the terminal in view.")
             case .tabName:
-                hint("Name the tab and press Return to open it. Left empty, herdr numbers it.")
+                hint("Name the tab and press Return to open it. Left empty, it's named after the program.")
             }
         }
         .frame(maxWidth: 560)
